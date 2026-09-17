@@ -556,3 +556,18 @@ tr.alarm-active td { background: #3a2426; }
 .search-item.active .grp, .search-item.active .hint { color: #dfe7f5; }
 .search-item .lbl { flex: 1; }
 .search-item .hint { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
+
+/* --- Outliner (Blender): ikonkalar, ustunlar, faol/tanlangan, kontekst menyu --- */
+.tree .node { height: 20px; padding: 0 4px; gap: 3px; border-radius: 3px; }
+.tree .node .ic { color: var(--text-muted); display: inline-flex; width: 16px; justify-content: center; flex-shrink: 0; }
+.tree .node .nm { overflow: hidden; text-overflow: ellipsis; }
+.tree .node.selected .ic, .tree .node.selected .cat { color: #cfd8e8; }
+.tree .node.active { background: #4d6fa8; color: #fff; }
+.tree .node.active .ic, .tree .node.active .cat { color: #dfe7f5; }
+.tree .node.hidden .nm, .tree .node.hidden .ic { color: var(--text-dim); }
+.tree .node .cols { margin-left: auto; display: inline-flex; gap: 2px; flex-shrink: 0; }
+.tree .node .eye { background: transparent; border: 0; color: var(--text-muted); padding: 0 2px; cursor: pointer; display: inline-flex; }
+.tree .node .eye:hover { color: var(--text); }
+.ctx-menu { position: fixed; z-index: 95; min-width: 220px; background: #1f1f1f; border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.55); padding: 4px 0; }
+.ctx-menu .ctx-title { padding: 4px 12px 6px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid var(--line); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.props .bpanel { background: #383838; }

@@ -3,6 +3,40 @@ import type { ItemProperties, SelectedItem, Viewer } from "../../viewer/Viewer";
 import { ifcLabel } from "../../ui/format";
 import Icon from "../../ui/Icon";
 
+/** Properties editor (Blender): yopiladigan panellar («Element», «O'lchamlar», «Atributlar», har Pset alohida),
+ *  qatorlar label (40%) / maydon (60%). Panel holati localStorage da (`sath_props_panels`). */
+
+function loadState(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem("sath_props_panels") || "{}"); } catch { return {}; }
+}
+function saveState(s: Record<string, boolean>) {
+  try { localStorage.setItem("sath_props_panels", JSON.stringify(s)); } catch { /* */ }
+}
+
+export function BPanel({ id, title, children, defaultOpen = true, count }: { id: string; title: string; children: React.ReactNode; defaultOpen?: boolean; count?: number }) {
+  const [open, setOpen] = useState<boolean>(() => loadState()[id] ?? defaultOpen);
+  const toggle = () => { const v = !open; setOpen(v); saveState({ ...loadState(), [id]: v }); };
+  return (
+    <div className="bpanel">
+      <div className="bpanel-head" onClick={toggle}>
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={11} /> {title}
+        {count != null && <span className="dim" style={{ marginLeft: "auto", fontWeight: 400 }}>{count}</span>}
+      </div>
+      {open && <div className="bpanel-body">{children}</div>}
+    </div>
+  );
+}
+
+export function BRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  const text = typeof value === "string" ? value : undefined;
+  return (
+    <div className="brow">
+      <span className="blabel" title={label}>{label}</span>
+      <span className="bfield"><span className={`bval${mono ? " mono" : ""}`} title={text}>{value === "" || value == null ? <span className="dim">—</span> : value}</span></span>
+    </div>
+  );
+}
+
 export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, onDelete }: { viewer: Viewer | null; selection: SelectedItem[]; canEdit?: boolean; onEdit?: (localId: number) => void; onDelete?: (localId: number) => void }) {
   const [props, setProps] = useState<ItemProperties | null>(null);
   const [dims, setDims] = useState<{ size: [number, number, number]; center: [number, number, number] } | null>(null);
@@ -19,42 +53,37 @@ export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, on
   if (!first) return <p className="muted">Elementni tanlang — xususiyatlari shu yerda ko'rinadi.</p>;
   return (
     <div className="props">
-      {selection.length > 1 && <p className="muted small">{selection.length} ta element tanlangan, birinchisi ko'rsatilmoqda.</p>}
-      <h3>{ifcLabel(props?.category || first.category)} <span className="dim">{props?.category || first.category}</span></h3>
-      <div><b>{props?.name || first.name || <span className="dim">nomsiz</span>}</b></div>
-      {props?.guid && <div className="mono small dim" style={{ marginBottom: 6 }}>{props.guid}</div>}
-      {canEdit && selection.length === 1 && (
-        <div className="row" style={{ marginBottom: 8, gap: 6 }}>
-          <button className="btn sm primary" title="Elementni tahrirlash: surish (G), burish (R), masshtab (S), nom, Pset — yangi versiyada GUID saqlanadi (Tab)" onClick={() => onEdit?.(first.localId)}><Icon name="move" size={12} /> Tahrirlash</button>
-          <button className="btn sm" title="Elementni o'chirish — yangi versiyada olib tashlanadi (X)" onClick={() => onDelete?.(first.localId)}><Icon name="trash" size={12} /> O'chirish</button>
-        </div>
-      )}
+      {selection.length > 1 && <p className="muted small">{selection.length} ta element tanlangan, faoli ko'rsatilmoqda.</p>}
+      <BPanel id="element" title="Element">
+        <BRow label="Nomi" value={props?.name || first.name || ""} />
+        <BRow label="Turi" value={<>{ifcLabel(props?.category || first.category)} <span className="dim">{props?.category || first.category}</span></>} />
+        {props?.guid && <BRow label="GUID" value={props.guid} mono />}
+        {canEdit && selection.length === 1 && (
+          <div className="row" style={{ marginTop: 6, gap: 6 }}>
+            <button className="btn sm primary" title="Tahrirlash: surish (G), burish (R), masshtab (S), nom, Pset — yangi versiyada GUID saqlanadi (Tab)" onClick={() => onEdit?.(first.localId)}><Icon name="move" size={12} /> Tahrirlash</button>
+            <button className="btn sm" title="O'chirish — yangi versiyada olib tashlanadi (X)" onClick={() => onDelete?.(first.localId)}><Icon name="trash" size={12} /> O'chirish</button>
+          </div>
+        )}
+      </BPanel>
       {dims && (
-        <table style={{ marginBottom: 6 }}><tbody>
-          <tr><td>O'lchamlar (X×Y×Z), m</td><td className="mono">{dims.size.map((v) => v.toFixed(2)).join(" × ")}</td></tr>
-          <tr><td>Markaz (IFC), m</td><td className="mono">{dims.center.map((v) => v.toFixed(2)).join(", ")}</td></tr>
-        </tbody></table>
+        <BPanel id="dims" title="O'lchamlar">
+          <BRow label="X" value={`${dims.size[0].toFixed(2)} m`} mono />
+          <BRow label="Y" value={`${dims.size[1].toFixed(2)} m`} mono />
+          <BRow label="Z" value={`${dims.size[2].toFixed(2)} m`} mono />
+          <BRow label="Markaz (IFC)" value={dims.center.map((v) => v.toFixed(2)).join(", ") + " m"} mono />
+        </BPanel>
       )}
-      {props && (
-        <>
-          <table>
-            <tbody>
-              {props.attributes.map((a) => (
-                <tr key={a.name}><td>{a.name}</td><td>{a.value}</td></tr>
-              ))}
-            </tbody>
-          </table>
-          {props.psets.map((ps, i) => (
-            <details key={i} open={i < 3}>
-              <summary>{ps.name || "Xususiyatlar to'plami"}</summary>
-              <table><tbody>
-                {ps.props.map((p, j) => <tr key={j}><td>{p.name}</td><td>{p.value}</td></tr>)}
-              </tbody></table>
-            </details>
-          ))}
-          {props.psets.length === 0 && <p className="dim small">Xususiyatlar to'plami (Pset) yo'q.</p>}
-        </>
+      {props && props.attributes.length > 0 && (
+        <BPanel id="attrs" title="Atributlar" defaultOpen={false} count={props.attributes.length}>
+          {props.attributes.map((a) => <BRow key={a.name} label={a.name} value={a.value} />)}
+        </BPanel>
       )}
+      {props?.psets.map((ps, i) => (
+        <BPanel key={i} id={`pset:${ps.name}`} title={ps.name || "Xususiyatlar to'plami"} defaultOpen={i < 3} count={ps.props.length}>
+          {ps.props.map((p, j) => <BRow key={j} label={p.name} value={p.value} />)}
+        </BPanel>
+      ))}
+      {props && props.psets.length === 0 && <p className="dim small">Xususiyatlar to'plami (Pset) yo'q.</p>}
     </div>
   );
 }
