@@ -1,0 +1,80 @@
+name: Blender fork (Sath brend)
+# Blender manbasidan (projects.blender.org, berilgan teg) Sath brendi bilan Windows build:
+# oyna sarlavhasi «… - Sath (Blender 5.2.x)», ProductName/FileDescription «Sath», exe ikonkasi, splash.
+# Qo'lda ishga tushiriladi (~2–3 soat: ~8 GB kutubxona + MSVC build). Natija: sath-blender-<teg>-windows-x64.zip
+# artefakti — desktop/build/build_blender_bundle.py --blender <ochilgan papka> bilan bundle ga kiradi.
+on:
+  workflow_dispatch:
+    inputs:
+      blender_tag:
+        description: "Blender tegi (projects.blender.org)"
+        default: "v5.2.2"
+        required: true
+      lite:
+        description: "Yengil build: Cycles/USD/Hydra/OpenVDB/Alembic/Libmv o'chiq (tezroq, kichikroq)"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Disk va vositalar
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB)}}, @{n='UsedGB';e={[math]::Round($_.Used/1GB)}}
+          git --version; git lfs version; cmake --version | Select-Object -First 1
+
+      - name: Splash va ikonka (Sath)
+        shell: pwsh
+        run: |
+          pip install -q pillow
+          $ver = (Select-String -Path desktop/blender/sath/blender_manifest.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          python desktop/blender/template/make_splash.py --version $ver
+
+      - name: Blender manbasi (${{ inputs.blender_tag }})
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch ${{ inputs.blender_tag }} https://projects.blender.org/blender/blender.git D:\blender
+          cd D:\blender
+          git submodule update --init --depth 1 --progress lib/windows_x64
+          Get-PSDrive D | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB)}}
+
+      - name: Sath brendini qo'llash
+        shell: pwsh
+        run: python desktop/blender/fork/brand.py D:\blender
+
+      - name: CMake konfiguratsiya
+        shell: pwsh
+        run: |
+          $lite = if ('${{ inputs.lite }}' -eq 'true') { @('-DWITH_CYCLES=OFF','-DWITH_CYCLES_DEVICE_OPTIX=OFF','-DWITH_CYCLES_DEVICE_CUDA=OFF','-DWITH_CYCLES_DEVICE_HIP=OFF','-DWITH_CYCLES_DEVICE_ONEAPI=OFF','-DWITH_HYDRA=OFF','-DWITH_USD=OFF','-DWITH_OPENVDB=OFF','-DWITH_NANOVDB=OFF','-DWITH_ALEMBIC=OFF','-DWITH_LIBMV=OFF','-DWITH_MOD_FLUID=OFF','-DWITH_MOD_OCEANFLUID=OFF') } else { @() }
+          cmake -S D:\blender -B D:\build -G "Visual Studio 17 2022" -A x64 `
+            -C D:\blender\build_files\cmake\config\blender_release.cmake `
+            -DCMAKE_BUILD_TYPE=Release -DWITH_INSTALL_PORTABLE=ON -DWITH_PYTHON_INSTALL=ON -DWITH_WINDOWS_BUNDLE_CRT=ON `
+            -DWITH_UNITY_BUILD=ON -DWITH_BLENDER_THUMBNAILER=OFF $lite
+
+      - name: Build (MSVC, Release, INSTALL)
+        shell: pwsh
+        run: cmake --build D:\build --config Release --target INSTALL -- /m /v:m
+
+      - name: Tekshirish va zip
+        shell: pwsh
+        run: |
+          $out = "D:\build\bin\Release"
+          Get-ChildItem $out | Select-Object -First 20 | Format-Table Name, Length
+          & "$out\blender.exe" -b --python-expr "import bpy; print('BLENDER', bpy.app.version_string)"
+          $name = "sath-blender-${{ inputs.blender_tag }}-windows-x64"
+          Compress-Archive -Path "$out\*" -DestinationPath "D:\$name.zip" -CompressionLevel Optimal
+          "ARTIFACT=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Get-Item "D:\$name.zip" | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB)}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: D:\${{ env.ARTIFACT }}.zip
+          retention-days: 30

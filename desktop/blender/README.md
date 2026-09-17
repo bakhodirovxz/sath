@@ -24,7 +24,9 @@ python desktop/build/build_blender_bundle.py --installer
 Sath template ga o'tkazadi) + `freecad/` (conda py313 muhiti, ~0.9 GB ga kesilgan: MKL/VTK/libclang/FEM yo'q)
 + `tools/libredwg/`. Kerak: `~\Tools\blender-5.2`, `~\Tools\fc-py313`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
 yoki avtomatik yuklab olinadi), NSIS (`~\Tools\NSIS`), venv da `pillow` (splash/ikonka).
-Cheklov: oyna sarlavhasida «Blender» qoladi (manba forki keyingi bosqich).
+Oyna sarlavhasi «Sath» bo'lishi uchun manba forki: GitHub Actions **«Blender fork (Sath brend)»** (qo'lda, ~2–3 soat) —
+`desktop/blender/fork/brand.py` Blender manbasiga sarlavha/ProductName/ikonka/splash brendini qo'llaydi, artefakt
+`sath-blender-<teg>-windows-x64.zip`; uni ochib `build_blender_bundle.py --blender <papka>` bilan bundle yig'iladi.
 
 ## O'rnatish (faqat addon, o'z Blender ingizga)
 

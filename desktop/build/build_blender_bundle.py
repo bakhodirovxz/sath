@@ -112,9 +112,17 @@ def make_exe(ico: Path) -> None:
     run([sys.executable, BUILD / "set_exe_icon.py", exe, ico])
 
 
+def blender_ver_dir() -> Path:
+    """Stage dagi «5.2» kabi versiya papkasi (CI forki boshqa versiya bo'lishi mumkin)."""
+    for p in STAGE.iterdir():
+        if p.is_dir() and re.fullmatch(r"\d+\.\d+", p.name):
+            return p
+    raise RuntimeError("Blender versiya papkasi (masalan 5.2) topilmadi: " + str(STAGE))
+
+
 def install_template(ver: str) -> Path:
     run([sys.executable, TEMPLATE / "make_splash.py", "--version", ver, "--out", TEMPLATE / "Sath"])
-    dst = STAGE / "5.2" / "scripts" / "startup" / "bl_app_templates_system" / "Sath"
+    dst = blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath"
     shutil.copytree(TEMPLATE / "Sath", dst, dirs_exist_ok=True)
     return dst
 
