@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .climate import ClimateSpec, is_ice, open_water_evaporation_mm_day
 from .penstock import G
 
 
@@ -89,7 +90,9 @@ class ReservoirSpec:
     spillway: SpillwaySpec | None = None
     tailwater_m: float = 0.0  # quyi byef sathi (napor = sath − tailwater)
     other_outflow_m3s: float = 0.0  # sug'orish, ekologik oqim va h.k.
-    evaporation_mm_day: float = 0.0
+    evaporation_mm_day: float = 0.0  # doimiy (iqlim berilmasa)
+    seepage_m3s: float = 0.0  # filtratsion yo'qotish
+    climate: ClimateSpec | None = None  # berilsa bug'lanish mavsumiy (kun raqami bo'yicha)
 
 
 @dataclass
@@ -104,19 +107,25 @@ def step(
     inflow: float,
     turbine_demand: float,
     dt_s: float,
+    day_of_year: float | None = None,
 ) -> tuple[ReservoirState, dict]:
     """Bitta vaqt qadami. Turbina sarfi o'lik sathdan pastga tushirmaydigan qilib cheklanadi.
     Tashlama: sath ostonadan yuqori bo'lsa suv tashlagich formulasi; suv tashlagich bo'lmasa va
     sath FPU dan oshsa — ortiqcha suv "majburiy tashlama" sifatida chiqariladi."""
     area = _surface_area(spec.curve, state.elev_m)
-    evap = spec.evaporation_mm_day / 1000 / 86400 * area  # m³/s
+    ice = False
+    if spec.climate is not None and day_of_year is not None:
+        e_mm = open_water_evaporation_mm_day(spec.climate, day_of_year)
+        ice = is_ice(spec.climate, day_of_year)
+    else:
+        e_mm = spec.evaporation_mm_day
+    evap = e_mm / 1000 / 86400 * area  # m³/s
+    losses = spec.other_outflow_m3s + evap + spec.seepage_m3s
     dead_volume = spec.curve.volume(spec.dead_level_m)
-    available = (
-        max(state.volume_m3 - dead_volume, 0.0) / dt_s + inflow - spec.other_outflow_m3s - evap
-    )
+    available = max(state.volume_m3 - dead_volume, 0.0) / dt_s + inflow - losses
     q_turb = max(min(turbine_demand, available), 0.0)
     q_spill = spec.spillway.discharge(state.elev_m) if spec.spillway else 0.0
-    v_next = state.volume_m3 + (inflow - q_turb - q_spill - spec.other_outflow_m3s - evap) * dt_s
+    v_next = state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s
     v_next = max(v_next, 0.0)
     max_level = spec.max_level_m if spec.max_level_m is not None else spec.normal_level_m + 2.0
     v_max = spec.curve.volume(max_level)
@@ -131,6 +140,9 @@ def step(
         "spill": q_spill,
         "forced_spill": forced,
         "evap": evap,
+        "evap_mm_day": e_mm,
+        "seepage": spec.seepage_m3s,
+        "ice": ice,
         "curtailed": turbine_demand - q_turb,
     }
 

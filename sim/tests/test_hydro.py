@@ -250,3 +250,44 @@ def test_parse_validation():
     p["reservoir"]["dead_level_m"] = 910
     with pytest.raises(ValueError):
         scenario.run(p)
+
+
+def test_climate_evaporation_and_ice():
+    from ges_sim.climate import (
+        ClimateSpec,
+        extraterrestrial_radiation,
+        hargreaves_et0,
+        open_water_evaporation_mm_day,
+        seasonal_temperature,
+    )
+
+    # FAO-56 misoli: 20°S, 3-sentabr (J=246) → Ra ≈ 32.2 MJ/m²/kun
+    assert extraterrestrial_radiation(-20, 246) == pytest.approx(32.2, abs=0.3)
+    # Hargreaves: ET0 musbat, Ra bilan o'sadi
+    assert hargreaves_et0(25, 31, 19, 41.6, 180) > hargreaves_et0(10, 16, 4, 41.6, 30) > 0
+    c = ClimateSpec(latitude_deg=41.6, t_mean_annual_c=13, t_amplitude_c=14, diurnal_range_c=12)
+    assert seasonal_temperature(c, 15) == pytest.approx(-1.0)  # yanvar minimumi
+    assert seasonal_temperature(c, 197) == pytest.approx(27.0, abs=0.1)
+    cold = ClimateSpec(latitude_deg=41.6, t_mean_annual_c=10, t_amplitude_c=16, diurnal_range_c=12)  # qish −6 °C
+    assert open_water_evaporation_mm_day(cold, 15) == 0.0  # muz (T < −1)
+    summer = open_water_evaporation_mm_day(c, 200)
+    assert 5 < summer < 12  # O'rta Osiyo ko'llari uchun yozgi 6–10 mm/kun tartibida
+
+
+def test_reservoir_step_climate_and_seepage():
+    from ges_sim.climate import ClimateSpec
+    from ges_sim.reservoir import ReservoirSpec, ReservoirState, StorageCurve, step
+
+    curve = StorageCurve((850, 870, 890, 905, 915), (0, 60, 220, 480, 700))
+    base = ReservoirSpec(curve=curve, dead_level_m=870, normal_level_m=905)
+    st = ReservoirState(900.0, curve.volume(900.0))
+    s0, f0 = step(st, base, 100.0, 50.0, 86400)
+    wet = ReservoirSpec(
+        curve=curve, dead_level_m=870, normal_level_m=905, seepage_m3s=5.0,
+        climate=ClimateSpec(t_mean_annual_c=10, t_amplitude_c=16),
+    )  # fmt: skip
+    s1, f1 = step(st, wet, 100.0, 50.0, 86400, day_of_year=200)
+    assert f1["seepage"] == 5.0 and f1["evap"] > 0 and not f1["ice"]
+    assert s1.volume_m3 < s0.volume_m3  # yo'qotishlar hajmni kamaytiradi
+    s2, f2 = step(st, wet, 100.0, 50.0, 86400, day_of_year=10)
+    assert f2["ice"] and f2["evap"] == 0.0

@@ -196,6 +196,24 @@ def list_jobs(model_id: int, user: CurrentUser, db: DB):
     return [_out(j) for j in jobs]
 
 
+def _hydro_from_site(params: dict, site: dict | None) -> None:
+    """Pasportdagi iqlim (bug'lanish, muz) va sizish — foydalanuvchi bermagan bo'lsa avtomatik."""
+    from ges_sim.site import climate_from_site
+
+    r = params.get("reservoir")
+    if not isinstance(r, dict) or not site:
+        return
+    if "climate" not in r:
+        c = climate_from_site(site)
+        if c:
+            r["climate"] = c
+    if "seepage_m3s" not in r and site.get("seepage_m3s") not in (None, ""):
+        try:
+            r["seepage_m3s"] = float(site["seepage_m3s"])
+        except (TypeError, ValueError):
+            pass
+
+
 @router.post("/models/{model_id}/sim", response_model=SimOut, status_code=202)
 def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks: BackgroundTasks):
     """Simulyatsiyani navbatga qo'yadi. Ko'ruvchi ham ishga tushira oladi (natija modelni o'zgartirmaydi)."""
@@ -208,6 +226,7 @@ def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks:
     stl_info = None
     try:  # tez validatsiya — xato bo'lsa darhol 400
         if body.kind == "hydro":
+            _hydro_from_site(params, model.project.site)
             scenario.parse(params)
         elif body.kind == "cfd":
             if get_settings().cfd_mode == "off":

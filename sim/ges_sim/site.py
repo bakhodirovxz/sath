@@ -87,6 +87,18 @@ SITE_FIELDS: list[Field] = [
     Field("dead_level_m", "O'lik sath", "m", default=870, group="Suv ombori"),
     Field("area_km2", "Ko'zgu yuzasi (NPU da)", "km²", default=40, min=0.01, group="Suv ombori"),
     Field(
+        "seepage_m3s", "Filtratsion yo'qotish (sizish)", "m³/s", default=0, min=0, group="Suv ombori",
+        hint="To'g'on va asos orqali doimiy yo'qotish; «Filtratsiya» simulyatsiyasi baholaydi",
+    ),
+    # Iqlim — bug'lanish (Hargreaves–Samani), muz qoplami (climate.py)
+    Field("latitude_deg", "Geografik kenglik", "°", default=41.6, min=-90, max=90, group="Iqlim"),
+    Field("t_mean_annual_c", "Yillik o'rtacha harorat", "°C", default=13, min=-30, max=40, group="Iqlim"),
+    Field(
+        "t_amplitude_c", "Yillik tebranish amplitudasi", "°C", default=14, min=0, max=40, group="Iqlim",
+        hint="(iyul o'rtacha − yanvar o'rtacha) / 2",
+    ),
+    Field("diurnal_range_c", "Sutkalik T_max − T_min", "°C", default=12, min=0, max=30, group="Iqlim"),
+    Field(
         "curve_elev",
         "Sath–hajm: sathlar",
         "m",
@@ -671,6 +683,18 @@ def apply(kind: str, site: dict | None) -> dict:
             continue
     # Ombor hajmi bo'yicha "suv chuqurligi/ko'chki" uchun yordamchi: hech narsa qilmaymiz
     return out
+
+
+def climate_from_site(site: dict | None) -> dict | None:
+    """Pasportdan iqlim (hydro senariysi uchun ClimateSpec maydonlari) — kenglik bo'lmasa None."""
+    if not site or site.get("latitude_deg") in (None, ""):
+        return None
+    out = {}
+    for k in ("latitude_deg", "t_mean_annual_c", "t_amplitude_c", "diurnal_range_c"):
+        v = site.get(k)
+        if v not in (None, ""):
+            out[k] = float(v)
+    return out or None
 
 
 def risk_summary(site: dict) -> list[dict]:

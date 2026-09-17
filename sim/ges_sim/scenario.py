@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from .climate import ClimateSpec
 from .penstock import PenstockSpec
 from .reservoir import ReservoirSpec, ReservoirState, SpillwaySpec, StorageCurve, step
 from .turbine import TurbineSpec, dispatch, flow_for_power
@@ -44,6 +45,8 @@ def parse(params: dict) -> dict:
         tailwater_m=float(r.get("tailwater_m", 0.0)),
         other_outflow_m3s=float(r.get("other_outflow_m3s", 0.0)),
         evaporation_mm_day=float(r.get("evaporation_mm_day", 0.0)),
+        seepage_m3s=float(r.get("seepage_m3s", 0.0)),
+        climate=ClimateSpec(**_only(r["climate"], ClimateSpec)) if r.get("climate") else None,
     )
     if not (reservoir.dead_level_m < reservoir.normal_level_m):
         raise ValueError("O'lik sath NPU dan past bo'lishi kerak")
@@ -96,6 +99,8 @@ def run(params: dict) -> dict:
             "head_net",
             "units_on",
             "curtailed",
+            "evap_mm_day",
+            "ice",
         )
     }
     unit_power: list[list[float]] = [[] for _ in units]
@@ -122,7 +127,8 @@ def run(params: dict) -> dict:
             )
         demand = max(demand, 0.0)
 
-        state_next, flows = step(state, res, q_in, demand, dt)
+        doy = (start + timedelta(seconds=dt * i)).timetuple().tm_yday if start else None
+        state_next, flows = step(state, res, q_in, demand, dt, day_of_year=doy)
         d = dispatch(flows["turbine"], gross, units, p["penstock"], p["per_unit"])
 
         series["t"].append((start + timedelta(seconds=dt * i)).isoformat() if start else i)
@@ -136,6 +142,8 @@ def run(params: dict) -> dict:
         series["head_net"].append(round(d.head_net_m, 3))
         series["units_on"].append(sum(1 for u in d.units if u.on))
         series["curtailed"].append(round(max(flows["curtailed"], 0.0), 3))
+        series["evap_mm_day"].append(round(flows["evap_mm_day"], 2))
+        series["ice"].append(bool(flows["ice"]))
         for k, u in enumerate(d.units):
             unit_power[k].append(round(u.power_mw, 3))
         state = state_next
