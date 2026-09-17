@@ -1,3 +1,5 @@
+import Icon from "../../ui/Icon";
+import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AlarmState, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
@@ -186,19 +188,19 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
 
   return (
     <div className="mon">
-      <div className="row" style={{ marginBottom: 8, flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-        <span className={`badge ${live === "jonli" ? "published" : live === "uzildi" ? "rejected" : ""}`}>{live}</span>
-        <span className="small muted">{sensors.length} sensor · {alarms.length} alarm</span>
-        {upstreamId != null && <label className="small row" style={{ gap: 4 }} title="Raqamli egizak: yuqori byef sathi sensoridan 3D da suv tekisligi"><input type="checkbox" checked={waterOn} onChange={(e) => setWaterOn(e.target.checked)} />jonli suv sathi</label>}
-        <label className="small row" style={{ gap: 4 }} title="Aktivlar sog'liq indeksi bo'yicha 3D da bo'yash (yashil / sariq / qizil)"><input type="checkbox" checked={healthOn} onChange={(e) => setHealthOn(e.target.checked)} />sog'liq rangi</label>
-        <label className="small row" style={{ gap: 4 }} title="Elementlar ustida jonli qiymat yorliqlari (sensor nomi va qiymati, alarm rangi)"><input type="checkbox" checked={valuesOn} onChange={(e) => setValuesOn(e.target.checked)} />qiymatlar 3D da</label>
-        <label className="small row" style={{ gap: 4 }} title="HMI animatsiya: darvoza ochilishi (element ko'tariladi), agregat ishlashi (aylanuvchi halqa), quvurdagi oqim (harakatlanuvchi punktir)"><input type="checkbox" checked={animOn} onChange={(e) => setAnimOn(e.target.checked)} />animatsiya</label>
-        <label className="small row" style={{ gap: 4 }} title="Vaqt mashinasi: tarixdagi istalgan vaqtdagi holatni 3D da ko'rish (hodisa tahlili)"><input type="checkbox" checked={replay.on} onChange={(e) => setReplay((r) => ({ ...r, on: e.target.checked, t: 1 }))} />vaqt mashinasi</label>
-        <span className="grow" />
-        {canEdit && <button className="btn sm primary" onClick={() => { setEditing({ ...EMPTY, element_guid: selection[0]?.guid ?? null }); setEditId(null); setTopic(""); }}>Sensor qo'shish</button>}
-        {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { setError(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
-        {role === "approver" && <button className="btn sm" onClick={() => api.ingestKey(projectId).then(setIngest).catch((e) => setError(e.message))}>Ulanish kaliti</button>}
-      </div>
+      <BPanel id="mon-view" title="Jonli holat" right={<span className={`badge ${live === "jonli" ? "published" : live === "uzildi" ? "rejected" : ""}`}>{live}</span>}>
+        <BRow label="Sensorlar" value={`${sensors.length} sensor · ${alarms.length} alarm`} />
+        {upstreamId != null && <BRow label="Suv sathi 3D"><input type="checkbox" checked={waterOn} onChange={(e) => setWaterOn(e.target.checked)} title="Raqamli egizak: yuqori byef sathi sensoridan 3D da suv tekisligi" /></BRow>}
+        <BRow label="Sog'liq rangi"><input type="checkbox" checked={healthOn} onChange={(e) => setHealthOn(e.target.checked)} title="Aktivlar sog'liq indeksi bo'yicha 3D da bo'yash (yashil / sariq / qizil)" /></BRow>
+        <BRow label="Qiymatlar 3D da"><input type="checkbox" checked={valuesOn} onChange={(e) => setValuesOn(e.target.checked)} title="Elementlar ustida jonli qiymat yorliqlari (sensor nomi va qiymati, alarm rangi)" /></BRow>
+        <BRow label="Animatsiya"><input type="checkbox" checked={animOn} onChange={(e) => setAnimOn(e.target.checked)} title="HMI animatsiya: darvoza ochilishi, agregat aylanishi, quvurdagi oqim" /></BRow>
+        <BRow label="Vaqt mashinasi"><input type="checkbox" checked={replay.on} onChange={(e) => setReplay((r) => ({ ...r, on: e.target.checked, t: 1 }))} title="Tarixdagi istalgan vaqtdagi holatni 3D da ko'rish (hodisa tahlili)" /></BRow>
+        <BOps>
+          {canEdit && <button className="btn sm primary" onClick={() => { setEditing({ ...EMPTY, element_guid: selection[0]?.guid ?? null }); setEditId(null); setTopic(""); }}><Icon name="plus" size={12} /> Sensor</button>}
+          {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi"><Icon name="upload" size={12} /> CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { setError(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
+          {role === "approver" && <button className="btn sm" onClick={() => api.ingestKey(projectId).then(setIngest).catch((e) => setError(e.message))}><Icon name="lock" size={12} /> Ulanish kaliti</button>}
+        </BOps>
+      </BPanel>
       {replay.on && (
         <div className="section-box small" style={{ marginBottom: 8 }}>
           <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
