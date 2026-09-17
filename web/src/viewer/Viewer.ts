@@ -87,7 +87,7 @@ export class Viewer {
     this.world = world;
     world.scene = new OBC.SimpleScene(this.components);
     world.scene.setup();
-    world.scene.three.background = new THREE.Color("#1e1f22"); // AutoCAD uslubidagi qora fon
+    world.scene.three.background = new THREE.Color("#3d3d3d"); // Blender viewport foni
     // Postproduction (AO, konturlar) — "Rendered" shading rejimida yoqiladi (Blender Rendered kabi)
     world.renderer = new OBF.PostproductionRenderer(this.components, container, { antialias: true });
     world.renderer.showLogo = false; // toza CAD viewport; ThatOpen ga README da minnatdorchilik
@@ -104,7 +104,7 @@ export class Viewer {
     this.components.init();
 
     this.grid = this.components.get(OBC.Grids).create(world);
-    this.grid.config.color = new THREE.Color("#3a3d42");
+    this.grid.config.color = new THREE.Color("#4a4a4a");
 
     // Fragments engine — worker va wasm lokal (offline ishlaydi)
     this.fragments = this.components.get(OBC.FragmentsManager);
