@@ -64,6 +64,12 @@ def run(ctx):
     assert bpy.ops.sath.monitor_toggle() == {"FINISHED"} and s.monitor_on
     assert ops_monitor._tick() == ops_monitor.INTERVAL, s.monitor_status
     assert "sensor" in s.monitor_status
+    assert s.twin_head, "egizak sarlavhasi (holat) to'ldirilishi kerak"
+    assert s.health_head.startswith("Stansiya sog'lig'i"), s.health_head
+    s.monitor_color_mode = "health"
+    assert bpy.ops.sath.monitor_refresh() == {"FINISHED"}
+    s.time_hours = 2.0
+    assert ops_monitor._tick() == ops_monitor.INTERVAL
     assert bpy.ops.sath.monitor_toggle() == {"FINISHED"} and not s.monitor_on
     assert fc_engine.doc() is not None
     print("E2E:", s.status, "|", s.diff_note, "|", s.monitor_status)

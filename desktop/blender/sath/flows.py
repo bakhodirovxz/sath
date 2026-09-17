@@ -345,3 +345,92 @@ def water_sensor_level(sensors: list[dict]) -> float | None:
         ):
             return float(s["last_value"])
     return None
+
+
+# ------------------------------------------------------------------ raqamli egizak, sog'liq, vaqt mashinasi
+HEALTH_COLORS = {
+    "yaxshi": (0.23, 0.66, 0.39, 1.0),
+    "qoniqarli": (0.85, 0.75, 0.25, 1.0),
+    "yomon": (0.9, 0.5, 0.2, 1.0),
+    "kritik": (0.85, 0.25, 0.25, 1.0),
+}
+
+
+def _mw(v) -> str:
+    return "—" if v is None else f"{v:.1f}"
+
+
+def twin_head(state: dict) -> str:
+    if state.get("status") != "ok":
+        return f"Egizak: {state.get('status', '—')}"
+    return (
+        f"Napor {state.get('head_gross_m', 0):.2f} m · {_mw(state.get('measured_total_mw'))} / "
+        f"{_mw(state.get('expected_total_mw'))} MW (o'lchangan / kutilgan)"
+    )
+
+
+def twin_rows(state: dict) -> list[dict]:
+    rows = []
+    for i, u in enumerate(state.get("units", [])):
+        dev = u.get("deviation_pct")
+        eff = u.get("efficiency")
+        rows.append(
+            {
+                "item_id": i,
+                "name": u["name"],
+                "col2": f"{_mw(u.get('measured_mw'))} / {_mw(u.get('expected_mw'))} MW",
+                "col3": "" if dev is None else f"{dev:+.1f} %".replace("-", "−"),
+                "col4": "" if eff is None else f"FIK {eff * 100:.0f}%",
+                "state": ("ok" if abs(dev or 0) < 10 else "warn") if u.get("running") else "stop",
+            }
+        )
+    return rows
+
+
+def twin_safety_rows(items: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": it["name"],
+            "col2": f"{it.get('value', '')} {it.get('unit', '')}".strip(),
+            "state": "ok" if it.get("ok") else "fail",
+        }
+        for it in items
+    ]
+
+
+def health_head(h: dict) -> str:
+    ps = h.get("plant_score")
+    return "Stansiya sog'lig'i: —" if ps is None else f"Stansiya sog'lig'i: {ps} / 100"
+
+
+def health_rows(h: dict) -> list[dict]:
+    return [
+        {
+            "item_id": a["asset_id"],
+            "name": a["name"],
+            "col2": str(a.get("score", "")),
+            "col3": "; ".join(a.get("problems") or [])[:80],
+            "state": a.get("level", ""),
+            "guid": a.get("element_guid") or "",
+        }
+        for a in h.get("assets", [])
+    ]
+
+
+def health_colors(assets: list[dict]) -> dict[str, tuple]:
+    return {
+        a["element_guid"]: HEALTH_COLORS[a["level"]]
+        for a in assets
+        if a.get("element_guid") and a.get("level") in HEALTH_COLORS
+    }
+
+
+def reading_at(points: list[dict], ts: str) -> float | None:
+    """Vaqt mashinasi: `ts` (ISO) dan oldingi oxirgi o'qish qiymati (nuqtalar vaqt bo'yicha tartiblangan)."""
+    val = None
+    for p in points:
+        if p["ts"] <= ts:
+            val = p.get("value")
+        else:
+            break
+    return val

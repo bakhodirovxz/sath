@@ -45,7 +45,8 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 | GES obyektlari | To'g'on, Bosimli quvur, Turbina, Suv tashlagich, Mashina zali, Transformator, Suv qabul qilgich — parametrlar obyektda, geometriya FreeCAD dan, IFC klass + `Pset_GES_*` Bonsai da; parametr o'zgarsa qayta quriladi |
 | Taqriz va issue lar | ota bilan farq (3D rang: yashil/sariq), issue lar (ko'rinishga o'tish, izoh, yangi issue kamera bilan), tasdiqlash so'rovlari (ma'qullash / o'zgartirish / merge / rad — rolga qarab) |
 | Simulyatsiya | server katalogi (barcha turlar), forma pasport/modeldan, hisob (poll), natija, 3D suv sathi (`GES_SuvSathi`), xavfsizlik tekshiruvi (12 ssenariy) |
-| Monitoring (SCADA) | 5 s da sensorlar, obyektlar alarm rangi, suv sathi tekisligi, sensor → 3D |
+| Monitoring (SCADA) | 5 s da sensorlar, obyektlar alarm yoki sog'liq rangi, suv sathi tekisligi, sensor → 3D |
+| Raqamli egizak | napor, agregatlar o'lchangan/kutilgan quvvat va og'ish, jonli xavfsizlik ko'rsatkichlari, aktivlar sog'liq indeksi (aktiv → 3D), vaqt mashinasi (N soat oldingi sath 3D da) |
 | Import | DWG/DXF (FreeCAD importeri, ezdxf bilan tekislash, qatlam = collection), mesh (assimp: FBX/3DS/OBJ/…) |
 
 ## Tuzilma

@@ -106,6 +106,22 @@ class GesScene(bpy.types.PropertyGroup):
     monitor_status: bpy.props.StringProperty(default="")
     monitor_color: bpy.props.BoolProperty(name="3D alarm rangi", default=True)
     monitor_water: bpy.props.BoolProperty(name="Suv sathi sensoridan 3D tekislik", default=True)
+    monitor_color_mode: bpy.props.EnumProperty(
+        name="3D rang",
+        items=[("alarm", "Alarm", "Sensor alarm holati"), ("health", "Sog'liq", "Aktiv sog'liq darajasi")],
+        default="alarm",
+    )
+    twin_head: bpy.props.StringProperty(default="")
+    twin_rows: bpy.props.CollectionProperty(type=GesListItem)
+    twin_safety: bpy.props.CollectionProperty(type=GesListItem)
+    health_head: bpy.props.StringProperty(default="")
+    health_rows: bpy.props.CollectionProperty(type=GesListItem)
+    health_index: bpy.props.IntProperty(default=-1)
+    time_hours: bpy.props.FloatProperty(
+        name="Vaqt mashinasi, soat oldin", default=0.0, min=0.0, max=168.0, step=100, precision=1,
+        description="0 — jonli; N — N soat oldingi sath (historian) 3D tekislikda",
+    )
+    time_note: bpy.props.StringProperty(default="")
 
 
 CLASSES = (GesListItem, GesSimField, GesScene)

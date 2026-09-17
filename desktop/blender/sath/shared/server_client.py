@@ -238,6 +238,21 @@ class GesClient:
         q = f"?model_id={model_id}" if model_id else ""
         return self._json("GET", f"/api/projects/{project_id}/sensors{q}")
 
+    # --- Raqamli egizak / holat monitoringi ---
+
+    def twin(self, project_id: int) -> dict:
+        """Egizak holati: head_gross_m, units[{name, measured_mw, expected_mw, deviation_pct, efficiency, running}],
+        expected_total_mw, measured_total_mw, safety[{name, value, unit, ok, note}], status."""
+        return self._json("GET", f"/api/projects/{project_id}/twin")
+
+    def plant_health(self, project_id: int) -> dict:
+        """Sog'liq: plant_score, assets[{asset_id, name, element_guid, score, level, problems, tips}]."""
+        return self._json("GET", f"/api/projects/{project_id}/health")
+
+    def readings(self, sensor_id: int, hours: float = 24, limit: int = 2000) -> list[dict]:
+        """Sensor tarixi [{ts, value, (min, max)}] — vaqt mashinasi/grafik uchun."""
+        return self._json("GET", f"/api/sensors/{sensor_id}/readings?hours={hours}&limit={limit}")
+
     def sim_jobs(self, model_id: int) -> list[dict]:
         return self._json("GET", f"/api/models/{model_id}/sim")
 

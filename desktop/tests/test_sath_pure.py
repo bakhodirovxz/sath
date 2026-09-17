@@ -127,3 +127,37 @@ def test_sensor_rows_alarm_colors_and_water():
         "G1": flows.ALARM_COLORS["ok"], "G2": flows.ALARM_COLORS["stale"],
     }  # fmt: skip
     assert flows.water_sensor_level(sensors) == 101.5
+
+
+def test_twin_rows_head_and_health():
+    state = {
+        "status": "ok", "head_gross_m": 45.25, "expected_total_mw": 50.0, "measured_total_mw": 47.5,
+        "units": [
+            {"name": "Agregat 1", "running": True, "measured_mw": 25.0, "expected_mw": 26.0, "deviation_pct": -3.85, "efficiency": 0.91},
+            {"name": "Agregat 2", "running": False, "measured_mw": None, "expected_mw": 24.0, "deviation_pct": None, "efficiency": None},
+        ],
+        "safety": [{"name": "Gerb zaxirasi", "value": 2.5, "unit": "m", "ok": True}, {"name": "Sirpanish", "value": 1.2, "unit": "", "ok": False}],
+    }  # fmt: skip
+    assert flows.twin_head(state) == "Napor 45.25 m · 47.5 / 50.0 MW (o'lchangan / kutilgan)"
+    rows = flows.twin_rows(state)
+    assert rows[0]["name"] == "Agregat 1" and rows[0]["col2"] == "25.0 / 26.0 MW" and rows[0]["col3"] == "−3.9 %" and rows[0]["state"] == "ok"
+    assert rows[1]["col2"] == "— / 24.0 MW" and rows[1]["state"] == "stop"
+    srows = flows.twin_safety_rows(state["safety"])
+    assert srows[0] == {"name": "Gerb zaxirasi", "col2": "2.5 m", "state": "ok"}
+    assert srows[1]["state"] == "fail"
+    h = {"plant_score": 72, "assets": [
+        {"asset_id": 1, "name": "Agregat 1", "element_guid": "G1", "score": 85, "level": "yaxshi", "problems": []},
+        {"asset_id": 2, "name": "Agregat 2", "element_guid": None, "score": 35, "level": "kritik", "problems": ["tebranish D zona"]},
+    ]}  # fmt: skip
+    assert flows.health_head(h) == "Stansiya sog'lig'i: 72 / 100"
+    hr = flows.health_rows(h)
+    assert hr[0]["col2"] == "85" and hr[0]["state"] == "yaxshi" and hr[0]["guid"] == "G1"
+    assert hr[1]["col3"] == "tebranish D zona"
+    assert flows.health_colors(h["assets"]) == {"G1": flows.HEALTH_COLORS["yaxshi"]}
+
+
+def test_reading_at_picks_latest_before_ts():
+    pts = [{"ts": "2026-09-17T10:00:00+00:00", "value": 1.0}, {"ts": "2026-09-17T11:00:00+00:00", "value": 2.0}, {"ts": "2026-09-17T12:00:00+00:00", "value": 3.0}]
+    assert flows.reading_at(pts, "2026-09-17T11:30:00+00:00") == 2.0
+    assert flows.reading_at(pts, "2026-09-17T09:00:00+00:00") is None
+    assert flows.reading_at([], "2026-09-17T09:00:00+00:00") is None

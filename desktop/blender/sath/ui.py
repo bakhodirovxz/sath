@@ -207,21 +207,61 @@ class SATH_PT_monitor(GesPanel, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.ges
         lay = self.layout
-        lay.operator(
+        row = lay.row(align=True)
+        row.operator(
             "sath.monitor_toggle",
             text="To'xtatish" if s.monitor_on else "Boshlash",
             icon="PAUSE" if s.monitor_on else "PLAY",
             depress=s.monitor_on,
         )
+        row.operator("sath.monitor_refresh", text="", icon="FILE_REFRESH")
         row = lay.row(align=True)
         row.prop(s, "monitor_color")
-        row.prop(s, "monitor_water")
+        row.prop(s, "monitor_color_mode", text="")
+        lay.prop(s, "monitor_water")
         if s.monitor_status:
             lay.label(text=s.monitor_status, icon="INFO")
-        _list(lay, s, "sensors", "sensors_index", 6)
+        _list(lay, s, "sensors", "sensors_index", 5)
         row = lay.row(align=True)
         row.operator("sath.show_sensor", icon="RESTRICT_SELECT_OFF")
         row.operator("sath.open_web", text="Webda (HMI)", icon="URL").tab = "mon"
+
+
+class SATH_PT_twin(GesPanel, bpy.types.Panel):
+    bl_label = "Raqamli egizak"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and context.scene.ges.model_id > 0
+
+    def draw(self, context):
+        s = context.scene.ges
+        lay = self.layout
+        if not s.monitor_on:
+            lay.label(text="Monitoringni yoqing — egizak jonli holatdan hisoblanadi", icon="INFO")
+        if s.twin_head:
+            lay.label(text=s.twin_head, icon="LIGHT_SUN")
+        box = lay.box()
+        box.label(text="Agregatlar: o'lchangan / kutilgan, og'ish", icon="MOD_BUILD")
+        for r in s.twin_rows:
+            icon = "CHECKMARK" if r.state == "ok" else "ERROR" if r.state == "warn" else "PAUSE"
+            box.label(text=f"{r.name}: {r.col2} {r.col3} {r.col4}".strip(), icon=icon)
+        if len(s.twin_safety):
+            box = lay.box()
+            box.label(text="Xavfsizlik (jonli)", icon="SHIELD")
+            for r in s.twin_safety:
+                box.label(text=f"{r.name}: {r.col2}", icon="CHECKMARK" if r.state == "ok" else "ERROR")
+        box = lay.box()
+        box.label(text=s.health_head or "Sog'liq indeksi", icon="HEART")
+        _list(box, s, "health_rows", "health_index", 4)
+        box.operator("sath.show_asset", icon="RESTRICT_SELECT_OFF")
+        box = lay.box()
+        box.label(text="Vaqt mashinasi", icon="TIME")
+        box.prop(s, "time_hours")
+        if s.time_note:
+            box.label(text=s.time_note)
+        lay.operator("sath.open_web", text="Dispetcher paneli (web)", icon="URL").tab = "mon"
 
 
 class SATH_PT_import(GesPanel, bpy.types.Panel):
@@ -296,7 +336,7 @@ def _register_keymap():
     _keymaps.append((km, kmi))
 
 
-CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_review, SATH_PT_sim, SATH_PT_monitor, SATH_PT_import, SATH_PT_notifications]
+CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_review, SATH_PT_sim, SATH_PT_monitor, SATH_PT_twin, SATH_PT_import, SATH_PT_notifications]
 
 
 def register():
