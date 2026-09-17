@@ -16,8 +16,13 @@ def _candidate_dirs() -> list[Path]:
         v = os.environ.get(env)
         if v:
             dirs += [Path(v), Path(v) / "tools", Path(v) / "tools" / "libredwg"]
+    from .fc_engine import bundle_dir
+
+    b = bundle_dir()
+    if b is not None:
+        dirs += [b / "tools", b / "tools" / "libredwg"]  # Sath bundle
     dirs += [
-        Path(__file__).resolve().parent / "tools",  # bundle ichida
+        Path(__file__).resolve().parent / "tools",
         Path.home() / "Tools",
         Path("C:/Tools"),
         Path("C:/Program Files/ODA"),

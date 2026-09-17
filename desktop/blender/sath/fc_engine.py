@@ -17,10 +17,24 @@ _doc = None
 _last_shape = None
 
 
+def bundle_dir() -> Path | None:
+    """Sath bundle ildizi (Sath.exe yonida `freecad/`, `tools/`) yoki None."""
+    try:
+        import bpy
+
+        root = Path(bpy.app.binary_path).resolve().parent
+    except Exception:  # noqa: BLE001
+        return None
+    return root if (root / "freecad").is_dir() or (root / "tools").is_dir() else None
+
+
 def fc_home() -> str:
     env = os.environ.get("GES_FC_HOME")
     if env:
         return env
+    b = bundle_dir()
+    if b is not None and (b / "freecad").is_dir():
+        return str(b / "freecad")
     try:
         from .prefs import prefs
 

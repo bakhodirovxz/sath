@@ -13,7 +13,20 @@ dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-b
   (yo'l: addon sozlamalari «FreeCAD papkasi» yoki `GES_FC_HOME` env). Rasmiy installer (py3.11) faqat Blender 4.5 bilan mos.
 - DWG uchun LibreDWG `dwg2dxf` (`~\Tools\libredwg`) yoki ODA File Converter.
 
-## O'rnatish
+## Tayyor bundle (foydalanuvchi uchun)
+
+```
+python desktop/build/build_blender_bundle.py --installer
+```
+→ `desktop/dist/Sath-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
+(splash, bo'sh metr sahna, N-panel ochiq) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
+(prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
+Sath template ga o'tkazadi) + `freecad/` (conda py313 muhiti, ~0.9 GB ga kesilgan: MKL/VTK/libclang/FEM yo'q)
++ `tools/libredwg/`. Kerak: `~\Tools\blender-5.2`, `~\Tools\fc-py313`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
+yoki avtomatik yuklab olinadi), NSIS (`~\Tools\NSIS`), venv da `pillow` (splash/ikonka).
+Cheklov: oyna sarlavhasida «Blender» qoladi (manba forki keyingi bosqich).
+
+## O'rnatish (faqat addon, o'z Blender ingizga)
 
 ```
 python desktop/build/build_blender_addon.py          # → desktop/dist/sath-<ver>.zip (ezdxf, assimp-py wheel lari bilan)
