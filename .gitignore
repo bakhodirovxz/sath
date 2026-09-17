@@ -32,6 +32,8 @@ desktop/*.zip
 .playwright-mcp/
 *.png
 !docs/**/*.png
+!server/tests/samples/*.png
+!desktop/blender/template/Sath/splash*.png
 
 # Portable build ish papkasi va natijasi
 desktop/build/_work/
