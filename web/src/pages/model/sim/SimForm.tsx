@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { GenericParams, SimField } from "../../../api/client";
 import Icon from "../../../ui/Icon";
+import { BPanel } from "../../../ui/BlenderUI";
 
 /** Sxema bo'yicha avtomatik forma (server: ges_sim.schema.Field). Guruhlar bo'limlarga, "advanced" — yig'iladigan.
     `sources` — qaysi maydon qayerdan to'ldirilgani (pasport / model / jonli) — yonida belgi. */
@@ -34,54 +35,39 @@ export default function SimForm({ fields, values, onChange, sources = {}, compac
   const hasAdv = fields.some((f) => f.advanced);
   return (
     <div className="simform">
-      {groups.map((g) => {
+      {groups.map((g, gi) => {
         const vis = g.fields.filter((f) => showAdv || !f.advanced);
         if (!vis.length) return null;
-        return (
-          <div key={g.name || "_"} className="simform-group">
-            {g.name && <h3>{g.name}</h3>}
-            <div className="row wrap">
-              {vis.map((f) => <FieldInput key={f.key} f={f} v={values[f.key]} set={(v) => onChange(f.key, v)} source={sources[f.key]} compact={compact} />)}
-            </div>
-          </div>
-        );
+        const body = vis.map((f) => <FieldInput key={f.key} f={f} v={values[f.key]} set={(v) => onChange(f.key, v)} source={sources[f.key]} compact={compact} />);
+        // Blender: har guruh — yopiladigan panel; nomsiz guruh — panelsiz
+        return g.name ? <BPanel key={g.name} id={`simform:${g.name}`} title={g.name} count={vis.length} defaultOpen={gi < 4}>{body}</BPanel> : <div key="_">{body}</div>;
       })}
       {hasAdv && <button type="button" className="btn sm" onClick={() => setShowAdv(!showAdv)}><Icon name={showAdv ? "chevron-up" : "chevron-down"} size={12} /> {showAdv ? "Qo'shimcha parametrlarni yashirish" : "Qo'shimcha parametrlar"}</button>}
     </div>
   );
 }
 
-function FieldInput({ f, v, set, source, compact }: { f: SimField; v: unknown; set: (v: unknown) => void; source?: string; compact?: boolean }) {
+/** Bitta maydon — Blender qatori: chapda label (birlik, manba belgisi), o'ngda maydon. */
+function FieldInput({ f, v, set, source }: { f: SimField; v: unknown; set: (v: unknown) => void; source?: string; compact?: boolean }) {
   const tag = source ? <span className={`src src-${source}`} title={`${SOURCE_LABEL[source] ?? source}dan to'ldirilgan`}>{SOURCE_LABEL[source] ?? source}</span> : null;
-  const label = <span>{f.label}{f.unit && <em className="unit">{f.unit}</em>}{tag}</span>;
-  const width = compact ? 150 : f.type === "series" || f.type === "text" ? "100%" : 170;
-  if (f.type === "bool") {
-    return <label className="row small field-check" style={{ width }}><input type="checkbox" checked={!!v} onChange={(e) => set(e.target.checked)} /> {f.label}{tag}</label>;
-  }
-  if (f.type === "select") {
-    return (
-      <label className="field" style={{ width }} title={f.hint}>
-        {label}
-        <select className="select" value={String(v ?? f.default ?? "")} onChange={(e) => set(e.target.value)}>
-          {f.options.map(([val, title]) => <option key={val} value={val}>{title}</option>)}
-        </select>
-      </label>
+  const label = <span className="blabel" title={f.hint || f.label}>{f.label}{f.unit && <em className="unit">{f.unit}</em>}{tag}</span>;
+  let input: React.ReactNode;
+  if (f.type === "bool") input = <input type="checkbox" checked={!!v} onChange={(e) => set(e.target.checked)} />;
+  else if (f.type === "select") {
+    input = (
+      <select className="select" value={String(v ?? f.default ?? "")} onChange={(e) => set(e.target.value)}>
+        {f.options.map(([val, title]) => <option key={val} value={val}>{title}</option>)}
+      </select>
+    );
+  } else if (f.type === "series") input = <SeriesInput v={v} set={set} />;
+  else if (f.type === "text") input = <input className="input" value={String(v ?? "")} onChange={(e) => set(e.target.value)} />;
+  else {
+    input = (
+      <input className="input" type="number" step="any" min={f.min ?? undefined} max={f.max ?? undefined} value={v === undefined || v === null ? "" : String(v)}
+        onChange={(e) => set(e.target.value === "" ? "" : Number(e.target.value))} title={f.hint} />
     );
   }
-  if (f.type === "series") {
-    return <label className="field" style={{ width }} title={f.hint}>{label}<SeriesInput v={v} set={set} /></label>;
-  }
-  if (f.type === "text") {
-    return <label className="field" style={{ width }} title={f.hint}>{label}<input className="input" value={String(v ?? "")} onChange={(e) => set(e.target.value)} /></label>;
-  }
-  return (
-    <label className="field" style={{ width }} title={f.hint}>
-      {label}
-      <input className="input" type="number" step="any" min={f.min ?? undefined} max={f.max ?? undefined} value={v === undefined || v === null ? "" : String(v)}
-        onChange={(e) => set(e.target.value === "" ? "" : Number(e.target.value))} />
-      {f.hint && !compact && <small className="dim">{f.hint}</small>}
-    </label>
-  );
+  return <label className="brow">{label}<span className="bfield">{input}</span></label>;
 }
 
 /** Raqamlar ro'yxati: yozish paytida matn saqlanadi, fokus ketganda (yoki Enter) massivga aylanadi. */

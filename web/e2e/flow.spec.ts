@@ -131,16 +131,16 @@ test.describe.serial("Sath web oqimi", () => {
     const cat = page.locator(".sim-catalog");
     await expect(cat).toContainText("Gidravlik zarba");
     await expect(cat).toContainText("Yog'ingarchilik");
-    await cat.locator(".sim-card", { hasText: "To'g'on barqarorligi" }).click();
+    await cat.locator(".blist-row", { hasText: "To'g'on barqarorligi" }).click();
     await expect(page.locator(".simform")).toContainText("Profil");
     await page.locator("form button", { hasText: "Hisoblash" }).click();
     await expect(page.locator(".verdict")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".sim")).toContainText("Ag'darilish zaxirasi");
     await expect(page.locator(".dam-profile")).toBeVisible();
-    // Katalogga qaytib yog'ingarchilik
-    await page.locator(".sim button", { hasText: "Parametrlar" }).click();
-    await page.locator(".sim button", { hasText: "Katalog" }).click();
-    await cat.locator(".sim-card", { hasText: "Yog'ingarchilik" }).click();
+    // Katalogga qaytib (Blender sarlavha: orqaga ikki marta) yog'ingarchilik
+    await page.locator(".bhead button[title='Parametrlarga qaytish']").click();
+    await page.locator(".bhead button[title='Katalogga qaytish']").click();
+    await cat.locator(".blist-row", { hasText: "Yog'ingarchilik" }).click();
     await page.locator("form button", { hasText: "Hisoblash" }).click();
     await expect(page.locator(".verdict")).toContainText("CN", { timeout: 30_000 });
   });

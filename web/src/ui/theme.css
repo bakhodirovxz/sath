@@ -571,3 +571,48 @@ tr.alarm-active td { background: #3a2426; }
 .ctx-menu { position: fixed; z-index: 95; min-width: 220px; background: #1f1f1f; border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.55); padding: 4px 0; }
 .ctx-menu .ctx-title { padding: 4px 12px 6px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid var(--line); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .props .bpanel { background: #383838; }
+
+/* --- Blender UI to'plami: UIList, operatorlar, badge, section → panel --- */
+.blist { overflow-y: auto; background: var(--field); border: 1px solid var(--widget-line); border-radius: var(--radius); outline: none; }
+.blist:focus-visible { border-color: var(--accent); }
+.blist-row { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.blist-row:nth-child(even) { background: rgba(255,255,255,0.025); }
+.blist-row:hover { background: rgba(255,255,255,0.06); }
+.blist-row.active { background: var(--sel); color: #fff; }
+.blist-row.active .dim, .blist-row.active .badge { color: #dfe7f5; }
+.blist-row .grow { overflow: hidden; text-overflow: ellipsis; }
+.blist-row .mono { font-size: 11px; }
+.bops { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.bops .btn { padding: 2px 8px; font-size: 12px; }
+.bops .select, .bops .vp-select { width: auto; padding: 2px 6px; font-size: 12px; }
+.badge { background: var(--widget); border: 0; border-radius: 10px; padding: 1px 7px; font-size: 11px; line-height: 15px; }
+.badge.wip { color: var(--text-muted); }
+.section-box { background: #383838; border: 0; border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; }
+.section-box.small { padding: 6px 8px; }
+.field { gap: 3px; margin-bottom: 6px; }
+.field > span { font-size: 11px; }
+.field .input, .field .select, .field .textarea { padding: 3px 7px; font-size: 12px; }
+.field-check { font-size: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 4px; margin: 6px 0; }
+.tiles .tile, .checks .tile { background: #383838; border: 0; border-radius: var(--radius); padding: 6px 8px; }
+.tiles .tile b, .checks .tile b { font-size: 14px; }
+.sim-player { background: #232323; border-radius: var(--radius); padding: 4px 6px; display: flex; align-items: center; gap: 6px; }
+.sim-player input[type=range] { accent-color: var(--accent); }
+.dock-body .list-item { padding: 5px 6px; border-bottom: 1px solid var(--line); border-radius: 3px; }
+.dock-body .list-item.selected { background: var(--sel); }
+.dock-body .list-item:hover:not(.selected) { background: rgba(255,255,255,0.05); }
+.dock-body h3 { color: var(--text); font-size: 12px; margin: 8px 0 4px; }
+.dock-body details > summary { color: var(--text-muted); font-size: 12px; cursor: pointer; }
+.diff-list div:hover { background: rgba(255,255,255,0.06); }
+.comment { background: #2a2a2a; border-left: 2px solid var(--accent); border-radius: 0 3px 3px 0; }
+
+/* Editor sarlavhasi (sim/cfd/custom ichida): orqaga, ikonka, nom, operatorlar */
+.bhead { display: flex; align-items: center; gap: 6px; height: 26px; margin: -10px -10px 8px; padding: 0 8px; background: var(--chrome); border-bottom: 1px solid var(--line-strong); font-size: 12px; }
+.bhead .btn.sm { padding: 1px 6px; }
+.bhead b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.simform .brow { min-height: 24px; }
+.simform .brow .blabel { flex-basis: 45%; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.simform .brow .unit { font-style: normal; color: var(--text-dim); margin-left: 4px; }
+.simform .brow .bfield input[type=checkbox] { margin: 0; }
+.site-form .simform { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.site-form .simform .brow .blabel { flex-basis: 50%; }

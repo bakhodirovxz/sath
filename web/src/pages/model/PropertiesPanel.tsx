@@ -2,40 +2,10 @@ import { useEffect, useState } from "react";
 import type { ItemProperties, SelectedItem, Viewer } from "../../viewer/Viewer";
 import { ifcLabel } from "../../ui/format";
 import Icon from "../../ui/Icon";
+import { BPanel, BRow } from "../../ui/BlenderUI";
 
 /** Properties editor (Blender): yopiladigan panellar («Element», «O'lchamlar», «Atributlar», har Pset alohida),
- *  qatorlar label (40%) / maydon (60%). Panel holati localStorage da (`sath_props_panels`). */
-
-function loadState(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem("sath_props_panels") || "{}"); } catch { return {}; }
-}
-function saveState(s: Record<string, boolean>) {
-  try { localStorage.setItem("sath_props_panels", JSON.stringify(s)); } catch { /* */ }
-}
-
-export function BPanel({ id, title, children, defaultOpen = true, count }: { id: string; title: string; children: React.ReactNode; defaultOpen?: boolean; count?: number }) {
-  const [open, setOpen] = useState<boolean>(() => loadState()[id] ?? defaultOpen);
-  const toggle = () => { const v = !open; setOpen(v); saveState({ ...loadState(), [id]: v }); };
-  return (
-    <div className="bpanel">
-      <div className="bpanel-head" onClick={toggle}>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={11} /> {title}
-        {count != null && <span className="dim" style={{ marginLeft: "auto", fontWeight: 400 }}>{count}</span>}
-      </div>
-      {open && <div className="bpanel-body">{children}</div>}
-    </div>
-  );
-}
-
-export function BRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  const text = typeof value === "string" ? value : undefined;
-  return (
-    <div className="brow">
-      <span className="blabel" title={label}>{label}</span>
-      <span className="bfield"><span className={`bval${mono ? " mono" : ""}`} title={text}>{value === "" || value == null ? <span className="dim">—</span> : value}</span></span>
-    </div>
-  );
-}
+ *  qatorlar label (40%) / maydon (60%). Panel holati localStorage da. */
 
 export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, onDelete }: { viewer: Viewer | null; selection: SelectedItem[]; canEdit?: boolean; onEdit?: (localId: number) => void; onDelete?: (localId: number) => void }) {
   const [props, setProps] = useState<ItemProperties | null>(null);

@@ -99,9 +99,9 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
 
   return (
     <div className="sim">
-      <div className="row" style={{ marginBottom: 8, alignItems: "center" }}>
-        <button className="btn sm" onClick={onBack}><Icon name="arrow-left" size={13} /> Katalog</button>
-        <Icon name="code" size={16} /><b className="grow">Maxsus simulyatsiya (formulalar)</b>
+      <div className="bhead">
+        <button className="btn sm" onClick={onBack} title="Katalogga qaytish"><Icon name="chevron-left" size={13} /></button>
+        <Icon name="code" size={14} /><b className="grow">Maxsus simulyatsiya (formulalar)</b>
       </div>
       <p className="dim small" style={{ marginTop: 0 }}>Kirishlar → boshlang'ich holat → har qadamda tenglamalar (tartib bilan) → chiqishlar (vaqt qatori) → xulosa va tekshiruvlar.
         Ifodalar: + − × / ** , taqqoslash, <span className="mono">a if shart else b</span>, funksiyalar <span className="mono">abs min max sqrt exp log sin cos clip interp mean sum last</span>; o'zgaruvchilar <span className="mono">t dt i g rho pi</span>.</p>

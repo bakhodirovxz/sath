@@ -451,10 +451,11 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
 
   const myJobs = jobs.filter((j) => j.kind === kind.id);
   const head = (
-    <div className="row" style={{ marginBottom: 8, alignItems: "center" }}>
-      <button className="btn sm" onClick={view === "results" ? () => setView("form") : onBack}><Icon name="arrow-left" size={13} /> {view === "results" ? "Parametrlar" : "Katalog"}</button>
-      <Icon name={kind.icon} size={16} />
+    <div className="bhead">
+      <button className="btn sm" onClick={view === "results" ? () => setView("form") : onBack} title={view === "results" ? "Parametrlarga qaytish" : "Katalogga qaytish"}><Icon name="chevron-left" size={13} /></button>
+      <Icon name={kind.icon} size={14} />
       <b className="grow">{kind.title}</b>
+      <span className="dim small">{view === "results" ? "natija" : "parametrlar"}</span>
       <button className="btn sm" title="Formulalar va manbalar" onClick={() => setShowFormulas(!showFormulas)}><Icon name="book-open" size={13} /></button>
     </div>
   );

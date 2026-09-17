@@ -3,6 +3,7 @@ import Icon from "../../ui/Icon";
 import { api, type Diff, type Model, type Version } from "../../api/client";
 import { fmtDate, fmtSize, ifcLabel, label } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
+import { BBadge, BList, BOps, BPanel, BRow } from "../../ui/BlenderUI";
 
 interface Props {
   model: Model;
@@ -26,6 +27,9 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
   const [dem, setDem] = useState({ lat: 41.622, lon: 69.981, width_m: 1500, height_m: 3000, rotation_deg: 0, zoom: 13, nx: 120, z_offset_m: 0 });
   const [error, setError] = useState("");
   const [compareFrom, setCompareFrom] = useState<string>("");
+  // Blender: ro'yxatda tanlash (faol) — ochishdan alohida; ikki marta bosish/Enter/«Ochish» — modelni yuklaydi
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selected = versions.find((v) => v.id === selectedId) ?? current ?? versions[0] ?? null;
   const [meshOpts, setMeshOpts] = useState({ unit: "m", y_up: false, merge: false, onto_current: true, extrude_m: 0 });
   const isCad = !!file && /\.(dxf|dwg)$/i.test(file.name);
   const isImage = !!file && /\.(png|jpe?g|tiff?|bmp|webp)$/i.test(file.name);
@@ -56,11 +60,54 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
 
   return (
     <div>
-      {canEdit && (
-        <div className="row" style={{ marginBottom: 8, gap: 6 }}>
-          <button className="btn sm primary" onClick={() => setUploading(true)}>Yangi versiya yuklash</button>
-          <button className="btn sm" title="Haqiqiy relyef (SRTM/ASTER, AWS Terrain Tiles, internet kerak): markaz lat/lon, maydon va burilish — parametrik relyef o'rniga yangi versiya" onClick={() => setDemOpen(true)}><Icon name="layers" size={12} /> Relyef (DEM)</button>
-        </div>
+      <BPanel id="versions" title="Versiyalar" count={versions.length} right={canEdit && (
+        <>
+          <button className="btn sm primary" onClick={() => setUploading(true)} title="IFC / CAD / mesh / rasm yuklash — yangi versiya"><Icon name="upload" size={12} /> Yangi</button>
+          <button className="btn sm" title="Haqiqiy relyef (SRTM/ASTER, internet kerak) — yangi versiya" onClick={() => setDemOpen(true)}><Icon name="layers" size={12} /> DEM</button>
+        </>
+      )}>
+        <BList
+          items={versions} keyOf={(v) => v.id} activeKey={selected?.id ?? null} rows={6}
+          onSelect={(v) => setSelectedId(v.id)} onActivate={(v) => onOpen(v)}
+          empty={canEdit ? "Hali versiya yo'q — IFC yoki Blender/AutoCAD fayl yuklang" : "Hali versiya yo'q"}
+          render={(v) => (
+            <>
+              <b style={{ minWidth: 28 }}>v{v.number}</b>
+              {current?.id === v.id && <Icon name="eye" size={12} title="ochiq" />}
+              <span className="grow">{v.message || <span className="dim">izohsiz</span>}</span>
+              {v.tag && <BBadge kind="open" title="Yorliq">{v.tag}</BBadge>}
+              <BBadge kind={v.state}>{label(v.state)}</BBadge>
+              <span className="dim mono">{fmtDate(v.created_at).slice(0, 10)}</span>
+            </>
+          )}
+        />
+      </BPanel>
+      {selected && (
+        <BPanel id="version-detail" title={`v${selected.number}${current?.id === selected.id ? " (ochiq)" : ""}`}>
+          <BRow label="Izoh" value={selected.message || ""} />
+          <BRow label="Muallif" value={selected.author_username} />
+          <BRow label="Sana" value={fmtDate(selected.created_at)} />
+          <BRow label="Fayl" value={`${fmtSize(selected.file_size)} · ${selected.meta.element_count ?? "?"} element`} />
+          {selected.parent_id && <BRow label="Ota" value={`v${versions.find((p) => p.id === selected.parent_id)?.number ?? "?"}`} />}
+          <BOps>
+            {current?.id !== selected.id && <button className="btn sm primary" onClick={() => onOpen(selected)}><Icon name="eye" size={12} /> Ochish</button>}
+            <button className="btn sm" onClick={() => void download(selected)} title="IFC faylini yuklab olish"><Icon name="download" size={12} /> IFC</button>
+            <button className="btn sm" title="Blender / 3ds Max uchun (glTF, nom va GUID saqlanadi)" onClick={() => api.downloadCsv(`/api/versions/${selected.id}/export?fmt=glb`, `${model.name}_v${selected.number}.glb`).catch((er) => setError(er.message))}><Icon name="download" size={12} /> glb</button>
+            {canEdit && versions[0]?.id !== selected.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => confirm(`v${selected.number} ni qayta tiklab, yangi versiya yaratilsinmi?`) && api.restoreVersion(selected.id).then(onUploaded).catch((e) => alert(e.message))}><Icon name="history" size={12} /> Qayta tiklash</button>}
+            {canEdit && <button className="btn sm" title="Izoh / yorliq" onClick={() => { const message = prompt("Izoh:", selected.message); if (message == null) return; const tag = prompt("Yorliq (bo'sh — yo'q; faqat tasdiqlovchi):", selected.tag ?? ""); api.updateVersion(selected.id, { message, ...(tag != null && tag !== (selected.tag ?? "") ? { tag } : {}) }).then(() => onUploaded(selected)).catch((e) => alert(e.message)); }}><Icon name="tag" size={12} /> Izoh/yorliq</button>}
+          </BOps>
+          <BOps>
+            {selected.parent_id && !diff && <button className="btn sm" onClick={() => onDiff(selected)} title="Ota versiya bilan farq — 3D da rang (yashil/sariq)"><Icon name="git-branch" size={12} /> Ota bilan farq</button>}
+            {versions.length > 1 && !diff && (
+              <select className="select" value={compareFrom} title="Boshqa versiya bilan solishtirish"
+                onChange={(e) => { setCompareFrom(""); if (e.target.value) onDiff(selected, Number(e.target.value)); }}>
+                <option value="">Solishtirish…</option>
+                {versions.filter((o) => o.id !== selected.id).map((o) => <option key={o.id} value={o.id}>v{o.number}</option>)}
+              </select>
+            )}
+            {diff && <button className="btn sm" onClick={onClearDiff}><Icon name="x" size={12} /> Farqni yopish</button>}
+          </BOps>
+        </BPanel>
       )}
       {demOpen && (
         <Dialog title="Haqiqiy relyef (DEM) import" onClose={() => setDemOpen(false)}>
@@ -84,42 +131,8 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
           </form>
         </Dialog>
       )}
-      {versions.length === 0 && <p className="muted">Hali versiya yo'q. {canEdit ? "IFC yoki Blender/3ds Max/AutoCAD (OBJ, glTF, STL, DXF) fayl yuklang." : ""}</p>}
-      {versions.map((v) => (
-        <div key={v.id} className={`list-item${current?.id === v.id ? " selected" : ""}`} onClick={() => onOpen(v)}>
-          <div className="title">
-            <b>v{v.number}</b>
-            <span className={`badge ${v.state}`}>{label(v.state)}</span>
-            {v.tag && <span className="badge open" title="Yorliq"><Icon name="tag" size={11} /> {v.tag}</span>}
-            <button className="btn sm" title="Blender / 3ds Max uchun yuklab olish (glTF, nom va GUID saqlanadi)" onClick={(e) => { e.stopPropagation(); api.downloadCsv(`/api/versions/${v.id}/export?fmt=glb`, `${model.name}_v${v.number}.glb`).catch((er) => setError(er.message)); }}><Icon name="download" size={11} /> glb</button>
-            <span className="grow">{v.message || <span className="dim">izohsiz</span>}</span>
-          </div>
-          <div className="meta">
-            {v.author_username} · {fmtDate(v.created_at)} · {fmtSize(v.file_size)} · {v.meta.element_count ?? "?"} element
-            {v.parent_id && <> · ota: v{versions.find((p) => p.id === v.parent_id)?.number ?? "?"}</>}
-          </div>
-          {current?.id === v.id && (
-            <div className="row wrap" style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
-              <a className="btn sm" href={api.versionFileUrl(v.id)} onClick={(e) => { e.preventDefault(); void download(v); }}>IFC yuklab olish</a>
-              {canEdit && versions[0]?.id !== v.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => confirm(`v${v.number} ni qayta tiklab, yangi versiya yaratilsinmi?`) && api.restoreVersion(v.id).then(onUploaded).catch((e) => alert(e.message))}>Qayta tiklash</button>}
-              {canEdit && <button className="btn sm" title="Izoh / yorliq" onClick={() => { const message = prompt("Izoh:", v.message); if (message == null) return; const tag = prompt("Yorliq (bo'sh — yo'q; faqat tasdiqlovchi):", v.tag ?? ""); api.updateVersion(v.id, { message, ...(tag != null && tag !== (v.tag ?? "") ? { tag } : {}) }).then(() => onUploaded(v)).catch((e) => alert(e.message)); }}>Izoh/yorliq</button>}
-              {v.parent_id && !diff && <button className="btn sm" onClick={() => onDiff(v)}>Ota bilan farq</button>}
-              {versions.length > 1 && !diff && (
-                <select className="select" style={{ width: "auto" }} value={compareFrom}
-                  onChange={(e) => { setCompareFrom(""); if (e.target.value) onDiff(v, Number(e.target.value)); }}>
-                  <option value="">Solishtirish…</option>
-                  {versions.filter((o) => o.id !== v.id).map((o) => <option key={o.id} value={o.id}>v{o.number}</option>)}
-                </select>
-              )}
-              {diff && <button className="btn sm" onClick={onClearDiff}>Farqni yopish</button>}
-            </div>
-          )}
-        </div>
-      ))}
-
       {diff && (
-        <div className="section-box" style={{ marginTop: 10 }}>
-          <b>Farq: v{versions.find((x) => x.id === diff.from_version_id)?.number} → v{versions.find((x) => x.id === diff.to_version_id)?.number}</b>
+        <BPanel id="diff" title={`Farq: v${versions.find((x) => x.id === diff.from_version_id)?.number} → v${versions.find((x) => x.id === diff.to_version_id)?.number}`} icon="git-branch">
           <div className="diff-legend">
             <span><i style={{ background: "#2ecc71" }} />Qo'shilgan {diff.summary.added}</span>
             <span><i style={{ background: "#f1c40f" }} />O'zgargan {diff.summary.changed}</span>
@@ -130,8 +143,9 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
             {diff.changed.map((d) => <div key={d.guid} onClick={() => onPickGuid(d.guid)}><span style={{ color: "#f1c40f" }}>~</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.changes?.join(", ")}</span></div>)}
             {diff.deleted.map((d) => <div key={d.guid} title="Joriy modelda yo'q"><span style={{ color: "#e74c3c" }}>−</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></div>)}
           </div>
-        </div>
+        </BPanel>
       )}
+      {error && <p className="error small">{error}</p>}
 
       {uploading && (
         <Dialog title={`Yangi versiya — ${model.name}`} onClose={() => setUploading(false)}>

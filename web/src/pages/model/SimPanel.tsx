@@ -187,9 +187,9 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
   const hydroJobs = jobs.filter((j) => j.kind === "hydro");
   const kindMeta = catalog?.kinds.find((k) => k.id === kind) ?? null;
   const modeBar = (
-    <div className="row" style={{ marginBottom: 8, alignItems: "center" }}>
-      <button className="btn sm" onClick={() => setKind(null)}><Icon name="arrow-left" size={13} /> Katalog</button>
-      {kindMeta && <Icon name={kindMeta.icon} size={16} />}
+    <div className="bhead">
+      <button className="btn sm" onClick={() => setKind(null)} title="Katalogga qaytish"><Icon name="chevron-left" size={13} /></button>
+      {kindMeta && <Icon name={kindMeta.icon} size={14} />}
       <b className="grow">{kindMeta?.title ?? (kind === "cfd" ? "CFD oqim (OpenFOAM)" : "Suv ombori rejimi va energiya")}</b>
     </div>
   );
