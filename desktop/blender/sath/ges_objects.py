@@ -96,6 +96,7 @@ def rebuild(obj) -> None:
 
 
 def add(context, kind: str, name: str | None = None):
+    ifc.ensure_project()  # avval: GUI da create_project sahnani qayta quradi (obyekt havolasi eskiradi)
     me = bpy.data.meshes.new(kind)
     obj = bpy.data.objects.new(name or KIND_LABEL[kind], me)
     context.scene.collection.objects.link(obj)

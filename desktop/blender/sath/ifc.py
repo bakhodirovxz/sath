@@ -96,7 +96,9 @@ def _activate(obj) -> None:
 
 def assign_class(obj, ifc_class: str, psets: dict[str, dict] | None = None):
     """Mesh obyektni IFC element qiladi (Bonsai konteynerga o'zi joylaydi), psetlarni yozadi."""
+    name = obj.name
     ensure_project()
+    obj = bpy.data.objects.get(name, obj)  # create_project dan keyin havola yangilanadi
     _activate(obj)
     bpy.ops.bim.assign_class(ifc_class=ifc_class)
     e = entity(obj)

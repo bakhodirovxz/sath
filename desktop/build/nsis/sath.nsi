@@ -1,7 +1,7 @@
 ; Sath installer (NSIS). Foydalanuvchi profiliga o'rnatadi (admin kerak emas).
 ;   makensis /DVERSION=0.3.0 /DSTAGE=<stage papka> /DOUT=<chiqish exe> /DICON=<sath.ico> sath.nsi
 Unicode true
-SetCompressor /SOLID lzma
+SetCompressor lzma  ; /SOLID emas: 2 GB stage da makensis mmap xatosi beradi
 SetCompressorDictSize 64
 RequestExecutionLevel user
 
