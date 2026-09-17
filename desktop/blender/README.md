@@ -58,4 +58,5 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 - Testlar: `pytest desktop/tests/test_sath_pure.py desktop/tests/test_sath_flows.py` (Blender siz, real server);
   `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 9 ta sinov, Bonsai + FreeCAD kerak).
 
-Sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 (headless sinovlar; GUI oqimi server bilan).
+Sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
+bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
