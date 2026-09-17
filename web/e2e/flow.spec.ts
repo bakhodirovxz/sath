@@ -73,13 +73,24 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(panel).toContainText(/ma'qullangan/i);
     await panel.getByRole("button", { name: /tasdiqlash \(published\)/i }).first().click();
     await expect(panel).toContainText(/tasdiqlangan/i);
-    // Shading va tezkor tugma
+    // Shading: header tugmasi va Z pie menyu (Blender: Z → bo'lak raqami)
     await page.locator(".vp-group button[title^='X-ray']").click();
     await expect(page.locator(".vp-info")).toContainText("X-ray");
+    await page.mouse.move(600, 450);
     await page.keyboard.press("z");
+    await expect(page.locator(".pie-item")).toHaveCount(4);
+    await page.keyboard.press("3"); // Rendered
     await expect(page.locator(".vp-info")).toContainText("Rendered");
+    // N-panel (viewport yon paneli) va F3 qidiruv
+    await page.keyboard.press("n");
+    await expect(page.locator(".vp-sidebar")).toBeVisible();
+    await page.keyboard.press("n");
+    await page.keyboard.press("F3");
+    await page.locator(".search-input").fill("grid");
+    await expect(page.locator(".search-item").first()).toContainText("Grid");
+    await page.keyboard.press("Escape");
     // Outliner: qidiruv va ko'z (yashirish)
-    await page.getByPlaceholder("Qidirish (nom, tur)…").fill("to'g'on");
+    await page.getByPlaceholder("Qidirish…").fill("to'g'on");
     await expect(page.locator(".outliner .node:visible")).toHaveCount(3); // Project › Maydon › To'g'on
     await page.locator(".outliner .node", { hasText: "To'g'on" }).locator(".eye").click();
     await expect(page.locator(".outliner .node.hidden")).toHaveCount(1);

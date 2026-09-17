@@ -11,9 +11,9 @@ export default function PieMenu({ x, y, title, items, releaseKey, onClose }: {
   const [hot, setHot] = useState<number | null>(null);
   const hotRef = useRef<number | null>(null);
   hotRef.current = hot;
-  const pick = (i: number | null) => {
-    // pie yopilgach shu bosishning click i canvasga tushmasin (element tanlanib ketmasin)
-    window.addEventListener("click", (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+  const pick = (i: number | null, viaMouse = false) => {
+    // sichqoncha bilan yopilganda shu bosishning click i canvasga tushmasin (element tanlanib ketmasin)
+    if (viaMouse) window.addEventListener("click", (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
     if (i != null) items[i]?.run();
     onClose();
   };
@@ -38,7 +38,7 @@ export default function PieMenu({ x, y, title, items, releaseKey, onClose }: {
   }, [x, y, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="pie-backdrop" onMouseDown={(e) => { e.preventDefault(); pick(hotRef.current); }} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>
+    <div className="pie-backdrop" onMouseDown={(e) => { e.preventDefault(); pick(hotRef.current, true); }} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>
       <div className="pie" style={{ left: x, top: y }}>
         <div className="pie-title">{title}</div>
         <div className="pie-center" />
