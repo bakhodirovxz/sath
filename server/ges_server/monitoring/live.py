@@ -109,10 +109,10 @@ def transition(
 
 
 def announce(db: Session, project_id: int, events: list[tuple[AlarmEvent, Sensor]]) -> None:
-    """Yangi alarm hodisalari: jonli oqim, ilova ichi bildirishnoma (barcha a'zolar), email (muhandis+)."""
+    """Yangi alarm hodisalari: jonli oqim, ilova ichi bildirishnoma (a'zolar + adminlar), email (muhandis+)."""
     if not events:
         return
-    members = notifications.member_ids(db, project_id, with_admins=False)
+    members = notifications.member_ids(db, project_id, with_admins=True)  # adminlar ham (taqriz kabi)
     emails = sorted(
         {
             m.user.email
