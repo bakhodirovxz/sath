@@ -64,6 +64,7 @@ class GesSimField(bpy.types.PropertyGroup):
 
 class GesScene(bpy.types.PropertyGroup):
     status: bpy.props.StringProperty(name="Holat", default="")
+    update_version: bpy.props.StringProperty(default="")  # serverda yangiroq paket bo'lsa
     project_id: bpy.props.IntProperty(default=0)
     model_id: bpy.props.IntProperty(default=0)
     version_id: bpy.props.IntProperty(default=0)

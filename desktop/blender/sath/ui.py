@@ -50,6 +50,12 @@ class SATH_PT_server(GesPanel, bpy.types.Panel):
             u = session.user() or {}
             col.label(text=f"{u.get('username', '')} @ {p.server}", icon="LINKED")
             col.operator("sath.logout", icon="UNLINKED")
+            if s.update_version:
+                box = col.box()
+                box.label(text=f"Yangi versiya: {s.update_version}", icon="IMPORT")
+                row = box.row(align=True)
+                row.operator("sath.download_update", text="Installer").kind = "installer"
+                row.operator("sath.download_update", text="Zip").kind = "zip"
         else:
             col.prop(p, "server")
             col.prop(p, "username")

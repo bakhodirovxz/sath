@@ -46,7 +46,7 @@ python desktop/build/build_portable.py --fast     # installer siqilmagan (sinov,
 ```
 Natija `desktop/dist/`:
 - `Sath-<ver>-Windows-x86_64-installer.exe` — ishchiga shu (Start menyu, ishchi stol, o'chirish)
-- `Sath-<ver>-Windows-x86_64.zip` — portable (ochib `Sath.bat`)
+- `Sath-<ver>-Windows-x86_64.zip` — portable (ochib `Sath.exe`; Blender bundle — `blender/README.md`)
 
 FreeCAD kompilyatsiya qilinmaydi: rasmiy 1.1.3 binari fork tegi bilan bir xil commit, fork
 `overlay.py` uni brending + Mod/Ges bilan Sath ga aylantiradi. To'liq kompilyatsiya (yadro

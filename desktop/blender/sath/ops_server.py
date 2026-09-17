@@ -39,14 +39,38 @@ class SATH_OT_connect(bpy.types.Operator):
             u = session.login(p.server, p.username, s.password)
             s.password = ""
             s.status = f"{u['username']} sifatida kirildi"
-            msg = flows.check_update(session.client(), flows.ADDON_VERSION)
-            if msg:
-                self.report({"WARNING"}, msg)
+            pkg = flows.newer_package(session.client(), flows.ADDON_VERSION)
+            s.update_version = pkg["version"] if pkg else ""
+            if pkg:
+                self.report({"WARNING"}, flows.check_update(session.client(), flows.ADDON_VERSION) or "")
             n = flows.unread_summary(session.client())
             if n:
                 s.status += f" · {n}"
             props.fill(s.projects, flows.project_rows(session.client()))
             s.projects_index = 0 if len(s.projects) else -1  # update → modellar
+
+        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+
+
+class SATH_OT_download_update(bpy.types.Operator):
+    """Serverdagi yangi Sath paketini brauzerda yuklab olish (installer yoki zip)"""
+
+    bl_idname = "sath.download_update"
+    bl_label = "Yangilanishni yuklab olish"
+    kind: bpy.props.EnumProperty(items=[("installer", "Installer", ""), ("zip", "Zip", "")])
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in()
+
+    def execute(self, context):
+        def do():
+            latest = session.client().desktop_latest()
+            if not latest:
+                raise RuntimeError("Serverda desktop paketi yo'q")
+            pkg = next((f for f in latest.get("files", []) if f["kind"] == self.kind), latest)
+            webbrowser.open(flows.download_url(session.client(), prefs().server, pkg))
+            self.report({"INFO"}, f"Yuklab olinmoqda: {pkg.get('name', latest['version'])}")
 
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
@@ -298,7 +322,7 @@ class SATH_OT_mark_read(bpy.types.Operator):
 
 
 CLASSES = (
-    SATH_OT_connect, SATH_OT_logout, SATH_OT_refresh_projects, SATH_OT_refresh_models,
+    SATH_OT_connect, SATH_OT_download_update, SATH_OT_logout, SATH_OT_refresh_projects, SATH_OT_refresh_models,
     SATH_OT_refresh_versions, SATH_OT_create_model, SATH_OT_open_version, SATH_OT_commit,
     SATH_OT_submit, SATH_OT_open_web, SATH_OT_notifications, SATH_OT_mark_read,
 )  # fmt: skip

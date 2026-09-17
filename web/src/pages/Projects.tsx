@@ -38,7 +38,7 @@ export default function Projects() {
       <TopBar crumbs={[{ label: "Loyihalar" }]}>
         {desktop?.files.map((f) => (
           <button key={f.name} className="btn sm" onClick={() => api.desktopDownload(f.url).catch((e) => setError(e.message))}
-            title={`${f.name} — ${(f.size / 1048576).toFixed(0)} MB. ${f.kind === "installer" ? "Sath desktop dasturini o'rnatish (Windows)" : "Portable zip — ochib Sath.bat ni ishga tushiring"}`}>
+            title={`${f.name} — ${(f.size / 1048576).toFixed(0)} MB. ${f.kind === "installer" ? "Sath desktop dasturini o'rnatish (Windows)" : "Portable zip — ochib Sath.exe ni ishga tushiring (Blender 5.2 + FreeCAD dvigatel)"}`}>
             Sath {desktop.version} {f.kind === "installer" ? "o'rnatish" : "zip"} <Icon name="download" size={13} />
           </button>
         ))}

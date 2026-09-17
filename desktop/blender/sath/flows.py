@@ -83,8 +83,8 @@ def commit(
     return {"version": v, "cr": cr}
 
 
-def check_update(client: GesClient, current: str) -> str | None:
-    """Serverda yangiroq desktop paketi bo'lsa — xabar matni."""
+def newer_package(client: GesClient, current: str) -> dict | None:
+    """Serverdagi desktop paketi joriy versiyadan yangi bo'lsa — {version, kind, url, size, files}."""
     try:
         latest = client.desktop_latest()
     except ServerError:
@@ -96,9 +96,21 @@ def check_update(client: GesClient, current: str) -> str | None:
         cur = tuple(int(x) for x in current.split("."))
     except ValueError:
         return None
-    if new <= cur:
+    return latest if new > cur else None
+
+
+def check_update(client: GesClient, current: str) -> str | None:
+    """Serverda yangiroq desktop paketi bo'lsa — xabar matni."""
+    latest = newer_package(client, current)
+    if not latest:
         return None
-    return f"Yangi Sath versiyasi: {latest['version']} (sizda {current}) — {client.base_url}{latest['url']}"
+    return f"Yangi Sath versiyasi: {latest['version']} (sizda {current}) — Server panelida «Yuklab olish»"
+
+
+def download_url(client: GesClient, saved_server: str, pkg: dict) -> str:
+    """Brauzer uchun havola: qisqa muddatli download-token bilan (web bilan bir xil)."""
+    tok = client._json("POST", "/api/desktop/download-token")["token"]
+    return f"{saved_server.rstrip('/')}{pkg['url']}?token={tok}"
 
 
 def unread_summary(client: GesClient) -> str | None:
