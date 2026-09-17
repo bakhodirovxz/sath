@@ -93,11 +93,11 @@ def last_shape():
     return _last_shape
 
 
-def shape_to_mesh(shape, mesh, tol: float = 0.5) -> None:
+def shape_to_mesh(shape, mesh, tol: float | None = None) -> None:
     """Part.Shape (mm) → bpy Mesh (m)."""
     import numpy as np
 
-    verts, faces = shape.tessellate(tol)
+    verts, faces = shape.tessellate(tol if tol is not None else auto_tolerance(shape))
     co = np.array([(v.x, v.y, v.z) for v in verts], dtype=np.float64) / MM
     mesh.clear_geometry()
     mesh.from_pydata(co.tolist(), [], faces)
@@ -181,7 +181,16 @@ def _parse_props(raw: dict) -> dict[str, dict]:
     return grouped
 
 
-def ges_build(kind: str, params: dict) -> GesBuild:
+def auto_tolerance(shape) -> float:
+    """Tessellate bag'rikengligi (mm): obyekt diagonaliga nisbatan — 0.5 mm GES inshootlari uchun ortiqcha nozik
+    (turbina: 1.6 s → 0.75 s), 2 mm dan kam emas."""
+    try:
+        return max(2.0, shape.BoundBox.DiagonalLength / 2000.0)
+    except Exception:  # noqa: BLE001
+        return 2.0
+
+
+def ges_build(kind: str, params: dict, tol: float | None = None) -> GesBuild:
     """Parametrlar (metr) → FreeCAD obyekt → tessellate (metr) + IFC klass + psetlar. Hujjat bo'sh qoladi."""
     global _last_shape
     d = doc()
@@ -202,7 +211,7 @@ def ges_build(kind: str, params: dict) -> GesBuild:
         d.recompute()
         shape = obj.Shape.copy()
         _last_shape = shape
-        verts, faces = shape.tessellate(0.5)
+        verts, faces = shape.tessellate(tol if tol is not None else auto_tolerance(shape))
         return GesBuild(
             verts=[(v.x / MM, v.y / MM, v.z / MM) for v in verts],
             faces=[tuple(f) for f in faces],

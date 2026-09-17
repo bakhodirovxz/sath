@@ -25,10 +25,34 @@ def _enum_items(self, context):
     return [(x, x, "") for x in self.items.split(";") if x]
 
 
+_pending: set[str] = set()
+DEBOUNCE = 0.15
+
+
+def flush_pending():
+    """Kechiktirilgan qayta qurish: parametrni sudrab o'zgartirganda har qadamda emas, to'planib bir marta."""
+    names = list(_pending)
+    _pending.clear()
+    for n in names:
+        obj = bpy.data.objects.get(n)
+        if obj is not None and obj.ges.kind:
+            try:
+                rebuild(obj)
+            except Exception as e:  # noqa: BLE001 — bitta obyekt xatosi qolganini to'xtatmasin
+                print("sath: qayta qurish xatosi", n, e)
+    return None
+
+
 def _changed(self, context):
     obj = self.id_data
-    if getattr(obj, "ges", None) is not None and obj.ges.kind and not obj.ges.busy:
+    if getattr(obj, "ges", None) is None or not obj.ges.kind or obj.ges.busy:
+        return
+    if bpy.app.background:  # testlar: darhol
         rebuild(obj)
+        return
+    _pending.add(obj.name)
+    if not bpy.app.timers.is_registered(flush_pending):
+        bpy.app.timers.register(flush_pending, first_interval=DEBOUNCE)
 
 
 class GesParam(bpy.types.PropertyGroup):
