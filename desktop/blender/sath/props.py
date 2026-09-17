@@ -98,6 +98,20 @@ class GesScene(bpy.types.PropertyGroup):
     sim_results: bpy.props.CollectionProperty(type=GesListItem)
     sim_water_level: bpy.props.FloatProperty(default=-1e9)
     sim_job_id: bpy.props.IntProperty(default=0)
+    hydro_inflow: bpy.props.FloatProperty(name="Kiruvchi sarf, m³/s", default=120.0, min=0.0)
+    hydro_days: bpy.props.IntProperty(name="Kunlar", default=90, min=2, max=730)
+    hydro_level0: bpy.props.FloatProperty(name="Boshlang'ich sath, m", default=0.0)
+    hydro_mode: bpy.props.EnumProperty(
+        name="Rejim",
+        items=[
+            ("target_level", "Sathni ushlash (NPU)", ""),
+            ("max_power", "Maksimal quvvat", ""),
+            ("run_of_river", "Oqim bo'yicha", ""),
+        ],
+        default="target_level",
+    )
+    hydro_zero: bpy.props.FloatProperty(name="Model 0 belgisi, m", default=0.0, description="IFC z=0 ga mos absolyut belgi")
+    hydro_note: bpy.props.StringProperty(default="")
     safety_head: bpy.props.StringProperty(default="")
     safety_rows: bpy.props.CollectionProperty(type=GesListItem)
     sensors: bpy.props.CollectionProperty(type=GesListItem)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../../ui/Icon";
 import { useNavigate } from "react-router-dom";
-import { api, type SimCatalog as Catalog, type SimJob, type SimKind, type SimParams, type SimResult, type SimUnit, type Version } from "../../api/client";
+import { api, type GesParams, type SimCatalog as Catalog, type SimJob, type SimKind, type SimParams, type SimResult, type SimUnit, type Version } from "../../api/client";
 import SimCatalog from "./sim/SimCatalog";
 import SafetyCheck from "./sim/SafetyCheck";
 import GenericSim from "./sim/GenericSim";
@@ -81,22 +81,46 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
   }, [active?.id, active?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Slayder → 3D suv sathi + agregat ranglari
+  // Slayder → 3D: suv sathi (to'lqin bilan), quyi byef, agregat halqalari (yuklanish tezligi, Francis qo'pol
+  // zona — sariq), quvurdagi oqim (turbina sarfi), suv tashlagichdan tashlama oqimi (sarfga qarab)
+  const [gp, setGp] = useState<GesParams | null>(null);
+  useEffect(() => {
+    if (!current) return setGp(null);
+    let dead = false;
+    api.gesParams(current.id).then((g) => !dead && setGp(g)).catch(() => setGp(null));
+    return () => { dead = true; };
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!viewer || !result) return;
-    const i = cursor ?? result.series.level.length - 1;
-    const zero = active?.params?.model_zero_elevation_m ?? params?.model_zero_elevation_m ?? 0;
-    viewer.setWaterLevel(result.series.level[i] - zero);
-    const colors: Record<string, string> = {};
-    const units = active?.params?.units ?? [];
+    const s = result.series;
+    const i = cursor ?? s.level.length - 1;
+    const p = active?.params ?? params;
+    const zero = p?.model_zero_elevation_m ?? 0;
+    const spillMax = Math.max(1e-6, ...s.spill);
+    viewer.setWaterLevel(s.level[i] - zero, { waves: 0.06 + 0.25 * (s.spill[i] / spillMax), upstreamOnly: true });
+    const tail = p?.reservoir?.tailwater_m;
+    if (typeof tail === "number") viewer.setTailwaterLevel(tail - zero);
+    const units = p?.units ?? [];
+    const bindings: Parameters<Viewer["setLiveBindings"]>[0] = [];
     units.forEach((u, k) => {
-      if (u.guid) colors[u.guid] = (result.units[k]?.power_mw[i] ?? 0) > 0 ? "#3aa864" : "#6a6e76";
+      if (!u.guid) return;
+      const mw = result.units[k]?.power_mw[i] ?? 0;
+      const load = u.rated_power_mw ? mw / u.rated_power_mw : 0;
+      bindings.push({ guid: u.guid, kind: "power", value: mw, max: u.rated_power_mw, running: mw > 0, warn: u.type === "Francis" && load >= 0.4 && load < 0.6 });
     });
-    void viewer.colorByGuids(colors);
-  }, [cursor, result, viewer]); // eslint-disable-line react-hooks/exhaustive-deps
+    const perUnit = (p?.penstock as { per_unit?: boolean } | undefined)?.per_unit ?? true;
+    (gp?.penstocks ?? []).forEach((pen, k) => {
+      const q = perUnit && gp && gp.penstocks.length > 1 ? (s.turbine_flow[i] / Math.max(1, s.units_on[i] || 1)) * (k < (s.units_on[i] || 0) ? 1 : 0) : s.turbine_flow[i];
+      bindings.push({ guid: pen.guid, kind: "flow", value: q });
+    });
+    void viewer.setLiveBindings(bindings.length ? bindings : null);
+    const sp = gp?.spillways?.[0];
+    if (sp && s.spill[i] > 0) void viewer.setOverflow([{ guid: sp.guid, topZ: s.level[i] - zero, bottomZ: (typeof tail === "number" ? tail : sp.crest_m - 20) - zero, intensity: Math.min(1, s.spill[i] / spillMax) }]);
+    else void viewer.setOverflow([]);
+  }, [cursor, result, viewer, gp]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Panel yopilganda suv sathini olib tashlash
-  useEffect(() => () => { viewer?.setWaterLevel(null); void viewer?.colorByGuids({}); }, [viewer]);
+  // Panel yopilganda 3D qatlamlarni olib tashlash
+  useEffect(() => () => { viewer?.setWaterLevel(null); viewer?.setTailwaterLevel(null); void viewer?.setLiveBindings(null); void viewer?.setOverflow([]); void viewer?.colorByGuids({}); }, [viewer]);
 
   // Animatsiya
   useEffect(() => {

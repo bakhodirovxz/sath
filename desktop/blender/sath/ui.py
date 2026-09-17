@@ -163,6 +163,19 @@ class SATH_PT_sim(GesPanel, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.ges
         lay = self.layout
+        box = lay.box()
+        box.label(text="Suv ombori rejimi va energiya → timeline", icon="MOD_FLUIDSIM")
+        box.prop(s, "hydro_inflow")
+        row = box.row(align=True)
+        row.prop(s, "hydro_days")
+        row.prop(s, "hydro_level0")
+        box.prop(s, "hydro_mode", text="")
+        box.prop(s, "hydro_zero")
+        row = box.row(align=True)
+        row.operator("sath.sim_hydro", icon="PLAY")
+        row.operator("sath.sim_clear_anim", text="", icon="X")
+        if s.hydro_note:
+            box.label(text=s.hydro_note, icon="INFO")
         row = lay.row(align=True)
         row.operator("sath.sim_catalog", icon="FILE_REFRESH")
         row.operator("sath.safety_check", icon="CHECKMARK")

@@ -1368,7 +1368,9 @@ export class Viewer {
    *  items: {guid, kind: position|status|power|flow, value, running?}. null/[] — olib tashlash. */
   private live = new Map<string, { kind: string; obj: THREE.Object3D; localId: number; base?: THREE.Vector3; height?: number; speed: number; on: boolean; len?: number }>();
   private liveRaf = 0;
-  async setLiveBindings(items: { guid: string; kind: string; value: number | null; running?: boolean }[] | null) {
+  /** Jonli/simulyatsiya bog'lanishlari: agregat (power/status — halqa, tezlik yuklanishga ∝, warn — qo'pol zona sariq),
+   *  quvur (flow — punktir, tezlik |Q|), darvoza (position — ochilish %). `max` — nominal (tezlik uchun). */
+  async setLiveBindings(items: { guid: string; kind: string; value: number | null; running?: boolean; max?: number; warn?: boolean }[] | null) {
     if (!this.alive()) return;
     const keep = new Set((items ?? []).map((i) => i.guid));
     for (const [g, b] of this.live) if (!keep.has(g)) { await this.dropLive(g, b); }
@@ -1412,10 +1414,12 @@ export class Viewer {
         }
         const running = it.running ?? (it.kind === "status" ? (it.value ?? 0) >= 0.5 : (it.value ?? 0) > 0.5);
         b.on = running;
-        b.speed = running ? 1.5 : 0;
+        // aylanish tezligi yuklanishga proporsional (nominal berilsa): 0.5 (salt) … 2.5 (to'liq)
+        const load = it.max && it.max > 0 ? Math.max(0, Math.min(1.2, (it.value ?? 0) / it.max)) : 0.6;
+        b.speed = running ? (it.kind === "power" ? 0.5 + 2 * load : 1.5) : 0;
         const m = (b.obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
-        m.color.set(running ? "#3aa864" : "#6a6e76");
-        m.emissive.set(running ? "#1c5c36" : "#222");
+        m.color.set(!running ? "#6a6e76" : it.warn ? "#e0a93a" : "#3aa864");
+        m.emissive.set(!running ? "#222" : it.warn ? "#6b4d12" : "#1c5c36");
       } else if (it.kind === "flow") {
         // quvur/kanal: uzun o'q bo'ylab harakatlanuvchi punktir (yo'nalish — sarf ishorasi, tezlik — |Q|)
         const axis = sz.x >= sz.z ? "x" : "z";

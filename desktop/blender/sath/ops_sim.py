@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import flows, props, session, water
+from . import flows, props, session, sim_anim, water
 from .ops_server import _sel, guard
 from .shared.server_client import ServerError
 
@@ -137,7 +137,7 @@ def _raw(s) -> dict:
     return out
 
 
-def _poll_factory(kind: dict, job_id: int):
+def _poll_factory(kind: dict, job_id: int, on_done=None):
     def poll():
         s = bpy.context.scene.ges
         try:
@@ -146,10 +146,16 @@ def _poll_factory(kind: dict, job_id: int):
             s.sim_status = f"Xato: {e}"
             return None
         if j["status"] == "done":
-            rows, level = flows.sim_result_rows(kind, session.client().sim_result(job_id))
+            result = session.client().sim_result(job_id)
+            rows, level = flows.sim_result_rows(kind, result)
             props.fill(s.sim_results, rows)
             s.sim_water_level = level if level is not None else -1e9
             s.sim_status = "Tayyor"
+            if on_done is not None:
+                try:
+                    on_done(result)
+                except Exception as e:  # noqa: BLE001 — animatsiya xatosi natijani yo'qotmasin
+                    s.sim_status = f"Tayyor (animatsiya xatosi: {e})"
             return None
         if j["status"] == "failed":
             s.sim_status = f"Xato: {j.get('error') or 'hisob xatosi'}"
@@ -185,6 +191,102 @@ class SATH_OT_sim_run(bpy.types.Operator):
         s.sim_job_id = job["id"]
         s.sim_status = "Hisoblanmoqda…"
         bpy.app.timers.register(_poll_factory(k, job["id"]), first_interval=0.6)
+        return {"FINISHED"}
+
+
+HYDRO_META = {
+    "outputs": [
+        {"key": "energy_mwh", "label": "Ishlab chiqarish", "unit": "MWh"},
+        {"key": "mean_power_mw", "label": "O'rtacha quvvat", "unit": "MW"},
+        {"key": "spill_volume_mcm", "label": "Tashlama", "unit": "mln m³"},
+        {"key": "min_level_m", "label": "Min sath", "unit": "m"},
+        {"key": "max_level_m", "label": "Max sath", "unit": "m"},
+    ],
+    "viz": {"water_level": "level"},
+}
+
+
+def hydro_params(client, version_id: int | None, s) -> dict:
+    """Server namunasi + modeldagi Pset_GES_* (agregatlar, quvur, suv tashlagich) + panel maydonlari."""
+    p = client.sim_example()
+    if version_id:
+        g = client.ges_params(version_id)
+        if g.get("units"):
+            keys = ("name", "type", "rated_power_mw", "rated_head_m", "rated_flow_m3s", "max_efficiency", "guid")
+            p["units"] = [{k: u[k] for k in keys if k in u} for u in g["units"]]
+        if g.get("penstocks"):
+            pen = g["penstocks"][0]
+            p.setdefault("penstock", {}).update(
+                {k: pen[k] for k in ("length_m", "diameter_m", "roughness_mm") if k in pen}
+            )
+        r = p["reservoir"]
+        if g.get("spillways"):
+            sp = g["spillways"][0]
+            crest = sp.get("crest_m") or 0.0
+            # model ostonasi ombor sathlariga mos kelmasa (masalan 0) — NPU (web «Modeldan» kabi)
+            if not (r["dead_level_m"] <= crest <= (r.get("max_level_m") or r["normal_level_m"] + 2)):
+                crest = r["normal_level_m"]
+            r["spillway"] = {
+                "crest_m": crest, "width_m": sp["width_m"] or r.get("spillway", {}).get("width_m", 24),
+                "coefficient": sp.get("coefficient") or 0.49, "gate_opening": 1.0,
+            }  # fmt: skip
+            p["spillway_guid"] = sp.get("guid", "")
+        # Model 0 belgisi: to'g'on gerbi absolyut belgisi bo'lmasa — NPU + 3 m gerb deb, tag = gerb − balandlik
+        if s.hydro_zero == 0 and g.get("dams"):
+            d = g["dams"][0]
+            if not d.get("crest_elevation_m"):
+                s.hydro_zero = float(r["normal_level_m"]) + 3.0 - float(d.get("height_m") or 20.0)
+    p["inflow_m3s"] = {"constant": float(s.hydro_inflow), "steps": int(s.hydro_days)}
+    p["dt_hours"] = 24
+    if s.hydro_level0 > 0:
+        p["reservoir"]["initial_level_m"] = float(s.hydro_level0)
+    p["operation"] = {"mode": s.hydro_mode}
+    if s.hydro_mode == "target_level":
+        p["operation"]["target_level_m"] = p["reservoir"]["normal_level_m"]
+    p["model_zero_elevation_m"] = float(s.hydro_zero)
+    return p
+
+
+class SATH_OT_sim_hydro(bpy.types.Operator):
+    """Suv ombori rejimi va energiya (serverda) — natija Blender timeline animatsiyasi: suv sathi, agregatlar rangi"""
+
+    bl_idname = "sath.sim_hydro"
+    bl_label = "Suv ombori / energiya"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and context.scene.ges.model_id > 0
+
+    def execute(self, context):
+        s = context.scene.ges
+        try:
+            params = hydro_params(session.client(), s.version_id or None, s)
+            job = session.client().create_sim(
+                s.model_id, "Suv ombori/energiya (Blender)", s.version_id or None, params, kind="hydro"
+            )
+        except (ServerError, ValueError, KeyError) as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+        s.sim_job_id = job["id"]
+        s.sim_status = "Hisoblanmoqda…"
+
+        def done(result: dict):
+            n = sim_anim.animate_hydro(bpy.context, result, params, zero_m=float(s.hydro_zero))
+            s.hydro_note = f"{n} kun → {n} kadr: Space bilan ijro (suv sathi, agregatlar rangi)"
+
+        bpy.app.timers.register(_poll_factory(HYDRO_META, job["id"], done), first_interval=0.6)
+        return {"FINISHED"}
+
+
+class SATH_OT_sim_clear_anim(bpy.types.Operator):
+    """Simulyatsiya animatsiyasini (keyframelar) olib tashlash"""
+
+    bl_idname = "sath.sim_clear_anim"
+    bl_label = "Animatsiyani tozalash"
+
+    def execute(self, context):
+        sim_anim.clear_animation(context)
+        context.scene.ges.hydro_note = ""
         return {"FINISHED"}
 
 
@@ -228,7 +330,7 @@ class SATH_OT_safety_check(bpy.types.Operator):
 
 CLASSES = (
     SATH_OT_sim_catalog, SATH_OT_sim_pick, SATH_OT_sim_prefill, SATH_OT_sim_run, SATH_OT_sim_water,
-    SATH_OT_safety_check,
+    SATH_OT_safety_check, SATH_OT_sim_hydro, SATH_OT_sim_clear_anim,
 )  # fmt: skip
 
 
