@@ -30,7 +30,10 @@ ROOT = Path(__file__).resolve().parents[2]
 # Natija papkasi: GES_DIST_DIR (masalan E:\Sath\desktop-dist — C diskda joy kam bo'lsa)
 DIST = Path(os.environ.get("GES_DIST_DIR") or ROOT / "desktop" / "dist")
 WORK = Path(os.environ.get("GES_WORK_DIR") or ROOT / "desktop" / "build" / "_work")
-DEFAULT_FORK = ROOT.parent / "Sath-FreeCAD"
+DEFAULT_FORK = next(  # FreeCAD forki: yangi yoki eski nomli papka
+    (p for p in (ROOT.parent / "Sath-FreeCAD", ROOT.parent / "GES-BIM-FreeCAD") if p.is_dir()),
+    ROOT.parent / "Sath-FreeCAD",
+)
 DEFAULT_FREECAD = Path(r"C:\Program Files\FreeCAD 1.1")
 # LibreDWG (dwg2dxf) — DWG ochish uchun paket ichiga qo'shiladi: tools/libredwg/ (GPL, ichki foydalanish)
 LIBREDWG_CANDIDATES = [

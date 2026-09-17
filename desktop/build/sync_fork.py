@@ -20,7 +20,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "desktop" / "GesWorkbench"
-DEFAULT_FORK = ROOT.parent / "Sath-FreeCAD"
+DEFAULT_FORK = next(  # FreeCAD forki: yangi yoki eski nomli papka
+    (p for p in (ROOT.parent / "Sath-FreeCAD", ROOT.parent / "GES-BIM-FreeCAD") if p.is_dir()),
+    ROOT.parent / "Sath-FreeCAD",
+)
 # Fork da o'ziga tegishli, sinxronlanmaydigan narsalar
 FORK_OWN = {"CMakeLists.txt", "branding"}
 SKIP = {"__pycache__", ".pytest_cache"}
