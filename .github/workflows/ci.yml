@@ -10,7 +10,9 @@ jobs:
       - run: pip install -e "./sim[dev]" -e "./server[dev]"
       - run: python desktop/build/sync_blender.py --check
       - run: ruff check server sim desktop
-      - run: pytest -q sim/tests server/tests desktop/tests
+      - run: pytest -q sim/tests server/tests desktop/tests --junitxml=report.xml
+        continue-on-error: true
+      - run: python desktop/build/ci_annotate.py report.xml
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
