@@ -244,7 +244,9 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
             h_est = net_head(head_gross, spec.rated_flow_m3s, spec_p)
             q = measured * 1e6 / (spec.max_efficiency * RHO * G * max(h_est, 1e-3))
         h_net = net_head(head_gross, q if q else 0.0, spec_p) if spec_p else head_gross
-        expected = spec.power_mw(q, h_net) if q else 0.0
+        op = spec.output(q, h_net) if q else None  # hill-chart + generator + mexanik yo'qotishlar
+        expected = op.electrical_mw if op else 0.0
+        # o'lchangan umumiy FIK (klemma quvvati / gidravlik quvvat) — kutilgan eta_total bilan solishtiriladi
         eff = (measured * 1e6 / (RHO * G * q * h_net)) if (q and h_net > 0 and measured) else None
         dev = (
             ((measured - expected) / expected * 100)
@@ -261,7 +263,11 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
                 "expected_mw": round(expected, 3),
                 "deviation_pct": round(dev, 2) if dev is not None else None,
                 "efficiency": round(min(eff, 1.2), 4) if eff is not None else None,
-                "expected_efficiency": round(spec.efficiency(q), 4) if q else None,
+                "expected_efficiency": round(op.eta_total, 4) if op else None,
+                "eta_turbine": round(op.eta_turbine, 4) if op else None,
+                "eta_generator": round(op.eta_generator, 4) if op else None,
+                "rough_zone": bool(op.rough_zone) if op else False,
+                "head_factor": round(spec.head_factor(h_net), 4) if q else None,
                 "flow_m3s": round(q, 3) if q else None,
                 "head_net_m": round(h_net, 3),
             }

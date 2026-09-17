@@ -37,11 +37,42 @@ def test_head_loss_reasonable_magnitude():
 
 def test_power_formula_at_rated_point():
     t = TurbineSpec(rated_power_mw=40, rated_head_m=60, rated_flow_m3s=75, max_efficiency=0.92)
-    expected = 0.92 * RHO * G * 75 * 60 / 1e6
-    assert t.power_mw(75, 60) == pytest.approx(expected)
+    hydraulic = RHO * G * 75 * 60 / 1e6
+    out = t.output(75, 60)
+    assert out.hydraulic_mw == pytest.approx(hydraulic)
+    assert out.eta_turbine == pytest.approx(0.92)
+    # val: turbina FIK − mexanik 0.5 %; klemmalar: generator ~98.5 % nominalda
+    assert out.turbine_mw == pytest.approx(0.92 * hydraulic - 0.005 * 40)
+    assert 0.975 < out.eta_generator < 0.99
+    assert t.power_mw(75, 60) == pytest.approx(out.turbine_mw * out.eta_generator)
+    assert out.electrical_mw < 0.92 * hydraulic  # yo'qotishlar bor
     assert t.efficiency(75) == pytest.approx(0.92)
     assert t.efficiency(75 * 0.2) == 0.0  # Francis min yuklama 40 %
     assert t.power_mw(75, 0) == 0.0
+
+
+def test_hill_chart_head_dependence():
+    t = TurbineSpec(type="Francis", rated_power_mw=40, rated_head_m=60, rated_flow_m3s=75, max_efficiency=0.92)
+    # nominal naporda BEP nominal sarfda; napor 30 % kamaysa — jarima ~4.5 % va BEP sarfi √0.7 ga siljiydi
+    assert t.efficiency(75, 60) == pytest.approx(0.92)
+    assert t.head_factor(42) == pytest.approx(1 - 0.5 * 0.3**2)
+    assert t.bep_flow(42) == pytest.approx(75 * 0.7**0.5)
+    assert t.efficiency(75, 42) < t.efficiency(75, 60)
+    # Kaplan naporga kam sezgir
+    k = TurbineSpec(type="Kaplan", rated_head_m=60, rated_flow_m3s=75)
+    assert k.head_factor(42) > t.head_factor(42)
+    # Francis qo'pol zona 40–60 %
+    assert t.rough_zone(0.5 * 75) and not t.rough_zone(0.8 * 75) and not k.rough_zone(0.5 * 75)
+    # ish diapazonidan tashqarida (napor 2×) quvvat baribir napor bilan o'sadi (monotonik)
+    assert t.power_mw(50, 120) > t.power_mw(50, 100) > t.power_mw(50, 80)
+
+
+def test_generator_efficiency_curve():
+    t = TurbineSpec(rated_power_mw=40, generator_eta_max=0.985)
+    assert t.generator_efficiency(40) == pytest.approx(0.985)
+    assert t.generator_efficiency(10) < t.generator_efficiency(40)  # qism yuklamada temir yo'qotish ulushi katta
+    assert t.generator_efficiency(0) == 0.0
+    assert 0.9 < t.generator_efficiency(10) < 0.985
 
 
 def test_efficiency_curve_shapes():
