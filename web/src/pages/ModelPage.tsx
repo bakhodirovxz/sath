@@ -23,6 +23,10 @@ import ChecksPanel from "./model/ChecksPanel";
 import { AddMenu, DraftList, DraftProps, UnderlayPanel } from "./model/DraftPanel";
 import type { Draft } from "../viewer/drafts";
 import { DRAFT_KINDS, type DraftKind } from "../viewer/draftKinds";
+import ViewportSidebar from "./model/ViewportSidebar";
+import PieMenu from "./model/PieMenu";
+import SearchMenu from "./model/SearchMenu";
+import type { SearchItem } from "../ui/blender";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -121,6 +125,11 @@ export default function ModelPage() {
   useEffect(() => { if (loadedKey) { void viewer.current?.drafts?.syncHidden(); if (labelsOn) void viewer.current?.setLabels(true); } }, [loadedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [draftSel, setDraftSel] = useState<Draft | null>(null);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
+  // Blender: N — viewport yon paneli, Z — shading pie, F3 — operator qidiruvi, Ctrl+Space — maksimal viewport
+  const [sideOpen, setSideOpen] = useState(false);
+  const [pie, setPie] = useState<{ x: number; y: number } | null>(null);
+  const [search, setSearch] = useState(false);
+  const maximized = useRef<{ dock: boolean; tools: boolean; outliner: boolean } | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const saveTimers = useRef(new Map<string, number>());
   const [error, setError] = useState("");
@@ -397,6 +406,35 @@ export default function ModelPage() {
   };
   const pickWorkspace = (id: string) => { setWorkspace(id); const w = WORKSPACES.find((x) => x.id === id); if (w) { setTab(w.tab); setDockOpen(true); } };
   const cmd = (name: string, ...args: string[]) => onCommand({ name, args, raw: [name, ...args].join(" ") });
+  /** Ctrl+Space (Blender): viewportni maksimal — dock, asboblar, outliner yashiriladi; qayta bosilsa qaytadi. */
+  const toggleMaximize = () => {
+    if (maximized.current) {
+      const m = maximized.current; maximized.current = null;
+      setDockOpen(m.dock); setToolsOpen(m.tools); setOutlinerOpen(m.outliner);
+    } else {
+      maximized.current = { dock: dockOpen, tools: toolsOpen, outliner: outlinerOpen };
+      setDockOpen(false); setToolsOpen(false);
+    }
+  };
+  /** A (Blender): hamma elementni tanlash. */
+  const selectAll = async () => {
+    const vw = viewer.current; if (!vw) return;
+    const t = await vw.getTree(); if (!t) return;
+    const ids: number[] = [];
+    const walk = (n: { localId: number | null; children: { localId: number | null; children: unknown[] }[] }) => { if (n.localId != null) ids.push(n.localId); n.children.forEach((c) => walk(c as typeof n)); };
+    walk(t as unknown as Parameters<typeof walk>[0]);
+    await vw.selectLocalIds(ids, false);
+  };
+  const sideAction = (a: "upload" | "submit" | "issue" | "diff" | "props" | "fit") => {
+    if (a === "upload" || a === "submit") { setTab(a === "upload" ? "versions" : "review"); setDockOpen(true); }
+    else if (a === "issue") cmd("ISSUE");
+    else if (a === "diff") cmd("DIFF");
+    else if (a === "props") cmd("PROPS");
+    else if (a === "fit") { if (selection.length) void viewer.current?.fitSelection(); else void viewer.current?.fitAll(); }
+  };
+  const searchItems: SearchItem[] = [
+    ...COMMANDS.map((c) => ({ label: c.description, hint: c.name, group: "Buyruq", run: () => cmd(c.name) })),
+  ];
 
   // Tezkor tugmalar (Blender): H yashirish, Alt+H hammasi, / ajratish, Home moslash, . tanlanganga,
   // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor
@@ -429,8 +467,13 @@ export default function ModelPage() {
       else if (k === "Home") { void vw.fitAll(); }
       else if (k === "." || e.code === "NumpadDecimal") { void vw.fitSelection(); }
       else if (e.code === "Numpad5" || k === "5") { void toggleProjection(); }
-      else if (k === "z" || k === "Z") { setShading(shading === "solid" ? "wire" : shading === "wire" ? "xray" : shading === "xray" ? "rendered" : "solid"); }
-      else if (k === "n" || k === "N") { setDockOpen((v) => !v); }
+      else if ((k === "z" || k === "Z") && !e.ctrlKey && !e.repeat) { setPie({ x: lastMouse.current[0], y: lastMouse.current[1] }); }
+      else if (k === "n" || k === "N") { setSideOpen((v) => !v); }
+      else if (k === "F3") { setSearch(true); }
+      else if (k === " " && e.ctrlKey) { toggleMaximize(); }
+      else if ((k === "a" || k === "A") && e.altKey) { vw.escape(); }
+      else if ((k === "a" || k === "A") && !e.ctrlKey) { void selectAll(); }
+      else if ((k === "c" || k === "C") && e.shiftKey) { void vw.fitAll(); }
       else if (k === "t" || k === "T") { setToolsOpen((v) => !v); }
       else if (k === "Escape") { vw.escape(); used = false; }
       else if (k === "F2") { cmd("VSAVE", prompt("Ko'rinish nomi:") ?? ""); }
@@ -546,7 +589,7 @@ export default function ModelPage() {
     { title: "Yordam", items: [
       { label: "Qisqa yo'riqnoma", hint: "?", onClick: () => setHelp(true) },
       { label: "Buyruqlar ro'yxati", hint: "HELP", onClick: () => cmd("HELP") },
-      { label: "Tezkor tugmalar", onClick: () => setLog("H yashirish · Alt+H hammasi · / ajratish · Home moslash · . tanlanganga · 1/3/7 old/o'ng/tepa (Ctrl — qarama-qarshi) · 5 proyeksiya · Z shading · N panel · T asboblar · F2 ko'rinish · Esc bekor") },
+      { label: "Tezkor tugmalar", onClick: () => setLog("H yashirish · Alt+H hammasi · / ajratish · Home moslash · . tanlanganga · 1/3/7 old/o'ng/tepa (Ctrl — qarama-qarshi) · 5 proyeksiya · Z shading pie · N yon panel · T asboblar · F3 qidiruv · Ctrl+Space maksimal · A hammasi · F2 ko'rinish · Esc bekor") },
       { label: "Sichqoncha", onClick: () => setLog("O'rta tugma — surish, Shift+o'rta — aylantirish, g'ildirak — masshtab (kursorga), chap — tanlash") },
     ] },
   ];
@@ -617,6 +660,15 @@ export default function ModelPage() {
         {addMenu && <AddMenu x={addMenu.x} y={addMenu.y} onPick={startAdd} onClose={() => setAddMenu(null)} />}
         {hover && hover.name !== undefined && <div className="vp-tip" style={{ left: hover.x + 14, top: hover.y + 14 }}><b>{hover.name || "nomsiz"}</b><div className="dim">{ifcLabel(hover.category ?? "")}</div></div>}
         {legend && <div className="vp-legend">{legend.map((l) => <div key={l.name}><i style={{ background: l.color }} />{colorScheme === "type" ? ifcLabel(l.name) : l.name}</div>)}</div>}
+        {sideOpen && (
+          <ViewportSidebar
+            viewer={ready ? viewer.current : null} selection={selection}
+            shading={shading} onShading={setShading} projection={projection} onProjection={() => void toggleProjection()}
+            gridOn={gridOn} onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }}
+            labelsOn={labelsOn} onLabels={() => void toggleLabels()}
+            version={current} modelName={model?.name ?? ""} canEdit={canEdit} onAction={sideAction}
+          />
+        )}
         <div className="vp-info">
           <div>{projection === "Perspective" ? "Perspektiva" : "Ortografik"} · {shading === "solid" ? "Solid" : shading === "wire" ? "Wireframe" : shading === "xray" ? "X-ray" : "Rendered"}{navMode !== "Orbit" && ` · ${navMode === "FirstPerson" ? "Yurish" : "Plan"}`}</div>
           {selection.length > 0 && <div>{selection.length === 1 ? (selection[0].name || selection[0].category) : `${selection.length} ta tanlangan`}</div>}
@@ -681,6 +733,26 @@ export default function ModelPage() {
         </div>
       </div>
 
+      {pie && (
+        <PieMenu
+          x={pie.x} y={pie.y} title="Viewport Shading" releaseKey="z" onClose={() => setPie(null)}
+          items={[
+            { label: "Wireframe", hint: "1", active: shading === "wire", run: () => setShading("wire") },
+            { label: "Solid", hint: "2", active: shading === "solid", run: () => setShading("solid") },
+            { label: "Rendered", hint: "3", active: shading === "rendered", run: () => setShading("rendered") },
+            { label: "X-ray", hint: "4", active: shading === "xray", run: () => setShading("xray") },
+          ]}
+        />
+      )}
+      {search && (
+        <SearchMenu
+          onClose={() => setSearch(false)}
+          items={[
+            ...searchItems,
+            ...menus.flatMap((m) => m.items.filter((i) => !i.sep && !i.disabled && i.onClick).map((i) => ({ label: i.label, hint: i.hint, group: m.title, run: () => i.onClick?.() }))),
+          ]}
+        />
+      )}
       {help && (
         <div className="help-overlay" onClick={closeHelp}>
           <div className="help-card" onClick={(e) => e.stopPropagation()}>
@@ -690,7 +762,7 @@ export default function ModelPage() {
               <div><b>Element qo'shish / tahrirlash</b><p>Shift+A yoki «Qo'shish» menyusi: primitiv yoki GES inshooti (to'g'on, quvur, turbina…) — model/yer ustiga bosib joylashtiring, G/R/S bilan sozlang, o'ng panelda o'lchamlar va Pset_GES. Mavjud elementni tanlab <b>Tab</b> — tahrirlash (surish/burish/masshtab, nom, Pset), <b>X</b> — o'chirish. «IFC ga qo'shish» — yangi versiya (commit), GUID lar saqlanadi.</p></div>
               <div><b>2 · Versiyalar va tasdiqlash</b><p>Har IFC yuklash — versiya. Muhandis «Tasdiqqa yuboradi», tasdiqlovchi farqni ko'rib ma'qullaydi/merge qiladi. Issue — 3D ko'rinish bilan.</p></div>
               <div><b>3 · Tekshiruv va simulyatsiya</b><p>To'qnashuvlar, hajm-miqdor (Tekshiruv); suv ombori/turbina rejimi va CFD (Simulyatsiya); jonli SCADA va raqamli egizak (Monitoring, Dispetcher paneli).</p></div>
-              <div><b>Tezkor tugmalar</b><p>Shift+A qo'shish · G/R/S surish/burish/masshtab · X o'chirish · Shift+D nusxa · H yashir · Alt+H hammasi · / ajrat · Home moslash · . tanlanganga · 1/3/7 ko'rinish · 5 orto · Z shading · B kesim qutisi · N panel · T asboblar · F12 render · ? yo'riqnoma</p></div>
+              <div><b>Tezkor tugmalar</b><p>Shift+A qo'shish · G/R/S surish/burish/masshtab · X o'chirish · Shift+D nusxa · H yashir · Alt+H hammasi · / ajrat · Home moslash · . tanlanganga · 1/3/7 ko'rinish · 5 orto · Z shading pie · B kesim qutisi · N yon panel · T asboblar · F3 qidiruv · Ctrl+Space maksimal · A hammasi / Alt+A bekor · F12 render · ? yo'riqnoma</p></div>
             </div>
             <div className="actions"><button className="btn primary" onClick={closeHelp}>Tushunarli</button></div>
           </div>
@@ -703,7 +775,7 @@ export default function ModelPage() {
         <span>{tool === "select" ? "Tanlash" : tool === "measure" ? "O'lchash" : "Kesim"}</span>
         <span>{selection.length > 0 ? `Tanlangan: ${selection.length}` : "—"}</span>
         {current?.meta?.element_count != null && <span>Elementlar: {current.meta.element_count}</span>}
-        <span className="log" title="H yashirish · Alt+H hammasi · / ajratish · Home moslash · 1/3/7 ko'rinish · Z shading · N panel">? tugmalar</span>
+        <span className="log" title="H yashirish · Alt+H hammasi · / ajratish · Home moslash · 1/3/7 ko'rinish · Z shading pie · N yon panel · F3 qidiruv">? tugmalar</span>
       </div>
     </div>
   );

@@ -515,3 +515,44 @@ tr.alarm-active td { background: #3a2426; }
 /* Monitoring paneli tor — qatorlar o'raladi (gorizontal siljish bo'lmasin) */
 .mon .row { flex-wrap: wrap; }
 .mon { min-width: 0; overflow-x: hidden; }
+
+/* --- Blender N-panel (viewport yon paneli) --- */
+.vp-sidebar { position: absolute; top: 0; right: 0; bottom: 0; width: 280px; display: flex; z-index: 6; background: rgba(48, 48, 48, 0.96); border-left: 1px solid var(--line-strong); }
+.vp-sidebar-body { flex: 1; overflow-y: auto; overflow-x: hidden; min-width: 0; padding: 6px 6px 10px; }
+.vp-sidebar-tabs { width: 22px; display: flex; flex-direction: column; gap: 2px; padding-top: 6px; border-left: 1px solid var(--line-strong); background: var(--chrome); }
+.vp-sidebar-tabs button { writing-mode: vertical-rl; transform: rotate(180deg); background: transparent; border: 0; color: var(--text-muted); padding: 8px 2px; font-size: 11px; cursor: pointer; border-radius: 0 3px 3px 0; }
+.vp-sidebar-tabs button:hover { color: var(--text); }
+.vp-sidebar-tabs button.active { background: var(--panel); color: var(--text); }
+.bpanel { background: #3a3a3a; border-radius: var(--radius); margin-bottom: 6px; overflow: hidden; }
+.bpanel-head { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; background: #424242; }
+.bpanel-head:hover { background: #4a4a4a; }
+.bpanel-body { padding: 6px 8px 8px; }
+.brow { display: flex; align-items: center; gap: 6px; min-height: 22px; margin-bottom: 2px; }
+.brow .blabel { flex: 0 0 40%; text-align: right; color: var(--text-muted); font-size: 12px; padding-right: 4px; }
+.brow .bfield { flex: 1; min-width: 0; display: flex; align-items: center; }
+.brow .bfield .vp-select, .brow .bfield .btn { width: 100%; }
+.bval { display: block; width: 100%; background: var(--field); border: 1px solid var(--widget-line); border-radius: var(--radius); padding: 2px 6px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+
+/* --- Pie menyu (Z) --- */
+.pie-backdrop { position: fixed; inset: 0; z-index: 90; cursor: default; }
+.pie { position: absolute; width: 0; height: 0; }
+.pie-title { position: absolute; left: -80px; top: -140px; width: 160px; text-align: center; font-size: 12px; color: var(--text-muted); text-shadow: 0 1px 2px #000; }
+.pie-center { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--text-dim); background: rgba(48,48,48,0.8); }
+.pie-item { position: absolute; transform: translate(-50%, -50%); background: var(--widget); border: 1px solid var(--widget-line); border-radius: 12px; padding: 4px 12px; white-space: nowrap; font-size: 12px; display: flex; gap: 6px; align-items: baseline; box-shadow: 0 3px 10px rgba(0,0,0,0.5); }
+.pie-item em { font-style: normal; color: var(--text-dim); font-size: 10px; }
+.pie-item.active { border-color: var(--accent); }
+.pie-item.hot { background: var(--accent); color: #fff; }
+.pie-item.hot em { color: #dfe7f5; }
+
+/* --- Operator qidiruvi (F3) --- */
+.search-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: center; align-items: flex-start; padding-top: 22vh; }
+.search-menu { width: 460px; background: #1f1f1f; border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.6); overflow: hidden; }
+.search-input { width: 100%; background: var(--field); border: 0; border-bottom: 1px solid var(--line-strong); color: var(--text); padding: 8px 12px; font-size: 13px; outline: none; }
+.search-list { max-height: 320px; overflow: auto; padding: 4px 0; }
+.search-item { display: flex; gap: 10px; align-items: baseline; padding: 4px 12px; cursor: pointer; font-size: 12.5px; }
+.search-item.active { background: var(--accent); color: #fff; }
+.search-item .grp { color: var(--text-dim); font-size: 11px; min-width: 70px; }
+.search-item.active .grp, .search-item.active .hint { color: #dfe7f5; }
+.search-item .lbl { flex: 1; }
+.search-item .hint { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
