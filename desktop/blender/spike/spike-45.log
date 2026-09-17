@@ -1,0 +1,57 @@
+﻿== Sath spike 2026-09-17T10:08:26 stack=45 blender=C:\Users\uge226\Tools\blender-4.5\blender.exe FC=
+
+#### fc_bridge.py (headless)
+[OK] S2 import FreeCAD: 1.1.3 0.17s GuiUp=0
+[OK] S2 numpy: 1.26.4 C:\Users\uge226\Tools\blender-4.5\4.5\python\Lib\site-packages\numpy\__init__.py
+[OK] S3a makeBox->mesh: 12 uchburchak, dims=(1.0, 2.0, 3.0)
+    GES_Dam               12 tri  make    237 ms  mesh      2 ms  Wall  props=8
+    GES_Penstock        1240 tri  make      6 ms  mesh     10 ms  Pipe Segment  props=4
+    GES_Turbine        59656 tri  make     12 ms  mesh   1605 ms  Flow Moving Device  props=5
+    GES_Spillway          12 tri  make      1 ms  mesh      1 ms  Slab  props=4
+    GES_Powerhouse        16 tri  make      4 ms  mesh      1 ms  Building Element Proxy  props=6
+    GES_Transformer     1684 tri  make    108 ms  mesh     21 ms  Transformer  props=4
+    GES_Intake            44 tri  make     10 ms  mesh      2 ms  Building Element Proxy  props=5
+[OK] S3b GES obyektlari: 7 obyekt
+[OK] S3c import Import: 0.01s
+[OK] S3c import Mesh: 0.01s
+[OK] S3c import MeshPart: 0.05s
+[OK] S3c import Sketcher: 0.01s
+[OK] S3c import Draft: 1.39s
+[OK] S3c import importDXF: 0.03s
+[OK] S3c import Spreadsheet: 0.00s
+[OK] S3c import TechDraw: 0.01s
+[OK] S6 stress 10x7: 26.1s, RSS 546 -> 636 MB
+
+#### test_dxf.py (headless)
+[OK] S4a dwg2dxf: 16 KB, 0.0s
+[OK] S4b Import.readDXF->Blender: 6 obyekt, 4 edge, 0 face; readDXF 1.94s, ->Blender 0.00s
+[OK] S4c PySide6 Blender ichida: 6.8.3 0.00s
+[OK] S4c import Draft/importDXF: 0.05s
+[OK] S4d importDXF.insert (Draft, python): 6 obyekt, 0.04s
+
+#### test_bonsai.py (headless)
+[OK] S5a Bonsai enable: 0.1s ifcopenshell 0.8.5-post1 @ C:\Users\uge226\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\.local\lib\python3.11\site-packages\ifcopenshell\__init__.py
+[OK] S5b FreeCAD Bonsai dan keyin: FreeCAD 1.1.3; ifcopenshell o'zgarmadi=True
+[OK] S5c Bonsai load_project: 20 IfcProduct, 16 mesh obyekt, 0.2s, schema IFC4
+    Pset_GES_Dam: IfcWall "To'g'on" -> {'Turi': 'Gravitatsion', 'Balandlik_m': 20.0, 'Uzunlik_m': 60.0, 'id': 42}
+    Pset_GES_Turbine: IfcFlowMovingDevice 'Turbina 1' -> {'Turi': 'Francis', 'Quvvat_MW': 25.0, 'Napor_m': 45.0, 'Sarf_m3s': 62.0}
+    Pset_GES_Penstock: IfcPipeSegment 'Bosimli quvur 1' -> {'Diametr_m': 2.4, 'Uzunlik_m': 18.0, 'Material': "Po'lat", 'id': 206}
+[OK] S5d Pset_GES_*: {'Pset_GES_Dam': 1, 'Pset_GES_Turbine': 3, 'Pset_GES_Penstock': 3}
+[OK] S5e FreeCAD shape Bonsai sahnasida: 12 tri, jami obyekt 22
+[OK] S5f FreeCAD nativeifc + Bonsai ifcopenshell: True, 20 product
+
+#### gui_run.py (GUI, avto yopiladi)
+[OK] S2 import FreeCAD: 1.1.3 0.14s GuiUp=0
+[OK] S2 numpy: 1.26.4 C:\Users\uge226\Tools\blender-4.5\4.5\python\Lib\site-packages\numpy\__init__.py
+[OK] S3a makeBox->mesh: 12 uchburchak, dims=(1.0, 2.0, 3.0)
+[OK] S3b GES obyektlari: 7 obyekt
+[OK] S3c import Import: 0.01s
+[OK] S3c import Mesh: 0.01s
+[OK] S3c import MeshPart: 0.04s
+[OK] S3c import Sketcher: 0.00s
+[OK] S3c import Draft: 1.71s
+[OK] S3c import importDXF: 0.04s
+[OK] S3c import Spreadsheet: 0.00s
+[OK] S3c import TechDraw: 0.01s
+[OK] S6 stress 10x7: 18.7s, RSS 661 -> 741 MB
+SAQLANDI: C:\Users\uge226\AppData\Local\Temp\ges_spike_gui.blend obyektlar: 11

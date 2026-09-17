@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>Sath</name>
+  <description>Sath serveriga ulanish: modellarni ochish, commit, tasdiqlash, issue lar, GES obyektlari</description>
+  <version>0.3.0</version>
+  <maintainer email="bim@company.local">Sath jamoasi</maintainer>
+  <license file="LICENSE">MIT</license>
+  <freecadmin>1.0.0</freecadmin>
+  <content>
+    <workbench>
+      <classname>GesWorkbench</classname>
+      <subdirectory>./</subdirectory>
+      <icon>resources/ges.svg</icon>
+    </workbench>
+  </content>
+</package>

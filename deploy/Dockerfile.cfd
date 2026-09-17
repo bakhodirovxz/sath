@@ -1,0 +1,13 @@
+# CFD worker: OpenFOAM v2406 + GES server kodi (ges-worker). Kontekst: repo ildizi.
+FROM opencfd/openfoam-default:2406
+USER root
+ARG PIP_TRUSTED_HOST=""
+ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST PYTHONUNBUFFERED=1 \
+    GES_DATA_DIR=/data GES_DATABASE_URL=sqlite:////data/ges.db GES_CFD_MODE=local
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY sim/ ./sim/
+COPY server/ ./server/
+RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir ./sim "./server[postgres]"
+# OpenFOAM muhiti + worker
+CMD ["bash", "-c", "source /openfoam/bash.rc 2>/dev/null; exec /venv/bin/ges-worker"]

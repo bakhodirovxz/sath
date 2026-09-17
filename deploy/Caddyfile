@@ -1,0 +1,14 @@
+# HTTPS teskari proksi (docker compose --profile https).
+# Internetga ochiq domen bo'lsa `tls internal` qatorini olib tashlang — Let's Encrypt avtomatik;
+# ichki tarmoqda Caddy o'z CA si bilan sertifikat beradi. Root sertifikatini ishchi kompyuterlarga
+# o'rnatish: docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
+{$GES_DOMAIN} {
+    tls internal
+    encode gzip zstd
+    request_body {
+        max_size 2GB
+    }
+    reverse_proxy ges:8000 {
+        flush_interval -1
+    }
+}

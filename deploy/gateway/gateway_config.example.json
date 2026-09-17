@@ -1,0 +1,29 @@
+{
+  "server": "http://ges-server:8000",
+  "project_id": 1,
+  "ingest_key": "<Monitoring → Ulanish kaliti>",
+  "interval_s": 10,
+  "sources": [
+    {
+      "type": "sim",
+      "tags": [
+        { "key": "AGG1.P", "base": 24, "amplitude": 3, "period_s": 600 },
+        { "key": "RES.LEVEL", "base": 902, "amplitude": 0.5, "period_s": 3600, "noise": 0.01 }
+      ]
+    },
+    {
+      "type": "modbus",
+      "host": "192.168.10.20",
+      "port": 502,
+      "tags": [
+        { "key": "AGG2.P", "address": 100, "type": "float32", "scale": 1, "unit_id": 1 },
+        { "key": "AGG2.Q", "address": 102, "type": "int16", "scale": 0.1, "kind": "input" }
+      ]
+    },
+    {
+      "type": "opcua",
+      "url": "opc.tcp://192.168.10.30:4840",
+      "tags": [{ "key": "AGG3.P", "node_id": "ns=2;s=Unit3.ActivePower" }]
+    }
+  ]
+}

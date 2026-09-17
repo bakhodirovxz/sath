@@ -1,0 +1,76 @@
+# Sath — kompaniya ichki server.
+#   cp .env.example .env   (parollarni o'zgartiring)
+#   docker compose up -d --build
+# Brauzer: http://<server>:8000
+#
+# Default: SQLite (data/ papkada). Postgres kerak bo'lsa: docker compose --profile postgres up -d
+# CFD (OpenFOAM) kerak bo'lsa: docker compose --profile cfd up -d  (ges servisida GES_CFD_MODE=worker)
+# HTTPS kerak bo'lsa: docker compose --profile https up -d  (Caddy: GES_DOMAIN uchun avtomatik sertifikat,
+#   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen>
+services:
+  ges:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: sath:latest
+    restart: unless-stopped
+    ports:
+      - "${GES_PORT:-8000}:8000"
+    env_file: .env
+    volumes:
+      - ges_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ges
+      POSTGRES_USER: ges
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ges"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      GES_DOMAIN: ${GES_DOMAIN:-ges-server}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [ges]
+
+  cfd:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.cfd
+    image: sath-cfd:latest
+    profiles: ["cfd"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      GES_CFD_MODE: local
+    volumes:
+      - ges_data:/data
+    cpus: "${CFD_CPUS:-4}"
+
+volumes:
+  ges_data:
+  pg_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+!desktop/build/
+
+# Node
+node_modules/
+web/dist/
+
+# Data / secrets
+data/
+*.db
+*.sqlite
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# FreeCAD portable (yuklab olinadi)
+desktop/FreeCAD-*/
+desktop/*.zip
+
+# Sinov artefaktlari
+.playwright-mcp/
+*.png
+!docs/**/*.png
+
+# Portable build ish papkasi va natijasi
+desktop/build/_work/
+desktop/dist/
+*.FCBak
+web/test-results/
+web/playwright-report/

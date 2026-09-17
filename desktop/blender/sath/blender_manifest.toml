@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+id = "sath"
+version = "0.3.0"
+name = "Sath"
+tagline = "Sath serveri, GES obyektlari, DXF/DWG — Blender ichida"
+maintainer = "Sath jamoasi"
+type = "add-on"
+blender_version_min = "5.2.0"
+license = ["SPDX:MIT"]
+tags = ["Import-Export", "Object"]
+wheels = [
+  "./wheels/ezdxf-1.4.4-cp313-cp313-win_amd64.whl",
+  "./wheels/pyparsing-3.3.2-py3-none-any.whl",
+  "./wheels/typing_extensions-4.16.0-py3-none-any.whl",
+  "./wheels/assimp_py-1.2.0-cp313-cp313-win_amd64.whl",
+]
