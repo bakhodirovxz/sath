@@ -7,7 +7,7 @@ $tests = @(
     @("server_ops", ""), @("review_ops", "--bonsai"), @("sim_ops", ""), @("monitor_ops", "--bonsai"),
     @("import_ops", "")
 )
-if ($env:GES_TEST_SERVER) { $tests += ,@("e2e_server", "--bonsai") }  # real server bilan uchdan-uchiga
+if ($env:GES_TEST_SERVER) { $tests += ,@("e2e_server", "--bonsai"); $tests += ,@("sim_hydro", "--bonsai") }  # real server bilan uchdan-uchiga
 $fails = 0
 foreach ($t in $tests) {
     $out = & $blender -b --python $runner -- --test $t[0] $t[1] 2>&1 | Out-String
