@@ -7,6 +7,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci --prefix web/tools  # ifc2frag (fragments testi)
       - run: pip install -e "./sim[dev]" -e "./server[dev]"
       - run: python desktop/build/sync_blender.py --check
       - run: ruff check server sim desktop
