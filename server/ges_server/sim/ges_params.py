@@ -5,6 +5,8 @@ Desktop GES obyektlari va namunaviy modellar shu Pset larni yozadi:
   Pset_GES_Penstock: Diametr_m, Uzunlik_m, Gadirbudirlik_mm, Material
   Pset_GES_Spillway: Kenglik_m, OstonaBelgisi_m, SarfKoeff, Darvozalar
   Pset_GES_Dam:      Balandlik_m, Uzunlik_m, GerbBelgisi_m, Turi, GerbKengligi_m, TagKengligi_m, TagBelgisi_m
+  Pset_GES_Tailrace: Kenglik_m, Nishab, Manning_n, TagBelgisi_m, HisobiyQuyiByef_m, HisobiySarf_m3s
+  Pset_GES_Generator: Quvvat_MVA, FIK, TemirUlushi, Qutblar, Aylanish_rpm
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ def _psets(el) -> dict[str, dict]:
 
 def extract(path: Path) -> dict:
     f = ifcopenshell.open(str(path))
-    units, penstocks, spillways, dams = [], [], [], []
+    units, penstocks, spillways, dams, tailraces, generators = [], [], [], [], [], []
     for el in f.by_type("IfcProduct"):
         ps = _psets(el)
         if "Pset_GES_Turbine" in ps:
@@ -83,4 +85,34 @@ def extract(path: Path) -> dict:
                     "base_elevation_m": _num(p.get("TagBelgisi_m")),
                 }
             )
-    return {"units": units, "penstocks": penstocks, "spillways": spillways, "dams": dams}
+        if "Pset_GES_Tailrace" in ps:
+            p = ps["Pset_GES_Tailrace"]
+            tailraces.append(
+                {
+                    "guid": el.GlobalId,
+                    "name": el.Name or "",
+                    "width_m": _num(p.get("Kenglik_m"), 20.0),
+                    "slope": _num(p.get("Nishab"), 0.001),
+                    "manning": _num(p.get("Manning_n"), 0.03),
+                    "bed_elevation_m": _num(p.get("TagBelgisi_m")),
+                    "design_tailwater_m": _num(p.get("HisobiyQuyiByef_m")),
+                    "design_flow_m3s": _num(p.get("HisobiySarf_m3s")),
+                }
+            )
+        if "Pset_GES_Generator" in ps:
+            p = ps["Pset_GES_Generator"]
+            generators.append(
+                {
+                    "guid": el.GlobalId,
+                    "name": el.Name or "",
+                    "rated_mva": _num(p.get("Quvvat_MVA"), 30.0),
+                    "eta_max": _num(p.get("FIK"), 0.985),
+                    "iron_frac": _num(p.get("TemirUlushi"), 0.4),
+                    "poles": int(_num(p.get("Qutblar"), 24) or 24),
+                    "rpm": _num(p.get("Aylanish_rpm")),
+                }
+            )
+    return {
+        "units": units, "penstocks": penstocks, "spillways": spillways, "dams": dams,
+        "tailraces": tailraces, "generators": generators,
+    }  # fmt: skip

@@ -1,4 +1,4 @@
-"""7 GES obyekt yaratiladi: mesh, IFC klass, Pset_GES_*; parametr o'zgarsa mesh va pset yangilanadi."""
+"""11 GES obyekt yaratiladi: mesh, IFC klass, Pset_GES_*; parametr o'zgarsa mesh va pset yangilanadi."""
 
 import bpy
 

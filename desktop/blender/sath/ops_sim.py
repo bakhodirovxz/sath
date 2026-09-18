@@ -236,6 +236,20 @@ def hydro_params(client, version_id: int | None, s) -> dict:
             d = g["dams"][0]
             if not d.get("crest_elevation_m"):
                 s.hydro_zero = float(r["normal_level_m"]) + 3.0 - float(d.get("height_m") or 20.0)
+        # Gerb belgisi bor: namunaviy ombor sathlarini geometriyaga suramiz (NPU = gerb − 3 m); quyi byef — kanal
+        # pasportidagi hisobiy sath (bo'lsa)
+        crest = g["dams"][0].get("crest_elevation_m") if g.get("dams") else None
+        if crest:
+            shift = float(crest) - 3.0 - float(r["normal_level_m"])
+            r["curve"]["elevations_m"] = [round(e + shift, 2) for e in r["curve"]["elevations_m"]]
+            for k in ("dead_level_m", "normal_level_m", "max_level_m", "initial_level_m", "tailwater_m"):
+                if k in r:
+                    r[k] = round(float(r[k]) + shift, 2)
+            if r.get("spillway") and not (r["dead_level_m"] <= r["spillway"]["crest_m"] <= r["max_level_m"]):
+                r["spillway"]["crest_m"] = r["normal_level_m"]
+        tr = g["tailraces"][0] if g.get("tailraces") else None
+        if tr and tr.get("design_tailwater_m"):
+            r["tailwater_m"] = float(tr["design_tailwater_m"])
     p["inflow_m3s"] = {"constant": float(s.hydro_inflow), "steps": int(s.hydro_days)}
     p["dt_hours"] = 24
     if s.hydro_level0 > 0:

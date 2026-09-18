@@ -111,6 +111,16 @@ def update_representation(obj) -> None:
     bpy.ops.bim.update_representation(obj=obj.name)
 
 
+def sync_placement(obj) -> None:
+    """Blender joylashuvini (location/rotation) IFC ObjectPlacement ga yozish (saqlashni kutmasdan)."""
+    if entity(obj) is None:
+        return
+    try:
+        bpy.ops.bim.edit_object_placement(obj=obj.name)
+    except RuntimeError as e:  # noqa: BLE001
+        print("sath: joylashuvni yozib bo'lmadi", obj.name, e)
+
+
 def select_guids(guids: list[str]) -> int:
     for o in bpy.context.view_layer.objects:
         o.select_set(False)

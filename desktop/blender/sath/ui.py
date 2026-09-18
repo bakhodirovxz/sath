@@ -106,7 +106,7 @@ class SATH_PT_review(GesPanel, bpy.types.Panel):
         s = context.scene.ges
         lay = self.layout
         box = lay.box()
-        box.label(text="Versiyalar farqi", icon="MOD_DIFFERENCE")
+        box.label(text="Versiyalar farqi", icon="SELECT_DIFFERENCE")
         row = box.row(align=True)
         row.operator("sath.diff")
         row.operator("sath.clear_diff", text="", icon="X")
@@ -176,6 +176,27 @@ class SATH_PT_sim(GesPanel, bpy.types.Panel):
         row.operator("sath.sim_clear_anim", text="", icon="X")
         if s.hydro_note:
             box.label(text=s.hydro_note, icon="INFO")
+        box = lay.box()
+        box.label(text="Egizak simulyatsiyalari → timeline (namuna GES: «GES obyektlari»)", icon="OUTLINER_OB_GROUP_INSTANCE")
+        col = box.column(align=True)
+        row = col.row(align=True)
+        row.prop(s, "hammer_close_s")
+        row.operator("sath.sim_hammer", icon="PLAY")
+        row = col.row(align=True)
+        row.prop(s, "gov_event", text="")
+        row.prop(s, "gov_step")
+        row.operator("sath.sim_governor", icon="PLAY")
+        row = col.row(align=True)
+        row.prop(s, "tr_load")
+        row.prop(s, "tr_days")
+        row.operator("sath.sim_transformer", icon="PLAY")
+        row = col.row(align=True)
+        row.prop(s, "seis_intensity", text="")
+        row.prop(s, "seis_ground", text="")
+        row.prop(s, "seis_scale")
+        row.operator("sath.sim_seismic", icon="PLAY")
+        if s.twin_note:
+            box.label(text=s.twin_note, icon="INFO")
         row = lay.row(align=True)
         row.operator("sath.sim_catalog", icon="FILE_REFRESH")
         row.operator("sath.safety_check", icon="CHECKMARK")
@@ -204,7 +225,7 @@ class SATH_PT_sim(GesPanel, bpy.types.Panel):
         row.operator("sath.open_web", text="Webda (grafik, hisobot)", icon="URL").tab = "sim"
         if s.safety_head:
             box = lay.box()
-            box.label(text=s.safety_head, icon="SHIELD")
+            box.label(text=s.safety_head, icon="FAKE_USER_ON")
             for r in s.safety_rows:
                 box.label(text=f"{r.name} — {r.state}: {r.col2}"[:100])
 
@@ -262,7 +283,7 @@ class SATH_PT_twin(GesPanel, bpy.types.Panel):
             box.label(text=f"{r.name}: {r.col2} {r.col3} {r.col4}".strip(), icon=icon)
         if len(s.twin_safety):
             box = lay.box()
-            box.label(text="Xavfsizlik (jonli)", icon="SHIELD")
+            box.label(text="Xavfsizlik (jonli)", icon="FAKE_USER_ON")
             for r in s.twin_safety:
                 box.label(text=f"{r.name}: {r.col2}", icon="CHECKMARK" if r.state == "ok" else "ERROR")
         box = lay.box()

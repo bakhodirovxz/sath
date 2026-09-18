@@ -115,6 +115,14 @@ def ges_kinds() -> list[tuple[str, str]]:
     return [(k, v[0]) for k, v in _wb().OBJECTS.items()]
 
 
+def ges_color(kind: str) -> tuple[float, float, float, float]:
+    """Workbench COLORS (tur nomi bo'yicha) → Blender obyekt rangi (RGBA)."""
+    wb = _wb()
+    cls = wb.OBJECTS[kind][1]
+    rgb = wb.COLORS.get(cls.__name__, (0.8, 0.8, 0.8))
+    return (*rgb, 1.0)
+
+
 def ifc_class(freecad_ifc_type: str) -> str:
     """FreeCAD IfcType ("Pipe Segment") → IFC klass ("IfcPipeSegment")."""
     return "Ifc" + freecad_ifc_type.replace(" ", "")

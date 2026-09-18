@@ -1,6 +1,7 @@
-"""GES parametrik obyektlari (FeaturePython): To'g'on, Bosimli quvur, Turbina agregati, Suv tashlagich,
-Mashina zali, Transformator, Suv qabul qilgich (web qoralama turlari bilan bir xil Pset_GES_* — ikkala mijozda
-yaratilgan element bir xil ko'rinadi va simulyatsiyalar bir xil o'qiydi).
+"""GES parametrik obyektlari (FeaturePython): To'g'on, Bosimli quvur (to'g'ri/egri), Turbina agregati, Generator,
+Chiqarish quvuri, Suv tashlagich, Mashina zali, Boshqaruv xonasi, Transformator, Suv qabul qilgich, Daryo oqimi
+kanali (web qoralama turlari bilan bir xil Pset_GES_* — ikkala mijozda yaratilgan element bir xil ko'rinadi va
+simulyatsiyalar bir xil o'qiydi).
 
 Har obyekt:
 - geometriyasini o'z parametrlaridan hisoblaydi (Part shakl),
@@ -25,6 +26,10 @@ ICONS = {
     "GES_Powerhouse": "powerhouse",
     "GES_Transformer": "transformer",
     "GES_Intake": "intake",
+    "GES_Generator": "turbine",
+    "GES_DraftTube": "penstock",
+    "GES_ControlRoom": "powerhouse",
+    "GES_Tailrace": "spillway",
 }
 CONCRETE = ["B10", "B15", "B20", "B25", "B30", "B35", "B40", "B45", "B50", "B60"]
 MM = 1000.0  # FreeCAD ichki birligi mm; parametrlar metrda
@@ -71,6 +76,27 @@ class _GesBase:
 
     def __setstate__(self, state):
         return None
+
+
+def penstock_path(length: float, inclination_deg: float, bend_radius: float, outlet_length: float) -> dict:
+    """Egri quvur o'qi (birlik — chaqiruvchi birligi): kirish p0=(0,0,0) → qiya qism (u1) → yoy (R) → gorizontal +Y.
+    Qaytaradi: p0, p1 (yoy boshi), pm (yoy o'rtasi), p2 (yoy oxiri), p3 (chiqish), u1, alpha (rad), l1.
+    Blender tomonidagi physics.penstock_path bilan bir xil formulalar."""
+    import math
+
+    a = math.radians(inclination_deg)
+    arc = bend_radius * a
+    l1 = max(length * 0.1, length - outlet_length - arc)
+    u1 = FreeCAD.Vector(0, math.cos(a), -math.sin(a))
+    n1 = FreeCAD.Vector(0, math.sin(a), math.cos(a))  # u1 ga perpendikulyar, yuqoriga-oldinga
+    p0 = FreeCAD.Vector(0, 0, 0)
+    p1 = p0 + u1 * l1
+    c = p1 + n1 * bend_radius
+    p2 = c + FreeCAD.Vector(0, 0, -bend_radius)
+    nm = (n1 + FreeCAD.Vector(0, 0, 1)).normalize()
+    pm = c - nm * bend_radius
+    p3 = p2 + FreeCAD.Vector(0, outlet_length, 0)
+    return {"p0": p0, "p1": p1, "pm": pm, "p2": p2, "p3": p3, "u1": u1, "alpha": a, "l1": l1}
 
 
 class Dam(_GesBase):
@@ -150,12 +176,40 @@ class Penstock(_GesBase):
             "Temir-beton",
             "GRP",
         ]
+        # Egri variant: 0/0 — Z bo'ylab to'g'ri silindr (eski xatti-harakat); aks holda kirish (0,0,0) dan
+        # gorizontaldan Inclination° pastga qiya qism, BendRadius yoy, +Y bo'ylab gorizontal chiqish qismi.
+        obj.addProperty(
+            "App::PropertyFloat", "Inclination", "GES", "Qiyalik, ° (gorizontaldan pastga; 0 — to'g'ri)"
+        ).Inclination = 0.0
+        obj.addProperty("App::PropertyLength", "BendRadius", "GES", "Tirsak radiusi").BendRadius = 8 * MM
+        obj.addProperty(
+            "App::PropertyLength", "OutletLength", "GES", "Gorizontal chiqish qismi uzunligi"
+        ).OutletLength = 6 * MM
 
     def build_shape(self, obj):
         r, t, L = obj.Diameter.Value / 2, obj.WallThickness.Value, obj.Length.Value
-        outer = Part.makeCylinder(r + t, L)
-        inner = Part.makeCylinder(r, L)
-        return outer.cut(inner)
+        alpha = float(getattr(obj, "Inclination", 0.0) or 0.0)
+        if alpha <= 0:
+            outer = Part.makeCylinder(r + t, L)
+            inner = Part.makeCylinder(r, L)
+            return outer.cut(inner)
+        pts = penstock_path(L, alpha, obj.BendRadius.Value, obj.OutletLength.Value)
+        try:
+            path = Part.Wire(
+                [
+                    Part.LineSegment(pts["p0"], pts["p1"]).toShape(),
+                    Part.Arc(pts["p1"], pts["pm"], pts["p2"]).toShape(),
+                    Part.LineSegment(pts["p2"], pts["p3"]).toShape(),
+                ]
+            )
+            u1 = pts["u1"]
+            outer = path.makePipeShell([Part.Wire(Part.makeCircle(r + t, pts["p0"], u1))], True, True)
+            inner = path.makePipeShell([Part.Wire(Part.makeCircle(r, pts["p0"], u1))], True, True)
+            return outer.cut(inner)
+        except Exception:  # noqa: BLE001 — geometriya xatosi: to'g'ri quvurga qaytamiz
+            outer = Part.makeCylinder(r + t, L)
+            inner = Part.makeCylinder(r, L)
+            return outer.cut(inner)
 
     def sim_properties(self, obj):
         return {
@@ -163,6 +217,9 @@ class Penstock(_GesBase):
             "Uzunlik_m": ("IfcReal", obj.Length.Value / MM),
             "Gadirbudirlik_mm": ("IfcReal", obj.Roughness),
             "Material": ("IfcLabel", obj.Material),
+            "Qiyalik_deg": ("IfcReal", float(getattr(obj, "Inclination", 0.0) or 0.0)),
+            "TirsakRadiusi_m": ("IfcReal", obj.BendRadius.Value / MM),
+            "ChiqishUzunligi_m": ("IfcReal", obj.OutletLength.Value / MM),
         }
 
 
@@ -249,7 +306,8 @@ class Spillway(_GesBase):
 
 
 class Powerhouse(_GesBase):
-    """Mashina zali — karkas bino (quti), agregatlar soni va pol belgisi; web «powerhouse» bilan bir xil."""
+    """Mashina zali — karkas bino (quti yoki kesim: devorlari bo'sh, +X yon devori olib tashlangan — egizakda agregatlar
+    ko'rinadi), agregatlar soni va pol belgisi; web «powerhouse» bilan bir xil."""
 
     ifc_type = "Building Element Proxy"
     pset = "Pset_GES_Powerhouse"
@@ -266,6 +324,10 @@ class Powerhouse(_GesBase):
             "App::PropertyEnumeration", "ConcreteClass", "GES", "Beton klassi (karkas)"
         ).ConcreteClass = CONCRETE
         obj.ConcreteClass = "B25"
+        obj.addProperty("App::PropertyEnumeration", "View", "GES", "Ko'rinish").View = [
+            "Yopiq",
+            "Kesim",
+        ]
 
     def build_shape(self, obj):
         L, W, H = obj.Length.Value, obj.Width.Value, obj.Height.Value
@@ -282,7 +344,14 @@ class Powerhouse(_GesBase):
                 ]
             )
         ).extrude(FreeCAD.Vector(L, 0, 0))
-        return body.fuse(roof)
+        if getattr(obj, "View", "Yopiq") != "Kesim":
+            return body.fuse(roof)
+        # kesim: ichi bo'sh (devor 0.6 m), +X yon devori va tomning yarmi olib tashlangan
+        wall = 0.6 * MM
+        inner = Part.makeBox(L - wall, W - 2 * wall, H + t, FreeCAD.Vector(-L / 2 + wall, -W / 2 + wall, wall))
+        shell = body.fuse(roof).cut(inner)
+        cut = Part.makeBox(L / 2 + 1, W + 2, H + t + 2, FreeCAD.Vector(0, -W / 2 - 1, wall))
+        return shell.cut(cut)
 
     def sim_properties(self, obj):
         return {
@@ -395,6 +464,205 @@ class Intake(_GesBase):
         }
 
 
+class Generator(_GesBase):
+    """Sinxron gidrogenerator — stator (qovurg'ali silindr), qo'zg'atgich qopqog'i, val; turbina ustiga o'rnatiladi.
+    Aylanish tezligi n = 120·f/p (sinxron), FIK — temir (doimiy) + mis (∝P²) yo'qotishlar (IEEE Std 115)."""
+
+    ifc_type = "Electric Generator"
+    pset = "Pset_GES_Generator"
+
+    def add_properties(self, obj):
+        obj.addProperty(
+            "App::PropertyFloat", "RatedPower", "GES", "Nominal to'liq quvvat, MVA"
+        ).RatedPower = 30.0
+        obj.addProperty("App::PropertyFloat", "Voltage", "GES", "Stator kuchlanishi, kV").Voltage = 10.5
+        obj.addProperty(
+            "App::PropertyFloat", "EfficiencyMax", "GES", "Nominal FIK, 0..1"
+        ).EfficiencyMax = 0.985
+        obj.addProperty(
+            "App::PropertyFloat", "IronLossFrac", "GES", "Temir (doimiy) yo'qotish ulushi, 0..1"
+        ).IronLossFrac = 0.4
+        obj.addProperty("App::PropertyInteger", "Poles", "GES", "Qutblar soni").Poles = 24
+        obj.addProperty("App::PropertyFloat", "Frequency", "GES", "Chastota, Hz").Frequency = 50.0
+        obj.addProperty(
+            "App::PropertyLength", "StatorDiameter", "GES", "Stator diametri"
+        ).StatorDiameter = 6 * MM
+        obj.addProperty("App::PropertyLength", "Height", "GES", "Balandligi").Height = 3.5 * MM
+
+    def build_shape(self, obj):
+        d, h = obj.StatorDiameter.Value, obj.Height.Value
+        stator = Part.makeCylinder(d / 2, h * 0.7)
+        shape = stator
+        # sovitish qovurg'alari (rotor aylanishi ko'rinishi uchun ham) — 12 ta radial plastina
+        for i in range(12):
+            rib = Part.makeBox(d * 0.08, d * 0.05, h * 0.7, FreeCAD.Vector(d / 2 - d * 0.02, -d * 0.025, 0))
+            rib.rotate(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), i * 30)
+            shape = shape.fuse(rib)
+        cap = Part.makeCone(d * 0.35, d * 0.2, h * 0.2, FreeCAD.Vector(0, 0, h * 0.7))
+        exciter = Part.makeCylinder(d * 0.15, h * 0.1, FreeCAD.Vector(0, 0, h * 0.9))
+        shaft = Part.makeCylinder(d * 0.06, h * 0.15, FreeCAD.Vector(0, 0, -h * 0.15))
+        return shape.fuse(cap).fuse(exciter).fuse(shaft)
+
+    def sim_properties(self, obj):
+        rpm = 120.0 * obj.Frequency / max(2, obj.Poles)
+        return {
+            "Quvvat_MVA": ("IfcReal", obj.RatedPower),
+            "Kuchlanish_kV": ("IfcReal", obj.Voltage),
+            "FIK": ("IfcReal", obj.EfficiencyMax),
+            "TemirUlushi": ("IfcReal", obj.IronLossFrac),
+            "Qutblar": ("IfcInteger", obj.Poles),
+            "Chastota_Hz": ("IfcReal", obj.Frequency),
+            "Aylanish_rpm": ("IfcReal", round(rpm, 2)),
+        }
+
+
+class DraftTube(_GesBase):
+    """Chiqarish (so'rish) quvuri — turbina ostidan vertikal konus, tirsak, +Y bo'ylab kengayuvchi diffuzor.
+    So'rish balandligi H_s (ish g'ildiragi o'qi − quyi byef) Thoma kavitatsiya koeffitsientini belgilaydi."""
+
+    ifc_type = "Flow Segment"
+    pset = "Pset_GES_DraftTube"
+
+    def add_properties(self, obj):
+        obj.addProperty(
+            "App::PropertyLength", "InletDiameter", "GES", "Kirish diametri (ish g'ildiragi ostida)"
+        ).InletDiameter = 3 * MM
+        obj.addProperty("App::PropertyLength", "ConeHeight", "GES", "Konus balandligi").ConeHeight = 5 * MM
+        obj.addProperty("App::PropertyLength", "OutletWidth", "GES", "Chiqish kengligi").OutletWidth = 8 * MM
+        obj.addProperty(
+            "App::PropertyLength", "OutletHeight", "GES", "Chiqish balandligi"
+        ).OutletHeight = 4 * MM
+        obj.addProperty(
+            "App::PropertyLength", "DiffuserLength", "GES", "Diffuzor uzunligi (+Y)"
+        ).DiffuserLength = 12 * MM
+        obj.addProperty(
+            "App::PropertyFloat", "SuctionHead", "GES", "So'rish balandligi H_s, m (ish g'ildiragi − quyi byef)"
+        ).SuctionHead = 2.0
+
+    def build_shape(self, obj):
+        d, hc = obj.InletDiameter.Value, obj.ConeHeight.Value
+        bw, bh, L = obj.OutletWidth.Value, obj.OutletHeight.Value, obj.DiffuserLength.Value
+        # konus: yuqorida d/2, pastda d·0.75 (kengayuvchi), pastga qarab
+        R = d * 0.75
+        cone = Part.makeCone(R, d / 2, hc, FreeCAD.Vector(0, 0, -hc))
+        # tirsak: konus tagidagi doira X o'qi atrofida (markaz (0, R, −hc)) 90° aylantiriladi → +Y ga buriladi
+        disc = Part.Face(Part.Wire(Part.makeCircle(R, FreeCAD.Vector(0, 0, -hc), FreeCAD.Vector(0, 0, 1))))
+        elbow = disc.revolve(FreeCAD.Vector(0, R, -hc), FreeCAD.Vector(1, 0, 0), 90)
+        if elbow.BoundBox.ZMax > -hc + 1.0:  # noto'g'ri tomonga aylangan bo'lsa
+            elbow = disc.revolve(FreeCAD.Vector(0, R, -hc), FreeCAD.Vector(1, 0, 0), -90)
+        # diffuzor: kengayuvchi loft (kirish kvadrat ≈ 2R, chiqish bw×bh), tirsak oxiridan +Y
+        y0 = R
+        z0 = -hc - R
+        s_in = 2 * R
+
+        def rect(y, w, h):
+            return Part.makePolygon(
+                [
+                    FreeCAD.Vector(-w / 2, y, z0 - h / 2),
+                    FreeCAD.Vector(w / 2, y, z0 - h / 2),
+                    FreeCAD.Vector(w / 2, y, z0 + h / 2),
+                    FreeCAD.Vector(-w / 2, y, z0 + h / 2),
+                    FreeCAD.Vector(-w / 2, y, z0 - h / 2),
+                ]
+            )
+
+        diffuser = Part.makeLoft([rect(y0, s_in, s_in), rect(y0 + L, bw, bh)], True)
+        # qismlar bir tekislikda tutashadi — bunday bool amallar OCC da buziladi/osiladi; kompaund yetarli
+        return Part.makeCompound([cone, elbow, diffuser])
+
+    def sim_properties(self, obj):
+        return {
+            "KirishDiametr_m": ("IfcReal", obj.InletDiameter.Value / MM),
+            "KonusBalandligi_m": ("IfcReal", obj.ConeHeight.Value / MM),
+            "ChiqishKenglik_m": ("IfcReal", obj.OutletWidth.Value / MM),
+            "ChiqishBalandlik_m": ("IfcReal", obj.OutletHeight.Value / MM),
+            "DiffuzorUzunligi_m": ("IfcReal", obj.DiffuserLength.Value / MM),
+            "SorishBalandligi_m": ("IfcReal", obj.SuctionHead),
+        }
+
+
+class ControlRoom(_GesBase):
+    """Boshqaruv (dispetcher) xonasi — SCADA; oynali quti (old tomon −Y)."""
+
+    ifc_type = "Building Element Proxy"
+    pset = "Pset_GES_ControlRoom"
+
+    def add_properties(self, obj):
+        obj.addProperty("App::PropertyLength", "Length", "GES", "Uzunligi (X)").Length = 12 * MM
+        obj.addProperty("App::PropertyLength", "Width", "GES", "Kengligi (Y)").Width = 8 * MM
+        obj.addProperty("App::PropertyLength", "Height", "GES", "Balandligi").Height = 4 * MM
+        obj.addProperty(
+            "App::PropertyFloat", "FloorElevation", "GES", "Pol belgisi, m (abs)"
+        ).FloorElevation = 0.0
+        obj.addProperty("App::PropertyInteger", "Operators", "GES", "Dispetcherlar soni").Operators = 2
+        obj.addProperty(
+            "App::PropertyInteger", "ScadaChannels", "GES", "SCADA kanallari soni"
+        ).ScadaChannels = 256
+
+    def build_shape(self, obj):
+        L, W, H = obj.Length.Value, obj.Width.Value, obj.Height.Value
+        room = Part.makeBox(L, W, H, FreeCAD.Vector(-L / 2, -W / 2, 0))
+        # old tomonda (−Y) uzun oyna — mashina zaliga qaraydi
+        win = Part.makeBox(L * 0.8, W * 0.1, H * 0.45, FreeCAD.Vector(-L * 0.4, -W / 2 - 1, H * 0.35))
+        return room.cut(win)
+
+    def sim_properties(self, obj):
+        return {
+            "Uzunlik_m": ("IfcReal", obj.Length.Value / MM),
+            "Kenglik_m": ("IfcReal", obj.Width.Value / MM),
+            "Balandlik_m": ("IfcReal", obj.Height.Value / MM),
+            "PolBelgisi_m": ("IfcReal", obj.FloorElevation),
+            "Dispetcherlar": ("IfcInteger", obj.Operators),
+            "SCADA_Kanallar": ("IfcInteger", obj.ScadaChannels),
+        }
+
+
+class Tailrace(_GesBase):
+    """Daryo oqimi (quyi byef kanali) — U-kesimli ochiq kanal, +Y yo'nalishda; Manning bo'yicha normal chuqurlik
+    quyi byef sathini beradi: Q = (1/n)·A·R^(2/3)·√S."""
+
+    ifc_type = "Civil Element"
+    pset = "Pset_GES_Tailrace"
+
+    def add_properties(self, obj):
+        obj.addProperty("App::PropertyLength", "Width", "GES", "Kanal kengligi (X)").Width = 20 * MM
+        obj.addProperty("App::PropertyLength", "Length", "GES", "Uzunligi (Y)").Length = 40 * MM
+        obj.addProperty("App::PropertyLength", "Depth", "GES", "Devor balandligi").Depth = 6 * MM
+        obj.addProperty(
+            "App::PropertyLength", "WallThickness", "GES", "Devor/tag qalinligi"
+        ).WallThickness = 0.8 * MM
+        obj.addProperty("App::PropertyFloat", "BedSlope", "GES", "Tag nishabi S").BedSlope = 0.001
+        obj.addProperty("App::PropertyFloat", "Manning", "GES", "Manning g'adir-budirligi n").Manning = 0.03
+        obj.addProperty(
+            "App::PropertyFloat", "BedElevation", "GES", "Tag belgisi, m (abs)"
+        ).BedElevation = 0.0
+        # Quyi byef reyting egri chizig'i: TW(Q) = TW_hisobiy + [y_n(Q) − y_n(Q_hisobiy)]  (Manning normal chuqurlik)
+        obj.addProperty(
+            "App::PropertyFloat", "DesignTailwater", "GES", "Hisobiy quyi byef sathi, m (abs)"
+        ).DesignTailwater = 0.0
+        obj.addProperty(
+            "App::PropertyFloat", "DesignFlow", "GES", "Hisobiy sarf (barcha agregatlar), m3/s"
+        ).DesignFlow = 100.0
+
+    def build_shape(self, obj):
+        W, L, D, t = obj.Width.Value, obj.Length.Value, obj.Depth.Value, obj.WallThickness.Value
+        outer = Part.makeBox(W + 2 * t, L, D + t, FreeCAD.Vector(-W / 2 - t, 0, -t))
+        inner = Part.makeBox(W, L + 2, D + 1, FreeCAD.Vector(-W / 2, -1, 0))
+        return outer.cut(inner)
+
+    def sim_properties(self, obj):
+        return {
+            "Kenglik_m": ("IfcReal", obj.Width.Value / MM),
+            "Uzunlik_m": ("IfcReal", obj.Length.Value / MM),
+            "Chuqurlik_m": ("IfcReal", obj.Depth.Value / MM),
+            "Nishab": ("IfcReal", obj.BedSlope),
+            "Manning_n": ("IfcReal", obj.Manning),
+            "TagBelgisi_m": ("IfcReal", obj.BedElevation),
+            "HisobiyQuyiByef_m": ("IfcReal", obj.DesignTailwater),
+            "HisobiySarf_m3s": ("IfcReal", obj.DesignFlow),
+        }
+
+
 COLORS = {
     "Dam": (0.72, 0.70, 0.66),  # beton
     "Penstock": (0.45, 0.52, 0.60),  # po'lat
@@ -403,6 +671,10 @@ COLORS = {
     "Powerhouse": (0.69, 0.63, 0.53),
     "Transformer": (0.73, 0.53, 0.15),
     "Intake": (0.49, 0.61, 0.71),
+    "Generator": (0.16, 0.45, 0.78),  # ko'k (rasmdagi kabi)
+    "DraftTube": (0.20, 0.40, 0.70),
+    "ControlRoom": (0.82, 0.82, 0.86),
+    "Tailrace": (0.62, 0.62, 0.60),
 }
 
 
@@ -434,6 +706,10 @@ OBJECTS = {
     "GES_Powerhouse": ("Mashina zali", Powerhouse),
     "GES_Transformer": ("Transformator", Transformer),
     "GES_Intake": ("Suv qabul qilgich", Intake),
+    "GES_Generator": ("Generator", Generator),
+    "GES_DraftTube": ("Chiqarish quvuri", DraftTube),
+    "GES_ControlRoom": ("Boshqaruv xonasi", ControlRoom),
+    "GES_Tailrace": ("Daryo oqimi kanali", Tailrace),
 }
 COMMAND_NAMES = list(OBJECTS)
 

@@ -17,6 +17,10 @@ KIND_ITEMS = [
     ("GES_Powerhouse", "Mashina zali", ""),
     ("GES_Transformer", "Transformator", ""),
     ("GES_Intake", "Suv qabul qilgich", ""),
+    ("GES_Generator", "Generator", ""),
+    ("GES_DraftTube", "Chiqarish quvuri", ""),
+    ("GES_ControlRoom", "Boshqaruv xonasi", ""),
+    ("GES_Tailrace", "Daryo oqimi kanali", ""),
 ]
 KIND_LABEL = {k: v for k, v, _ in KIND_ITEMS}
 
@@ -68,6 +72,7 @@ class GesParam(bpy.types.PropertyGroup):
 class GesObject(bpy.types.PropertyGroup):
     kind: bpy.props.StringProperty()
     busy: bpy.props.BoolProperty(default=False)
+    role: bpy.props.StringProperty(description="Egizakdagi roli: unit:1, gen:1, draft:1, penstock:1, dam, tailrace…")
     params: bpy.props.CollectionProperty(type=GesParam)
 
 
@@ -81,6 +86,38 @@ def params_dict(obj) -> dict:
         else:
             out[p.name] = p.value_float
     return out
+
+
+def set_params(obj, **values) -> None:
+    """Bir nechta parametrni bir yo'la o'rnatib, bir marta qayta qurish (har birida rebuild emas)."""
+    g = obj.ges
+    g.busy = True
+    try:
+        for p in g.params:
+            if p.name not in values:
+                continue
+            v = values[p.name]
+            if p.ptype == "enum":
+                p.value_enum = str(v)
+            elif p.ptype == "int":
+                p.value_int = int(v)
+            else:
+                p.value_float = float(v)
+    finally:
+        g.busy = False
+    rebuild(obj)
+
+
+def by_role(role: str):
+    return next((o for o in bpy.data.objects if getattr(o, "ges", None) and o.ges.role == role), None)
+
+
+def by_kind_all() -> list:
+    return [o for o in bpy.data.objects if getattr(o, "ges", None) and o.ges.kind]
+
+
+def by_kind(kind: str) -> list:
+    return sorted((o for o in bpy.data.objects if getattr(o, "ges", None) and o.ges.kind == kind), key=lambda o: o.name)
 
 
 def _fill_schema(obj, kind: str) -> None:
@@ -124,6 +161,7 @@ def add(context, kind: str, name: str | None = None):
     me = bpy.data.meshes.new(kind)
     obj = bpy.data.objects.new(name or KIND_LABEL[kind], me)
     context.scene.collection.objects.link(obj)
+    obj.color = fc_engine.ges_color(kind)
     _fill_schema(obj, kind)
     rebuild(obj)
     return obj
@@ -179,6 +217,16 @@ class SATH_PT_objects(bpy.types.Panel):
         if not fc_engine.available():
             lay.label(text="FreeCAD topilmadi — Sozlamalar → Sath", icon="ERROR")
             return
+        s = context.scene.ges
+        box = lay.box()
+        row = box.row(align=True)
+        row.prop(s, "demo_head")
+        row.prop(s, "demo_units")
+        row = box.row(align=True)
+        row.prop(s, "demo_unit_mw")
+        row.operator("sath.build_demo_plant", icon="ADD")
+        if s.twin_note:
+            box.label(text=s.twin_note, icon="INFO")
         grid = lay.grid_flow(columns=2, align=True)
         for k, label, _ in KIND_ITEMS:
             grid.operator("sath.add_object", text=label).kind = k

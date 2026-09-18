@@ -11,18 +11,20 @@ except ImportError:  # pytest (Blender siz): faqat sof modullar import qilinadi
 MODULES: list = []
 if bpy is not None:
     from . import (
+        demo_plant,
         ges_objects,
         ops_import,
         ops_monitor,
         ops_review,
         ops_server,
         ops_sim,
+        ops_twin,
         prefs,
         props,
         ui,
     )
 
-    MODULES = [prefs, props, ges_objects, ops_server, ops_review, ops_sim, ops_monitor, ops_import, ui]
+    MODULES = [prefs, props, ges_objects, ops_server, ops_review, ops_sim, ops_twin, demo_plant, ops_monitor, ops_import, ui]
 
 
 def register():

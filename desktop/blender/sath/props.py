@@ -112,6 +112,31 @@ class GesScene(bpy.types.PropertyGroup):
     )
     hydro_zero: bpy.props.FloatProperty(name="Model 0 belgisi, m", default=0.0, description="IFC z=0 ga mos absolyut belgi")
     hydro_note: bpy.props.StringProperty(default="")
+    # Egizak: namuna GES va egizak simulyatsiyalari
+    demo_head: bpy.props.FloatProperty(name="Napor H, m", default=45.0, min=10.0, max=300.0)
+    demo_units: bpy.props.IntProperty(name="Agregatlar", default=2, min=1, max=4)
+    demo_unit_mw: bpy.props.FloatProperty(name="Agregat quvvati, MW", default=25.0, min=1.0, max=500.0)
+    twin_note: bpy.props.StringProperty(default="")
+    hammer_close_s: bpy.props.FloatProperty(name="Yopilish vaqti, s", default=6.0, min=0.5, max=60.0)
+    gov_event: bpy.props.EnumProperty(
+        name="Hodisa",
+        items=[
+            ("load_step", "Yuk qadami", ""),
+            ("rejection", "Yuk tashlash", ""),
+            ("setpoint", "Setpoint qadami", ""),
+        ],
+        default="load_step",
+    )
+    gov_step: bpy.props.FloatProperty(name="Qadam, p.u.", default=0.1, min=0.01, max=1.0)
+    tr_days: bpy.props.IntProperty(name="Kunlar", default=3, min=1, max=30)
+    tr_load: bpy.props.FloatProperty(name="Yuklanish, %", default=90.0, min=10.0, max=150.0)
+    seis_intensity: bpy.props.EnumProperty(
+        name="Seysmiklik", items=[("7", "7 ball", ""), ("8", "8 ball", ""), ("9", "9 ball", "")], default="8"
+    )
+    seis_ground: bpy.props.EnumProperty(
+        name="Grunt", items=[(g, f"{g} turi", "") for g in ("A", "B", "C", "D", "E")], default="B"
+    )
+    seis_scale: bpy.props.FloatProperty(name="Vizual ko'paytirgich", default=20.0, min=1.0, max=200.0)
     safety_head: bpy.props.StringProperty(default="")
     safety_rows: bpy.props.CollectionProperty(type=GesListItem)
     sensors: bpy.props.CollectionProperty(type=GesListItem)

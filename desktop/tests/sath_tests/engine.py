@@ -12,7 +12,12 @@ def run(ctx):
     assert set(kinds) == {
         "GES_Dam", "GES_Penstock", "GES_Turbine", "GES_Spillway",
         "GES_Powerhouse", "GES_Transformer", "GES_Intake",
+        "GES_Generator", "GES_DraftTube", "GES_ControlRoom", "GES_Tailrace",
     }  # fmt: skip
+    assert fc_engine.ges_build("GES_Generator", {"Poles": 48}).psets["Pset_GES_Generator"]["Aylanish_rpm"] == 125.0
+    egri = fc_engine.ges_build("GES_Penstock", {"Length": 60.0, "Inclination": 40.0})
+    zs = [v[2] for v in egri.verts]
+    assert min(zs) < -30 and egri.ifc_class == "IfcPipeSegment", min(zs)  # egri quvur pastga tushadi
     schema = {f["name"]: f for f in fc_engine.ges_schema("GES_Dam")}
     assert schema["Height"]["type"] == "length" and abs(schema["Height"]["default"] - 20.0) < 1e-6
     assert schema["DamType"]["type"] == "enum" and "Gravitatsion" in schema["DamType"]["items"]
