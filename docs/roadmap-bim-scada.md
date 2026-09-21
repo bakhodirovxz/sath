@@ -159,7 +159,7 @@ Fayllar: `server/ges_server/monitoring/router.py`, `monitoring/live.py`, `orm.py
 Qabul mezoni: NaN, inf, 9999-yil va 1970-yil tamg'alari uchun negativ testlar bor va o'tadi.
 Bog'liqlik: A1.
 
-### A4 — Audit jurnali yaxlitligi ✅
+### A4 — Audit jurnali yaxlitligi ✅ (`421fcc8`)
 
 Muammo: `orm.py:657` — `AuditLog` oddiy o'zgaruvchan jadval. Hash zanjiri, imzo, append-only
 yo'q. `audit.py:16` commit ni chaqiruvchiga qoldiradi va so'rov tranzaksiyasini baham ko'radi —
@@ -186,7 +186,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2.
 
-### A5 — Versiya raqami poygasi va indekslar
+### A5 — Versiya raqami poygasi va indekslar ✅
 
 Muammo: `models/router.py:220` — `SELECT max(number)+1` keyin INSERT, `UniqueConstraint`
 ustiga. Parallel commit da ushlanmagan `IntegrityError` → 500.

@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -458,7 +459,11 @@ class AlarmEvent(Base):
     dispetcher kvitlaydi (ack)."""
 
     __tablename__ = "alarm_events"
-    __table_args__ = (Index("ix_alarm_events_project_started", "project_id", "started_at"),)
+    __table_args__ = (
+        Index("ix_alarm_events_project_started", "project_id", "started_at"),
+        # har alarm o'tishida ochiq hodisa qidiriladi (live.transition)
+        Index("ix_alarm_events_sensor_open", "sensor_id", "ended_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -486,7 +491,17 @@ class Command(Base):
     """Supervisory control: dispetcher buyrug'i (setpoint/rele) → gateway → SCADA. Har qadam audit."""
 
     __tablename__ = "commands"
-    __table_args__ = (Index("ix_commands_project_status", "project_id", "status"),)
+    __table_args__ = (
+        Index("ix_commands_project_status", "project_id", "status"),
+        # Bitta sensorga bir vaqtda faqat bitta ochiq (pending/sent) buyruq — TOCTOU DB darajasida yopiladi
+        Index(
+            "uq_commands_sensor_open",
+            "sensor_id",
+            unique=True,
+            sqlite_where=text("status IN ('pending', 'sent')"),
+            postgresql_where=text("status IN ('pending', 'sent')"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -691,7 +706,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     action: Mapped[str] = mapped_column(String(64), index=True)
     target_type: Mapped[str] = mapped_column(String(32))
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

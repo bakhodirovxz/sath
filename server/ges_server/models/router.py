@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Up
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from .. import audit
 from ..auth.deps import (
@@ -81,6 +82,17 @@ def _safety_last(model_id: int) -> dict | None:
     from ..sim import safety
 
     return safety.last(model_id)
+
+
+_VERSION_RETRIES = 3
+
+
+def _next_number(db, model_id: int) -> int:
+    """Keyingi versiya raqami (max+1). Alohida funksiya — poyga testi uchun to'siq qo'yiladi."""
+    return (
+        db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model_id).scalar()
+        + 1
+    )
 
 
 def version_out(v: Version) -> VersionOut:
@@ -216,36 +228,47 @@ def upload_version(
         parent = db.get(Version, parent_id)
         if parent is None or parent.model_id != model.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_id shu modelga tegishli emas")
-    else:
-        parent = model.versions[-1] if model.versions else None
 
-    next_number = (
-        db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar()
-        + 1
-    )
-    version = Version(
-        model_id=model.id,
-        number=next_number,
-        parent_id=parent.id if parent else None,
-        author_id=user.id,
-        message=message,
-        file_sha256=sha,
-        file_name=file.filename,
-        file_size=size,
-        meta=meta,
-    )
-    db.add(version)
-    db.flush()
-    audit.log(
-        db,
-        user_id=user.id,
-        action="version.create",
-        target_type="version",
-        target_id=version.id,
-        project_id=model.project_id,
-        detail={"model_id": model.id, "number": version.number, "message": message},
-    )
-    db.commit()
+    # Versiya raqami: max+1 → INSERT poygasi UniqueConstraint(model_id, number) ga uriladi;
+    # IntegrityError da rollback qilib qayta urinamiz (fayl saqlash sikldan tashqarida, idempotent).
+    model_id, project_id = model.id, model.project_id
+    for attempt in range(_VERSION_RETRIES):
+        try:
+            model = db.get(Model, model_id)
+            if parent_id is None:
+                parent = model.versions[-1] if model.versions else None
+            else:
+                parent = db.get(Version, parent_id)
+            version = Version(
+                model_id=model_id,
+                number=_next_number(db, model_id),
+                parent_id=parent.id if parent else None,
+                author_id=user.id,
+                message=message,
+                file_sha256=sha,
+                file_name=file.filename,
+                file_size=size,
+                meta=meta,
+            )
+            db.add(version)
+            db.flush()
+            audit.log(
+                db,
+                user_id=user.id,
+                action="version.create",
+                target_type="version",
+                target_id=version.id,
+                project_id=project_id,
+                detail={"model_id": model_id, "number": version.number, "message": message},
+            )
+            db.commit()
+            break
+        except IntegrityError:
+            db.rollback()
+            if attempt == _VERSION_RETRIES - 1:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, "Parallel yuklash — qayta urinib ko'ring"
+                ) from None
     db.refresh(version)
     if settings.fragments_enabled:
         from . import fragments

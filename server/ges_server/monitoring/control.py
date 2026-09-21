@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 
 from .. import audit, notifications
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
@@ -131,7 +132,14 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         project_id=project.id, sensor_id=s.id, value=body.value, note=body.note, created_by=user.id
     )
     db.add(c)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # uq_commands_sensor_open: parallel so'rov yuqoridagi tekshiruvdan o'tib ulgurgan (TOCTOU)
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Bu sensorga parallel buyruq yuborildi — qayta tekshiring"
+        ) from None
     audit.log(
         db,
         user_id=user.id,
