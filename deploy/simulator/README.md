@@ -2,12 +2,14 @@
 
 Haqiqiy stansiyaga o'xshash dinamik model (`ges_sim` fizikasi: ombor balansi, suv tashlagich, quvur,
 turbina/generator; agregat va zatvor kechikishlari; izolyatsiyalangan rejimda chastota 2H·dΔω/dt).
-Modbus TCP (5020) va OPC UA (4840) server sifatida ishlaydi — gateway haqiqiy protokol bilan ulanadi.
+Modbus TCP (5020), OPC UA (4840) va IEC 60870-5-104 (2404, `c104` o'rnatilgan bo'lsa) server sifatida
+ishlaydi — gateway haqiqiy protokol bilan ulanadi.
 
 ```
 pip install ../../sim "pymodbus>=3.8,<3.10" asyncua
 python ges_simulator.py --list
 python ges_simulator.py --scenario unit_trip --modbus 0.0.0.0:5020 --opcua opc.tcp://0.0.0.0:4840/sath-sim/
+python ges_simulator.py --scenario unit_trip --iec104 0.0.0.0:2404   # pip install c104 (GPLv3, alohida jarayon)
 python ges_simulator.py --print-gateway-config --modbus 127.0.0.1:5020 > gw.json   # keyin kalitlarni to'ldiring
 python ../gateway/ges_gateway.py gw.json
 ```
@@ -30,7 +32,8 @@ Docker: `docker compose --profile sim up -d` (`SIM_SCENARIO`, `SIM_SPEED`, gatew
 
 Teglar: `RES.H RES.QIN RES.QSPILL TW.H GATE1.SP GATE1.POS GRID.F TR1.OIL NET.H AGGn.P AGGn.Q AGGn.RUN
 AGGn.SP AGGn.VIB AGGn.TEMP` (n = 1..3). Yoziladigan: `GATE1.SP`, `AGGn.SP` — Modbus holding
-registrlari (float32, `--print-gateway-config` manzillarni beradi) yoki OPC UA `ns=2;s=<KEY>`.
+registrlari (float32, `--print-gateway-config` manzillarni beradi), OPC UA `ns=2;s=<KEY>` yoki IEC 104
+IOA (o'lchovlar 100+ `M_ME_NC_1`, `*.RUN` — `M_SP_TB_1` vaqt tamg'ali → gateway SOE; setpointlar 200+ `C_SE_NC_1`).
 Serverda shu kalitli sensorlar yarating (Monitoring → CSV import) — `GATE1.SP`, `AGGn.SP` `writable`.
 
 SOE: trip/zatvor/uzgich hodisalari millisekundli tamg'a bilan `soe.jsonl` ga (D3 da serverga).

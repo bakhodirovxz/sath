@@ -368,7 +368,126 @@ class CsvTailSource(Source):
         return out
 
 
-SOURCES = {"sim": SimSource, "modbus": ModbusSource, "opcua": OpcUaSource, "csv": CsvTailSource}
+class Iec104Source(Source):
+    """IEC 60870-5-104 klienti (`c104`, lib60870 ustida; GPLv3 — gateway alohida jarayon) (E5).
+
+    cfg: {host, port: 2404, common_address: 1, interrogation_s: 300, originator: 0,
+          tags: [{key, ioa, type: "M_ME_NC_1" | "M_ME_NB_1" | "M_ME_NA_1" | "M_SP_NA_1" | "M_DP_NA_1" |
+                  "M_ME_TF_1" | "M_SP_TB_1" | "M_DP_TB_1" | "M_IT_NA_1", scale?}],
+          commands: [{key, ioa, type: "C_SE_NC_1" | "C_SE_NB_1" | "C_SC_NA_1"}]}   — default bo'sh (o'chiq)
+    Ulanishda va har `interrogation_s` da umumiy so'rov (C_IC_NA_1); spontan xabarlar obuna kabi keladi.
+    Sifat (QDS): IV → bad, NT/BL/OV → uncertain, SB → substituted. Vaqt tamg'ali turlar (…_TB_1/_TF_1)
+    `recorded_at` (ms) ni `src_ts` sifatida beradi; diskret vaqt tamg'ali hodisalar (SP/DP _TB) SOE
+    ro'yxatiga ham yoziladi (`self.soe`, D3 da serverga). Aloqa uzilsa read() ConnectionError → bad."""
+
+    def __init__(self, cfg: dict):
+        super().__init__()
+        import c104
+
+        self.c104 = c104
+        self.cfg = cfg
+        self.ca = int(cfg.get("common_address", 1))
+        self.client = c104.Client(tick_rate_ms=int(cfg.get("tick_ms", 100)))
+        if cfg.get("originator") is not None:
+            self.client.originator_address = int(cfg["originator"])
+        self.conn = self.client.add_connection(ip=cfg["host"], port=int(cfg.get("port", 2404)), init=c104.Init.ALL)
+        self.station = self.conn.add_station(common_address=self.ca)
+        self._lock = threading.Lock()
+        self._latest: dict[str, dict] = {}
+        self._changed: set[str] = set()
+        self.soe: list[dict] = []
+        self.keys_by_ioa: dict[int, dict] = {}
+        # c104 callback imzosini tekshiradi — `from __future__ import annotations` satrli
+        # annotatsiya beradi, shuning uchun haqiqiy turlar bilan qayta belgilaymiz
+        cb = self._on_receive
+        cb.__func__.__annotations__ = {
+            "point": c104.Point,
+            "previous_info": c104.Information,
+            "message": c104.IncomingMessage,
+            "return": c104.ResponseState,
+        }
+        for tag in cfg["tags"]:
+            typ = getattr(c104.Type, tag.get("type", "M_ME_NC_1"))
+            pt = self.station.add_point(io_address=int(tag["ioa"]), type=typ)
+            self.keys_by_ioa[int(tag["ioa"])] = tag
+            pt.on_receive(cb)
+        self.cmd_points: dict[str, object] = {}
+        for c in cfg.get("commands", []):
+            typ = getattr(c104.Type, c.get("type", "C_SE_NC_1"))
+            self.cmd_points[c["key"]] = (self.station.add_point(io_address=int(c["ioa"]), type=typ), c)
+        self.interrogation_s = float(cfg.get("interrogation_s", 300))
+        self._last_gi = time.time()
+        self.client.start()
+
+    def _on_receive(self, point, previous_info, message):  # noqa: ANN001 — c104 imzosi
+        c104 = self.c104
+        tag = self.keys_by_ioa.get(point.io_address)
+        if tag is None:
+            return c104.ResponseState.SUCCESS
+        q = point.quality
+        if c104.Quality.Invalid in q:
+            quality = "bad"
+        elif c104.Quality.Substituted in q:
+            quality = "substituted"
+        elif any(b in q for b in (c104.Quality.NonTopical, c104.Quality.Blocked, c104.Quality.Overflow)):
+            quality = "uncertain"
+        else:
+            quality = "good"
+        v = point.value
+        try:
+            value = float(v) if not isinstance(v, bool) else (1.0 if v else 0.0)
+        except (TypeError, ValueError):
+            value = float(int(v)) if hasattr(v, "__int__") else 0.0
+        value *= float(tag.get("scale", 1))
+        ts = point.recorded_at
+        if ts is not None and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        item = {"key": tag["key"], "value": value, "quality": quality, "src_ts": (ts or datetime.now(timezone.utc)).isoformat()}
+        with self._lock:
+            self._latest[tag["key"]] = item
+            self._changed.add(tag["key"])
+            if ts is not None and str(point.type).split(".")[-1] in ("M_SP_TB_1", "M_DP_TB_1", "M_SP_TA_1", "M_DP_TA_1"):
+                self.soe.append({"ts": ts.isoformat(timespec="milliseconds"), "point": tag["key"], "state": v if isinstance(v, bool) else str(v), "quality": quality, "cot": str(message.cot).split(".")[-1]})
+        return c104.ResponseState.SUCCESS
+
+    def tag_keys(self) -> list[str]:
+        return [t["key"] for t in self.cfg["tags"]]
+
+    def read(self) -> list[dict]:
+        if not self.conn.is_connected:
+            raise ConnectionError(f"IEC 104 aloqa yo'q: {self.conn.state}")
+        if time.time() - self._last_gi > self.interrogation_s:
+            self._last_gi = time.time()
+            try:
+                self.conn.interrogation(common_address=self.ca, wait_for_response=False)
+            except Exception as e:  # noqa: BLE001
+                log.warning("iec104 interrogation: %s", e)
+        with self._lock:
+            out = [self._latest[k] for k in self._changed if k in self._latest]
+            self._changed.clear()
+        return out
+
+    def write(self, tag: dict, value: float) -> None:
+        """Setpoint (C_SE_NC_1 / C_SE_NB_1) yoki bitta buyruq (C_SC_NA_1) — faqat `commands` da
+        e'lon qilingan nuqtalar; muvaffaqiyatsiz ACTIVATION_CON → xato (server B qoidalari ustida)."""
+        entry = self.cmd_points.get(tag["key"])
+        if entry is None:
+            raise RuntimeError(f"IEC 104: {tag['key']} uchun buyruq nuqtasi konfiguratsiyada yo'q (commands)")
+        pt, c = entry
+        typ = c.get("type", "C_SE_NC_1")
+        pt.value = bool(value) if typ == "C_SC_NA_1" else (int(round(value)) if typ == "C_SE_NB_1" else float(value))
+        ok = pt.transmit(cause=self.c104.Cot.ACTIVATION)
+        if not ok:
+            raise RuntimeError(f"IEC 104: {tag['key']} buyrug'i tasdiqlanmadi (ACTIVATION_CON salbiy)")
+
+    def close(self) -> None:
+        try:
+            self.client.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+SOURCES = {"sim": SimSource, "modbus": ModbusSource, "opcua": OpcUaSource, "csv": CsvTailSource, "iec104": Iec104Source}
 
 
 # ---------- Yuborish ----------

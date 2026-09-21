@@ -551,7 +551,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`
 Qabul mezoni: obuna rejimida qiymat o'zgarishi poll davridan tez keladi (simulyator testi).
 Bog'liqlik: E2.
 
-### E4 — GES simulyatori (sinov stendi) ✅
+### E4 — GES simulyatori (sinov stendi) ✅ (`ba0ec39`)
 
 Muammo: `ges_gateway.py` dagi `SimSource` — sinus + shovqin. U bilan alarm mantig'ini, toshqinni,
 sifat bayrog'ini, SOE ni yoki egizakni sinab bo'lmaydi.
@@ -570,7 +570,7 @@ Fayllar: yangi `deploy/simulator/`, `deploy/docker-compose.yml`
 Qabul mezoni: har stsenariy e2e testda ishga tushadi va kutilgan alarm ketma-ketligini beradi.
 Bog'liqlik: A1, C1, D3.
 
-### E5 — IEC 60870-5-104 klienti
+### E5 — IEC 60870-5-104 klienti ✅
 
 Muammo: mintaqadagi dispetcher markazlari va RTU lar aynan shu protokolda gapiradi; hozir
 umuman yo'q.

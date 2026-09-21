@@ -193,3 +193,44 @@ def test_opcua_server_with_gateway_subscribe(sim, gw):
         if src:
             src.close()
         srv.stop()
+
+
+def test_iec104_server_with_gateway_source(sim, gw):
+    pytest.importorskip("c104")
+    srv = sim.Iec104Server("127.0.0.1:24043")
+    srv.start()
+    p = sim.Plant(sim.default_plant())
+    r = sim.Runner(p, "normal", dt=1.0)
+    src = None
+    try:
+        srv.update(r.step(), p)
+        cfg = sim.iec104_gateway_source("127.0.0.1", 24043)
+        cfg["interrogation_s"] = 1
+        src = gw.Iec104Source(cfg)
+        time.sleep(1.5)
+        items = {i["key"]: i for i in src.read_safe()}
+        assert abs(items["RES.H"]["value"] - p.res.elev_m) < 0.01 and items["RES.H"]["quality"] == "good"
+        assert items["AGG1.RUN"]["value"] == 1.0
+        # setpoint buyrug'i C_SE_NC_1 → plant.write → zatvor
+        src.write({"key": "GATE1.SP"}, 85.0)
+        time.sleep(0.5)
+        for _ in range(3):
+            srv.update(r.step(), p)
+        assert p.gate_sp == 85.0 and ("GATE1.SP", "85") in [(e["point"], e["state"]) for e in p.soe]
+        # trip → RUN vaqt tamg'ali spontan → gateway SOE
+        p.trip(1, "test")
+        for _ in range(6):
+            srv.update(r.step(), p)
+        time.sleep(0.5)
+        src.read_safe()
+        assert any(e["point"] == "AGG1.RUN" and e["state"] is False for e in src.soe)
+        # aloqa uzilishi → server to'xtaydi → gateway bad
+        p.comms = False
+        srv.update(r.step(), p)
+        time.sleep(1.5)
+        bad = src.read_safe()
+        assert bad and all(i["quality"] == "bad" for i in bad)
+    finally:
+        if src:
+            src.close()
+        srv.stop()

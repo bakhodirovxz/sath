@@ -32,6 +32,19 @@
       "mode": "subscribe",
       "publishing_interval_ms": 500,
       "tags": [{ "key": "AGG3.P", "node_id": "ns=2;s=Unit3.ActivePower", "deadband": 0.1 }]
+    },
+    {
+      "type": "iec104",
+      "host": "192.168.10.40",
+      "port": 2404,
+      "common_address": 1,
+      "interrogation_s": 300,
+      "tags": [
+        { "key": "RES.H", "ioa": 11, "type": "M_ME_NC_1" },
+        { "key": "AGG1.P", "ioa": 12, "type": "M_ME_NB_1", "scale": 0.1 },
+        { "key": "AGG1.RUN", "ioa": 13, "type": "M_SP_TB_1" }
+      ],
+      "commands": [{ "key": "GATE1.SP", "ioa": 41, "type": "C_SE_NC_1" }]
     }
   ]
 }

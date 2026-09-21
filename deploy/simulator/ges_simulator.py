@@ -351,7 +351,7 @@ def register_of(key: str) -> int:
     return REGISTER_BASE + 2 * TAG_ORDER.index(key)
 
 
-def gateway_config(server: str = "http://localhost:8000", project_id: int = 1, modbus: str = "127.0.0.1:5020", opcua: str | None = None) -> dict:
+def gateway_config(server: str = "http://localhost:8000", project_id: int = 1, modbus: str = "127.0.0.1:5020", opcua: str | None = None, iec104: str | None = None) -> dict:
     host, port = modbus.rsplit(":", 1)
     src = {
         "type": "modbus",
@@ -362,6 +362,9 @@ def gateway_config(server: str = "http://localhost:8000", project_id: int = 1, m
     cfg = {"server": server, "project_id": project_id, "ingest_key": "<ingest key>", "commands": True, "command_key": "<command key>", "interval_s": 5, "diag": True, "sources": [src]}
     if opcua:
         cfg["sources"].append({"type": "opcua", "url": opcua, "mode": "subscribe", "publishing_interval_ms": 500, "tags": [{"key": k, "node_id": f"ns=2;s={k}"} for k in TAG_ORDER]})
+    if iec104:
+        h, p = iec104.rsplit(":", 1)
+        cfg["sources"].append(iec104_gateway_source(h or "127.0.0.1", int(p)))
     return cfg
 
 
@@ -514,6 +517,103 @@ class OpcUaServer:
             self.vars[key].write_value(dv)
 
 
+IEC104_CA = 1
+IEC104_MEAS_BASE = 100  # M_ME_NC_1 (float); *.RUN teglari M_SP_TB_1 (vaqt tamg'ali — SOE)
+IEC104_CMD_BASE = 200  # C_SE_NC_1 setpointlar (WRITABLE tartibida)
+
+
+def ioa_of(key: str) -> int:
+    return IEC104_MEAS_BASE + TAG_ORDER.index(key)
+
+
+def cmd_ioa_of(key: str) -> int:
+    return IEC104_CMD_BASE + sorted(WRITABLE).index(key)
+
+
+def iec104_gateway_source(host: str = "127.0.0.1", port: int = 2404) -> dict:
+    """Gateway `iec104` manbasi konfiguratsiyasi (simulyator 104 serveriga mos)."""
+    tags = [{"key": k, "ioa": ioa_of(k), "type": "M_SP_TB_1" if k.endswith(".RUN") else "M_ME_NC_1"} for k in TAG_ORDER]
+    return {
+        "type": "iec104",
+        "host": host,
+        "port": port,
+        "common_address": IEC104_CA,
+        "interrogation_s": 300,
+        "tags": tags,
+        "commands": [{"key": k, "ioa": cmd_ioa_of(k), "type": "C_SE_NC_1"} for k in sorted(WRITABLE)],
+    }
+
+
+class Iec104Server:
+    """IEC 60870-5-104 server (c104): o'lchovlar M_ME_NC_1 (IOA 100+), *.RUN — M_SP_TB_1 (vaqt tamg'ali,
+    SOE), setpointlar C_SE_NC_1 (IOA 200+) → Plant.write. comms=False → server to'xtaydi (aloqa uzilishi)."""
+
+    def __init__(self, bind: str = "0.0.0.0:2404"):
+        import c104
+
+        self.c104 = c104
+        host, port = bind.rsplit(":", 1)
+        self.host, self.port = host or "0.0.0.0", int(port)
+        self.server = c104.Server(ip=self.host, port=self.port)
+        self.station = self.server.add_station(common_address=IEC104_CA)
+        self.points = {}
+        for k in TAG_ORDER:
+            typ = c104.Type.M_SP_TB_1 if k.endswith(".RUN") else c104.Type.M_ME_NC_1
+            self.points[k] = self.station.add_point(io_address=ioa_of(k), type=typ)
+        self.cmd_points: dict[int, str] = {}
+        self._plant: Plant | None = None
+        cb = self._on_command
+        cb.__func__.__annotations__ = {  # c104 callback imzosini tekshiradi
+            "point": c104.Point,
+            "previous_info": c104.Information,
+            "message": c104.IncomingMessage,
+            "return": c104.ResponseState,
+        }
+        for k in sorted(WRITABLE):
+            pt = self.station.add_point(io_address=cmd_ioa_of(k), type=c104.Type.C_SE_NC_1)
+            pt.on_receive(cb)
+            self.cmd_points[cmd_ioa_of(k)] = k
+        self._last: dict = {}
+        self._running = False
+
+    def _on_command(self, point, previous_info, message):
+        key = self.cmd_points.get(point.io_address)
+        if key is None or self._plant is None:
+            return self.c104.ResponseState.FAILURE
+        self._plant.write(key, float(point.value))
+        return self.c104.ResponseState.SUCCESS
+
+    def start(self) -> None:
+        self.server.start()
+        self._running = True
+        log.info("IEC 104 server %s:%d", self.host, self.port)
+
+    def stop(self) -> None:
+        if self._running:
+            self.server.stop()
+            self._running = False
+
+    def update(self, tags: dict, plant) -> None:
+        self._plant = plant
+        if plant is not None and not plant.comms:
+            self.stop()
+            return
+        if not self._running:
+            self.start()
+        c104 = self.c104
+        for key, val in tags.items():
+            pt = self.points.get(key)
+            if pt is None:
+                continue
+            v = bool(val >= 0.5) if key.endswith(".RUN") else float(val)
+            if key in self._last and self._last[key] == v:
+                continue
+            pt.value = v
+            if self.server.has_active_connections:
+                pt.transmit(cause=c104.Cot.SPONTANEOUS)
+            self._last[key] = v
+
+
 def write_soe(plant: Plant, path: str) -> None:
     with open(path, "a", encoding="utf-8") as fh:
         for ev in plant.soe:
@@ -525,6 +625,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--scenario", default="normal", choices=sorted(SCENARIOS))
     ap.add_argument("--modbus", default="", help="masalan 0.0.0.0:5020")
     ap.add_argument("--opcua", default="", help="masalan opc.tcp://0.0.0.0:4840/sath-sim/")
+    ap.add_argument("--iec104", default="", help="masalan 0.0.0.0:2404 (c104 kutubxonasi kerak)")
     ap.add_argument("--dt", type=float, default=None, help="qadam, s (default stsenariy bo'yicha, 1 s)")
     ap.add_argument("--speed", type=float, default=1.0, help="tezlashtirish (10 = 10× tez)")
     ap.add_argument("--duration", type=float, default=None, help="soniya (modelda)")
@@ -540,7 +641,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{k:16s} {v['desc']}")
         return
     if a.print_gateway_config:
-        print(json.dumps(gateway_config(modbus=a.modbus or "127.0.0.1:5020", opcua=a.opcua or None), indent=2, ensure_ascii=False))
+        print(json.dumps(gateway_config(modbus=a.modbus or "127.0.0.1:5020", opcua=a.opcua or None, iec104=a.iec104 or None), indent=2, ensure_ascii=False))
         return
     servers: list = []
     if a.modbus:
@@ -551,6 +652,10 @@ def main(argv: list[str] | None = None) -> None:
         os_ = OpcUaServer(a.opcua)
         os_.start()
         servers.append(os_)
+    if a.iec104:
+        i104 = Iec104Server(a.iec104)
+        i104.start()
+        servers.append(i104)
     plant = Plant(default_plant())
     dt = a.dt if a.dt is not None else SCENARIOS[a.scenario].get("dt", 1.0)
     try:
