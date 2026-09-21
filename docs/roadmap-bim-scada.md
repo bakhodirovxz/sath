@@ -213,7 +213,7 @@ Bog'liqlik: A2.
 Hozir bu eng zaif joy. `POST /commands` amalda Modbus holding registeriga yozadigan REST
 endpoint, hech qanday sanoat qo'riqchisisiz.
 
-### B1 — Buyruq xavfsizlik konverti
+### B1 — Buyruq xavfsizlik konverti ✅
 
 Muammo (`server/ges_server/monitoring/control.py:104`):
 - `CommandIn.value: float` cheksiz. Sensorda min/max maydoni umuman yo'q (`orm.py:384`) —
@@ -1500,7 +1500,7 @@ Fayllar: `sim/ges_sim/*`, `server/ges_server/sim/router.py`, `sim/worker.py`
 Qabul mezoni: chegaradan oshgan parametr 400 beradi (test).
 Bog'liqlik: L3.
 
-### J13 — Tashqi benchmark testlari ✅ (qisman: Heller–Hager nashr etilgan holat va USBR misoli — manba matni kerak, qo'lda hisob bilan almashtirildi)
+### J13 — Tashqi benchmark testlari ✅ (`72a06bb`; qisman: Heller–Hager nashr etilgan holat va USBR misoli — manba matni kerak, qo'lda hisob bilan almashtirildi)
 
 Muammo: mavjud testlar yaxshi, lekin deyarli hammasi modulni o'zi amalga oshirgan formula bilan
 tekshiradi (Joukovskiy, ishqalanishsiz surge, Korteveg) — bu o'z-o'ziga izchillik.

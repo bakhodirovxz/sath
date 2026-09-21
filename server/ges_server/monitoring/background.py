@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Project
-from . import health, historian, live, twin
+from . import control, health, historian, live, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
 
@@ -23,6 +23,12 @@ def tick_stale() -> int:
         for (pid,) in db.query(Project.id).all():
             n += len(live.mark_stale(db, pid))
         return n
+
+
+def tick_commands() -> int:
+    """Buyruq TTL va watchdog (B1)."""
+    with SessionLocal() as db:
+        return control.tick(db)
 
 
 def send_daily_reports(day_start: datetime) -> int:
@@ -64,6 +70,7 @@ async def loop(stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
             await asyncio.to_thread(tick_stale)
+            await asyncio.to_thread(tick_commands)
             await asyncio.to_thread(twin.tick_all)  # raqamli egizak: kutilgan quvvat/og'ish
             hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
             if hour != last_hour:

@@ -7,16 +7,18 @@ pending; gateway X-Ingest-Key bilan navbatni oladi (sent), SCADA ga yozadi va na
 
 from __future__ import annotations
 
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
 from .. import audit, notifications
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
+from ..config import get_settings
 from ..orm import Command, CommandStatus, JournalEntry, Project, Role, Sensor, utcnow
 from . import live
 
@@ -40,6 +42,13 @@ class CommandIn(BaseModel):
     value: float
     note: str = Field("", max_length=200)
 
+    @field_validator("value")
+    @classmethod
+    def _finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("qiymat chekli son bo'lishi kerak (NaN/inf emas)")
+        return v
+
 
 class CommandOut(BaseModel):
     id: int
@@ -54,6 +63,8 @@ class CommandOut(BaseModel):
     author_username: str
     created_at: datetime
     updated_at: datetime
+    expires_at: datetime | None = None
+    sent_at: datetime | None = None
 
 
 class CommandAck(BaseModel):
@@ -75,7 +86,111 @@ def _out(c: Command) -> CommandOut:
         author_username=c.author.username,
         created_at=_aware(c.created_at),
         updated_at=_aware(c.updated_at),
+        expires_at=_aware(c.expires_at),
+        sent_at=_aware(c.sent_at),
     )
+
+
+def check_envelope(db, s: Sensor, value: float) -> None:
+    """B1: diapazon va o'zgarish tezligi — sensor konverti. Buzilsa HTTPException 400."""
+    if s.min_setpoint is not None and value < s.min_setpoint:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Qiymat {value:g} ruxsat etilgan minimum {s.min_setpoint:g} {s.unit} dan kichik",
+        )
+    if s.max_setpoint is not None and value > s.max_setpoint:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Qiymat {value:g} ruxsat etilgan maksimum {s.max_setpoint:g} {s.unit} dan katta",
+        )
+    if s.max_rate_per_min is not None and s.max_rate_per_min > 0:
+        # Oxirgi bajarilgan/yuborilgan buyruq (yoki o'lchov) ga nisbatan tezlik
+        last = (
+            db.query(Command)
+            .filter(
+                Command.sensor_id == s.id,
+                Command.status.in_([CommandStatus.acked, CommandStatus.sent, CommandStatus.pending]),
+            )
+            .order_by(Command.id.desc())
+            .first()
+        )
+        ref_value, ref_ts = (last.value, last.created_at) if last else (s.last_value, s.last_ts)
+        if ref_value is not None and ref_ts is not None:
+            minutes = max((utcnow() - _aware(ref_ts)).total_seconds() / 60, 1.0)
+            rate = abs(value - ref_value) / minutes
+            if rate > s.max_rate_per_min:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"O'zgarish tezligi {rate:.3g} {s.unit}/min > ruxsat {s.max_rate_per_min:g} "
+                    f"(oxirgi qiymat {ref_value:g}) — bosqichma-bosqich o'zgartiring",
+                )
+
+
+def expire_pending(db, project_id: int | None = None) -> list[Command]:
+    """TTL o'tgan pending buyruqlar → expired (gateway ga berilmaydi)."""
+    now = utcnow()
+    q = db.query(Command).filter(
+        Command.status == CommandStatus.pending, Command.expires_at.isnot(None)
+    )
+    if project_id is not None:
+        q = q.filter(Command.project_id == project_id)
+    out = []
+    for c in q.all():
+        if _aware(c.expires_at) <= now:
+            c.status, c.updated_at = CommandStatus.expired, now
+            c.result = "TTL o'tdi — gateway olmadi"
+            audit.log(
+                db,
+                user_id=None,
+                action="command.expired",
+                target_type="command",
+                target_id=c.id,
+                project_id=c.project_id,
+            )
+            out.append(c)
+    if out:
+        db.flush()  # autoflush=False: keyingi so'rovlar (pending filtri) yangilangan holatni ko'rsin
+    return out
+
+
+def watchdog_sent(db, timeout_s: int) -> list[Command]:
+    """`sent` da qotgan buyruqlar (gateway ack/failed qaytarmadi) → failed, sensor bloki ochiladi."""
+    now = utcnow()
+    out = []
+    for c in db.query(Command).filter(Command.status == CommandStatus.sent).all():
+        ref = _aware(c.sent_at) or _aware(c.updated_at)
+        if ref is not None and (now - ref).total_seconds() > timeout_s:
+            c.status, c.updated_at = CommandStatus.failed, now
+            c.result = f"watchdog: gateway {timeout_s} s ichida javob bermadi"
+            audit.log(
+                db,
+                user_id=None,
+                action="command.failed",
+                target_type="command",
+                target_id=c.id,
+                project_id=c.project_id,
+                detail={"result": c.result, "watchdog": True},
+            )
+            notifications.push(
+                db,
+                [c.created_by],
+                "system",
+                f"Buyruq bajarilmadi: {c.sensor.name} → {c.value:g}",
+                c.result,
+                f"/projects/{c.project_id}/dashboard",
+            )
+            out.append(c)
+    return out
+
+
+def tick(db) -> int:
+    """Fon vazifa: TTL va watchdog. Qaytaradi: o'zgargan buyruqlar soni."""
+    changed = expire_pending(db) + watchdog_sent(db, get_settings().command_sent_timeout_s)
+    if changed:
+        db.commit()
+        for c in changed:
+            _publish(c)
+    return len(changed)
 
 
 def _publish(c: Command) -> None:
@@ -115,6 +230,9 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         )
     if not s.enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sensor o'chirilgan")
+    check_envelope(db, s, body.value)
+    for c in expire_pending(db, project.id):  # eskirgan pending sensorni band qilmasin
+        _publish(c)
     open_ = (
         db.query(Command)
         .filter(
@@ -129,7 +247,12 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
             f"Buyruq #{open_.id} hali bajarilmagan (kuting yoki bekor qiling)",
         )
     c = Command(
-        project_id=project.id, sensor_id=s.id, value=body.value, note=body.note, created_by=user.id
+        project_id=project.id,
+        sensor_id=s.id,
+        value=body.value,
+        note=body.note,
+        created_by=user.id,
+        expires_at=utcnow() + timedelta(seconds=s.command_ttl_s or 300),
     )
     db.add(c)
     try:
@@ -171,6 +294,8 @@ def cancel_command(command_id: int, user: CurrentUser, db: DB):
     if not has_role(get_project_role(db, c.project_id, user), Role.operator):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
     if c.status != CommandStatus.pending:
+        # sent — gateway allaqachon olgan, PLC ga yozilishi mumkin: bekor qilish yolg'on xavfsizlik beradi;
+        # javob kelmasa watchdog (command_sent_timeout_s) failed ga o'tkazadi
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Faqat kutayotgan (pending) buyruq bekor qilinadi"
         )
@@ -204,6 +329,7 @@ def _gateway_project(db, project_id: int, x_ingest_key: str | None) -> Project:
 def pending_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None, Header()] = None):
     """Gateway uchun: kutayotgan buyruqlar (X-Ingest-Key). Olingach `sent` ga o'tadi."""
     project = _gateway_project(db, project_id, x_ingest_key)
+    expired = expire_pending(db, project.id)
     rows = (
         db.query(Command)
         .filter(Command.project_id == project.id, Command.status == CommandStatus.pending)
@@ -213,6 +339,7 @@ def pending_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None
     out = []
     for c in rows:
         c.status, c.updated_at = CommandStatus.sent, utcnow()
+        c.sent_at = c.updated_at
         out.append(
             {
                 "id": c.id,
@@ -222,9 +349,9 @@ def pending_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None
                 "address": c.sensor.address,
             }
         )
-    if rows:
+    if rows or expired:
         db.commit()
-        for c in rows:
+        for c in rows + expired:
             _publish(c)
     return out
 
@@ -241,8 +368,12 @@ def ack_command(
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
     _gateway_project(db, c.project_id, x_ingest_key)
-    if c.status in (CommandStatus.cancelled, CommandStatus.acked):
+    if c.status in (CommandStatus.cancelled, CommandStatus.acked, CommandStatus.expired):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq allaqachon {c.status.value}")
+    if c.status == CommandStatus.failed and body.status != "failed":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Buyruq watchdog bilan failed — qayta yuboring"
+        )
     c.status, c.result, c.updated_at = CommandStatus(body.status), body.result[:400], utcnow()
     audit.log(
         db,

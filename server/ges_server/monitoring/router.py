@@ -64,6 +64,12 @@ class SensorIn(BaseModel):
     enabled: bool = True
     priority: Priority = "medium"
     writable: bool = False
+    # buyruq konverti (writable uchun)
+    min_setpoint: float | None = None
+    max_setpoint: float | None = None
+    max_rate_per_min: float | None = None
+    requires_dual_approval: bool = False
+    command_ttl_s: int = Field(300, ge=10, le=86400)
 
 
 class SensorPatch(BaseModel):
@@ -82,8 +88,14 @@ class SensorPatch(BaseModel):
     enabled: bool | None = None
     priority: Priority | None = None
     writable: bool | None = None
+    min_setpoint: float | None = None
+    max_setpoint: float | None = None
+    max_rate_per_min: float | None = None
+    requires_dual_approval: bool | None = None
+    command_ttl_s: int | None = Field(None, ge=10, le=86400)
     clear_alarms: bool = False  # low/high ni null qilish uchun
     clear_raw_range: bool = False  # min_raw/max_raw ni null qilish uchun
+    clear_setpoint_range: bool = False  # min/max_setpoint, max_rate_per_min ni null qilish uchun
 
 
 class SensorOut(BaseModel):
@@ -109,6 +121,11 @@ class SensorOut(BaseModel):
     alarm: AlarmState
     priority: str = "medium"
     writable: bool = False
+    min_setpoint: float | None = None
+    max_setpoint: float | None = None
+    max_rate_per_min: float | None = None
+    requires_dual_approval: bool = False
+    command_ttl_s: int = 300
 
     model_config = {"from_attributes": True}
 
@@ -313,13 +330,17 @@ def _get_sensor(db, sensor_id: int, user: User, required: Role) -> Sensor:
 @router.patch("/sensors/{sensor_id}", response_model=SensorOut)
 def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     s = _get_sensor(db, sensor_id, user, Role.engineer)
-    changes = body.model_dump(exclude_none=True, exclude={"clear_alarms", "clear_raw_range"})
+    changes = body.model_dump(
+        exclude_none=True, exclude={"clear_alarms", "clear_raw_range", "clear_setpoint_range"}
+    )
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:
         s.low_alarm = s.high_alarm = None
     if body.clear_raw_range:
         s.min_raw = s.max_raw = None
+    if body.clear_setpoint_range:
+        s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
     if s.last_value is not None and s.alarm != AlarmState.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
     audit.log(

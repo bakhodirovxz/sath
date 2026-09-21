@@ -7,8 +7,8 @@ import Dialog from "../../ui/Dialog";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
-const CMD_LABEL: Record<Command["status"], string> = { pending: "kutmoqda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor" };
-const CMD_CLASS: Record<Command["status"], string> = { pending: "shared", sent: "open", acked: "published", failed: "rejected", cancelled: "archived" };
+const CMD_LABEL: Record<Command["status"], string> = { pending: "kutmoqda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi" };
+const CMD_CLASS: Record<Command["status"], string> = { pending: "shared", sent: "open", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived" };
 
 /** Raqamli egizak: jonli o'lchov ↔ model bo'yicha kutilgan quvvat, og'ish, FIK. */
 export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: boolean }) {
@@ -119,9 +119,10 @@ export function CommandsPanel({ projectId, sensors, canCommand, live }: { projec
       {target && (
         <Dialog title={`Buyruq: ${target.name}`} onClose={() => setTarget(null)}>
           <p className="muted small">{target.key} · joriy qiymat {target.last_value == null ? "—" : `${fmtValue(target.last_value)} ${target.unit}`}. Buyruq gateway orqali SCADA ga yoziladi va audit jurnaliga tushadi.</p>
-          <label className="field"><span>Yangi qiymat, {target.unit}</span><input className="input" type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} autoFocus /></label>
+          <label className="field"><span>Yangi qiymat, {target.unit}{target.min_setpoint != null || target.max_setpoint != null ? ` (ruxsat: ${target.min_setpoint ?? "−∞"} … ${target.max_setpoint ?? "+∞"})` : ""}</span><input className="input" type="number" step="any" min={target.min_setpoint ?? undefined} max={target.max_setpoint ?? undefined} value={value} onChange={(e) => setValue(e.target.value)} autoFocus /></label>
+          {value !== "" && ((target.min_setpoint != null && Number(value) < target.min_setpoint) || (target.max_setpoint != null && Number(value) > target.max_setpoint)) && <div className="error small">Qiymat ruxsat etilgan diapazondan tashqarida — server rad etadi</div>}
           <label className="field"><span>Izoh (sabab)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          <div className="actions"><button className="btn" onClick={() => setTarget(null)}>Bekor</button><button className="btn primary" disabled={value === ""} onClick={() => confirm(`${target.name} → ${value} ${target.unit}. Yuborilsinmi?`) && send()}>Yuborish</button></div>
+          <div className="actions"><button className="btn" onClick={() => setTarget(null)}>Bekor</button><button className="btn primary" disabled={value === "" || !Number.isFinite(Number(value)) || (target.min_setpoint != null && Number(value) < target.min_setpoint) || (target.max_setpoint != null && Number(value) > target.max_setpoint)} onClick={() => confirm(`${target.name} → ${value} ${target.unit}. Yuborilsinmi?`) && send()}>Yuborish</button></div>
         </Dialog>
       )}
     </div>

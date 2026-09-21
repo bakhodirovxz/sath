@@ -251,6 +251,11 @@ export interface Sensor {
   high_alarm: number | null;
   min_raw?: number | null;
   max_raw?: number | null;
+  min_setpoint?: number | null;
+  max_setpoint?: number | null;
+  max_rate_per_min?: number | null;
+  requires_dual_approval?: boolean;
+  command_ttl_s?: number;
   stale_after_s: number;
   enabled: boolean;
   last_value: number | null;
@@ -276,8 +281,8 @@ export interface SensorIn {
   priority?: "low" | "medium" | "high" | "critical";
   writable?: boolean;
 }
-export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled";
-export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string }
+export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired";
+export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
 export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean }
