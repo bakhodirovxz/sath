@@ -1248,7 +1248,7 @@ Fayllar: `sim/ges_sim/seismic.py`, `server/ges_server/sim/safety.py`
 Qabul mezoni: grunt sinfi o'zgarganda `kh` o'zgaradi (test); ko'rsatilgan kuchlar izchil.
 Bog'liqlik: J1.
 
-### J4 — Gidrozarbada quvur profili va kavitatsiya ✅
+### J4 — Gidrozarbada quvur profili va kavitatsiya ✅ (`b5e6135`)
 
 Muammo: `water_hammer.py:262` — `cav = hmin + 10.3 < 0.3`. `hmin` pyezometrik napor, quvur
 balandligi z(x) ayirilmaydi, ya'ni butun quvur zatvor balandligida yotadi deb faraz qilinadi.
@@ -1270,7 +1270,7 @@ Fayllar: `sim/ges_sim/water_hammer.py`
 Qabul mezoni: yuqori nuqtali profil kiritilganda kavitatsiya aniqlanadi (test).
 Bog'liqlik: yo'q.
 
-### J5 — Regulyator modelini barqarorlashtirish
+### J5 — Regulyator modelini barqarorlashtirish ✅
 
 Muammo: `governor.py:262` — `hq = (q/max(g,1e-3))**2`, oldinga Eyler, dt = 0.01 s qat'iy.
 To'liq yuk tashlashda o'lchangan: `h = (q/g)²` maksimumda 44.44 (nominal naporning 4444 %),

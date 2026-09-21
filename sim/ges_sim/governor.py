@@ -6,6 +6,11 @@ Regulyator (PI, vaqtinchalik va doimiy statizm):
   Regulyator holati: de/dt filtri T_f; c (buyruq) = ∫ e/(r·T_r) + e/r; servo: dg/dt = (c − g)/T_g, |dg/dt| ≤ V_elm, 0 ≤ g ≤ 1
 Turbina (elastik bo'lmagan suv ustuni, Tw — suv ishga tushish vaqti):
   h = (q/g)²;  dq/dt = (1 − h)/T_w;  P_m = A_t·h·(q − q_nl) − D_turb·g·Δω
+  Integratsiya: q uchun implitsit Eyler (kvadrat tenglama, q ≥ 0 kafolatlanadi, g kichikda ham
+  barqaror — HYGOV ning (q/g)² qattiqligi); gate GMIN ≥ 0.01 (PSS/E HYGOV GMIN); integral xi ga
+  anti-windup (clamping: gate to'yinganda va buyruq shu tomonga bo'lsa integratsiya to'xtaydi).
+  Cheksiz tarmoq (setpoint): quvvat regulyatori e = (P_ref − P_m)·K_p (K_p — maydon), barqarorlik —
+  oxirgi chorakda |P_m − P_ref| < 2 % va so'nish.
 Tarmoq: izolyatsiyalangan yuk yoki cheksiz tarmoq:
   izolyatsiyalangan: 2H·dΔω/dt = P_m − P_L − D·Δω;   cheksiz tarmoq: Δω = 0, P_m ni kuzatamiz
 Hodisalar: yuk qadam (ΔP_L), to'liq yuk tashlash (P_L → 0, ortiqcha tezlik), setpoint qadam.
@@ -194,6 +199,30 @@ FIELDS = [
         hint="1/T_yopilish",
     ),
     Field(
+        "gmin",
+        "Gate min. ochilish GMIN",
+        "p.u.",
+        default=0.05,
+        min=0.01,
+        max=0.3,
+        step=0.01,
+        group="Regulyator",
+        hint="HYGOV GMIN (yopiq holat, q_nl atrofida); 0 emas — h = (q/g)² chegaralanmaydi",
+        advanced=True,
+    ),
+    Field(
+        "kp_power",
+        "Quvvat regulyatori kuchayishi K_p (cheksiz tarmoq)",
+        "",
+        default=0.25,
+        min=0.02,
+        max=2,
+        step=0.01,
+        group="Regulyator",
+        hint="setpoint rejimida e = (P_ref − P_m)·K_p (ilgari yashirin R·5 edi)",
+        advanced=True,
+    ),
+    Field(
         "gmax",
         "Gate maks. ochilish",
         "p.u.",
@@ -220,11 +249,13 @@ def run(p: dict) -> dict:
         p["velm"],
         p["gmax"],
     )
+    gmin, kp = p["gmin"], p["kp_power"]
+    warnings: list[str] = []
     event, step, p0 = p["event"], p["step_pu"], p["p0_pu"]
     infinite = event == "setpoint"
     # Boshlang'ich statsionar holat: h=1 → q=g; P_m = A_t·(g − q_nl) = p0 → g0
     g = q = p0 / at + qnl
-    g = min(g, gmax)
+    g = min(max(g, gmin), gmax)
     pl = p0
     dw = 0.0  # Δω, p.u.
     xf = 0.0  # filtrlangan xato
@@ -233,9 +264,10 @@ def run(p: dict) -> dict:
     p_ref = p0
     dt = 0.01
     n = int(p["sim_s"] / dt)
-    ts, fs, gs, pms, qs = [], [], [], [], []
+    ts, fs, gs, pms, qs, hs = [], [], [], [], [], []
     t_event = 1.0
     max_rate = 0.0
+    h_max, pm_min, q_min = 1.0, 1e9, 1e9
     for i in range(n):
         t = i * dt
         if t >= t_event:
@@ -247,22 +279,33 @@ def run(p: dict) -> dict:
                 p_ref = p0 + step
         # Regulyator xatosi
         if infinite:
-            err = (
-                (p_ref - pl_est(at, q, g, qnl)) * R * 5
-            )  # quvvat regulyatori (soddalashtirilgan PI kirish)
+            err = (p_ref - pl_est(at, q, g, qnl)) * kp  # quvvat regulyatori
         else:
             err = -dw - R * (g - g_ref)
         xf += dt * (err - xf) / tf
-        xi += dt * xf / (r * tr)
         c = xi + xf / r + g_ref
+        # Anti-windup (clamping): gate holat (GMIN/GMAX) yoki tezlik (VELM) chegarasida va buyruq
+        # shu tomonga → integral to'xtaydi (aks holda xi cheksiz yig'ilib gate ni ochiq qotiradi)
+        want = (c - g) / tg
+        saturated = (
+            (g >= gmax - 1e-9 and c > g)
+            or (g <= gmin + 1e-9 and c < g)
+            or (want > velm and xf > 0)
+            or (want < -velm and xf < 0)
+        )
+        if not saturated:
+            xi += dt * xf / (r * tr)
+            c = xi + xf / r + g_ref
         rate = max(min((c - g) / tg, velm), -velm)
         max_rate = max(max_rate, abs(rate))
-        g = max(min(g + dt * rate, gmax), 0.0)
-        # Turbina
-        hq = (q / max(g, 1e-3)) ** 2
-        q += dt * (1 - hq) / tw
-        q = max(q, 0.0)
+        g = max(min(g + dt * rate, gmax), gmin)
+        # Turbina: implitsit Eyler  q' = q + dt·(1 − (q'/g)²)/T_w  →  a·q'² + q' − (q + dt/T_w) = 0
+        a_ = dt / (tw * g * g)
+        b_ = q + dt / tw
+        q = (-1 + (1 + 4 * a_ * b_) ** 0.5) / (2 * a_)
+        hq = (q / g) ** 2
         pm = at * hq * (q - qnl) - dt_ * g * dw
+        h_max, pm_min, q_min = max(h_max, hq), min(pm_min, pm), min(q_min, q)
         if not infinite:
             dw += dt * (pm - pl - D * dw) / (2 * H)
         if i % 5 == 0:
@@ -271,6 +314,7 @@ def run(p: dict) -> dict:
             gs.append(round(g, 4))
             pms.append(round(pm, 4))
             qs.append(round(q, 4))
+            hs.append(round(hq, 4))
     # Ko'rsatkichlar
     dev = [abs(f - 50) / 50 * 100 for f in fs]
     fmax = max(dev)
@@ -285,10 +329,25 @@ def run(p: dict) -> dict:
             break
     # Barqarorlik: oxirgi chorakdagi tebranish amplitudasi kichik yoki oldingi chorakdan kamaygan
     q4 = len(fs) // 4
-    last_q, prev_q = fs[-q4:], fs[-2 * q4 : -q4]
-    p2p_last = (max(last_q) - min(last_q)) / 50 * 100
-    p2p_prev = (max(prev_q) - min(prev_q)) / 50 * 100 if prev_q else p2p_last
-    stable = infinite or p2p_last < 0.3 or p2p_last < 0.6 * p2p_prev
+    if infinite:
+        # Cheksiz tarmoq: quvvat setpointga yaqinlashib so'nishi kerak
+        last_p, prev_p = pms[-q4:], pms[-2 * q4 : -q4]
+        p2p_last = max(last_p) - min(last_p)
+        p2p_prev = (max(prev_p) - min(prev_p)) if prev_p else p2p_last
+        err_last = max(abs(x - p_ref) for x in last_p)
+        stable = err_last < 0.02 and (p2p_last < 0.01 or p2p_last < 0.6 * p2p_prev)
+    else:
+        last_q, prev_q = fs[-q4:], fs[-2 * q4 : -q4]
+        p2p_last = (max(last_q) - min(last_q)) / 50 * 100
+        p2p_prev = (max(prev_q) - min(prev_q)) / 50 * 100 if prev_q else p2p_last
+        stable = p2p_last < 0.3 or p2p_last < 0.6 * p2p_prev
+    if h_max > 1.5:
+        warnings.append(
+            f"turbina napori {h_max:.2f} p.u. gacha ko'tarildi (gate yopilishi tez) — gidrozarba "
+            "modulida tekshiring; elastik bo'lmagan suv ustuni modeli bu yerda taxminiy"
+        )
+    if q_min < qnl * 0.5:
+        warnings.append(f"sarf {q_min:.3f} p.u. gacha tushdi (q_nl = {qnl}) — teskari oqim modellanmaydi")
     steady_offset_pct = round((f_final - 50) / 50 * 100, 3)
     overspeed = max((f - 50) / 50 * 100 for f in fs)
     tm = 2 * H
@@ -309,9 +368,19 @@ def run(p: dict) -> dict:
     if abs(r - r_rec) / r_rec > 0.5 or abs(tr - tr_rec) / tr_rec > 0.5:
         notes.append(f"Hovey tavsiyasi: r ≈ {r_rec:.2f}, T_r ≈ {tr_rec:.1f} s (hozir {r}, {tr})")
     return {
-        "series": {"t": ts, "frequency_hz": fs, "gate": gs, "p_mech": pms, "flow_pu": qs},
+        "series": {
+            "t": ts,
+            "frequency_hz": fs,
+            "gate": gs,
+            "p_mech": pms,
+            "flow_pu": qs,
+            "head_pu": hs,
+        },
         "summary": {
             "freq_max_dev_pct": round(fmax, 3),
+            "head_max_pu": round(h_max, 3),
+            "p_mech_min_pu": round(pm_min, 3),
+            "flow_min_pu": round(q_min, 3),
             "settling_s": settle,
             "overspeed_pct": round(overspeed, 2),
             "gate_rate_max": round(max_rate, 3),
@@ -324,6 +393,7 @@ def run(p: dict) -> dict:
             if notes
             else f"Barqaror: maks. og'ish {fmax:.2f} %, o'rnashish {settle if settle is not None else '>' + str(p['sim_s'])} s",
             "ok": stable and not notes,
+            "warnings": warnings,
         },
     }
 

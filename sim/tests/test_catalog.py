@@ -314,6 +314,15 @@ def test_governor_load_step_and_rejection():
     assert not bad["stable"] and "Hovey" in bad["verdict"]
     sp = catalog.run("governor", {"event": "setpoint", "step_pu": 0.1})
     assert sp["summary"]["stable"] and abs(sp["series"]["p_mech"][-1] - 0.9) < 0.05
+    # Cheksiz shina barqarorligi endi shartsiz emas: past kuchayish/tez integral → so'nmaydi
+    bad_sp = catalog.run(
+        "governor", {"event": "setpoint", "step_pu": 0.1, "kp_power": 2.0, "tr": 1, "r_temp": 0.05}
+    )["summary"]
+    assert not bad_sp["stable"]
+    # To'liq yuk tashlash: fizik chegaralar (ilgari h = 44 p.u., P_m = −4.3 p.u. chiqardi)
+    rej = catalog.run("governor", {"event": "rejection", "p0_pu": 1.0, "velm": 0.5})["summary"]
+    assert rej["head_max_pu"] <= 2.0 and rej["flow_min_pu"] >= 0 and rej["p_mech_min_pu"] >= -0.1
+    assert rej["overspeed_pct"] > 10
 
 
 def test_dispatch_optimal_vs_equal():
