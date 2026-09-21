@@ -110,8 +110,11 @@ def safety(
             }
         )
         # Suv tashlagich o'tkazuvchanligi FPU da vs loyihaviy toshqin
-        h = max(float(st["max_level_m"]) - float(st["spill_crest_m"]), 0.0)
-        q_cap = float(st["spill_coeff"]) * float(st["spill_width_m"]) * (2 * G) ** 0.5 * h**1.5
+        from ges_sim.spillway import Spillway
+
+        q_cap = Spillway(
+            float(st["spill_crest_m"]), float(st["spill_width_m"]), m=float(st["spill_coeff"])
+        ).discharge(float(st["max_level_m"]))
         q_need = float(st["flood_01_m3s"])
         if q_need > 0:
             out.append(

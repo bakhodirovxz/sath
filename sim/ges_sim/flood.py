@@ -19,6 +19,7 @@ import math
 from .penstock import G
 from .reservoir import StorageCurve
 from .schema import Field, Meta
+from .spillway import Spillway
 
 META = Meta(
     id="flood",
@@ -155,6 +156,38 @@ FIELDS = [
         step=0.1,
         group="Suv tashlagich",
         hint="0 — darvoza ochilmadi (avariya ssenariysi)",
+    ),
+    Field(
+        "spill_bays",
+        "Oraliqlar soni (bykalar + 1)",
+        "",
+        type="int",
+        default=1,
+        min=1,
+        max=30,
+        group="Suv tashlagich",
+        hint="yon siqilish ε (Kiselev): bykalar yumaloq boshli deb olinadi",
+        advanced=True,
+    ),
+    Field(
+        "spill_gate_height_m",
+        "Zatvor balandligi",
+        "m",
+        default=0,
+        min=0,
+        group="Suv tashlagich",
+        hint="0 — ochiqlik napor ulushi; a < 0.75·H → teshik oqimi Q = μ·b·a·√(2g(H₀ − ε_c·a))",
+        advanced=True,
+    ),
+    Field(
+        "spill_approach_area_m2",
+        "Kelish o'zani kesimi (H₀ uchun)",
+        "m²",
+        default=0,
+        min=0,
+        group="Suv tashlagich",
+        hint="0 — kelish tezligi napori hisobga olinmaydi",
+        advanced=True,
     ),
     Field(
         "outlet_area_m2",
@@ -377,12 +410,20 @@ def run(p: dict) -> dict:
         n = int(p["duration_h"] / dt_h) + 1
         inflow = synthetic_hydrograph(p["peak_m3s"], p["time_to_peak_h"], p["base_m3s"], n, dt_h)
     crest, lcrest = p["crest_m"], p["crest_length_m"]
-    sc, sb, sm, gate = p["spill_crest_m"], p["spill_width_m"], p["spill_coeff"], p["gate_opening"]
+    sb = p["spill_width_m"]
+    spillway = Spillway(
+        p["spill_crest_m"],
+        sb,
+        m=p["spill_coeff"],
+        bays=int(p["spill_bays"]),
+        approach_area_m2=p["spill_approach_area_m2"],
+        gate_opening=p["gate_opening"],
+        gate_height_m=p["spill_gate_height_m"],
+    )
     qt = p["turbine_m3s"]
 
     def outflow(level: float) -> tuple[float, float, float, float]:
-        h = max(level - sc, 0.0)
-        spill = sm * sb * math.sqrt(2 * G) * h**1.5 * gate if sb > 0 else 0.0
+        spill = spillway.discharge(level) if sb > 0 else 0.0
         ho = max(level - p["outlet_sill_m"], 0.0)
         outlet = (
             0.6 * p["outlet_area_m2"] * math.sqrt(2 * G * ho) if p["outlet_area_m2"] > 0 else 0.0

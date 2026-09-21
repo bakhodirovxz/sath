@@ -1418,7 +1418,7 @@ Qabul mezoni: har usul uchun diapazondan tashqari kiritmada ogohlantirish chiqis
 tekshiradigan test.
 Bog'liqlik: yo'q.
 
-### J10 — Ombor balansi va suv tashlagich
+### J10 — Ombor balansi va suv tashlagich ✅
 
 Muammo:
 - `reservoir.py:125-129` — `q_spill` qadam boshidagi sathdan hisoblanadi va to'liq `dt` uchun

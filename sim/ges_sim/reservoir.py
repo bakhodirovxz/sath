@@ -1,18 +1,20 @@
 """Suv ombori suv balansi: kiruvchi sarf → sath, hajm, tashlama.
 
 V[t+1] = V[t] + (Q_in − Q_turb − Q_spill − Q_other) · dt
+Tashlama sathga bog'liq (Q ∝ H^1.5) — qadam ichida ikki iteratsiya (Puls): Q_spill qadam boshi va
+oxiri sathlari bo'yicha o'rtacha; massa balansi yopiq (`mass_residual_m3` natijada, ≈ 0), hajm
+manfiy bo'lsa xato (jim nol emas). Suv tashlagich formulasi — `spillway.py` (flood.py bilan bir xil).
 Sath–hajm bog'liqligi nuqtalar bilan (batimetriya), chiziqli interpolyatsiya.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import numpy as np
 
 from .climate import ClimateSpec, is_ice, open_water_evaporation_mm_day
-from .penstock import G
+from .spillway import Spillway
 
 
 @dataclass(frozen=True)
@@ -67,18 +69,16 @@ class StorageCurve:
         return cls((bottom_m, top_m), (0.0, area_km2 * (top_m - bottom_m)))
 
 
-@dataclass(frozen=True)
-class SpillwaySpec:
-    crest_m: float  # ostona belgisi
-    width_m: float
-    coefficient: float = 0.49  # m: Q = m·b·√(2g)·H^1.5 (Krigerning profili ≈ 0.49)
-    gate_opening: float = 1.0  # 0..1 — darvoza ochiqligi (1 — to'liq/darvozasiz)
-
-    def discharge(self, elev: float) -> float:
-        h = elev - self.crest_m
-        if h <= 0 or self.gate_opening <= 0:
-            return 0.0
-        return self.gate_opening * self.coefficient * self.width_m * math.sqrt(2 * G) * h**1.5
+def SpillwaySpec(  # noqa: N802 — eski nom saqlanadi (scenario, testlar)
+    crest_m: float,
+    width_m: float,
+    coefficient: float = 0.49,
+    gate_opening: float = 1.0,
+    **kw,
+) -> Spillway:
+    """`spillway.Spillway` ga o'tish: coefficient → m; qo'shimcha (bays, pier, approach_area_m2,
+    gate_height_m ...) kw orqali."""
+    return Spillway(crest_m, width_m, m=coefficient, gate_opening=gate_opening, **kw)
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ class ReservoirSpec:
     dead_level_m: float  # o'lik hajm sathi — turbinalar undan past suv ololmaydi
     normal_level_m: float  # NPU — normal to'ldirish sathi
     max_level_m: float | None = None  # FPU — majburiy sath (berilmasa NPU + 2)
-    spillway: SpillwaySpec | None = None
+    spillway: Spillway | None = None
     tailwater_m: float = 0.0  # quyi byef sathi (napor = sath − tailwater)
     other_outflow_m3s: float = 0.0  # sug'orish, ekologik oqim va h.k.
     evaporation_mm_day: float = 0.0  # doimiy (iqlim berilmasa)
@@ -110,8 +110,9 @@ def step(
     day_of_year: float | None = None,
 ) -> tuple[ReservoirState, dict]:
     """Bitta vaqt qadami. Turbina sarfi o'lik sathdan pastga tushirmaydigan qilib cheklanadi.
-    Tashlama: sath ostonadan yuqori bo'lsa suv tashlagich formulasi; suv tashlagich bo'lmasa va
-    sath FPU dan oshsa — ortiqcha suv "majburiy tashlama" sifatida chiqariladi."""
+    Tashlama: sath ostonadan yuqori bo'lsa suv tashlagich formulasi (qadam boshi/oxiri sathlari
+    o'rtachasi — Puls); suv tashlagich bo'lmasa va sath FPU dan oshsa — ortiqcha suv "majburiy
+    tashlama" sifatida chiqariladi. Hajm manfiy bo'lsa ValueError."""
     area = _surface_area(spec.curve, state.elev_m)
     ice = False
     if spec.climate is not None and day_of_year is not None:
@@ -124,8 +125,21 @@ def step(
     dead_volume = spec.curve.volume(spec.dead_level_m)
     available = max(state.volume_m3 - dead_volume, 0.0) / dt_s + inflow - losses
     q_turb = max(min(turbine_demand, available), 0.0)
-    q_spill = spec.spillway.discharge(state.elev_m) if spec.spillway else 0.0
+    tw = spec.tailwater_m if spec.tailwater_m > 0 else None
+    q_spill = 0.0
+    if spec.spillway:
+        q1 = spec.spillway.discharge(state.elev_m, tw)
+        q_spill = q1
+        for _ in range(2):  # sath oxiri bo'yicha qayta baholash (Puls yarim qadami)
+            v_try = state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s
+            q2 = spec.spillway.discharge(spec.curve.elevation(max(v_try, 0.0)), tw)
+            q_spill = (q1 + q2) / 2
     v_next = state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s
+    if v_next < -1e-6:
+        raise ValueError(
+            f"ombor hajmi manfiy ({v_next / 1e6:.3f} mln m³): yo'qotishlar/tashlama kiruvchi oqimdan "
+            "katta — kiritmalarni tekshiring"
+        )
     v_next = max(v_next, 0.0)
     max_level = spec.max_level_m if spec.max_level_m is not None else spec.normal_level_m + 2.0
     v_max = spec.curve.volume(max_level)
@@ -134,11 +148,13 @@ def step(
         forced = (v_next - v_max) / dt_s
         q_spill += forced
         v_next = v_max
+    residual = v_next - (state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s)
     new = ReservoirState(spec.curve.elevation(v_next), v_next)
     return new, {
         "turbine": q_turb,
         "spill": q_spill,
         "forced_spill": forced,
+        "mass_residual_m3": residual,
         "evap": evap,
         "evap_mm_day": e_mm,
         "seepage": spec.seepage_m3s,

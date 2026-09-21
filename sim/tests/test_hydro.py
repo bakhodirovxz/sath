@@ -158,7 +158,9 @@ def test_turbine_cannot_draw_below_dead_level():
 def test_spillway_discharge_formula_and_forced_spill():
     sp = SpillwaySpec(crest_m=140, width_m=20, coefficient=0.49)
     assert sp.discharge(139) == 0.0
-    assert sp.discharge(142) == pytest.approx(0.49 * 20 * math.sqrt(2 * G) * 2**1.5)
+    # Q = ε·σ_s·m·b·√(2g)·H₀^1.5; bitta oraliq, yumaloq qirg'oq ustuni: ε = 1 − 0.2·0.7·H/b
+    eps = 1 - 0.2 * 0.7 * 2 / 20
+    assert sp.discharge(142) == pytest.approx(eps * 0.49 * 20 * math.sqrt(2 * G) * 2**1.5)
     assert SpillwaySpec(140, 20, gate_opening=0).discharge(145) == 0.0
     c = StorageCurve.prismatic(100, 150, 1.0)
     spec = ReservoirSpec(c, dead_level_m=110, normal_level_m=140, max_level_m=141)
