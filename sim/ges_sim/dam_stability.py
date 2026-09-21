@@ -29,9 +29,10 @@ META = Meta(
     formulas=[
         "K_ag'd = ΣM_ushlab/ΣM_ag'dar",
         "K_sirp = (c·B + ΣV·tgφ)/ΣH",
-        "σ_toe,heel = ΣV/B·(1 ± 6e/B)",
+        "σ_toe,heel = ΣV/B·(1 ± 6e/B); yoriq: σ_heel < 0 → L_c iteratsiya, U yoriqda = γ_w·h₁",
+        "σ_p = σ_z·(1+m²) − p·m² (bosh kuchlanish, qiya yuzada)",
         "P_e = (7/12)·k_h·γ_w·h₁² (Westergaard)",
-        "U — USACE EM 1110-2-2200 drenajli epyura",
+        "U — USACE EM 1110-2-2200 drenajli epyura (yoriq drenajdan o'tsa drenaj samarasiz)",
     ],
     viz={"color_by": "dam", "water_level": "headwater_m"},
     outputs=[
@@ -135,7 +136,15 @@ FIELDS = [
         group="Tag",
         hint="0 — drenaj yo'q; USACE 0.25–0.5; 0.67 tekshirilgan",
     ),
-    Field("drain_x_m", "Drenaj masofasi tovondan", "m", default=6, min=0, group="Tag"),
+    Field(
+        "drain_x_m",
+        "Drenaj chizig'i — yuqori tovondan (poshna, x = 0) masofa",
+        "m",
+        default=6,
+        min=0,
+        group="Tag",
+        hint="Galereya/drenaj pardasi yuqori yuzadan qancha ichkarida (USACE EM 1110-2-2200 3-2-rasm)",
+    ),
     Field(
         "friction",
         "Ishqalanish tgφ (beton–qoya)",
@@ -241,7 +250,47 @@ def _area_centroid(poly: list[tuple[float, float]]) -> tuple[float, float, float
     return abs(a), cx / (6 * a), cy / (6 * a)
 
 
+def uplift(
+    B: float, h1: float, h2: float, drain_x: float, E: float, crack_len: float = 0.0
+) -> tuple[float, float, list[tuple[float, float]]]:
+    """Filtratsion bosim epyurasi (USACE EM 1110-2-2200 §3-3): yuqori tovon h₁, drenajda
+    h₃ = h₂ + (1−E)(h₁−h₂)(B−x_d)/(B−L_c), toe h₂. Yoriq (L_c) ichida to'liq h₁; yoriq drenaj
+    chizig'igacha yetsa drenaj samarasiz (E = 0). Qaytaradi: (U kN/m, toe dan yelka m, nuqtalar).
+    `cracking.py` ham shu funksiyani ishlatadi — ikki modul bir xil U beradi."""
+    lc = min(max(crack_len, 0.0), B)
+    xd = min(drain_x, B)
+    if lc >= xd:
+        E = 0.0
+    pts: list[tuple[float, float]] = [(0.0, h1)]
+    if lc > 0:
+        pts.append((lc, h1))
+    if E > 0 and lc < xd < B:
+        h3 = h2 + (1 - E) * (h1 - h2) * (B - xd) / (B - lc)
+        pts.append((xd, h3))
+    pts.append((B, h2))
+    U = MU = 0.0
+    for (xa, ha), (xb, hb) in zip(pts, pts[1:], strict=False):
+        seg = xb - xa
+        if seg <= 0:
+            continue
+        f1, f2 = GAMMA_W * ha * seg, GAMMA_W * (hb - ha) * seg / 2  # to'rtburchak + uchburchak
+        x1, x2 = xa + seg / 2, xa + 2 * seg / 3  # uchburchak har doim x_b ga tayangan (ishorali)
+        U += f1 + f2
+        MU += f1 * (B - x1) + f2 * (B - x2)
+    return U, (MU / U if U > 0 else 0.0), pts
+
+
+def principal_stress(sigma_z: float, slope: float, p_water: float) -> float:
+    """Qiya yuzadagi bosh kuchlanish (USBR Design of Gravity Dams, gravitatsion usul):
+    σ_p = σ_z·(1 + m²) − p·m², m — yuza qiyaligi (gorizontal/vertikal), p — yuzadagi suv bosimi."""
+    return sigma_z * (1 + slope**2) - p_water * slope**2
+
+
 def analyze(p: dict, headwater: float | None = None, kh: float | None = None) -> dict:
+    """Bitta holat: kuchlar, momentlar, K lar, tag kuchlanishlari. Yuqori tovonda cho'zilish chiqsa
+    yorilgan poydevor tahlili (USACE EM 1110-2-2200 §4-7; USBR): yoriq uzunligi L_c iteratsiya
+    bilan — yoriq ichida to'liq h₁ ko'tarish bosimi, ilashish faqat yorilmagan (B−L_c) qismida,
+    natijaviy kuch yorilmagan qismning o'rta uchi chegarasida (σ = 0 yoriq uchida) bo'lguncha."""
     H, bc, mu, md = p["height_m"], p["crest_width_m"], p["upstream_slope"], p["downstream_slope"]
     gc = p["concrete_kn_m3"]
     poly = _profile(H, bc, mu, md)
@@ -274,43 +323,82 @@ def analyze(p: dict, headwater: float | None = None, kh: float | None = None) ->
         forces.append(("Loyqa P_s", 0.0, p["silt_kn_m3"] * hs**2 / 2, 0.0, hs / 3))
     if p["ice_kn_m"] > 0:
         forces.append(("Muz P_ice", 0.0, p["ice_kn_m"], 0.0, min(h1, H)))
-    # Filtratsion bosim: uchta nuqtali epyura (tovon h1, drenaj h3, toe h2)
-    E, xd = p["drain_eff"], min(p["drain_x_m"], B)
-    h3 = h2 + (1 - E) * (h1 - h2) * (B - xd) / B if E > 0 and 0 < xd < B else None
-    pts = [(0.0, h1), (B, h2)] if h3 is None else [(0.0, h1), (xd, h3), (B, h2)]
-    U = MU = 0.0
-    for (xa, ha), (xb, hb) in zip(pts, pts[1:], strict=False):
-        seg = xb - xa
-        f1, f2 = (
-            GAMMA_W * ha * seg,
-            GAMMA_W * (hb - ha) * seg / 2,
-        )  # to'g'ri to'rtburchak + uchburchak
-        x1, x2 = xa + seg / 2, xa + 2 * seg / 3
-        U += f1 + f2
-        MU += f1 * (B - x1) + f2 * (B - x2)
-    forces.append(("Filtratsion U", -U, 0.0, MU / U if U > 0 else 0.0, 0.0))
     # Zilzila
     if kh > 0:
         forces.append(("Inersiya k_h·W", 0.0, kh * W, 0.0, yg))
         pe, ye = westergaard_force(kh, min(h1, H))
         forces.append(("Westergaard P_e", 0.0, pe / 1000, 0.0, ye))
 
-    sum_v = sum(f[1] for f in forces)
-    sum_h = sum(f[2] for f in forces)
-    m_res = sum(f[1] * f[3] for f in forces if f[1] > 0) + sum(
-        -f[2] * f[4] for f in forces if f[2] < 0
-    )
-    m_over = sum(f[2] * f[4] for f in forces if f[2] > 0) + sum(
-        -f[1] * f[3] for f in forces if f[1] < 0
-    )
-    fs_o = m_res / m_over if m_over > 0 else 99.0
-    fs_s = (p["cohesion_kpa"] * B + sum_v * p["friction"]) / sum_h if sum_h > 0 else 99.0
+    E, xd = p["drain_eff"], p["drain_x_m"]
+
+    def solve(lc: float) -> dict:
+        """Berilgan yoriq uzunligi uchun kuchlar, momentlar va natijaviy kuch."""
+        U, arm_u, _ = uplift(B, h1, h2, xd, E, lc)
+        fl = forces + [("Filtratsion U", -U, 0.0, arm_u, 0.0)]
+        sum_v = sum(f[1] for f in fl)
+        sum_h = sum(f[2] for f in fl)
+        m_res = sum(f[1] * f[3] for f in fl if f[1] > 0) + sum(
+            -f[2] * f[4] for f in fl if f[2] < 0
+        )
+        m_over = sum(f[2] * f[4] for f in fl if f[2] > 0) + sum(
+            -f[1] * f[3] for f in fl if f[1] < 0
+        )
+        x_r = (m_res - m_over) / sum_v if sum_v > 0 else 0.0  # natijaviy kuch toe dan
+        return {
+            "U": U,
+            "forces": fl,
+            "sum_v": sum_v,
+            "sum_h": sum_h,
+            "m_res": m_res,
+            "m_over": m_over,
+            "x_r": x_r,
+        }
+
+    r0 = solve(0.0)
+    e0 = B / 2 - r0["x_r"]
+    s_heel0 = r0["sum_v"] / B * (1 - 6 * e0 / B) / 1000 if B > 0 else 0.0
+    lc = 0.0
+    r = r0
+    if s_heel0 < 0 and r0["sum_v"] > 0:
+        # Yorilgan poydevor: yoriq uchida σ = 0 → natijaviy kuch yorilmagan qism (B−L_c) ning quyi
+        # uchdan 1/3 ida: L_c = B − 3·x_r(L_c); ko'tarish bosimi L_c ga bog'liq — iteratsiya
+        for _ in range(60):
+            lc_new = min(max(B - 3 * r["x_r"], 0.0), B)
+            r = solve(lc_new)
+            if r["sum_v"] <= 0 or r["x_r"] <= 0:
+                lc = B  # to'liq yoriladi / ag'dariladi
+                break
+            if abs(lc_new - lc) < 1e-4:
+                lc = lc_new
+                break
+            lc = lc_new
+    b_eff = max(B - lc, 1e-9)
+    sum_v, sum_h, x_r = r["sum_v"], r["sum_h"], r["x_r"]
+    fs_o = r["m_res"] / r["m_over"] if r["m_over"] > 0 else 99.0
+    fs_s = (p["cohesion_kpa"] * b_eff + sum_v * p["friction"]) / sum_h if sum_h > 0 else 99.0
     fs_s_fric = sum_v * p["friction"] / sum_h if sum_h > 0 else 99.0
-    x_r = (m_res - m_over) / sum_v if sum_v > 0 else 0.0  # natijaviy kuch toe dan
-    e = B / 2 - x_r
-    s_toe = sum_v / B * (1 + 6 * e / B) / 1000  # MPa
-    s_heel = sum_v / B * (1 - 6 * e / B) / 1000
+    if lc > 0 and lc < B:
+        # Uchburchak epyura yorilmagan qismda: σ_toe = 2ΣV/(3·x_r), yoriq uchida 0
+        e = b_eff / 2 - x_r  # yorilmagan qismning markaziga nisbatan
+        s_toe = 2 * sum_v / (3 * x_r) / 1000 if x_r > 0 else 0.0
+        s_heel = 0.0
+    else:
+        e = B / 2 - x_r
+        s_toe = sum_v / B * (1 + 6 * e / B) / 1000  # MPa
+        s_heel = sum_v / B * (1 - 6 * e / B) / 1000
+    # Bosh kuchlanishlar qiya yuzalarda (yuqori yuzada suv + loyqa bosimi, quyi yuzada quyi byef)
+    p1 = (GAMMA_W * h1 + p["silt_kn_m3"] * min(p["silt_m"], h1)) / 1000  # suv + loyqa (gorizontal ekv.)
+    p2 = GAMMA_W * h2 / 1000
+    s_p_toe = principal_stress(s_toe, md, p2)
+    s_p_heel = principal_stress(s_heel, mu, max(p1, 0.0))
+    U = r["U"]
+    forces = r["forces"]
+    m_res, m_over = r["m_res"], r["m_over"]
     return {
+        "crack_len": lc,
+        "s_heel_uncracked": s_heel0,
+        "s_p_toe": s_p_toe,
+        "s_p_heel": s_p_heel,
         "B": B,
         "h1": h1,
         "h2": h2,
@@ -353,12 +441,30 @@ def run(p: dict) -> dict:
             f"ilashish c = {p['cohesion_kpa']:g} kPa hisobga olindi — qiymat kontakt sinovi bilan "
             "asoslangan bo'lishi shart (sinovsiz 0)"
         )
-    if r["s_heel"] < 0 and not seismic:
-        problems.append("yuqori tovonda cho'zilish (natijaviy kuch o'rta uchdan tashqarida)")
+    if r["crack_len"] >= B:
+        problems.append("poydevor to'liq yoriladi / natijaviy kuch tag chegarasidan tashqarida — ag'dariladi")
+    elif r["crack_len"] > 0:
+        if seismic:
+            # USACE: ekstremal holatda yoriq ruxsat (L_c bilan qayta hisob), lekin drenajdan o'tmasin
+            if r["crack_len"] >= p["drain_x_m"]:
+                problems.append(
+                    f"yoriq {r['crack_len']:.1f} m — drenaj chizig'idan ({p['drain_x_m']} m) o'tadi, drenaj samarasiz"
+                )
+            else:
+                warnings.append(
+                    f"zilzilada yuqori tovonda yoriq {r['crack_len']:.1f} m (drenajgacha yetmaydi) — "
+                    "ruxsat etilgan, natijalar yorilgan poydevor bilan qayta hisoblangan"
+                )
+        else:
+            problems.append(
+                f"yuqori tovonda cho'zilish — yoriq {r['crack_len']:.1f} m (statik holda ruxsat etilmaydi)"
+            )
     if r["x_r"] < 0 or r["x_r"] > B:
         problems.append("natijaviy kuch tag chegarasidan tashqarida — ag'dariladi")
-    if r["s_toe"] > p["allow_stress_mpa"]:
-        problems.append(f"tovon kuchlanishi {r['s_toe']:.2f} MPa > ruxsat {p['allow_stress_mpa']}")
+    if max(r["s_toe"], r["s_p_toe"]) > p["allow_stress_mpa"]:
+        problems.append(
+            f"tovon bosh kuchlanishi {r['s_p_toe']:.2f} MPa (σ_z {r['s_toe']:.2f}) > ruxsat {p['allow_stress_mpa']}"
+        )
     if r["overtopped"]:
         problems.append("suv gerbdan oshib o'tadi")
     # Sath bo'yicha skanerlash (tagdan gerb+3 m gacha)
@@ -417,6 +523,10 @@ def run(p: dict) -> dict:
             "middle_third": abs(r["e"]) <= B / 6,
             "sigma_toe_mpa": round(r["s_toe"], 3),
             "sigma_heel_mpa": round(r["s_heel"], 3),
+            "sigma_heel_uncracked_mpa": round(r["s_heel_uncracked"], 3),
+            "sigma_principal_toe_mpa": round(r["s_p_toe"], 3),
+            "sigma_principal_heel_mpa": round(r["s_p_heel"], 3),
+            "crack_length_m": round(r["crack_len"], 2),
             "kh": p["kh"],
             "kh_critical": kh_crit,
             "req_sliding": p["req_sliding"],

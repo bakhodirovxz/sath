@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 
 from . import materials
-from .dam_stability import GAMMA_W, _area_centroid, _profile
+from .dam_stability import GAMMA_W, _area_centroid, _profile, principal_stress, uplift
 from .schema import Field, Meta
 
 META = Meta(
@@ -124,6 +124,16 @@ FIELDS = [
         max=0.9,
         step=0.05,
         group="Sathlar",
+    ),
+    Field(
+        "drain_x_m",
+        "Drenaj chizig'i — yuqori tovondan masofa",
+        "m",
+        default=6,
+        min=0,
+        group="Sathlar",
+        hint="dam_stability bilan bir xil epyura (USACE EM 1110-2-2200)",
+        model="dam.drain_x_m",
     ),
     Field(
         "kh",
@@ -249,7 +259,7 @@ def _stress_profile(p: dict, cls_mass: dict, cls_face: dict) -> dict:
     xu = lambda y: mu * y  # noqa: E731
     xd = lambda y: mu * H + bc + md * (H - y)  # noqa: E731
     n = 40
-    levels, s_u, s_d, s_p, allow_t = [], [], [], [], []
+    levels, s_u, s_d, s_p, s_pu, allow_t = [], [], [], [], [], []
     crack_levels = []
     for i in range(n + 1):
         y = H * i / n
@@ -277,45 +287,39 @@ def _stress_profile(p: dict, cls_mass: dict, cls_face: dict) -> dict:
         if d2 > 0:
             P2 = GAMMA_W * d2**2 / 2
             M -= P2 * d2 / 3
-        # Filtratsion bosim kesimda: yuqori yuzada γ_w·d1, drenaj chizig'ida kamaygan, quyi yuzada γ_w·d2
+        # Filtratsion bosim kesimda — dam_stability.uplift bilan bir xil epyura (drenaj chizig'i
+        # vertikal: kesimda yuqori yuzadan masofa = drain_x − x_u(y))
         pu, pd = GAMMA_W * d1, GAMMA_W * d2
-        p_dr = pd + (1 - E) * (pu - pd)
-        # trapetsiya: yuqori yuzadan drenajgacha (B·0.1) va drenajdan quyigacha
-        xdr = 0.1 * B
-        U1 = (pu + p_dr) / 2 * xdr
-        U2 = (p_dr + pd) / 2 * (B - xdr)
-        x1 = xu(y) + xdr * (pu + 2 * p_dr) / (3 * (pu + p_dr)) if (pu + p_dr) > 0 else xu(y)
-        x2 = (
-            xu(y) + xdr + (B - xdr) * (p_dr + 2 * pd) / (3 * (p_dr + pd))
-            if (p_dr + pd) > 0
-            else xu(y) + xdr
-        )
-        U = U1 + U2
+        xdr = p["drain_x_m"] - xu(y)
+        U, arm_toe, _ = uplift(B, d1, d2, xdr if xdr > 0 else B, E)
         V -= U
-        M -= U1 * (x1 - xc) + U2 * (x2 - xc)
+        M -= U * (xd(y) - arm_toe - xc)
         if kh > 0:
             M += kh * W * (yg - y)
             if d1 > 0:
                 Pe = 7 / 12 * kh * GAMMA_W * math.sqrt(h1) * d1**1.5
                 M += Pe * 0.4 * d1
-        su = (V / B - 6 * M / B**2) / 1000  # MPa
+        su = (V / B - 6 * M / B**2) / 1000  # MPa (vertikal, σ_z)
         sd = (V / B + 6 * M / B**2) / 1000
-        sp = sd * (1 + md**2) - (pd / 1000) * md**2
+        sp = principal_stress(sd, md, pd / 1000)
+        spu = principal_stress(su, mu, pu / 1000)  # yuqori yuza bosh kuchlanishi — yoriq mezoni shunga
         levels.append(round(p["base_elev_m"] + y, 2))
         s_u.append(round(su, 3))
         s_d.append(round(sd, 3))
         s_p.append(round(sp, 3))
+        s_pu.append(round(spu, 3))
         ft = (
             cls_face["Rbt"] if y < 4 else cls_mass["Rbt"]
         )  # yuza zonasi tagda ham massiv klass bo'lishi mumkin
         allow_t.append(-round(ft, 3))
-        if su < 0:
-            crack_levels.append((y, su, ft))
+        if spu < 0:
+            crack_levels.append((y, spu, ft))
     return {
         "levels": levels,
         "sigma_up": s_u,
         "sigma_down": s_d,
         "sigma_principal_down": s_p,
+        "sigma_principal_up": s_pu,
         "allow_tension": allow_t,
         "cracks": crack_levels,
         "B0": B0,
@@ -332,14 +336,16 @@ def _thermal(p: dict, cls: dict) -> dict:
     E_eff = cls["E"] / (1 + p["creep"])
     sigma_t = p["restraint"] * E_eff * materials.ALPHA_CONCRETE * dT
     idx = cls["Rbtn"] / sigma_t if sigma_t > 0 else 9.9
-    if idx >= 1.5:
-        risk, prob = "past", 5
-    elif idx >= 1.2:
-        risk, prob = "o'rtacha", 30
-    elif idx >= 1.0:
-        risk, prob = "yuqori", 60
+    # JCI Guidelines for Control of Cracking of Mass Concrete (2016): P = 1 − exp[−(I_cr/0.92)^−4.29]
+    prob = round(100 * (1 - math.exp(-((idx / 0.92) ** -4.29)))) if idx > 0 else 100
+    if prob < 15:
+        risk = "past"
+    elif prob < 35:
+        risk = "o'rtacha"
+    elif prob < 60:
+        risk = "yuqori"
     else:
-        risk, prob = "juda yuqori", 85
+        risk = "juda yuqori"
     # Ruxsat etilgan ΔT (I=1.5 uchun) → tavsiya: sovutish / sement kamaytirish
     dT_allow = cls["Rbtn"] / (1.5 * p["restraint"] * E_eff * materials.ALPHA_CONCRETE)
     c_allow = max((dT_allow + p["ambient_temp"] - p["place_temp"]) / (0.85 * cem["q"]), 0.0)
@@ -398,9 +404,10 @@ def _risk_field(
     abutment_extra: float = 0.25,
     thermal: float = 0.0,
 ) -> dict:
-    """Yuqori yuza uchun yoriq xavfi xaritasi (0..1): balandlik bo'yicha hisoblangan qiymat + qirg'oq
-    (abutment) yaqinida kuchlanish konsentratsiyasi + gerb (zilzila) + issiqlik. Web 3D da to'g'on yuzasiga
-    rangli maydon sifatida chiziladi (chapdan o'ngga — uzunlik, pastdan yuqoriga — balandlik)."""
+    """ILLYUSTRATIV interpolyatsiya — tahlil natijasi emas. Balandlik bo'yicha hisoblangan
+    cho'zilish/ruxsat nisbati (1D) qirg'oq (abutment_extra), gerb (crest_extra) va issiqlik (thermal)
+    uchun manbasiz konstantalar bilan 2D ga yoyiladi; faqat qayerga qarash kerakligini ko'rsatadi.
+    Web 3D da to'g'on yuzasiga rangli maydon sifatida chiziladi; `illustrative: True` belgisi bilan."""
     ny = max(len(by_height), 2)
     vals: list[float] = []
     for j in range(ny):
@@ -417,7 +424,8 @@ def _risk_field(
         "nx": nx,
         "ny": ny,
         "values": vals,
-        "legend": "Yoriq xavfi: ko'k — past, qizil — yuqori",
+        "illustrative": True,
+        "legend": "Yoriq xavfi (illyustrativ interpolyatsiya, tahlil natijasi emas): ko'k — past, qizil — yuqori",
     }
 
 
@@ -489,7 +497,7 @@ def run(p: dict) -> dict:
     th = _thermal(p, cls_mass)
     H = p["height_m"]
     probs = []
-    min_su = min(sp["sigma_up"])
+    min_su = min(sp["sigma_principal_up"])
     max_sd = max(sp["sigma_principal_down"])
     cracks = sp["cracks"]
     zone_pct = 0.0
@@ -603,6 +611,7 @@ def run(p: dict) -> dict:
         "series": {
             "level": sp["levels"],
             "sigma_up": sp["sigma_up"],
+            "sigma_principal_up": sp["sigma_principal_up"],
             "sigma_down": sp["sigma_down"],
             "sigma_principal_down": sp["sigma_principal_down"],
             "allow_tension": sp["allow_tension"],

@@ -1177,7 +1177,7 @@ Bog'liqlik: H2, I1.
 Bu bosqich shoshilinch, chunki hozirgi natijalar xavfsizlik qarorlariga ta'sir qiladi va
 ba'zilari noto'g'ri tomonga xato qiladi. Har vazifada tekshirilgan raqamlar keltirilgan.
 
-### J1 — Xavfsizlik bahosini tuzatish ✅
+### J1 — Xavfsizlik bahosini tuzatish ✅ (`a1f911e`)
 
 Muammo (`server/ges_server/sim/safety.py`):
 - `_stab_judge` (`:48`) faqat `fs_sliding` ni o'qiydi, ya'ni ilashish (cohesion) bilan.
@@ -1205,7 +1205,7 @@ Fayllar: `server/ges_server/sim/safety.py`
 Qabul mezoni: yuqoridagi uchta holat uchun testlar; sirpanadigan to'g'on `fail` beradi.
 Bog'liqlik: yo'q. Eng birinchi.
 
-### J2 — Yorilgan poydevor tahlili
+### J2 — Yorilgan poydevor tahlili ✅
 
 Muammo: `dam_stability.py:265-278`, `:294`, `:331` — σ_heel manfiy bo'lganda kod buni belgilaydi
 (seysmik holatda hatto belgilamaydi, `:331`), lekin (a) yoriq uzunligi bo'ylab ko'tarish bosimini
@@ -1444,7 +1444,7 @@ Fayllar: `sim/ges_sim/reservoir.py`, `flood.py`
 Qabul mezoni: massa balansi qoldig'i natijada bor va chegaradan kichik (test).
 Bog'liqlik: yo'q.
 
-### J11 — Kuchlanish tekshiruvlarini izchil qilish
+### J11 — Kuchlanish tekshiruvlarini izchil qilish ✅
 
 Muammo:
 - `dam_stability.py:298`, `:335` — `s_toe` vertikal poydevor kuchlanishi σ_z. Og'ma quyi oqim
