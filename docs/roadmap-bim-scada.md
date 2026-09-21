@@ -368,7 +368,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/live.py`, `monitoring/router.py
 Qabul mezoni: shelved alarm muddat tugagach avtomatik qaytadi (test); har harakat auditda.
 Bog'liqlik: C1.
 
-### C3 — Ratsionalizatsiya maydonlari ✅
+### C3 — Ratsionalizatsiya maydonlari ✅ (`88046ea`)
 
 Bajarildi: `Sensor.cause/consequence/corrective_action/response_time_s/priority_basis`, `rationalized_by/at`
 (migratsiya 0012); `POST /sensors/{id}/rationalize` (muhandis+, barcha maydonlar majburiy, audit);
@@ -388,7 +388,12 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/router.py`
 Qabul mezoni: ratsionalizatsiya qilinmagan alarmlar hisoboti mavjud.
 Bog'liqlik: C1.
 
-### C4 — Alarm toshqini aniqlash va EEMUA-191 KPI
+### C4 — Alarm toshqini aniqlash va EEMUA-191 KPI ✅
+
+Bajarildi: `monitoring/alarm_kpi.py` — yuk (soat/10 daq), cho'qqi 10 daq oyna, toshqin (> 10 / 10 daq) va
+toshqin vaqti ulushi, turg'un (> 24 soat), chattering (soatda 3+), ustuvorlik taqsimoti vs EEMUA maqsadi,
+eng yomon 10 va ulushi, kvitlash o'rtacha/mediana, EEMUA-191 bahosi va tavsiyalar;
+`GET /projects/{id}/alarms/kpi?hours=`; dashboard `alarm_flood` + web banner va ustuvorlik filtri.
 
 Muammo: `historian.alarm_stats` faqat `{count, by_state, unacked}` qaytaradi. Toshqin aniqlash,
 chattering indeksi, turg'un alarmlar, eng yomon 10 talik — hech biri hisoblanmaydi.

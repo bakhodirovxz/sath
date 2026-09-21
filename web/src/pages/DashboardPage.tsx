@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [events, setEvents] = useState<AlarmEvent[]>([]);
+  const [prioOnly, setPrioOnly] = useState(false); // toshqinda faqat yuqori/kritik (EEMUA-191)
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -231,6 +232,7 @@ export default function DashboardPage() {
             {editing && <p className="muted small">Slotni bosib sensor tanlang. Bo'sh slotlar ko'rinmaydi.</p>}
           </div>
           <div className="dash-alarms">
+            {dash.alarm_flood && <div className="verdict warn" style={{ marginBottom: 6 }}>Alarm toshqini: 10 daqiqada 10 dan ko'p alarm (EEMUA-191). <button className={`btn sm ${prioOnly ? "active" : ""}`} onClick={() => setPrioOnly((v) => !v)}>{prioOnly ? "Hammasini ko'rsatish" : "Faqat yuqori/kritik"}</button></div>}
             <div className="row"><b>Alarm jurnali</b><span className="grow" />
               <button className={`btn sm ${showHistory ? "active" : ""}`} onClick={async () => { const h = !showHistory; setShowHistory(h); setEvents(await api.alarmEvents(pid, !h)); }}>{showHistory ? "Faollar" : "Tarix (7 kun)"}</button>
               {canOperate && unacked > 0 && <button className="btn sm" onClick={() => api.ackAll(pid).then(load)}>Hammasini kvitlash</button>}
@@ -239,7 +241,7 @@ export default function DashboardPage() {
               <table className="grid small">
                 <thead><tr><th>Vaqt</th><th>Sensor</th><th>Holat</th><th>Qiymat</th><th /></tr></thead>
                 <tbody>
-                  {events.map((e) => (
+                  {events.filter((e) => !prioOnly || e.priority === "high" || e.priority === "critical").map((e) => (
                     <tr key={e.id} className={!e.ended_at ? "alarm-active" : undefined}>
                       <td className="mono">{fmtDate(e.started_at)}{e.ended_at && <div className="dim">→ {fmtDate(e.ended_at)}</div>}</td>
                       <td>{e.sensor_name}<div className="dim">{e.sensor_key}</div></td>

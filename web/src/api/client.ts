@@ -375,7 +375,18 @@ export interface Dashboard {
   active_alarms: number;
   energy_24h_mwh: number | null;
   alarms_24h: { count: number; by_state: Record<string, number>; unacked: number };
+  alarm_flood?: boolean;
   live_clients: number;
+}
+export interface AlarmKpi {
+  since: string; until: string; hours: number; total: number; suppressed: Record<string, number>;
+  per_hour: number; per_10min: number; peak_10min: number; flood_threshold_10min: number; flood_time_pct: number; flood_now: boolean; last_10min: number;
+  standing: { event_id: number; sensor_id: number; key: string; hours: number }[];
+  chattering: { sensor_id: number; key: string; name: string; peak_per_hour: number; count: number }[];
+  priority_pct: Record<string, number>; priority_target_pct: Record<string, number>;
+  top10: { sensor_id: number; key: string; name: string; count: number; share_pct: number }[]; top10_share_pct: number;
+  ack_mean_s: number | null; ack_median_s: number | null; unacked_active: number;
+  rating: string; rating_note: string; verdicts: string[]; reference: string;
 }
 export interface ReportRow { sensor_id: number; key: string; name: string; kind: SensorKind; unit: string; n: number; avg: number | null; min: number | null; max: number | null; energy_mwh: number | null }
 export interface Report { project: string; period: "day" | "week" | "month"; start: string; end: string; energy_mwh: number; alarms: { count: number; by_state: Record<string, number>; unacked: number }; sensors: ReportRow[] }
@@ -666,6 +677,7 @@ export const api = {
   sensorInService: (id: number) => request<Sensor>(`/api/sensors/${id}/in-service`, { method: "POST" }),
   rationalizeSensor: (id: number, body: { cause: string; consequence: string; corrective_action: string; response_time_s: number; priority_basis: string }) => request<Sensor>(`/api/sensors/${id}/rationalize`, { method: "POST", body: json(body) }),
   rationalization: (projectId: number) => request<RationalizationReport>(`/api/projects/${projectId}/alarms/rationalization`),
+  alarmKpi: (projectId: number, hours = 24) => request<AlarmKpi>(`/api/projects/${projectId}/alarms/kpi?hours=${hours}`),
   adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),
   saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),

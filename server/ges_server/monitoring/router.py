@@ -29,7 +29,7 @@ from ..auth.security import decode_access_token
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import historian, interlock, keys, live, mqtt_bridge
+from . import alarm_kpi, historian, interlock, keys, live, mqtt_bridge
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -867,6 +867,17 @@ def ack_all(project: OperatorProject, user: CurrentUser, db: DB):
     return {"acked": n}
 
 
+# ---------- KPI (EEMUA-191, C4) ----------
+
+
+@router.get("/projects/{project_id}/alarms/kpi")
+def alarms_kpi(project: ViewerProject, db: DB, hours: float = Query(24, gt=0, le=24 * 92)):
+    """Alarm tizimi KPI (EEMUA-191 / ISA-18.2 §16): yuk, cho'qqi, toshqin, turg'un, chattering,
+    ustuvorlik taqsimoti, eng yomon 10 ta, kvitlash vaqti; EEMUA mezonlariga nisbatan baho va tavsiyalar."""
+    now = datetime.now(timezone.utc)
+    return alarm_kpi.kpi(db, project.id, now - timedelta(hours=hours), now, now)
+
+
 # ---------- Ratsionalizatsiya (ISA-18.2 §10, C3) ----------
 
 RATIONALIZATION_FIELDS = ("cause", "consequence", "corrective_action", "response_time_s", "priority_basis")
@@ -1138,6 +1149,7 @@ def dashboard(project: ViewerProject, db: DB):
         "active_alarms": active,
         "energy_24h_mwh": round(energy, 3) if has_power else None,
         "alarms_24h": historian.alarm_stats(db, project.id, since, now),
+        "alarm_flood": alarm_kpi.flood_now(db, project.id, now)[0],
         "live_clients": live.hub.count(project.id),
     }
 
