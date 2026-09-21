@@ -502,7 +502,7 @@ Bog'liqlik: D1.
 Haqiqiy SCADA hozir yo'q, shuning uchun bu bosqich simulyator ustida quriladi va protokol
 klientlari simulyator bilan sinaladi.
 
-### E1 — Gateway da diskka yoziladigan store-and-forward ✅
+### E1 — Gateway da diskka yoziladigan store-and-forward ✅ (`b9e84ae`)
 
 Muammo: `deploy/gateway/ges_gateway.py` — `Pusher.buffer` xotiradagi Python ro'yxati, 50 000 da
 eng eskisini jimgina kesadi. Jarayon restart bo'lsa hammasi yo'qoladi.
@@ -518,7 +518,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`, `deploy/gateway/README.md`
 Qabul mezoni: gateway restartidan keyin yuborilmagan o'lchovlar yo'qolmaydi (test).
 Bog'liqlik: yo'q.
 
-### E2 — Sifat va manbadagi vaqt tamg'asini gateway da to'ldirish ✅
+### E2 — Sifat va manbadagi vaqt tamg'asini gateway da to'ldirish ✅ (`b9e84ae`)
 
 Muammo: Modbus va OPC UA o'qishlari vaqt tamg'asi bermaydi; OPC UA `StatusCode` o'qilmaydi
 (`ges_gateway.py` `OpcUaSource` faqat `node.read_value()`).
@@ -536,7 +536,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`
 Qabul mezoni: OPC UA dan kelgan `Bad` StatusCode serverda `quality=bad` bo'lib saqlanadi (test).
 Bog'liqlik: A1.
 
-### E3 — OPC UA obuna rejimi
+### E3 — OPC UA obuna rejimi ✅ (`fdcf346`)
 
 Muammo: hozir sinxron polling. Obuna (MonitoredItems) yo'q, ya'ni o'zgarishga reaksiya poll
 davriga bog'liq va tarmoq yuki keraksiz katta.
