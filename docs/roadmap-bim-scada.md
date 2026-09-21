@@ -248,7 +248,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2.
 
-### B2 — Select-before-operate va readback ✅
+### B2 — Select-before-operate va readback ✅ (`a80feff`)
 
 Muammo: buyruq bitta POST bilan yuboriladi. `ack` (`control.py:238`) gateway ning o'z so'zini
 yozadi — PLC qiymatni qabul qilgani tekshirilmaydi.
@@ -274,7 +274,7 @@ Qabul mezoni:
 
 Bog'liqlik: B1.
 
-### B3 — Kalitlarni ajratish va default read-only
+### B3 — Kalitlarni ajratish va default read-only ✅
 
 Muammo:
 - Bitta statik `Project.ingest_key` ham telemetriyani, ham buyruq olish/ack ni avtorizatsiya

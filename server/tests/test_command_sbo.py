@@ -31,7 +31,7 @@ def gate(client, users):
 
 
 def _key(client, users):
-    return client.get(f"/api/projects/{users['project_id']}/ingest-key", headers=users["approver"]).json()["ingest_key"]
+    return client.get(f"/api/projects/{users['project_id']}/keys/command", headers=users["approver"]).json()["key"]
 
 
 def test_execute_requires_valid_token(client, users, operator, gate):
@@ -76,7 +76,7 @@ def test_dual_approval_author_cannot_approve(client, users, operator, gate):
     cid = r.json()["id"]
     key = _key(client, users)
     # gateway ga berilmaydi
-    assert client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json() == []
+    assert client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key}).json() == []
     # muallif o'zini tasdiqlay olmaydi
     assert client.post(f"/api/commands/{cid}/approve", headers=operator).status_code == 403
     # ko'ruvchi — 403
@@ -86,7 +86,7 @@ def test_dual_approval_author_cannot_approve(client, users, operator, gate):
     assert r.status_code == 200 and r.json()["status"] == "pending"
     assert r.json()["approved_by_username"] == "engineer" and r.json()["expires_at"] is not None
     assert client.post(f"/api/commands/{cid}/approve", headers=users["engineer"]).status_code == 409
-    got = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json()
+    got = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key}).json()
     assert [g["id"] for g in got] == [cid]
     # tasdiq kutayotganda ikkinchi buyruq — 409; bekor qilish mumkin
     r2 = send_command(client, operator, pid, gate["id"], 56)
@@ -100,15 +100,15 @@ def test_readback_match_and_mismatch(client, users, operator, gate):
     client.patch(f"/api/sensors/{gate['id']}", json={"readback_tolerance": 0.02}, headers=users["engineer"])
     key = _key(client, users)
     cid = send_command(client, operator, pid, gate["id"], 50).json()["id"]
-    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key})
+    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key})
     # readback sent holatida ham qabul qilinadi
-    r = client.post(f"/api/commands/{cid}/readback", json={"value": 50.5}, headers={"X-Ingest-Key": key})
+    r = client.post(f"/api/commands/{cid}/readback", json={"value": 50.5}, headers={"X-Command-Key": key})
     assert r.status_code == 200 and r.json()["status"] == "acked" and r.json()["readback_value"] == 50.5
     # mismatch
     cid2 = send_command(client, operator, pid, gate["id"], 60).json()["id"]
-    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key})
-    client.post(f"/api/commands/{cid2}/ack", json={"status": "acked", "result": "yozildi"}, headers={"X-Ingest-Key": key})
-    r = client.post(f"/api/commands/{cid2}/readback", json={"value": 30}, headers={"X-Ingest-Key": key})
+    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key})
+    client.post(f"/api/commands/{cid2}/ack", json={"status": "acked", "result": "yozildi"}, headers={"X-Command-Key": key})
+    r = client.post(f"/api/commands/{cid2}/readback", json={"value": 30}, headers={"X-Command-Key": key})
     assert r.status_code == 200 and r.json()["status"] == "mismatch" and "≠" in r.json()["result"]
     n = client.get("/api/notifications", headers=operator).json()
     assert any("mos kelmadi" in x["title"] for x in n)
@@ -117,9 +117,9 @@ def test_readback_match_and_mismatch(client, users, operator, gate):
     # mismatch dan keyin sensor bo'sh (ochiq buyruq emas)
     assert send_command(client, operator, pid, gate["id"], 61).status_code == 201
     # NaN readback — 422; pending buyruqqa readback — 409
-    assert client.post(f"/api/commands/{cid2}/readback", json={"value": "nan"}, headers={"X-Ingest-Key": key}).status_code == 422
+    assert client.post(f"/api/commands/{cid2}/readback", json={"value": "nan"}, headers={"X-Command-Key": key}).status_code == 422
     with SessionLocal() as db:
         c = db.query(Command).filter_by(value=61).one()
         assert c.status == CommandStatus.pending
         assert control._aware(c.expires_at) > utcnow() - timedelta(seconds=1)
-    assert client.post(f"/api/commands/{c.id}/readback", json={"value": 61}, headers={"X-Ingest-Key": key}).status_code == 409
+    assert client.post(f"/api/commands/{c.id}/readback", json={"value": 61}, headers={"X-Command-Key": key}).status_code == 409

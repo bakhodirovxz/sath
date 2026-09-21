@@ -6,7 +6,6 @@ import asyncio
 import csv
 import io
 import math
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
@@ -30,7 +29,7 @@ from ..auth.security import decode_access_token
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import historian, live, mqtt_bridge
+from . import historian, keys, live, mqtt_bridge
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -379,36 +378,61 @@ def delete_sensor(sensor_id: int, user: CurrentUser, db: DB):
 # ---------- Ingest ----------
 
 
-@router.get("/projects/{project_id}/ingest-key")
-def get_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
-    """SCADA/gateway uchun kalit; bo'lmasa yaratiladi. Sarlavha: X-Ingest-Key. Har o'qish auditda."""
-    if not project.ingest_key:
-        project.ingest_key = secrets.token_urlsafe(24)
+def _key_response(project: Project, kind: str) -> dict:
+    inf = keys.info(project, kind)
+    out = {
+        **inf,
+        "url": f"/api/projects/{project.id}/readings"
+        if kind == "ingest"
+        else f"/api/projects/{project.id}/commands/claim",
+        "header": "X-Ingest-Key" if kind == "ingest" else "X-Command-Key",
+    }
+    out["ingest_key" if kind == "ingest" else "command_key"] = inf["key"]  # eski nom (moslik)
+    return out
+
+
+@router.get("/projects/{project_id}/keys/{kind}")
+def get_project_key(
+    kind: Literal["ingest", "command"], project: ApproverProject, user: CurrentUser, db: DB
+):
+    """Gateway kaliti (ingest — X-Ingest-Key, faqat o'lchov; command — X-Command-Key, buyruq kanali).
+    Bo'lmasa yaratiladi (365 kun). Har o'qish auditda."""
+    keys.ensure(db, project, kind, user.id)
     audit.log(
         db,
         user_id=user.id,
-        action="project.ingest_key.read",
+        action=f"project.{kind}_key.read",
         target_type="project",
         target_id=project.id,
         project_id=project.id,
     )
     db.commit()
-    return {"ingest_key": project.ingest_key, "url": f"/api/projects/{project.id}/readings"}
+    return _key_response(project, kind)
+
+
+@router.post("/projects/{project_id}/keys/{kind}")
+def rotate_project_key(
+    kind: Literal["ingest", "command"],
+    project: ApproverProject,
+    user: CurrentUser,
+    db: DB,
+    ttl_days: int = Query(keys.DEFAULT_TTL_DAYS, ge=0, le=3650, description="0 — muddatsiz"),
+):
+    keys.rotate(db, project, kind, user.id, ttl_days)
+    db.commit()
+    return _key_response(project, kind)
+
+
+@router.get("/projects/{project_id}/ingest-key")
+def get_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+    """Eski manzil — `GET .../keys/ingest` bilan bir xil."""
+    return get_project_key("ingest", project, user, db)
 
 
 @router.post("/projects/{project_id}/ingest-key")
 def rotate_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
-    project.ingest_key = secrets.token_urlsafe(24)
-    audit.log(
-        db,
-        user_id=user.id,
-        action="project.ingest_key.rotate",
-        target_type="project",
-        target_id=project.id,
-        project_id=project.id,
-    )
-    db.commit()
-    return {"ingest_key": project.ingest_key}
+    """Eski manzil — `POST .../keys/ingest` bilan bir xil."""
+    return rotate_project_key("ingest", project, user, db, keys.DEFAULT_TTL_DAYS)
 
 
 @router.post("/projects/{project_id}/readings")
@@ -423,9 +447,10 @@ def push_readings(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    ok = bool(project.ingest_key and x_ingest_key) and secrets.compare_digest(
-        x_ingest_key, project.ingest_key
-    )
+    ok = False
+    if x_ingest_key:
+        keys.verify(db, project, "ingest", x_ingest_key)  # 401/403 tashlaydi
+        ok = True
     auth_kind, actor_id = ("key", None) if ok else (None, None)
     if not ok and authorization and authorization.lower().startswith("bearer "):
         uid = decode_access_token(authorization[7:])

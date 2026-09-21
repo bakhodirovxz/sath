@@ -284,6 +284,8 @@ export interface SensorIn {
 }
 export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch";
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
+export type GatewayKeyKind = "ingest" | "command";
+export interface GatewayKey { kind: GatewayKeyKind; key: string; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
 export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
@@ -664,6 +666,9 @@ export const api = {
   },
   ingestKey: (projectId: number) => request<{ ingest_key: string; url: string }>(`/api/projects/${projectId}/ingest-key`),
   rotateIngestKey: (projectId: number) => request<{ ingest_key: string }>(`/api/projects/${projectId}/ingest-key`, { method: "POST" }),
+  /** Gateway kalitlari (B3): ingest — faqat o'lchov (X-Ingest-Key); command — buyruq kanali (X-Command-Key) */
+  projectKey: (projectId: number, kind: GatewayKeyKind) => request<GatewayKey>(`/api/projects/${projectId}/keys/${kind}`),
+  rotateProjectKey: (projectId: number, kind: GatewayKeyKind, ttlDays = 365) => request<GatewayKey>(`/api/projects/${projectId}/keys/${kind}?ttl_days=${ttlDays}`, { method: "POST" }),
   pushReadings: (projectId: number, items: { key?: string; sensor_id?: number; value: number; ts?: string }[]) =>
     request<{ accepted: number; unknown: unknown[] }>(`/api/projects/${projectId}/readings`, { method: "POST", body: json(items) }),
   importReadings: (sensorId: number, file: File) => { const fd = new FormData(); fd.append("file", file); return request<{ accepted: number }>(`/api/sensors/${sensorId}/import`, { method: "POST", body: fd }); },

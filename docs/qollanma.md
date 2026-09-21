@@ -308,7 +308,7 @@ va `writable` bo'lsa **boshqaruv**: darvoza ochilishi slayder / agregat ishga tu
 **Sensor qo'shish** — SCADA teg nomi (kalit), turi, birlik, alarm chegaralari; 3D da elementni tanlab
 bog'lang. Qiymatlar jonli keladi (WebSocket), elementlar rangi: yashil normal, qizil alarm, kulrang uzilgan.
 Sensorni bosing — tarix grafigi (1 soat … 1 oy), «Qo'lda yuborish», CSV import.
-Tasdiqlovchi «Ulanish kaliti» beradi — SCADA tomonidagi gateway (`deploy/gateway`) shu kalit bilan yuboradi.
+Tasdiqlovchi «Ulanish kalitlari» beradi — ingest (o'lchov) va command (buyruq kanali) alohida; SCADA tomonidagi gateway (`deploy/gateway`) shu kalitlar bilan ishlaydi.
 
 ### Dispetcher paneli (SCADA)
 Loyiha sahifasida **«Dispetcher paneli»** (yoki menyu Fayl → Dispetcher paneli):

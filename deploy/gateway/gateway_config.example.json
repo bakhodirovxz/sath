@@ -1,7 +1,9 @@
 {
   "server": "http://ges-server:8000",
   "project_id": 1,
-  "ingest_key": "<Monitoring → Ulanish kaliti>",
+  "ingest_key": "<Monitoring → Ulanish kalitlari → ingest (yoki GES_GATEWAY_INGEST_KEY muhitdan)>",
+  "commands": false,
+  "command_key": "<faqat commands=true bo'lsa: Buyruq kaliti (yoki GES_GATEWAY_COMMAND_KEY)>",
   "interval_s": 10,
   "sources": [
     {

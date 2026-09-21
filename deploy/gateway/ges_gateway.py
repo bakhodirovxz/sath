@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import random
 import sys
 import time
@@ -186,7 +187,12 @@ class Commander:
         self.claim_url = base + f"/api/projects/{cfg['project_id']}/commands/claim"
         self.ack_url = base + "/api/commands/{id}/ack"
         self.readback_url = base + "/api/commands/{id}/readback"
-        self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
+        if not cfg.get("command_key"):
+            raise ValueError(
+                "commands=true uchun command_key (Monitoring → Buyruq kaliti) yoki "
+                "GES_GATEWAY_COMMAND_KEY muhit o'zgaruvchisi kerak — ingest kaliti buyruq kanaliga yaramaydi"
+            )
+        self.headers = {"X-Command-Key": cfg["command_key"]}
         self.tags: dict[str, tuple[object, dict]] = {}
         for src, scfg in zip(sources, source_cfgs, strict=False):
             for tag in scfg.get("tags", []):
@@ -289,13 +295,49 @@ class Pusher:
             log.warning("yuborib bo'lmadi (buferda %d): %s", len(self.buffer), e)
 
 
-def main(config_path: str) -> None:
+def load_config(config_path: str | None) -> dict:
+    """Konfiguratsiya: JSON fayl (ixtiyoriy) + muhit o'zgaruvchilari (ustun): GES_GATEWAY_SERVER,
+    GES_GATEWAY_PROJECT_ID, GES_GATEWAY_INGEST_KEY, GES_GATEWAY_COMMAND_KEY, GES_GATEWAY_COMMANDS.
+    Kalitlar faylda ochiq matnda turmasligi uchun muhitdan berish tavsiya etiladi."""
+    cfg: dict = {}
+    if config_path:
+        with open(config_path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    env = os.environ
+    for key, name in (
+        ("server", "GES_GATEWAY_SERVER"),
+        ("ingest_key", "GES_GATEWAY_INGEST_KEY"),
+        ("command_key", "GES_GATEWAY_COMMAND_KEY"),
+    ):
+        if env.get(name):
+            cfg[key] = env[name]
+    if env.get("GES_GATEWAY_PROJECT_ID"):
+        cfg["project_id"] = int(env["GES_GATEWAY_PROJECT_ID"])
+    if env.get("GES_GATEWAY_COMMANDS"):
+        cfg["commands"] = env["GES_GATEWAY_COMMANDS"].lower() in ("1", "true", "yes")
+    # Buyruq kanali default O'CHIQ: minimal konfiguratsiya bilan ikki tomonlama boshqaruv ochilmasin (B3)
+    cfg.setdefault("commands", False)
+    for req in ("server", "project_id", "ingest_key"):
+        if not cfg.get(req):
+            raise ValueError(f"gateway konfiguratsiyasi: {req} kerak (fayl yoki muhit o'zgaruvchisi)")
+    return cfg
+
+
+def build_commander(cfg: dict, sources: list) -> Commander | None:
+    """commands=true va command_key bo'lsa Commander, aks holda None (faqat o'lchov)."""
+    if not cfg.get("commands"):
+        return None
+    return Commander(cfg, sources, cfg["sources"])
+
+
+def main(config_path: str | None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    with open(config_path, encoding="utf-8") as fh:
-        cfg = json.load(fh)
+    cfg = load_config(config_path)
     pusher = Pusher(cfg)
     sources = [SOURCES[s["type"]](s) for s in cfg["sources"]]
-    commander = Commander(cfg, sources, cfg["sources"]) if cfg.get("commands", True) else None
+    commander = build_commander(cfg, sources)
+    if commander is None:
+        log.info("buyruq kanali o'chiq (commands=false) — faqat o'lchov yuboriladi")
     interval = cfg.get("interval_s", 10)
     log.info("gateway: %d manba, har %ss → %s", len(sources), interval, pusher.url)
     try:
@@ -383,4 +425,4 @@ if __name__ == "__main__":
         )
         print(f"{n} teg topildi")
     else:
-        main(sys.argv[1] if len(sys.argv) > 1 else "config.json")
+        main(sys.argv[1] if len(sys.argv) > 1 else (None if os.environ.get("GES_GATEWAY_SERVER") else "config.json"))

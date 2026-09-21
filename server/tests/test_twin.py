@@ -117,17 +117,21 @@ def test_commands_gateway_flow(client, users, operator, admin):
     # ikkinchisi — 409 (bittasi bajarilmagan)
     assert send_command(client, operator, pid, sp["id"], 60).status_code == 409
     # gateway: kalit bilan oladi (POST claim) → sent; eski GET — 410
-    key = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()[
+    ikey = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()[
         "ingest_key"
     ]
+    key = client.get(f"/api/projects/{pid}/keys/command", headers=users["approver"]).json()["key"]
     assert client.post(f"/api/projects/{pid}/commands/claim").status_code == 401
-    assert client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Ingest-Key": key}).status_code == 410
-    pend = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json()
+    # ingest kaliti buyruq kanaliga yaramaydi (B3) — 403; buyruq kaliti o'lchov yubora olmaydi
+    assert client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": ikey}).status_code == 403
+    assert client.post(f"/api/projects/{pid}/readings", json=[], headers={"X-Ingest-Key": key}).status_code == 403
+    assert client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Command-Key": key}).status_code == 410
+    pend = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key}).json()
     assert (
         len(pend) == 1 and pend[0]["key"] == "GATE1.SP" and pend[0]["address"] == {"register": 10}
     )
     assert (
-        client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json()
+        client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key}).json()
         == []
     )
     assert (
@@ -139,7 +143,7 @@ def test_commands_gateway_flow(client, users, operator, admin):
     r = client.post(
         f"/api/commands/{c['id']}/ack",
         json={"status": "acked", "result": "yozildi"},
-        headers={"X-Ingest-Key": key},
+        headers={"X-Command-Key": key},
     )
     assert r.status_code == 200 and r.json()["status"] == "acked"
     # tasdiqlovchiga bildirishnoma ketgan
@@ -147,11 +151,11 @@ def test_commands_gateway_flow(client, users, operator, admin):
     assert any("Buyruq" in x["title"] for x in n)
     # failed → muallifga bildirishnoma
     c2 = send_command(client, operator, pid, sp["id"], 20).json()
-    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key})
+    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key})
     client.post(
         f"/api/commands/{c2['id']}/ack",
         json={"status": "failed", "result": "timeout"},
-        headers={"X-Ingest-Key": key},
+        headers={"X-Command-Key": key},
     )
     n = client.get("/api/notifications?unread=true", headers=operator).json()
     assert any("bajarilmadi" in x["title"] for x in n)

@@ -116,9 +116,16 @@ fork dagi GitHub Actions «Sath build» ishlatiladi — natija bir xil nomdagi f
 
 ## SCADA ulanishi
 
-Monitoring → «Ulanish kaliti» (tasdiqlovchi). SCADA tomonidagi kompyuterda `deploy/gateway/ges_gateway.py`
-(Modbus TCP / OPC UA / CSV) yoki har qanday skript `POST /api/projects/{id}/readings` ga
-`X-Ingest-Key` bilan JSON `[{"key":"AGG1.P","value":24.3}]` yuboradi. Kalitni almashtirish — o'sha tugma.
+Monitoring → «Ulanish kalitlari» (tasdiqlovchi) — ikkita alohida kalit: **ingest** (`X-Ingest-Key`,
+faqat `POST /readings`) va **command** (`X-Command-Key`, buyruq kanali: `/commands/claim`, `/ack`,
+`/readback`). Ingest kaliti buyruq kanaliga kira olmaydi (403, audit `gateway.key_misuse`) va aksincha.
+Har kalitda muddat (default 365 kun; `ttl_days=0` — muddatsiz) va oxirgi ishlatilgan vaqt; muddati
+14/7/3/1 kun qolganda tasdiqlovchi va adminlarga bildirishnoma. SCADA tomonidagi kompyuterda
+`deploy/gateway/ges_gateway.py` (Modbus TCP / OPC UA / CSV) yoki har qanday skript
+`POST /api/projects/{id}/readings` ga `X-Ingest-Key` bilan JSON `[{"key":"AGG1.P","value":24.3}]` yuboradi.
+Gateway da buyruq kanali default **o'chiq** (`commands: false`); yoqish uchun `commands: true` va
+`command_key` (yoki `GES_GATEWAY_COMMAND_KEY`) shart. Kalitlarni faylda emas, muhit o'zgaruvchilarida
+bering (`GES_GATEWAY_INGEST_KEY`, `GES_GATEWAY_COMMAND_KEY`, `GES_GATEWAY_SERVER`, `GES_GATEWAY_PROJECT_ID`).
 
 Har o'lchovda ixtiyoriy `quality` (`good` — default, `uncertain`, `bad`, `substituted`, `manual`) va
 `src_ts` (manbadagi vaqt tamg'asi — OPC UA SourceTimestamp yoki gateway o'qish vaqti) bo'lishi mumkin:
@@ -143,9 +150,10 @@ Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` 
   `GET /api/audit/verify` (admin) zanjirni tekshiradi va buzilgan birinchi qatorni qaytaradi;
   `GET /api/audit/export?day=YYYY-MM-DD` — kunlik JSONL + `X-Audit-Signature` (HMAC, server kaliti).
   Kunlik eksportni tashqi joyga saqlab boring — DB o'zgartirilsa zanjir va imzo buni ko'rsatadi.
-- Ingest kaliti o'lchov yuborish (`POST /readings`) bilan birga gateway buyruq kanalini ham avtorizatsiya qiladi
-  (`/commands/pending`, `/commands/{id}/ack`) — ya'ni kalit sizib chiqsa buyruqlarni o'qish/soxta ack qilish mumkin.
-  Kalitni faqat gateway hostida saqlang; alohida `command_key` roadmap B3 da.
+- Gateway kalitlari ajratilgan: ingest kaliti faqat `POST /readings` ni, command kaliti faqat buyruq
+  kanalini (`/commands/claim`, `/ack`, `/readback`) avtorizatsiya qiladi. Ingest kaliti sizib chiqsa faqat
+  soxta o'lchov yuborish mumkin (validatsiya va sifat bayrog'i bilan cheklangan). Kalitlarni faqat gateway
+  hostida (muhit o'zgaruvchisida) saqlang, muddatini qisqa qo'ying, almashtirish auditda.
 
 ## API
 

@@ -52,7 +52,7 @@ def _cmd(client, users, sid, value, hdr=None):
 
 
 def _key(client, users):
-    return client.get(f"/api/projects/{users['project_id']}/ingest-key", headers=users["approver"]).json()["ingest_key"]
+    return client.get(f"/api/projects/{users['project_id']}/keys/command", headers=users["approver"]).json()["key"]
 
 
 def test_out_of_range_and_non_finite_rejected(client, users, gate):
@@ -112,14 +112,14 @@ def test_expired_pending_not_given_to_gateway(client, users, gate):
         c.expires_at = utcnow() - timedelta(seconds=1)
         db.commit()
     key = _key(client, users)
-    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Ingest-Key": key}).json()
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": key}).json()
     assert got == []
     cmds = client.get(f"/api/projects/{users['project_id']}/commands", headers=users["viewer"]).json()
     assert cmds[0]["id"] == cid and cmds[0]["status"] == "expired"
     # sensor bo'sh — yangi buyruq mumkin
     assert _cmd(client, users, gate["id"], 31).status_code == 201
     # eskirgan buyruqqa ack — 409
-    r = client.post(f"/api/commands/{cid}/ack", json={"status": "acked"}, headers={"X-Ingest-Key": key})
+    r = client.post(f"/api/commands/{cid}/ack", json={"status": "acked"}, headers={"X-Command-Key": key})
     assert r.status_code == 409
 
 
@@ -127,7 +127,7 @@ def test_watchdog_frees_sensor_stuck_in_sent(client, users, gate, monkeypatch):
     monkeypatch.setattr(config.get_settings(), "command_sent_timeout_s", 30)
     cid = _cmd(client, users, gate["id"], 40).json()["id"]
     key = _key(client, users)
-    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Ingest-Key": key}).json()
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": key}).json()
     assert len(got) == 1
     # yangi buyruq — sensor band (sent)
     assert _cmd(client, users, gate["id"], 41).status_code == 409

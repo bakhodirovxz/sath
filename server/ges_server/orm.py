@@ -81,8 +81,18 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     location: Mapped[str] = mapped_column(String(256), default="")
-    # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi)
+    # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi) — faqat POST /readings
     ingest_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ingest_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ingest_key_last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Buyruq kanali kaliti (X-Command-Key): /commands/claim, /ack, /readback — alohida rotatsiya/audit (B3)
+    command_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    command_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    command_key_last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Dispetcher paneli sozlamalari: {"mimic": {slot: sensor_id}, "tiles": [sensor_id...]}
     dashboard: Mapped[dict] = mapped_column(JSON, default=dict)
     # Maydon pasporti: yer/grunt/seysmiklik, ombor, to'g'on, quvur, quyi byef, inshoot belgilari

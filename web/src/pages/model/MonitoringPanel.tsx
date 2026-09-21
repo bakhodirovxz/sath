@@ -1,7 +1,7 @@
 import Icon from "../../ui/Icon";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type AlarmState, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
@@ -40,7 +40,8 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<SensorIn | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  const [ingest, setIngest] = useState<{ ingest_key: string; url: string } | null>(null);
+  const [gwKeys, setGwKeys] = useState<GatewayKey[] | null>(null);
+  const loadKeys = () => Promise.all([api.projectKey(projectId, "ingest"), api.projectKey(projectId, "command")]).then(setGwKeys).catch((e) => setError(e.message));
   const [manual, setManual] = useState("");
   const [cmdVal, setCmdVal] = useState("0"); // boshqaruv buyrug'i qiymati
   // 3D da element tanlansa — unga bog'langan sensor ochiladi (BIM → SCADA)
@@ -198,7 +199,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
         <BOps>
           {canEdit && <button className="btn sm primary" onClick={() => { setEditing({ ...EMPTY, element_guid: selection[0]?.guid ?? null }); setEditId(null); setTopic(""); }}><Icon name="plus" size={12} /> Sensor</button>}
           {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi"><Icon name="upload" size={12} /> CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { setError(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
-          {role === "approver" && <button className="btn sm" onClick={() => api.ingestKey(projectId).then(setIngest).catch((e) => setError(e.message))}><Icon name="lock" size={12} /> Ulanish kaliti</button>}
+          {role === "approver" && <button className="btn sm" onClick={() => void loadKeys()}><Icon name="lock" size={12} /> Ulanish kalitlari</button>}
         </BOps>
       </BPanel>
       {replay.on && (
@@ -218,13 +219,25 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
         </div>
       )}
       {error && <p className="error small">{error} <a onClick={() => setError("")}>yopish</a></p>}
-      {ingest && (
+      {gwKeys && (
         <div className="section-box small">
-          <b>SCADA/gateway ulanishi</b> — HTTP POST, sarlavha <code>X-Ingest-Key</code>:
-          <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{`curl -X POST ${location.origin}${ingest.url} \\
-  -H "X-Ingest-Key: ${ingest.ingest_key}" -H "Content-Type: application/json" \\
-  -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`}</pre>
-          <div className="row"><button className="btn sm danger" onClick={() => api.rotateIngestKey(projectId).then((r) => setIngest({ ...ingest, ingest_key: r.ingest_key }))}>Kalitni almashtirish</button><button className="btn sm" onClick={() => setIngest(null)}>Yopish</button></div>
+          <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (muhit o'zgaruvchilari: <code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
+          {gwKeys.map((k) => (
+            <div key={k.kind} style={{ marginTop: 6 }}>
+              <div className="row wrap" style={{ gap: 6, alignItems: "center" }}>
+                <b>{k.kind}</b>
+                <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${new Date(k.expires_at).toLocaleDateString("uz")} (${k.days_left} kun)` : "muddatsiz"}</span>
+                <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? new Date(k.last_used_at).toLocaleString("uz") : "hali yo'q"}</span>
+                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then(() => loadKeys())}>Almashtirish (365 kun)</button>
+              </div>
+              <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
+                ? `curl -X POST ${location.origin}${k.url} \
+  -H "${k.header}: ${k.key}" -H "Content-Type: application/json" \
+  -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`
+                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key}"`}</pre>
+            </div>
+          ))}
+          <div className="row"><button className="btn sm" onClick={() => setGwKeys(null)}>Yopish</button></div>
         </div>
       )}
 

@@ -19,7 +19,6 @@ import hashlib
 import hmac
 import json
 import math
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
@@ -31,7 +30,7 @@ from .. import audit, notifications
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..config import get_settings
 from ..orm import Command, CommandStatus, JournalEntry, Project, Role, Sensor, utcnow
-from . import live
+from . import keys, live
 
 router = APIRouter(prefix="/api", tags=["control"])
 
@@ -486,15 +485,12 @@ def cancel_command(command_id: int, user: CurrentUser, db: DB):
     return _out(c)
 
 
-def _gateway_project(db, project_id: int, x_ingest_key: str | None) -> Project:
+def _gateway_project(db, project_id: int, x_command_key: str | None) -> Project:
+    """Buyruq kanali faqat X-Command-Key bilan (B3); ingest kaliti → 403 (audit: gateway.key_misuse)."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    ok = bool(project.ingest_key and x_ingest_key) and secrets.compare_digest(
-        x_ingest_key, project.ingest_key
-    )
-    if not ok:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti noto'g'ri")
+    keys.verify(db, project, "command", x_command_key)
     return project
 
 
@@ -506,9 +502,11 @@ def pending_commands_legacy(project_id: int):
 
 
 @router.post("/projects/{project_id}/commands/claim")
-def claim_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None, Header()] = None):
-    """Gateway uchun: kutayotgan buyruqlarni olish (X-Ingest-Key). Olingach `sent` ga o'tadi."""
-    project = _gateway_project(db, project_id, x_ingest_key)
+def claim_commands(
+    project_id: int, db: DB, x_command_key: Annotated[str | None, Header()] = None
+):
+    """Gateway uchun: kutayotgan buyruqlarni olish (X-Command-Key). Olingach `sent` ga o'tadi."""
+    project = _gateway_project(db, project_id, x_command_key)
     expired = expire_pending(db, project.id)
     rows = (
         db.query(Command)
@@ -529,10 +527,9 @@ def claim_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None, 
                 "address": c.sensor.address,
             }
         )
-    if rows or expired:
-        db.commit()
-        for c in rows + expired:
-            _publish(c)
+    db.commit()  # buyruqlar + kalitning last_used_at
+    for c in rows + expired:
+        _publish(c)
     return out
 
 
@@ -541,13 +538,13 @@ def ack_command(
     command_id: int,
     body: CommandAck,
     db: DB,
-    x_ingest_key: Annotated[str | None, Header()] = None,
+    x_command_key: Annotated[str | None, Header()] = None,
 ):
-    """Gateway natijasi: acked (bajarildi) / failed (xato) — X-Ingest-Key bilan."""
+    """Gateway natijasi: acked (bajarildi) / failed (xato) — X-Command-Key bilan."""
     c = db.get(Command, command_id)
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
-    _gateway_project(db, c.project_id, x_ingest_key)
+    _gateway_project(db, c.project_id, x_command_key)
     if c.status in (CommandStatus.cancelled, CommandStatus.acked, CommandStatus.expired):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq allaqachon {c.status.value}")
     if c.status == CommandStatus.failed and body.status != "failed":
@@ -583,7 +580,7 @@ def readback_command(
     command_id: int,
     body: ReadbackIn,
     db: DB,
-    x_ingest_key: Annotated[str | None, Header()] = None,
+    x_command_key: Annotated[str | None, Header()] = None,
 ):
     """Gateway yozgandan keyin PLC dan o'qigan haqiqiy qiymat. Kutilgan bilan solishtiriladi
     (`readback_tolerance`, nisbiy; ±1e-6 absolyut): mos → acked (readback bilan), farq → mismatch
@@ -591,7 +588,7 @@ def readback_command(
     c = db.get(Command, command_id)
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
-    _gateway_project(db, c.project_id, x_ingest_key)
+    _gateway_project(db, c.project_id, x_command_key)
     if c.status not in (CommandStatus.sent, CommandStatus.acked):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — readback kutilmaydi")
     now = utcnow()

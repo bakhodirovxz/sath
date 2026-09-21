@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Project
-from . import control, health, historian, live, twin
+from . import control, health, historian, keys, live, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
 
@@ -29,6 +29,12 @@ def tick_commands() -> int:
     """Buyruq TTL va watchdog (B1)."""
     with SessionLocal() as db:
         return control.tick(db)
+
+
+def tick_keys() -> int:
+    """Gateway kalitlari muddati yaqinlashganda bildirishnoma (kuniga bir marta, B3)."""
+    with SessionLocal() as db:
+        return keys.warn_expiring(db)
 
 
 def send_daily_reports(day_start: datetime) -> int:
@@ -77,6 +83,10 @@ async def loop(stop: asyncio.Event) -> None:
                 written, purged = await asyncio.to_thread(tick_hourly)
                 if written or purged:
                     log.info("historian: %d soatlik agregat, %d xom o'chirildi", written, purged)
+                if last_hour is None or last_hour.date() != hour.date():
+                    n_keys = await asyncio.to_thread(tick_keys)
+                    if n_keys:
+                        log.info("gateway kalitlari: %d muddat bildirishnomasi", n_keys)
                 rh = get_settings().daily_report_hour
                 if (
                     rh >= 0
