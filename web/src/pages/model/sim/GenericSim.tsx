@@ -573,7 +573,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           return <LineChart key={k} title={`${t}${xKey !== "t" ? ` (${X_LABEL[xKey] ?? xKey})` : ""}`} unit={u} x={x} series={[{ name: t, values: result.series[k] as number[], color: CHART_COLORS[n % CHART_COLORS.length] }, ...(other ? [{ name: `${t} · #${cmp!.job.id}`, values: other, color: "#9aa3ad", dashed: true }] : [])]} cursor={levelSeries ? cursor : undefined} onCursor={levelSeries ? setCursor : undefined} />;
         })}
         {result.profile && "x" in result.profile && (
-          <LineChart title="Napor epyurasi quvur bo'ylab (max/min)" unit="m" x={result.profile.x as number[]} series={[{ name: "Maksimal", values: result.profile.h_max_x as number[], color: CHART_COLORS[4] }, { name: "Minimal", values: result.profile.h_min_x as number[], color: CHART_COLORS[0] }]} />
+          <LineChart title="Napor epyurasi quvur bo'ylab (max/min)" unit="m" x={result.profile.x as number[]} series={[{ name: "Maksimal", values: result.profile.h_max_x as number[], color: CHART_COLORS[4] }, { name: "Minimal", values: result.profile.h_min_x as number[], color: CHART_COLORS[0] }, ...(Array.isArray(result.profile.p_head_min_x) ? [{ name: "Minimal bosim napori (H − z)", values: result.profile.p_head_min_x as number[], color: CHART_COLORS[2] }] : [])]} />
         )}
         {result.profile && "y" in result.profile && (
           <LineChart title="Westergaard gidrodinamik bosim (chuqurlik bo'yicha)" unit="kPa" x={result.profile.y as number[]} series={[{ name: "p", values: result.profile.p_kpa as number[] }]} />
