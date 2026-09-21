@@ -150,8 +150,20 @@ def test_ec8_spectrum_plateau_and_period():
     # Chopra: H=100 m, E=25 GPa → T1 ≈ 0.24 s (bo'sh ombor)
     assert abs(seismic.dam_period(100, 25000) - 0.24) < 0.01
     assert seismic.pga_from_intensity(9) == 0.4
-    r = catalog.run("seismic", {"intensity": "9"})["summary"]
-    assert r["pga_g"] == 0.4 and 0.2 < r["kh"] <= 0.25
+    # EC8-5 §7.3.2.2: k_h = S·α/r — grunt sinfi natijaga ta'sir qiladi, K₁ qirqishi yo'q
+    r = catalog.run("seismic", {"intensity": "9", "ground": "A"})["summary"]
+    assert r["pga_g"] == 0.4 and abs(r["kh"] - 0.4) < 1e-9 and abs(r["kv"] - 0.2) < 1e-9
+    rb = catalog.run("seismic", {"intensity": "9", "ground": "B"})["summary"]
+    assert abs(rb["kh"] - 1.2 * r["kh"]) < 1e-9
+    rr = catalog.run("seismic", {"intensity": "9", "ground": "A", "r_reduction": 2.0})["summary"]
+    assert abs(rr["kh"] - 0.2) < 1e-9 and rr["warnings"]
+    # ikki kuch alohida, izohli: pseudo-statik ≤ elastik
+    assert rb["dam_force_pseudostatic_kn_m"] < rb["dam_force_elastic_kn_m"]
+    st = catalog.run("seismic", {"intensity": "9", "ground": "B"})["structures"]
+    assert st[0]["name"].startswith("To'g'on — pseudo") and st[1]["name"].startswith("To'g'on — elastik")
+    assert abs(st[0]["force_kn"] - rb["dam_force_pseudostatic_kn_m"]) < 1
+    rd = catalog.run("seismic", {"intensity": "8", "ground": "D"})["summary"]
+    assert any("EC8-1" in w for w in rd["warnings"]) and rd["ground_class"] == "D"
 
 
 # --- Toshqin ---

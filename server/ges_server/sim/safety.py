@@ -88,7 +88,8 @@ def _seismic_judge(s: dict, _p: Params, ctx: dict | None = None) -> tuple[str, s
     msg = f"PGA {pga:g} g, k_h {kh:g}"
     if kh_crit is not None and kh > float(kh_crit):
         return "fail", f"{msg} > kritik k_h {float(kh_crit):.3f} (sirpanish K < 1.0)"
-    if str(s.get("ground", "")).upper() in _SOFT_GROUND and pga >= 0.2:
+    ground = str(s.get("ground_class") or str(s.get("ground", ""))[:1]).upper()
+    if ground in _SOFT_GROUND and pga >= 0.2:
         return "warn", f"{msg}; {s.get('ground')} grunt + PGA ≥ 0.2 g — maxsus tadqiqot (EC8-1 §3.1.2)"
     if kh_crit is None:
         return "warn", f"{msg}; kritik k_h hisoblanmadi (to'g'on barqarorligi ssenariysi yo'q)"

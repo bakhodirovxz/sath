@@ -9,7 +9,16 @@ Elastik javob spektri (Eurocode 8, 1-tur, so'nish ξ):
 Beton og'irlik to'g'onining xususiy davri (Chopra, 1978): T₁ = 0.38·H/√E  (H m, E MPa; bo'sh ombor),
 to'la omborda T̃₁ ≈ T₁·R_r, R_r ≈ 1 + 0.25·(h/H)².
 Mashina zali (EC8 4.3.3.2.2): T = C_t·H^0.75, C_t = 0.05.
-Seysmik koeffitsient (SNiP II-7-81): k_h = A·β·K₁,  β = S_e(T)/a_g (1…2.5), K₁ = 0.25 (gidrotexnik inshoot).
+Pseudo-statik seysmik koeffitsient — bitta norma yo'li, EN 1998-5:2004 §7.3.2.2:
+  k_h = S·α/r,  α = a_g/g,  k_v = ±0.5·k_h (a_vg/a_g > 0.6) yoki ±0.33·k_h;
+  r — 7.1-jadval: 1.0 (siljishi mumkin bo'lmagan inshoot — to'g'on), 1.5 / 2.0 (ruxsat etilgan
+  siljish 200·α·S / 300·α·S mm bo'lgan erkin devorlar). Grunt sinfi S orqali natijaga kiradi.
+  Ilgari ishlatilgan A·β·K₁ (SNiP II-7-81, K₁ = 0.25 — binolar normasining shikast koeffitsienti)
+  EC8 elastik ordinatasi bilan aralashtirilgan edi va S qirqilib yo'qolardi — olib tashlandi.
+  Muqobil: SP 358.1325800.2017 (gidrotexnik inshootlar, seysmik hududlar) — o'z β va K lari bilan,
+  bu yerda amalga oshirilmagan. ICOLD Bulletin 148: dastlabki baholashda k_h = (0.5–0.67)·PGA (r ≈ 1.5–2).
+Ikki kuch alohida nomlanadi: pseudo-statik F = k_h·W (barqarorlik hisobiga) va elastik spektral
+  F_e = S_e(T)·m (dinamik tekshiruv uchun ordinata) — ular bitta kattalik emas.
 Gidrodinamik bosim (Westergaard, 1933): p(y) = (7/8)·k_h·γ_w·√(H·y);  P_e = (7/12)·k_h·γ_w·H², 0.4H balandlikda.
 """
 
@@ -53,8 +62,14 @@ def dam_period(height_m: float, e_mpa: float, water_depth_m: float = 0.0) -> flo
     return t1 * rr
 
 
-def seismic_coefficient(ag_g: float, beta: float, k1: float = 0.25) -> float:
-    return ag_g * min(max(beta, 1.0), 2.5) * k1
+def seismic_coefficient(ag_g: float, S: float, r: float = 1.0) -> float:
+    """EN 1998-5 §7.3.2.2 (7.1): k_h = S·α/r, α = a_g/g."""
+    return S * ag_g / max(r, 1e-9)
+
+
+def vertical_coefficient(kh: float, avg_ratio: float = 0.9) -> float:
+    """EN 1998-5 §7.3.2.2 (7.2/7.3): k_v = ±0.5·k_h agar a_vg/a_g > 0.6, aks holda ±0.33·k_h."""
+    return 0.5 * kh if avg_ratio > 0.6 else 0.33 * kh
 
 
 def westergaard_force(kh: float, depth_m: float) -> tuple[float, float]:
@@ -117,15 +132,28 @@ FIELDS = [
     ),
     Field("damping", "So'nish ξ", "%", default=5, min=1, max=20, group="Maydon", advanced=True),
     Field(
-        "k1",
-        "K₁ (shikast ruxsati)",
+        "r_reduction",
+        "r — pseudo-statik kamaytirish (EC8-5 7.1-jadval)",
         "",
-        default=0.25,
-        min=0.1,
-        max=1,
-        step=0.05,
+        default=1.0,
+        min=1.0,
+        max=2.0,
+        step=0.5,
         group="Maydon",
-        hint="SNiP II-7-81: 0.25 gidrotexnik; 1.0 — elastik",
+        hint="1.0 — siljimaydigan inshoot (to'g'on); 1.5/2.0 — ruxsat etilgan siljishli erkin devor. "
+        "ICOLD B148 dastlabki baho: (0.5–0.67)·PGA ≈ r 1.5–2",
+        advanced=True,
+    ),
+    Field(
+        "avg_ratio",
+        "a_vg/a_g (vertikal/gorizontal PGA)",
+        "",
+        default=0.9,
+        min=0.3,
+        max=1.2,
+        step=0.1,
+        group="Maydon",
+        hint="EC8-1 3.4-jadval: 1-tur 0.90; > 0.6 → k_v = 0.5·k_h, aks holda 0.33·k_h",
         advanced=True,
     ),
     Field(
@@ -204,10 +232,21 @@ def run(p: dict) -> dict:
     t_ph = 0.05 * p["ph_height_m"] ** 0.75
     t_pen = p["penstock_period_s"]
     sa_dam, sa_ph, sa_pen = (spectrum(t, ag, gr, xi) for t in (t_dam, t_ph, t_pen))
-    beta = sa_dam / ag
-    kh = seismic_coefficient(ag, beta, p["k1"])
+    S = GROUND[gr][1]
+    beta = sa_dam / (ag * S)  # spektral kuchayish S_e/(a_g·S) — faqat ma'lumot uchun
+    kh = seismic_coefficient(ag, S, p["r_reduction"])
+    kv = vertical_coefficient(kh, p["avg_ratio"])
     m_dam = p["dam_mass_t_m"] if p["dam_mass_t_m"] > 0 else 0.5 * H * p["dam_base_m"] * 2.4  # t/m
     pe, ye = westergaard_force(kh, hw)
+    warnings: list[str] = []
+    if gr in ("C", "D", "E") and ag >= 0.2:
+        warnings.append(
+            f"grunt {gr} va a_g = {ag:.2f} g: EC8-1 §3.1.2(4) — maydonga xos tadqiqot (S va spektr) talab etiladi"
+        )
+    if p["r_reduction"] > 1.0:
+        warnings.append(
+            f"r = {p['r_reduction']:g}: k_h kamaytirilgan — faqat siljish ruxsat etilgan inshoot uchun (EC8-5 7.1-jadval)"
+        )
     # Spektr egri chizig'i va Westergaard profil
     ts = [round(i * 0.02, 2) for i in range(0, 201)]
     se = [round(spectrum(t, ag, gr, xi), 4) for t in ts]
@@ -215,7 +254,15 @@ def run(p: dict) -> dict:
     pw = [round(7 / 8 * kh * RHO * G * math.sqrt(hw * y) / 1000, 2) for y in ys]  # kPa
     structures = [
         {
-            "name": "To'g'on",
+            "name": "To'g'on — pseudo-statik k_h·W (barqarorlik)",
+            "period_s": round(t_dam, 3),
+            "sa_g": round(kh, 3),
+            "mass_t": round(m_dam, 0),
+            "force_kn": round(kh * G * m_dam, 0),
+            "unit": "kN/m",
+        },
+        {
+            "name": "To'g'on — elastik spektral S_e(T)·m (dinamik ordinata)",
             "period_s": round(t_dam, 3),
             "sa_g": round(sa_dam, 3),
             "mass_t": round(m_dam, 0),
@@ -247,14 +294,23 @@ def run(p: dict) -> dict:
         "summary": {
             "pga_g": round(ag, 3),
             "ground": GROUND[gr][0],
+            "ground_class": gr,
+            "soil_factor_S": S,
             "kh": round(kh, 3),
+            "kv": round(kv, 3),
+            "r_reduction": p["r_reduction"],
+            "norm": "EN 1998-5:2004 §7.3.2.2 (k_h = S·α/r)",
+            "dam_force_pseudostatic_kn_m": round(kh * G * m_dam, 0),
+            "dam_force_elastic_kn_m": round(sa_dam * G * m_dam, 0),
             "beta": round(beta, 2),
             "dam_period_s": round(t_dam, 3),
             "dam_sa_g": round(sa_dam, 3),
             "powerhouse_sa_g": round(sa_ph, 3),
             "westergaard_kn_m": round(pe / 1000, 1),
             "westergaard_arm_m": round(ye, 2),
-            "verdict": f"{level} zilzila ({ag:.2f} g); to'g'on k_h = {kh:.3f} — mustahkamlikni «To'g'on barqarorligi» da tekshiring",
+            "verdict": f"{level} zilzila ({ag:.2f} g, grunt {gr}, S = {S}); pseudo-statik k_h = {kh:.3f}, "
+            f"k_v = ±{kv:.3f} (EC8-5 §7.3.2.2) — mustahkamlikni «To'g'on barqarorligi» da tekshiring",
             "ok": True,
+            "warnings": warnings,
         },
     }

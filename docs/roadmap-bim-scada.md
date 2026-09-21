@@ -1205,7 +1205,7 @@ Fayllar: `server/ges_server/sim/safety.py`
 Qabul mezoni: yuqoridagi uchta holat uchun testlar; sirpanadigan to'g'on `fail` beradi.
 Bog'liqlik: yo'q. Eng birinchi.
 
-### J2 — Yorilgan poydevor tahlili ✅
+### J2 — Yorilgan poydevor tahlili ✅ (`61cc115`)
 
 Muammo: `dam_stability.py:265-278`, `:294`, `:331` — σ_heel manfiy bo'lganda kod buni belgilaydi
 (seysmik holatda hatto belgilamaydi, `:331`), lekin (a) yoriq uzunligi bo'ylab ko'tarish bosimini
@@ -1222,7 +1222,7 @@ Fayllar: `sim/ges_sim/dam_stability.py`
 Qabul mezoni: qo'lda hisoblangan misol bilan solishtiriladigan test.
 Bog'liqlik: J1.
 
-### J3 — Seysmik koeffitsientni tuzatish
+### J3 — Seysmik koeffitsientni tuzatish ✅
 
 Muammo: `seismic.py:57`, `:207` — `beta = S_e/a_g` allaqachon EC8 grunt faktorini o'z ichiga
 oladi, keyin `seismic_coefficient` `beta` ni 2.5 ga qirqadi va S yo'qoladi. Tekshirilgan,
@@ -1444,7 +1444,7 @@ Fayllar: `sim/ges_sim/reservoir.py`, `flood.py`
 Qabul mezoni: massa balansi qoldig'i natijada bor va chegaradan kichik (test).
 Bog'liqlik: yo'q.
 
-### J11 — Kuchlanish tekshiruvlarini izchil qilish ✅
+### J11 — Kuchlanish tekshiruvlarini izchil qilish ✅ (`61cc115`)
 
 Muammo:
 - `dam_stability.py:298`, `:335` — `s_toe` vertikal poydevor kuchlanishi σ_z. Og'ma quyi oqim
