@@ -18,6 +18,7 @@ import math
 
 from .penstock import RHO, G
 from .schema import Field, Meta
+from .validity import check_range
 
 META = Meta(
     id="landslide",
@@ -190,8 +191,14 @@ def run(p: dict) -> dict:
     amps = [round(amp(d), 3) for d in dists]
     arrival = r / c
     warn = []
-    if not (0.17 <= P <= 8.13):
-        warn.append(f"P = {P:.2f} usul amal doirasidan tashqarida (0.17–8.13) — natija taxminiy")
+    warnings: list[str] = []
+    # Heller & Hager (2010) laboratoriya diapazoni: F 0.86–6.83, S 0.09–1.64, M 0.11–10.02, α 30–90°
+    src = "Heller & Hager 2010"
+    check_range(warnings, "Frud soni F", F, 0.86, 6.83, "", src)
+    check_range(warnings, "Nisbiy qalinlik S", S, 0.09, 1.64, "", src)
+    check_range(warnings, "Nisbiy massa M", M, 0.11, 10.02, "", src)
+    check_range(warnings, "Yonbag'ir qiyaligi α", p["slope_deg"], 30, 90, "°", src)
+    check_range(warnings, "Impuls ko'rsatkichi P", P, 0.17, 8.13, "", src)
     if overtop > 0:
         warn.append(f"to'lqin gerbdan {overtop:.1f} m oshadi (≈ {vol:.0f} m³/m)")
     elif R > 0.8 * f:
@@ -222,5 +229,6 @@ def run(p: dict) -> dict:
             if warn
             else f"To'lqin {R:.1f} m ga chiqadi, gerbdan oshmaydi (zaxira {f} m)",
             "ok": overtop <= 0,
+            "warnings": warnings,
         },
     }

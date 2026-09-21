@@ -89,6 +89,16 @@ FIELDS = [
         live="gross_head",
     ),
     Field(
+        "head_min_m",
+        "Minimal napor (eng past ombor sathida)",
+        "m",
+        default=0,
+        min=0,
+        group="Rejim",
+        hint="Toma tekshiruvi uchun; 0 — H₀ olinadi",
+        advanced=True,
+    ),
+    Field(
         "flow_m3s",
         "Boshlang'ich sarf Q₀",
         "m³/s",
@@ -163,8 +173,18 @@ def run(p: dict) -> dict:
     v0 = q0 / A_t
     z_theory = v0 * math.sqrt(L * A_t / (G * A_s))
     alpha = hf(v0) / v0**2 if v0 > 0 else 0.0
-    a_thoma = L * A_t / (2 * G * alpha * H0) if alpha > 0 else 0.0
+    # Toma (1910), Jaeger 1977: A_Th = L·A_t / (2g·β·H_net), H_net — turbinadagi sof napor
+    # eng noqulay (minimal) ombor sathida: H_net = H_min − h_f(v0). Sof napor kichik → A_Th katta.
+    h_min = p["head_min_m"] if p["head_min_m"] > 0 else H0
+    h_net = max(h_min - hf(v0), 1e-6)
+    a_thoma = L * A_t / (2 * G * alpha * h_net) if alpha > 0 else 0.0
     thoma_ratio = A_s / a_thoma if a_thoma > 0 else 99.0
+    warnings: list[str] = []
+    if p["head_min_m"] <= 0:
+        warnings.append(
+            "minimal ombor sathi (head_min_m) berilmagan — Toma tekshiruvi nominal naporda; "
+            "past sathda zaxira kamroq bo'ladi"
+        )
     zmax, zmin = max(zs), min(zs)
     overflow = zmax > p["tank_top_m"]
     air = zmin < p["tank_bottom_m"]
@@ -185,11 +205,13 @@ def run(p: dict) -> dict:
             "z_max_theory_m": round(z_theory, 2),
             "period_s": round(2 * math.pi * math.sqrt(L * A_s / (G * A_t)), 1),
             "thoma_area_m2": round(a_thoma, 1),
+            "thoma_head_net_m": round(h_net, 2),
             "tank_area_m2": round(A_s, 1),
             "thoma_ratio": round(thoma_ratio, 2),
             "overflow": overflow,
             "air_entrainment": air,
             "verdict": "; ".join(verdict) if verdict else "Qoniqarli",
             "ok": not verdict,
+            "warnings": warnings,
         },
     }

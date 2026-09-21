@@ -469,6 +469,9 @@ tr.alarm-active td { background: #3a2426; }
 .verdict { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); margin: 6px 0; font-size: 13px; }
 .verdict.ok { border-color: var(--ok); color: var(--ok); }
 .verdict.bad { border-color: var(--danger); color: var(--danger); }
+.verdict.warn { border-color: var(--warn); color: var(--warn); align-items: flex-start; }
+.verdict.warn ul.warnings { margin: 0; padding-left: 16px; }
+.verdict.warn ul.warnings li { margin: 2px 0; }
 .site-form .simform { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
 .site-form .simform-group { break-inside: avoid; }
 .site-form .simform .field { width: 200px !important; }

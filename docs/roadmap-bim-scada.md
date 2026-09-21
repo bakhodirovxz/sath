@@ -186,7 +186,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2.
 
-### A5 — Versiya raqami poygasi va indekslar ✅
+### A5 — Versiya raqami poygasi va indekslar ✅ (`2de7aeb`)
 
 Muammo: `models/router.py:220` — `SELECT max(number)+1` keyin INSERT, `UniqueConstraint`
 ustiga. Parallel commit da ushlanmagan `IntegrityError` → 500.
@@ -1377,7 +1377,7 @@ Fayllar: `sim/ges_sim/transformer.py`, `sim/tests/`
 Qabul mezoni: IEC ilova misoli bilan mos keladi (test).
 Bog'liqlik: yo'q.
 
-### J9 — Amal qilish diapazonlari va ogohlantirishlar
+### J9 — Amal qilish diapazonlari va ogohlantirishlar ✅
 
 Muammo: regressiya va empirik usullar o'z ma'lumotlar to'plamidan tashqarida jimgina
 ekstrapolyatsiya qilinadi:

@@ -344,7 +344,7 @@ def test_rainfall_scs_runoff_and_routing():
     assert abs(r["summary"]["volume_mcm"] - vol_mm) / vol_mm < 0.03
     g = catalog.run("rainfall", {"glof": True, "lake_mcm": 10, "route": False})
     assert (
-        g["glof"]["peak_m3s"] > 1000
+        g["glof"]["peak_formula_m3s"] > 1000
         and g["summary"]["peak_inflow_m3s"] > r["summary"]["peak_inflow_m3s"]
     )
     s = catalog.run("rainfall", {"snowmelt": True, "air_temp": 10, "route": False})["summary"]

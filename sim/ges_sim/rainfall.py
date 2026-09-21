@@ -5,7 +5,12 @@ SCS-CN oqim (USDA NRCS TR-55):  S = 25400/CN − 254 (mm),  I_a = λ·S (λ = 0.
 Yig'ilish vaqti (Kirpich):  t_c = 0.0195·L^0.77·S^−0.385  [min], L — m, S — o'rtacha nishab.
 SCS birlik gidrografi:  T_p = 0.6·t_c + Δt/2,  q_p = 0.208·A·Q/T_p  (A km², Q mm, T_p h → m³/s),
   o'lchovsiz egri chiziq (NRCS NEH-630, 16-bob) bilan konvolyutsiya.
-Yog'in vaqt taqsimoti: bir tekis, "alternating block" (markazda maksimum), oldingi/keyingi jadal.
+Yog'in vaqt taqsimoti: bir tekis, "alternating block" (IDF berilsa — i = a/(t+b)^c dan haqiqiy bloklar;
+  bo'lmasa shartli kamayuvchi shakl, ogohlantirish bilan), oldingi/keyingi jadal.
+Hisob qadami: Δt ≤ 0.133·t_c (NRCS NEH-630 16-bob), 1 soatdan katta emas — avtomatik tanlanadi.
+Amal doirasi (summary.warnings): Kirpich 0.004–0.45 km² havzalarda kalibrovkalangan (Kirpich 1940);
+  SCS UH — sub-havza ≤ 8 km² (TR-55), jami ≈ 65 km² gacha; Froehlich (1995) V_w 0.0139–660 mln m³,
+  h_w 3.66–77 m.
 Qor erishi (daraja-kun):  M = k·(T − T_0)·A_qor  [mm/kun], k ≈ 3–6 mm/°C/kun (yomg'ir ustiga qo'shiladi).
 Muzlik ko'li toshqini (GLOF, Nepal 2025 kabi): ko'l hajmi V → Froehlich Q_p = 0.607·V^0.295·h^1.24,
   uchburchak gidrograf, kiruvchi oqimga qo'shiladi.
@@ -16,6 +21,7 @@ from __future__ import annotations
 
 from . import flood
 from .schema import Field, Meta, parse
+from .validity import check_range, nice_step
 
 # NRCS o'lchovsiz birlik gidrografi (t/T_p → q/q_p)
 _DUH = [
@@ -189,6 +195,18 @@ FIELDS = [
         ),
         group="Yog'in",
     ),
+    Field(
+        "idf_a",
+        "IDF: a (i = a/(t+b)^c, mm/soat, t — min)",
+        "",
+        default=0,
+        min=0,
+        group="Yog'in",
+        hint="0 — IDF yo'q: taqsimot shartli shakl; berilsa alternating block IDF dan, jami P ga normallanadi",
+        advanced=True,
+    ),
+    Field("idf_b", "IDF: b", "min", default=10, min=0, group="Yog'in", advanced=True),
+    Field("idf_c", "IDF: c", "", default=0.7, min=0.1, max=1.5, group="Yog'in", advanced=True),
     Field("snowmelt", "Qor erishi hisobga olinsin", type="bool", default=False, group="Qor"),
     Field(
         "snow_area_pct", "Qor bilan qoplangan ulush", "%", default=30, min=0, max=100, group="Qor"
@@ -293,15 +311,27 @@ def kirpich_tc_h(length_m: float, slope: float) -> float:
     return 0.0195 * length_m**0.77 * slope ** (-0.385) / 60.0
 
 
-def _pattern(total: float, n: int, kind: str) -> list[float]:
+def _pattern(
+    total: float, n: int, kind: str, dt_h: float = 1.0, idf: tuple[float, float, float] | None = None
+) -> list[float]:
+    """n ta Δt blokga jami `total` mm ni taqsimlaydi.
+
+    idf=(a, b, c) berilsa: alternating block (Chow, Maidment & Mays 1988 §14.4) — P(t) = i(t)·t,
+    i = a/(t+b)^c (t daqiqada), bloklar ΔP_k = P(kΔt) − P((k−1)Δt) kamayuvchi tartibda, markazga.
+    Bo'lmasa — shartli kamayuvchi og'irlik (1/(k+1)^0.6), chaqiruvchi ogohlantiradi."""
     if n <= 1:
         return [total]
     if kind == "uniform":
         return [total / n] * n
-    # nisbiy og'irliklar: alternating block ~ kamayuvchi, markazga joylash
-    w = [1 / (i + 1) ** 0.6 for i in range(n)]
-    s = sum(w)
-    blocks = [total * x / s for x in w]
+    if idf is not None and idf[0] > 0:
+        a, b, c = idf
+        cum = [a / (k * dt_h * 60 + b) ** c * (k * dt_h) for k in range(n + 1)]  # mm, i(t)·t
+        raw = [max(cum[k] - cum[k - 1], 0.0) for k in range(1, n + 1)]
+        raw.sort(reverse=True)
+    else:
+        raw = [1 / (i + 1) ** 0.6 for i in range(n)]
+    s = sum(raw) or 1.0
+    blocks = [total * x / s for x in raw]
     if kind == "front":
         return blocks
     if kind == "back":
@@ -324,6 +354,7 @@ def _pattern(total: float, n: int, kind: str) -> list[float]:
 
 
 def hydrograph(p: dict) -> dict:
+    warnings: list[str] = []
     cn = (
         p["cn_override"]
         if p["cn_override"] > 0
@@ -331,10 +362,31 @@ def hydrograph(p: dict) -> dict:
     )
     S = 25400 / cn - 254
     ia = 0.2 * S
-    dt = 1.0  # soat
-    n_rain = int(p["rain_hours"])
-    rain = _pattern(p["rain_mm"], n_rain, p["pattern"])
-    # kumulyativ samarali yog'in
+    A = p["basin_km2"]
+    tc = kirpich_tc_h(p["basin_length_km"] * 1000, p["basin_slope"])
+    # Amal doirasi
+    check_range(warnings, "Havza maydoni (Kirpich t_c)", A, 0.004, 0.45, "km²", "Kirpich 1940, Tennessi")
+    check_range(
+        warnings, "Havza maydoni (SCS birlik gidrografi)", A, None, 65, "km²",
+        "TR-55: sub-havza ≤ 8 km², jami ≈ 65 km²", "havzani bo'lib hisoblash tavsiya etiladi",
+    )
+    # Hisob qadami: NRCS Δt ≤ 0.133·t_c, 1 soatdan katta emas; GLOF bo'lsa ko'tarilish vaqtining
+    # 1/4 idan katta emas (qisqa hodisa cho'qqisi o'rtachalanib yo'qolmasin); chiroyli qadam
+    dt_max = min(1.0, 0.133 * tc)
+    if p["glof"]:
+        _vw, _hb = p["lake_mcm"] * 1e6, p["lake_depth_m"]
+        _q = 0.607 * _vw**0.295 * _hb**1.24
+        dt_max = min(dt_max, 0.3 * (2 * _vw / _q / 3600) / 4)
+    dt = nice_step(dt_max)
+    n_rain = int(round(p["rain_hours"] / dt))
+    idf = (p["idf_a"], p["idf_b"], p["idf_c"])
+    rain = _pattern(p["rain_mm"], n_rain, p["pattern"], dt, idf)
+    if p["pattern"] != "uniform" and not idf[0] > 0:
+        warnings.append(
+            "yog'in taqsimoti shartli shakl (IDF berilmagan) — cho'qqi sarf taqsimotga sezgir, "
+            "IDF (a, b, c) kiriting"
+        )
+    # kumulyativ samarali yog'in (SCS-CN)
     cum_p, cum_pe = 0.0, 0.0
     excess = []
     for r in rain:
@@ -342,51 +394,57 @@ def hydrograph(p: dict) -> dict:
         pe = (cum_p - ia) ** 2 / (cum_p - ia + S) if cum_p > ia else 0.0
         excess.append(max(pe - cum_pe, 0.0))
         cum_pe = pe
-    # qor erishi (har soat, yog'in davomida + 24 soat)
+    # qor erishi (har qadam, yog'in davomida + 24 soat)
     melt_mm_h = 0.0
     if p["snowmelt"] and p["air_temp"] > 0:
         melt_mm_h = p["melt_factor"] * p["air_temp"] * p["snow_area_pct"] / 100 / 24
-    # birlik gidrograf
-    A = p["basin_km2"]
-    tc = kirpich_tc_h(p["basin_length_km"] * 1000, p["basin_slope"])
+    n_melt = n_rain + int(round(24 / dt))
+    # birlik gidrograf (SCS)
     tp = 0.6 * tc + dt / 2
     qp = 0.208 * A * 1.0 / tp  # 1 mm uchun, m³/s
     duh_len = int(5 * tp / dt) + 1
     uh = [qp * _interp(_DUH, (k * dt) / tp) for k in range(duh_len)]
-    total_h = max(n_rain + 48, duh_len + n_rain + 24)
-    q = [0.0] * total_h
+    n_total = max(n_rain + int(round(48 / dt)), duh_len + n_rain + int(round(24 / dt)))
+    q = [0.0] * n_total
     inputs = [
-        (excess[k] if k < n_rain else 0.0) + (melt_mm_h if k < n_rain + 24 else 0.0)
-        for k in range(total_h)
+        (excess[k] if k < n_rain else 0.0) + (melt_mm_h * dt if k < n_melt else 0.0)
+        for k in range(n_total)
     ]
     for k, ex in enumerate(inputs):
         if ex <= 0:
             continue
         for j, u in enumerate(uh):
-            if k + j < total_h:
+            if k + j < n_total:
                 q[k + j] += ex * u
     glof = None
     if p["glof"]:
         vw = p["lake_mcm"] * 1e6
         hb = p["lake_depth_m"]
+        check_range(warnings, "GLOF ko'l hajmi (Froehlich 1995)", p["lake_mcm"], 0.0139, 660, "mln m³")
+        check_range(warnings, "GLOF ko'l chuqurligi (Froehlich 1995)", hb, 3.66, 77, "m")
         qpk = 0.607 * vw**0.295 * hb**1.24
         t_tot = 2 * vw / qpk / 3600  # soat
         tf = t_tot * 0.3
-        st = int(p["glof_start_h"])
+        st = p["glof_start_h"]
+        if tf < 2 * dt:
+            warnings.append(
+                f"GLOF ko'tarilish vaqti ({tf:.2f} soat) hisob qadamiga ({dt} soat) nisbatan qisqa — "
+                "seriyadagi cho'qqi hajm saqlangan holda pasaytirilgan"
+            )
 
         def tri(t: float) -> float:
             if t < 0 or t > t_tot:
                 return 0.0
             return qpk * (t / tf if t <= tf else max(1 - (t - tf) / (t_tot - tf), 0.0))
 
-        # Soatlik o'rtacha (qisqa hodisa — hajm saqlanadi): har soatni 20 bo'lakda integrallaymiz
-        for k in range(total_h):
-            t0 = k - st
-            if t0 + 1 < 0 or t0 > t_tot:
+        # Har qadamni 20 bo'lakda integrallaymiz (hajm saqlanadi); qadam Δt ≤ 0.133·t_c
+        for k in range(n_total):
+            t0 = k * dt - st
+            if t0 + dt < 0 or t0 > t_tot:
                 continue
-            q[k] += sum(tri(t0 + (j + 0.5) / 20) for j in range(20)) / 20
+            q[k] += sum(tri(t0 + (j + 0.5) * dt / 20) for j in range(20)) / 20
         glof = {
-            "peak_m3s": round(qpk, 0),
+            "peak_formula_m3s": round(qpk, 0),  # Froehlich cho'qqisi (nuqtaviy); seriyadagi — asosiy
             "duration_h": round(t_tot, 1),
             "volume_mcm": p["lake_mcm"],
         }
@@ -398,11 +456,13 @@ def hydrograph(p: dict) -> dict:
         "runoff_coeff": round(cum_pe / p["rain_mm"], 3) if p["rain_mm"] > 0 else 0,
         "tc_h": round(tc, 2),
         "tp_h": round(tp, 2),
+        "dt_h": dt,
         "snowmelt_mm_day": round(melt_mm_h * 24, 1),
-        "rain": [round(r, 2) for r in rain],
-        "excess": [round(e, 2) for e in excess],
+        "rain": [round(r, 3) for r in rain],
+        "excess": [round(e, 3) for e in excess],
         "inflow": inflow,
         "glof": glof,
+        "warnings": warnings,
     }
 
 
@@ -417,11 +477,12 @@ def _interp(pts, x):
 
 def run(p: dict) -> dict:
     h = hydrograph(p)
+    dt = h["dt_h"]
     peak = max(h["inflow"])
-    tpk = h["inflow"].index(peak)
+    tpk = h["inflow"].index(peak) * dt
     out = {
         "series": {
-            "t": list(range(len(h["inflow"]))),
+            "t": [round(k * dt, 4) for k in range(len(h["inflow"]))],
             "inflow": h["inflow"],
             "rain_mm": h["rain"] + [0.0] * (len(h["inflow"]) - len(h["rain"])),
             "excess_mm": h["excess"] + [0.0] * (len(h["inflow"]) - len(h["excess"])),
@@ -432,10 +493,12 @@ def run(p: dict) -> dict:
             "runoff_mm": h["runoff_mm"],
             "runoff_coeff": h["runoff_coeff"],
             "tc_h": h["tc_h"],
+            "dt_h": dt,
             "peak_inflow_m3s": round(peak, 1),
-            "time_to_peak_h": tpk,
-            "volume_mcm": round(sum(x - p["base_m3s"] for x in h["inflow"]) * 3600 / 1e6, 2),
+            "time_to_peak_h": round(tpk, 2),
+            "volume_mcm": round(sum(x - p["base_m3s"] for x in h["inflow"]) * dt * 3600 / 1e6, 2),
             "snowmelt_mm_day": h["snowmelt_mm_day"],
+            "warnings": list(h["warnings"]),
         },
     }
     if p["route"]:
@@ -443,6 +506,7 @@ def run(p: dict) -> dict:
             flood.FIELDS,
             {
                 "inflow_series": h["inflow"],
+                "inflow_dt_h": dt,
                 "base_m3s": p["base_m3s"],
                 "curve_elev": p["curve_elev"],
                 "curve_vol": p["curve_vol"],
@@ -465,16 +529,19 @@ def run(p: dict) -> dict:
                 "overtop": fr["series"]["overtop"],
             }
         )
-        # flood seriyasi 15 daqiqalik — vaqt o'qini soatga keltirish
+        # flood seriyasi o'z qadamida — vaqt o'qini unga keltirish (yog'in: shu qadamga tushgan blok)
         out["series"]["t"] = fr["series"]["t"]
         out["series"]["inflow"] = fr["series"]["inflow"]
         n = len(fr["series"]["t"])
         out["series"]["rain_mm"] = [
-            h["rain"][int(t)] if int(t) < len(h["rain"]) else 0.0 for t in fr["series"]["t"]
+            h["rain"][int(t / dt)] if int(t / dt) < len(h["rain"]) else 0.0
+            for t in fr["series"]["t"]
         ][:n]
         out["series"]["excess_mm"] = [
-            h["excess"][int(t)] if int(t) < len(h["excess"]) else 0.0 for t in fr["series"]["t"]
+            h["excess"][int(t / dt)] if int(t / dt) < len(h["excess"]) else 0.0
+            for t in fr["series"]["t"]
         ][:n]
+        out["summary"]["warnings"].extend(fs_w for fs_w in fr["summary"].get("warnings", []))
         out["downstream"] = fr["downstream"]
         out["breach"] = fr["breach"]
         fs = fr["summary"]
@@ -493,14 +560,14 @@ def run(p: dict) -> dict:
                 )
             }
         )
-        verdict = f"CN {h['cn']}: {p['rain_mm']} mm yog'indan {h['runoff_mm']} mm oqim, cho'qqi {peak:.0f} m³/s ({tpk} soatda)"
+        verdict = f"CN {h['cn']}: {p['rain_mm']} mm yog'indan {h['runoff_mm']} mm oqim, cho'qqi {peak:.0f} m³/s ({tpk:.1f} soatda)"
         if h["glof"]:
-            verdict += f"; GLOF cho'qqisi {h['glof']['peak_m3s']:.0f} m³/s"
+            verdict += " (GLOF bilan)"
         out["summary"]["verdict"] = verdict + "; ombor: " + fs["verdict"]
         out["summary"]["ok"] = fs["ok"]
     else:
         out["summary"]["verdict"] = (
-            f"CN {h['cn']}: {p['rain_mm']} mm → {h['runoff_mm']} mm oqim, cho'qqi {peak:.0f} m³/s ({tpk} soatda)"
+            f"CN {h['cn']}: {p['rain_mm']} mm → {h['runoff_mm']} mm oqim, cho'qqi {peak:.0f} m³/s ({tpk:.1f} soatda)"
         )
         out["summary"]["ok"] = True
     return out

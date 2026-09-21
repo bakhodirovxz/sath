@@ -34,12 +34,22 @@ def reynolds(q: float, spec: PenstockSpec) -> float:
 
 
 def friction_factor(re: float, rel_roughness: float) -> float:
-    """Swamee–Jain (Colebrook ga 1–2 % aniqlikda), laminar rejimda 64/Re."""
+    """Ishqalanish koeffitsienti: laminar 64/Re (Re < 2300); Swamee–Jain (1976, Colebrook ga ±1 %,
+    amal doirasi 5·10³ ≤ Re ≤ 10⁸, 10⁻⁶ ≤ ε/D ≤ 10⁻²) Re ≥ 4000 da; 2300–4000 o'tish zonasida
+    laminar (Re = 2300) va turbulent (Re = 4000) qiymatlar orasida chiziqli interpolyatsiya —
+    uzilish yo'q (Cengel & Cimbala, §8-5)."""
     if re < 1e-9:
         return 0.0
     if re < 2300:
         return 64.0 / re
-    return 0.25 / (math.log10(rel_roughness / 3.7 + 5.74 / re**0.9)) ** 2
+
+    def sj(r: float) -> float:
+        return 0.25 / (math.log10(rel_roughness / 3.7 + 5.74 / r**0.9)) ** 2
+
+    if re < 4000:
+        f_lam, f_turb = 64.0 / 2300, sj(4000)
+        return f_lam + (f_turb - f_lam) * (re - 2300) / (4000 - 2300)
+    return sj(re)
 
 
 def head_loss(q: float, spec: PenstockSpec) -> float:

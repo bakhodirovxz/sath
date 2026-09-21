@@ -111,10 +111,16 @@ def parse(kind: str, params: dict) -> dict:
 
 
 def run(kind: str, params: dict) -> dict:
+    """Natija: {"series": {...}, "summary": {..., "verdict", "ok", "warnings": [..]}, ...}.
+    `summary.warnings` — usul amal doirasi/ishonchlilik ogohlantirishlari (`validity.py`); har doim ro'yxat."""
     e = REGISTRY.get(kind)
     if e is None:
         raise ValueError(f"Noma'lum simulyatsiya turi: {kind}")
-    return e["run"](schema.parse(e["fields"], params))
+    out = e["run"](schema.parse(e["fields"], params))
+    summary = out.setdefault("summary", {})
+    w = summary.get("warnings")
+    summary["warnings"] = [str(x) for x in w] if isinstance(w, list | tuple) else []
+    return out
 
 
 def site_values(kind: str, site_profile: dict | None) -> dict:

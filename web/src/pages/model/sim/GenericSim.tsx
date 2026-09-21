@@ -157,7 +157,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
 .mono{font-family:ui-monospace,monospace;font-size:12px;color:#333}footer{margin-top:20px;color:#777;font-size:11px}@media print{body{margin:10mm}}</style></head><body>
 <h1>${esc(kind.title)}</h1>
 <div class="meta">${esc(active.name || "#" + active.id)} · #${active.id} · ${esc(fmtDate(active.created_at))} · ${esc(active.author_username ?? "")}${current ? ` · model versiyasi v${current.number}` : ""}</div>
-<div class="verdict">${esc(s.verdict ?? "")}</div>
+<div class="verdict">${esc(s.verdict ?? "")}</div>${Array.isArray(s.warnings) && s.warnings.length ? `<div class="verdict" style="border-left-color:#b98626"><b>Ogohlantirishlar:</b><ul>${(s.warnings as unknown[]).map((w) => `<li>${esc(String(w))}</li>`).join("")}</ul></div>` : ""}
 <h2>Asosiy ko'rsatkichlar</h2><div class="tiles">${tiles}</div>
 <h2>Kirish parametrlari</h2><table><thead><tr><th>Parametr</th><th>Qiymat</th><th>Birlik</th><th>Manba</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Grafiklar</h2>${charts || "<div class='dim'>—</div>"}
@@ -498,6 +498,12 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           </div>
         )}
         <div className={`verdict ${ok ? "ok" : "bad"}`}><Icon name={ok ? "check-circle" : "alert-triangle"} size={16} /> <span>{String(s.verdict ?? "")}</span></div>
+        {Array.isArray(s.warnings) && s.warnings.length > 0 && (
+          <div className="verdict warn" title="Usul amal doirasi / ishonchlilik">
+            <Icon name="alert-triangle" size={16} />
+            <ul className="warnings">{(s.warnings as unknown[]).map((w, i) => <li key={i}>{String(w)}</li>)}</ul>
+          </div>
+        )}
         <div className="tiles">
           {kind.outputs.map((o) => <Tile key={o.key} v={s[o.key]} u={o.unit} t={o.label} />)}
         </div>
@@ -628,7 +634,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         {result.structures && <KVTable rows={result.structures} cols={[["name", "Inshoot"], ["period_s", "T, s"], ["sa_g", "S_a, g"], ["mass_t", "massa, t"], ["force_kn", "kuch, kN"]]} />}
         <details style={{ marginTop: 8 }}>
           <summary className="muted small">Barcha natijalar</summary>
-          <table className="grid small"><tbody>{Object.entries(s).filter(([k]) => k !== "verdict").map(([k, v]) => <tr key={k}><td className="dim">{k}</td><td className="mono">{typeof v === "number" ? v.toLocaleString("uz-UZ", { maximumFractionDigits: 4 }) : String(v)}</td></tr>)}</tbody></table>
+          <table className="grid small"><tbody>{Object.entries(s).filter(([k]) => k !== "verdict" && k !== "warnings").map(([k, v]) => <tr key={k}><td className="dim">{k}</td><td className="mono">{typeof v === "number" ? v.toLocaleString("uz-UZ", { maximumFractionDigits: 4 }) : String(v)}</td></tr>)}</tbody></table>
         </details>
       </div>
     );

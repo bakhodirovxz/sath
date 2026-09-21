@@ -59,9 +59,19 @@ FIELDS = [
     Field("base_m3s", "Bazaviy sarf", "m³/s", default=100, min=0, group="Toshqin", live="inflow"),
     Field(
         "inflow_series",
-        "yoki gidrograf qiymatlari (m³/s, har soat; bo'sh — sintetik)",
+        "yoki gidrograf qiymatlari (m³/s, har inflow_dt_h soat; bo'sh — sintetik)",
         type="series",
         default=[],
+        group="Toshqin",
+        advanced=True,
+    ),
+    Field(
+        "inflow_dt_h",
+        "Gidrograf qadami",
+        "soat",
+        default=1.0,
+        min=0.01,
+        max=24,
         group="Toshqin",
         advanced=True,
     ),
@@ -300,24 +310,69 @@ def manning_depth(q: float, b: float, z: float, s0: float, n: float) -> float:
 
 
 def muskingum(inflow: list[float], k_s: float, x: float, dt_s: float) -> list[float]:
+    """Muskingum (Chow 1988 §9.4). Barqarorlik va musbat koeffitsientlar: 2KX ≤ Δt ≤ 2K(1−X)
+    (c0 ≥ 0 va c2 ≥ 0) — chaqiruvchi `muskingum_reaches` bilan ta'minlaydi; qirqish yo'q."""
     den = 2 * k_s * (1 - x) + dt_s
     c0 = (dt_s - 2 * k_s * x) / den
     c1 = (dt_s + 2 * k_s * x) / den
     c2 = (2 * k_s * (1 - x) - dt_s) / den
     out = [inflow[0]]
     for i in range(1, len(inflow)):
-        out.append(max(c0 * inflow[i] + c1 * inflow[i - 1] + c2 * out[-1], 0.0))
+        out.append(c0 * inflow[i] + c1 * inflow[i - 1] + c2 * out[-1])
+    return out
+
+
+def muskingum_plan(
+    length_m: float, c_ms: float, x: float, dt_s: float, n_user: int, warnings: list[str]
+) -> tuple[int, float, int]:
+    """Oraliqlar soni n, X va ichki qadam bo'linishi `sub` — 2KX ≤ Δt_r ≤ 2K(1−X), Δt_r = Δt/sub.
+
+    - c0 ≥ 0 (Δt_r ≥ 2KX): K juda katta bo'lsa n oshiriladi (n_lo = ⌈2XL/(cΔt)⌉);
+    - c2 ≥ 0 (Δt_r ≤ 2K(1−X)): K juda kichik bo'lsa hisob qadami sub ga bo'linadi
+      (sub = ⌈Δt/(2K(1−X))⌉) — oraliqlar soni foydalanuvchiniki qoladi;
+    - ikkalasi birga bajarilmasa (X > 1/3 da yaxlitlash) X kamaytiriladi, ogohlantirish bilan.
+    Chow, Maidment & Mays (1988) §9.4; NRCS NEH-630 17-bob."""
+    k_total = length_m / c_ms
+    n_lo = max(int(-(-2 * x * k_total // dt_s)), 1)  # ceil
+    n = max(n_user, n_lo)
+    if n != n_user:
+        warnings.append(
+            f"Muskingum: oraliqlar soni {n_user} → {n} (Δt ≥ 2KX sharti, L = {length_m/1000:.1f} km, "
+            f"c = {c_ms} m/s, Δt = {dt_s/60:.0f} min)"
+        )
+    k = k_total / n
+    sub = max(int(-(-dt_s // (2 * k * (1 - x)))), 1) if x < 1 else 1
+    dt_r = dt_s / sub
+    if dt_r < 2 * k * x - 1e-9:
+        x_new = max(dt_r / (2 * k) * 0.9, 0.0)
+        warnings.append(f"Muskingum: X = {x} bilan barqaror qadam yo'q — X = {x_new:.3f}")
+        x = x_new
+    return n, x, sub
+
+
+def _resample(series: list[float], factor: int) -> list[float]:
+    """Har nuqta orasiga (factor−1) ta chiziqli oraliq nuqta qo'shadi."""
+    if factor <= 1:
+        return list(series)
+    out = []
+    for a, b in zip(series, series[1:], strict=False):
+        out.extend(a + (b - a) * j / factor for j in range(factor))
+    out.append(series[-1])
     return out
 
 
 def run(p: dict) -> dict:
+    warnings: list[str] = []
     dt = p["dt_min"] * 60
+    if p["inflow_series"]:
+        # Kiruvchi gidrograf qadami hisob qadamidan mayda bo'lsa — uni olamiz (cho'qqi yo'qolmasin)
+        dt = min(dt, p["inflow_dt_h"] * 3600)
     dt_h = dt / 3600
     curve = StorageCurve(tuple(p["curve_elev"]), tuple(p["curve_vol"]))
     if p["inflow_series"]:
-        hourly = p["inflow_series"]
-        n = int((len(hourly) - 1) / dt_h) + 1
-        inflow = [float(_interp(hourly, i * dt_h)) for i in range(n)]
+        series, sdt = p["inflow_series"], p["inflow_dt_h"]
+        n = int((len(series) - 1) * sdt / dt_h) + 1
+        inflow = [float(_interp(series, i * dt_h / sdt)) for i in range(n)]
     else:
         n = int(p["duration_h"] / dt_h) + 1
         inflow = synthetic_hydrograph(p["peak_m3s"], p["time_to_peak_h"], p["base_m3s"], n, dt_h)
@@ -396,17 +451,25 @@ def run(p: dict) -> dict:
 
     # Quyi byef: yorilish bo'lsa yorilish gidrografi (+ bazaviy), bo'lmasa ombor chiqimi
     ds_in = [b + p["base_m3s"] for b in breach["hydrograph"]] if breach else outs
-    seg = p["reach_length_km"] * 1000 / p["reach_count"]
-    k_s = seg / p["wave_speed_ms"]
-    x = p["musk_x"]
-    # Barqarorlik: dt >= 2KX; kerak bo'lsa X ni kamaytiramiz
-    if dt < 2 * k_s * x:
-        x = max(dt / (2 * k_s) * 0.9, 0.0)
-    routed = list(ds_in)
-    for _ in range(p["reach_count"]):
-        routed = muskingum(routed, k_s, x, dt)
-    peak_ds = max(routed)
-    t_peak_ds = routed.index(peak_ds) * dt_h
+    n_reach, x, sub = muskingum_plan(
+        p["reach_length_km"] * 1000, p["wave_speed_ms"], p["musk_x"], dt, p["reach_count"], warnings
+    )
+    k_s = p["reach_length_km"] * 1000 / n_reach / p["wave_speed_ms"]
+    fine = _resample(ds_in, sub)
+    for _ in range(n_reach):
+        fine = muskingum(fine, k_s, x, dt / sub)
+    routed = fine[::sub]
+    peak_ds = max(fine)  # cho'qqi ichki qadamda bo'lishi mumkin
+    if min(fine) < -1e-6:
+        warnings.append("Muskingum: manfiy sarf paydo bo'ldi — koeffitsientlar tekshirilsin")
+    # Massa balansi (marshrutlash chiziqli — hajm saqlanishi kerak; seriya oxirida to'lqin qolgan bo'lsa farq)
+    v_in, v_out = sum(ds_in) * dt, sum(fine) * dt / sub
+    if v_in > 0 and abs(v_out - v_in) / v_in > 0.02:
+        warnings.append(
+            f"Muskingum massa balansi: chiquvchi hajm kiruvchidan {100*(v_out-v_in)/v_in:+.1f}% farq qiladi "
+            "(seriya oxiri to'lqinni to'liq o'tkazmagan bo'lishi mumkin — davomiylikni oshiring)"
+        )
+    t_peak_ds = fine.index(peak_ds) * dt_h / sub
     depth_ds = [
         round(
             manning_depth(q, p["ch_width_m"], p["ch_side_slope"], p["ch_slope"], p["ch_manning"]), 2
@@ -460,8 +523,12 @@ def run(p: dict) -> dict:
             "downstream_peak_time_h": round(t_peak_ds, 2),
             "downstream_max_depth_m": round(max_depth, 2),
             "bank_overflow_q_m3s": round(bank_q, 1) if bank_q else None,
+            "muskingum_reaches": n_reach,
+            "muskingum_x": round(x, 3),
+            "muskingum_substeps": sub,
             "verdict": "; ".join(verdict) if verdict else "Toshqin xavfsiz o'tkaziladi",
             "ok": not verdict,
+            "warnings": warnings,
         },
     }
 
