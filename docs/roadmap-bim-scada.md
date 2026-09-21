@@ -323,7 +323,12 @@ Bog'liqlik: B1, A1 (sifat — `bad` sifatli sensor blokirovkani baholay olmaydi,
 
 ## C. Alarm tizimi (ISA-18.2)
 
-### C1 — Ko'p bosqichli chegaralar va o'lik zona
+### C1 — Ko'p bosqichli chegaralar va o'lik zona ✅
+
+Bajarildi: `ll_alarm`/`hh_alarm`, `deadband`, `on_delay_s`/`off_delay_s`, `roc_limit_per_min`
+(migratsiya 0010); `evaluate_alarm` gisterezisli, `settle()` kechikish holat mashinasi (fon vazifasi ham
+yakunlaydi), `AlarmState` + `lowlow/highhigh/roc/deviation`; egizak `.DEV` sensorlari `kind=deviation`.
+Qaror: `low_alarm`/`high_alarm` nomlari L/H sifatida saqlandi (API/web/desktop mosligi), rename qilinmadi.
 
 Muammo: `orm.py:405` — sensorda faqat bitta `low_alarm` va bitta `high_alarm`.
 `evaluate_alarm` (`live.py:60`) yalang'och taqqoslash: gisterezis yo'q, kechikish yo'q.
@@ -570,7 +575,7 @@ Fayllar: yangi `deploy/simulator/`, `deploy/docker-compose.yml`
 Qabul mezoni: har stsenariy e2e testda ishga tushadi va kutilgan alarm ketma-ketligini beradi.
 Bog'liqlik: A1, C1, D3.
 
-### E5 — IEC 60870-5-104 klienti ✅
+### E5 — IEC 60870-5-104 klienti ✅ (`42334a5`)
 
 Muammo: mintaqadagi dispetcher markazlari va RTU lar aynan shu protokolda gapiradi; hozir
 umuman yo'q.
@@ -588,7 +593,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`, `deploy/simulator/`, `deploy/gateway/R
 Qabul mezoni: simulyatordagi 104 serverdan vaqt tamg'ali o'lchov va SOE olinadi (test).
 Bog'liqlik: E1, E2, E4.
 
-### E6 — MQTT ko'prigini mustahkamlash ✅
+### E6 — MQTT ko'prigini mustahkamlash ✅ (`208989a`)
 
 Muammo (`server/ges_server/monitoring/mqtt_bridge.py`):
 - `GES_MQTT_URL=mqtt://user:pass@host:1883` — parol muhit o'zgaruvchisida va loglanadigan URL da;

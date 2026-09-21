@@ -16,7 +16,16 @@ from ..orm import QUALITIES, AlarmEvent, AlarmState, ProjectMember, Reading, Rol
 
 log = logging.getLogger("ges_server.monitoring")
 
-STATE_LABEL = {"low": "past", "high": "yuqori", "stale": "aloqa yo'q", "ok": "normal"}
+STATE_LABEL = {
+    "low": "past",
+    "high": "yuqori",
+    "stale": "aloqa yo'q",
+    "ok": "normal",
+    "lowlow": "juda past (LL)",
+    "highhigh": "juda yuqori (HH)",
+    "roc": "tez o'zgarish",
+    "deviation": "model bilan og'ish",
+}
 PRIORITY_LABEL = {"low": "", "medium": "", "high": "MUHIM: ", "critical": "KRITIK: "}
 
 
@@ -58,12 +67,98 @@ class Hub:
 hub = Hub()
 
 
-def evaluate_alarm(sensor: Sensor, value: float) -> AlarmState:
-    if sensor.high_alarm is not None and value > sensor.high_alarm:
-        return AlarmState.high
-    if sensor.low_alarm is not None and value < sensor.low_alarm:
-        return AlarmState.low
+def evaluate_alarm(sensor: Sensor, value: float, rate_per_min: float | None = None) -> AlarmState:
+    """Chegaralar (LL < L < H < HH) + o'lik zona (ISA-18.2 §12.3): faol holatdan qaytish uchun qiymat
+    chegaradan `deadband` qadar ichkariga kirishi kerak — chegarada tebranayotgan signal chatter qilmaydi.
+    Daraja alarmlari ROC dan ustun; `kind="deviation"` (egizak og'ishi) — L/H o'rniga `deviation`.
+    Kechikishlar (on/off_delay_s) bu yerda emas — `settle()` da."""
+    cur = sensor.alarm
+    d = float(sensor.deadband or 0.0)
+    if d < 0:
+        d = 0.0
+
+    def above(thr, active: bool) -> bool:
+        return thr is not None and value > (thr - d if active else thr)
+
+    def below(thr, active: bool) -> bool:
+        return thr is not None and value < (thr + d if active else thr)
+
+    hh, h = sensor.hh_alarm, sensor.high_alarm
+    ll, lo = sensor.ll_alarm, sensor.low_alarm
+    dev = sensor.kind == "deviation"
+    level: AlarmState | None = None
+    if above(hh, cur == AlarmState.highhigh):
+        level = AlarmState.highhigh
+    elif above(h, cur in (AlarmState.high, AlarmState.highhigh, AlarmState.deviation)):
+        level = AlarmState.high
+    elif below(ll, cur == AlarmState.lowlow):
+        level = AlarmState.lowlow
+    elif below(lo, cur in (AlarmState.low, AlarmState.lowlow, AlarmState.deviation)):
+        level = AlarmState.low
+    if level is not None:
+        return AlarmState.deviation if dev else level
+    lim = sensor.roc_limit_per_min
+    if lim is not None and lim > 0 and rate_per_min is not None:
+        # qaytish uchun 10 % gisterezis (tezlik shovqinli)
+        thr = lim * 0.9 if cur == AlarmState.roc else lim
+        if abs(rate_per_min) > thr:
+            return AlarmState.roc
     return AlarmState.ok
+
+
+def settle(
+    db: Session, sensor: Sensor, target: AlarmState, value: float | None, now: datetime | None = None
+) -> AlarmEvent | None:
+    """Kechikishli holat mashinasi (ISA-18.2 on/off delay): `target` hozirgi holatdan farq qilsa,
+    alarmga kirish `on_delay_s`, qaytish (ok ga) `off_delay_s` davomida saqlanishi kerak; `stale` dan
+    chiqish darhol. Kutish `alarm_pending`/`alarm_pending_since` da (fon tekshiruvi ham yakunlaydi).
+    Qaytaradi: yangi ochilgan hodisa yoki None. Commit chaqiruvchida."""
+    now = now or datetime.now(timezone.utc)
+    if target == sensor.alarm:
+        sensor.alarm_pending = None
+        sensor.alarm_pending_since = None
+        return None
+    if sensor.alarm == AlarmState.stale:
+        delay = 0
+    elif target == AlarmState.ok:
+        delay = int(sensor.off_delay_s or 0)
+    else:
+        delay = int(sensor.on_delay_s or 0)
+    if delay > 0:
+        if sensor.alarm_pending != target.value or sensor.alarm_pending_since is None:
+            sensor.alarm_pending = target.value
+            sensor.alarm_pending_since = now
+            return None
+        if (now - _aware(sensor.alarm_pending_since)).total_seconds() < delay:
+            return None
+    sensor.alarm_pending = None
+    sensor.alarm_pending_since = None
+    return transition(db, sensor, target, value)
+
+
+def settle_pending(db: Session, project_id: int) -> list[Sensor]:
+    """Kechikishi o'tgan kutilayotgan holatlarni yangi o'lchovsiz ham yakunlaydi (fon vazifasi):
+    qiymat chegarada turib yangi xabar kelmasa ham alarm `on_delay_s` dan keyin ochiladi."""
+    now = datetime.now(timezone.utc)
+    changed, events = [], []
+    q = db.query(Sensor).filter(Sensor.project_id == project_id, Sensor.alarm_pending.isnot(None))
+    for s in q.all():
+        try:
+            target = AlarmState(s.alarm_pending)
+        except ValueError:
+            s.alarm_pending = None
+            continue
+        ev = settle(db, s, target, s.last_value, now)
+        if s.alarm_pending is None:
+            changed.append(s)
+            if ev is not None:
+                events.append((ev, s))
+    if changed:
+        db.commit()
+        for s in changed:
+            hub.publish(project_id, sensor_message(s))
+        announce(db, project_id, events)
+    return changed
 
 
 def event_message(ev: AlarmEvent, sensor: Sensor) -> dict:
@@ -177,6 +272,7 @@ def ingest(
     sensors = {s.key: s for s in db.query(Sensor).filter_by(project_id=project_id).all()}
     by_id = {s.id: s for s in sensors.values()}
     accepted, bad, unknown, rejected, changed, events = 0, 0, [], [], [], []
+    prev: dict[int, tuple[float | None, datetime | None]] = {}  # ROC uchun paketdan oldingi qiymat
     now = datetime.now(timezone.utc)
     latest = now + timedelta(seconds=settings.ingest_future_s)
     earliest = now - max_age if max_age is not None else None
@@ -226,6 +322,8 @@ def ingest(
             bad += 1
             continue
         if sensor.last_ts is None or ts >= _aware(sensor.last_ts):
+            if sensor.id not in prev:
+                prev[sensor.id] = (sensor.last_value, sensor.last_ts)
             sensor.last_value = value
             sensor.last_ts = ts
             sensor.last_quality = quality
@@ -234,7 +332,14 @@ def ingest(
     # Alarm holati — har sensor uchun paketdagi eng so'nggi qiymat bo'yicha bir marta
     # (tarixiy import/CSV da har nuqta uchun hodisa ochilib "alarm toshqini" bo'lmasin)
     for sensor in changed:
-        ev = transition(db, sensor, evaluate_alarm(sensor, sensor.last_value), sensor.last_value)
+        p_val, p_ts = prev.get(sensor.id, (None, None))
+        rate = None
+        if sensor.roc_limit_per_min is not None and p_val is not None and p_ts is not None:
+            dt_min = (_aware(sensor.last_ts) - _aware(p_ts)).total_seconds() / 60.0
+            if dt_min > 0:
+                rate = (sensor.last_value - p_val) / dt_min
+        target = evaluate_alarm(sensor, sensor.last_value, rate)
+        ev = settle(db, sensor, target, sensor.last_value, now)
         if ev is not None:
             events.append((ev, sensor))
     db.commit()
@@ -272,6 +377,8 @@ def mark_stale(db: Session, project_id: int) -> list[Sensor]:
         if s.alarm != AlarmState.stale and (
             s.last_ts is None or (now - _aware(s.last_ts)).total_seconds() > s.stale_after_s
         ):
+            s.alarm_pending = None
+            s.alarm_pending_since = None
             ev = transition(db, s, AlarmState.stale, s.last_value)
             if ev is not None:
                 events.append((ev, s))

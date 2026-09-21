@@ -335,7 +335,7 @@ def publish(db: Session, project: Project) -> dict:
             f"{base}.DEV",
             f"{u['name']} — model bilan og'ish",
             "%",
-            "value",
+            "deviation",
             -10,
             10,
         )

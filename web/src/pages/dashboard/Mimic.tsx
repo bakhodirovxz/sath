@@ -1,10 +1,10 @@
 import type { AlarmState, Sensor } from "../../api/client";
-import { fmtValue } from "../../ui/format";
+import { fmtValue, isAlarm } from "../../ui/format";
 
 /** GES texnologik sxemasi (mimik diagramma, SCADA HMI uslubi): suv ombori → to'g'on/suv tashlagich →
  * bosimli quvur → mashina zali (agregatlar) → quyi byef. Slotlarga sensorlar bog'lanadi. */
 
-const COLOR: Record<AlarmState, string> = { ok: "var(--ok)", low: "var(--warn)", high: "var(--danger)", stale: "var(--text-dim)" };
+const COLOR: Record<AlarmState, string> = { ok: "var(--ok)", low: "var(--warn)", high: "var(--danger)", stale: "var(--text-dim)", lowlow: "var(--danger)", highhigh: "var(--danger)", roc: "var(--warn)", deviation: "var(--warn)" };
 
 // Slot joylashuvi (viewBox 900x380): x,y — qiymat katakchasi markazi
 const POS: Record<string, { x: number; y: number; w?: number; short?: string }> = {
@@ -32,7 +32,7 @@ interface Props {
 
 export default function Mimic({ sensors, mimic, labels, onSlotClick, editing }: Props) {
   const byId = new Map(sensors.map((s) => [s.id, s]));
-  const anyAlarm = sensors.some((s) => s.alarm === "high" || s.alarm === "low");
+  const anyAlarm = sensors.some((s) => isAlarm(s.alarm));
   const power = ["unit1_power", "unit2_power", "unit3_power"].map((k) => byId.get(mimic[k]));
   return (
     <svg className="mimic" viewBox="0 0 900 400" role="img" aria-label="GES sxemasi">
@@ -82,7 +82,7 @@ export default function Mimic({ sensors, mimic, labels, onSlotClick, editing }: 
         if (!s && slot === "total_power" && power.some(Boolean)) {
           // sensor yo'q — agregatlar yig'indisi (sintetik)
           const live = power.filter((u): u is Sensor => !!u && u.alarm !== "stale" && u.last_value != null);
-          const worst = power.some((u) => u && (u.alarm === "high" || u.alarm === "low")) ? "high" : live.length ? "ok" : "stale";
+          const worst = power.some((u) => u && isAlarm(u.alarm)) ? "high" : live.length ? "ok" : "stale";
           s = { ...(power.find(Boolean) as Sensor), id: -1, name: "Σ agregatlar", last_value: live.length ? live.reduce((a, u) => a + (u.last_value ?? 0), 0) : null, alarm: worst as AlarmState };
         }
         const w = p.w ?? 96;

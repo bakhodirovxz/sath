@@ -401,10 +401,16 @@ QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
 
 
 class AlarmState(str, enum.Enum):
+    """Sensor alarm holati (ISA-18.2 chegara alarmlari, C1): L/H, LL/HH, o'zgarish tezligi, og'ish."""
+
     ok = "ok"
-    low = "low"
-    high = "high"
+    low = "low"  # L
+    high = "high"  # H
     stale = "stale"  # ma'lumot kelmayapti
+    lowlow = "lowlow"  # LL
+    highhigh = "highhigh"  # HH
+    roc = "roc"  # rate-of-change: |dv/dt| > roc_limit_per_min
+    deviation = "deviation"  # egizak/model bilan og'ish (kind="deviation" sensorlar)
 
 
 class Sensor(Base):
@@ -431,8 +437,21 @@ class Sensor(Base):
     address: Mapped[dict] = mapped_column(
         JSON, default=dict
     )  # protokolga xos: topic, node_id, register...
+    # Chegaralar (C1): low_alarm = L, high_alarm = H; ll_alarm = LL, hh_alarm = HH
     low_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
     high_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ll_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hh_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # O'lik zona (sensor birligida): alarmdan qaytish uchun chegaradan shuncha ichkariga kirishi kerak
+    deadband: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    # Kechikishlar: chegaradan chiqish on_delay_s davomida saqlansa alarm; qaytish off_delay_s dan keyin
+    on_delay_s: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    off_delay_s: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # O'zgarish tezligi alarmi (birlik/daqiqa), None — o'chiq
+    roc_limit_per_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Kechikish holat mashinasi: kutilayotgan holat va qachondan beri
+    alarm_pending: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    alarm_pending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Fizik (o'lchov) diapazoni: tashqaridagi qiymat quality=bad bilan saqlanadi, holatga ta'sir qilmaydi
     min_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -456,7 +475,7 @@ class Sensor(Base):
     last_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # oxirgi qabul qilingan (bad bo'lmagan) qiymatning sifati — QUALITIES
     last_quality: Mapped[str] = mapped_column(String(16), default="good", server_default="good")
-    alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState), default=AlarmState.stale)
+    alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState, length=16), default=AlarmState.stale)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -488,7 +507,7 @@ class AlarmEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id", ondelete="CASCADE"))
-    state: Mapped[AlarmState] = mapped_column(Enum(AlarmState))
+    state: Mapped[AlarmState] = mapped_column(Enum(AlarmState, length=16))
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

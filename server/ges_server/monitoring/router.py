@@ -38,7 +38,8 @@ EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer)
 ApproverProject = Annotated[Project, Depends(require_project_role(Role.approver))]
 
 Kind = Literal[
-    "level", "flow", "power", "pressure", "temperature", "vibration", "status", "position", "value"
+    "level", "flow", "power", "pressure", "temperature", "vibration", "status", "position", "value",
+    "deviation",  # egizak/model bilan og'ish (%): alarm turi `deviation`
 ]
 Protocol = Literal["http", "csv", "mqtt", "opcua", "modbus", "twin", "ml"]
 Priority = Literal["low", "medium", "high", "critical"]
@@ -54,8 +55,14 @@ class SensorIn(BaseModel):
     element_guid: str | None = None
     protocol: Protocol = "http"
     address: dict[str, Any] = Field(default_factory=dict)
-    low_alarm: float | None = None
-    high_alarm: float | None = None
+    low_alarm: float | None = None  # L
+    high_alarm: float | None = None  # H
+    ll_alarm: float | None = None  # LL
+    hh_alarm: float | None = None  # HH
+    deadband: float = Field(0.0, ge=0)
+    on_delay_s: int = Field(0, ge=0, le=86400)
+    off_delay_s: int = Field(0, ge=0, le=86400)
+    roc_limit_per_min: float | None = Field(None, gt=0)
     # fizik diapazon: tashqarida quality=bad
     min_raw: float | None = None
     max_raw: float | None = None
@@ -82,6 +89,12 @@ class SensorPatch(BaseModel):
     address: dict[str, Any] | None = None
     low_alarm: float | None = None
     high_alarm: float | None = None
+    ll_alarm: float | None = None
+    hh_alarm: float | None = None
+    deadband: float | None = Field(None, ge=0)
+    on_delay_s: int | None = Field(None, ge=0, le=86400)
+    off_delay_s: int | None = Field(None, ge=0, le=86400)
+    roc_limit_per_min: float | None = Field(None, gt=0)
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int | None = None
@@ -94,7 +107,8 @@ class SensorPatch(BaseModel):
     requires_dual_approval: bool | None = None
     command_ttl_s: int | None = Field(None, ge=10, le=86400)
     readback_tolerance: float | None = Field(None, ge=0, le=1)
-    clear_alarms: bool = False  # low/high ni null qilish uchun
+    clear_alarms: bool = False  # low/high/ll/hh ni null qilish uchun
+    clear_roc: bool = False  # roc_limit_per_min ni null qilish uchun
     clear_raw_range: bool = False  # min_raw/max_raw ni null qilish uchun
     clear_setpoint_range: bool = False  # min/max_setpoint, max_rate_per_min ni null qilish uchun
 
@@ -112,6 +126,12 @@ class SensorOut(BaseModel):
     address: dict
     low_alarm: float | None
     high_alarm: float | None
+    ll_alarm: float | None = None
+    hh_alarm: float | None = None
+    deadband: float = 0.0
+    on_delay_s: int = 0
+    off_delay_s: int = 0
+    roc_limit_per_min: float | None = None
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int
@@ -333,18 +353,21 @@ def _get_sensor(db, sensor_id: int, user: User, required: Role) -> Sensor:
 def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     s = _get_sensor(db, sensor_id, user, Role.engineer)
     changes = body.model_dump(
-        exclude_none=True, exclude={"clear_alarms", "clear_raw_range", "clear_setpoint_range"}
+        exclude_none=True, exclude={"clear_alarms", "clear_roc", "clear_raw_range", "clear_setpoint_range"}
     )
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:
-        s.low_alarm = s.high_alarm = None
+        s.low_alarm = s.high_alarm = s.ll_alarm = s.hh_alarm = None
+    if body.clear_roc:
+        s.roc_limit_per_min = None
     if body.clear_raw_range:
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
         s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
     if s.last_value is not None and s.alarm != AlarmState.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
+        s.alarm_pending = s.alarm_pending_since = None
     audit.log(
         db,
         user_id=user.id,

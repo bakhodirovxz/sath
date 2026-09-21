@@ -231,10 +231,10 @@ export interface GesParams {
   dams: { guid: string; name: string; type: string; height_m: number | null; length_m: number | null; crest_elevation_m: number | null }[];
 }
 
-export type AlarmState = "ok" | "low" | "high" | "stale";
+export type AlarmState = "ok" | "low" | "high" | "stale" | "lowlow" | "highhigh" | "roc" | "deviation";
 /** O'lchov sifati (OPC UA/IEC 61850 ga mos soddalashtirilgan): bad — qiymat ishonchsiz, alarm baholanmaydi */
 export type Quality = "good" | "uncertain" | "bad" | "substituted" | "manual";
-export type SensorKind = "level" | "flow" | "power" | "pressure" | "temperature" | "vibration" | "status" | "position" | "value";
+export type SensorKind = "level" | "flow" | "power" | "pressure" | "temperature" | "vibration" | "status" | "position" | "value" | "deviation";
 export type SensorProtocol = "http" | "csv" | "mqtt" | "opcua" | "modbus" | "twin";
 export interface Sensor {
   id: number;
@@ -249,6 +249,12 @@ export interface Sensor {
   address: Record<string, unknown>;
   low_alarm: number | null;
   high_alarm: number | null;
+  ll_alarm?: number | null;
+  hh_alarm?: number | null;
+  deadband?: number;
+  on_delay_s?: number;
+  off_delay_s?: number;
+  roc_limit_per_min?: number | null;
   min_raw?: number | null;
   max_raw?: number | null;
   min_setpoint?: number | null;
@@ -277,6 +283,12 @@ export interface SensorIn {
   address: Record<string, unknown>;
   low_alarm: number | null;
   high_alarm: number | null;
+  ll_alarm?: number | null;
+  hh_alarm?: number | null;
+  deadband?: number;
+  on_delay_s?: number;
+  off_delay_s?: number;
+  roc_limit_per_min?: number | null;
   stale_after_s: number;
   enabled: boolean;
   priority?: "low" | "medium" | "high" | "critical";

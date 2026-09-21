@@ -26,8 +26,8 @@ const KINDS: { id: SensorKind; title: string; unit: string }[] = [
   { id: "position", title: "Ochilish (darvoza, zatvor)", unit: "%" },
   { id: "value", title: "Boshqa", unit: "" },
 ];
-const ALARM_LABEL: Record<AlarmState, string> = { ok: "normal", low: "past", high: "yuqori", stale: "uzilgan" };
-const ALARM_COLOR: Record<AlarmState, string> = { ok: "#3aa864", low: "#e0656a", high: "#e0656a", stale: "#6a6e76" };
+const ALARM_LABEL: Record<AlarmState, string> = { ok: "normal", low: "past", high: "yuqori", stale: "uzilgan", lowlow: "juda past", highhigh: "juda yuqori", roc: "tez o'zgarish", deviation: "og'ish" };
+const ALARM_COLOR: Record<AlarmState, string> = { ok: "#3aa864", low: "#e0656a", high: "#e0656a", stale: "#6a6e76", lowlow: "#c8323a", highhigh: "#c8323a", roc: "#e0a83a", deviation: "#e0a83a" };
 const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: "http", address: {}, low_alarm: null, high_alarm: null, stale_after_s: 600, enabled: true };
 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
@@ -105,7 +105,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     let v: ReadingPoint | null = null;
     for (const pt of pts) { if (new Date(pt.ts).getTime() <= replayTime) v = pt; else break; }
     if (!v) return { ...s, last_value: null, last_ts: null, alarm: "stale" as AlarmState };
-    const alarm: AlarmState = s.high_alarm != null && v.v > s.high_alarm ? "high" : s.low_alarm != null && v.v < s.low_alarm ? "low" : "ok";
+    const alarm: AlarmState = s.hh_alarm != null && v.v > s.hh_alarm ? "highhigh" : s.high_alarm != null && v.v > s.high_alarm ? "high" : s.ll_alarm != null && v.v < s.ll_alarm ? "lowlow" : s.low_alarm != null && v.v < s.low_alarm ? "low" : "ok";
     return { ...s, last_value: v.v, last_ts: v.ts, alarm };
   });
 
@@ -264,12 +264,12 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}
                 {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${ALARM_LABEL[s.alarm]}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${ALARM_LABEL[s.alarm]} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
                 {canEdit && <button className="btn sm" onClick={() => bindToSelection(s)} title="Tanlangan elementga bog'lash">Tanlanganga bog'lash</button>}
-                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
+                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
                 {role === "approver" && <button className="btn sm danger" onClick={() => confirm(`${s.name} sensorini o'chirasizmi? Tarix ham o'chadi.`) && api.deleteSensor(s.id).then(load)}>O'chirish</button>}
               </div>
               {history.length > 1 ? (
                 <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
-                  refLines={[...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : [])]} />
+                  refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
               {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
                 <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
@@ -316,6 +316,14 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
               <label className="field grow"><span>Past alarm</span><input className="input" type="number" step="any" value={editing.low_alarm ?? ""} onChange={(e) => setEditing({ ...editing, low_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>
               <label className="field grow"><span>Yuqori alarm</span><input className="input" type="number" step="any" value={editing.high_alarm ?? ""} onChange={(e) => setEditing({ ...editing, high_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>
               <label className="field grow"><span>Uzilgan deb hisoblash, s</span><input className="input" type="number" value={editing.stale_after_s} onChange={(e) => setEditing({ ...editing, stale_after_s: Number(e.target.value) || 600 })} /></label>
+            </div>
+            <div className="row" title="ISA-18.2: LL/HH — ikkinchi bosqich; o'lik zona — chegarada tebranish chatter qilmasin; kechikishlar — qisqa sakrashlar alarm bermasin; ROC — o'zgarish tezligi (birlik/daqiqa)">
+              <label className="field grow"><span>LL</span><input className="input" type="number" step="any" value={editing.ll_alarm ?? ""} onChange={(e) => setEditing({ ...editing, ll_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+              <label className="field grow"><span>HH</span><input className="input" type="number" step="any" value={editing.hh_alarm ?? ""} onChange={(e) => setEditing({ ...editing, hh_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+              <label className="field grow"><span>O'lik zona</span><input className="input" type="number" step="any" min={0} value={editing.deadband ?? 0} onChange={(e) => setEditing({ ...editing, deadband: Math.max(0, Number(e.target.value) || 0) })} /></label>
+              <label className="field grow"><span>Kirish kechikishi, s</span><input className="input" type="number" min={0} value={editing.on_delay_s ?? 0} onChange={(e) => setEditing({ ...editing, on_delay_s: Math.max(0, Number(e.target.value) || 0) })} /></label>
+              <label className="field grow"><span>Qaytish kechikishi, s</span><input className="input" type="number" min={0} value={editing.off_delay_s ?? 0} onChange={(e) => setEditing({ ...editing, off_delay_s: Math.max(0, Number(e.target.value) || 0) })} /></label>
+              <label className="field grow"><span>ROC, birlik/daq</span><input className="input" type="number" step="any" min={0} value={editing.roc_limit_per_min ?? ""} onChange={(e) => setEditing({ ...editing, roc_limit_per_min: e.target.value === "" ? null : Math.abs(Number(e.target.value)) || null })} /></label>
             </div>
             <div className="row">
               <label className="field grow"><span>Alarm ustuvorligi</span>
