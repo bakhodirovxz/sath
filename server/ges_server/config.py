@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     secret_key: str = ""
     access_token_minutes: int = 60 * 12
     database_url: str = "sqlite:///./data/ges.db"
+    # Startda `alembic upgrade head` avtomatik; false bo'lsa sxema head da emasligi xato beradi
+    auto_migrate: bool = True
     data_dir: Path = Path("./data")
     # Birinchi ishga tushishda yaratiladigan admin
     admin_username: str = "admin"

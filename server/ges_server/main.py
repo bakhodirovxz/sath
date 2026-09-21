@@ -12,7 +12,7 @@ from . import __version__
 from .auth.router import router as auth_router
 from .auth.security import hash_password
 from .config import get_settings, write_private
-from .db import Base, SessionLocal, engine, ensure_columns
+from .db import SessionLocal, assert_at_head, migrate
 from .models.drafts_router import router as drafts_router
 from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
@@ -36,11 +36,13 @@ log = logging.getLogger("ges_server")
 
 
 def init_db() -> None:
-    """Jadvallarni yaratadi va admin bo'lmasa seed qiladi."""
+    """Sxemani Alembic bilan head ga keltiradi va admin bo'lmasa seed qiladi."""
     settings = get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
-    ensure_columns()  # mavjud jadvallarga yangi ustunlar
-    Base.metadata.create_all(engine)
+    if settings.auto_migrate:
+        migrate()
+    else:
+        assert_at_head()
     with SessionLocal() as db:
         if db.query(User).filter_by(is_admin=True).first() is None:
             password = settings.admin_password

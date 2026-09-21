@@ -14,7 +14,7 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 from ges_server.auth import security
-from ges_server.db import Base, engine
+from ges_server.db import Base, engine, stamp_head
 from ges_server.main import app, init_db
 
 # Testlarda parol xeshlash tez bo'lsin (xavfsizlik testda muhim emas)
@@ -23,7 +23,12 @@ security._hasher = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    # Tez yo'l: create_all + stamp head (migratsiyalarning o'zi test_migrations.py da sinaladi)
     Base.metadata.drop_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+    Base.metadata.create_all(engine)
+    stamp_head()
     init_db()
     yield
 

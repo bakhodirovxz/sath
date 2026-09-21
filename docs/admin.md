@@ -14,6 +14,7 @@ docker compose logs ges         # admin paroli bo'sh qoldirilgan bo'lsa — fayl
 Korporativ TLS proksi bo'lsa: `docker compose build --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org" --build-arg NPM_STRICT_SSL=false`.
 
 Ixtiyoriy profillar:
+- **Sxema migratsiyasi**: Alembic (`server/ges_server/migrations/`). Startda `GES_AUTO_MIGRATE=true` (default) bo'lsa `upgrade head` avtomatik; eski (Alembic siz) DB birinchi startda baseline ga belgilanadi va yangilanadi. Qo'lda: `cd server && alembic upgrade head`; `GES_AUTO_MIGRATE=false` da sxema eskirgan bo'lsa server ishga tushmaydi. Yangilashdan oldin zaxira oling.
 - **Postgres** (20+ foydalanuvchi): `.env` da `GES_DATABASE_URL=postgresql+psycopg://ges:ges@postgres:5432/ges`, `docker compose --profile postgres up -d`.
 - **CFD** (OpenFOAM worker, ~1.5 GB obraz): `.env` da `GES_CFD_MODE=worker`, `docker compose --profile cfd up -d`. `CFD_CPUS` — worker uchun CPU.
 - **MQTT**: `GES_MQTT_URL=mqtt://user:pass@broker:1883` — sensorlar `protocol=mqtt` bilan topic ga obuna bo'ladi (paho-mqtt kerak: `pip install "./server[mqtt]"` Docker obrazida qo'shilgan).

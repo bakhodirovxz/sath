@@ -32,7 +32,7 @@ Sath stansiya boshqaruv tizimi (DCS/PLC) o'rnini bosmaydi. U Purdue modelida Lev
 zavod axborot va raqamli egizak qatlami. Buni hujjatlarda aniq yozish kerak, aks holda
 dispetcher unga boshqaruv tizimi sifatida tayanib qolishi mumkin.
 
-### 0.3 Vazifa V0 — pozitsiyani to'g'rilash ✅
+### 0.3 Vazifa V0 — pozitsiyani to'g'rilash ✅ (`1dd1618`)
 
 Muammo: `README.md:37` va `docs/plan.md` da "SCADA" darajasidagi da'vo bor; `docs/admin.md` da
 "Ingest kaliti faqat o'lchov yuboradi; boshqa hech narsaga ruxsat bermaydi" degan gap bor va u
@@ -115,7 +115,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2 (migratsiya mexanizmi) bilan birga bajarilishi kerak.
 
-### A2 — Alembic migratsiyalari
+### A2 — Alembic migratsiyalari ✅
 
 Muammo: `server/ges_server/db.py:44` dagi `ensure_columns()` faqat `ADD COLUMN` qila oladi.
 Tur o'zgarishi, o'chirish, qayta nomlash, backfill, downgrade, versiya jadvali — hech biri yo'q.
