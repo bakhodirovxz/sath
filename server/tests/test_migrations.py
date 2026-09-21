@@ -43,10 +43,30 @@ def test_upgrade_from_baseline_keeps_data(tmp_path):
                 "created_by, created_at) VALUES (1, 'P', '', '', '{}', '{}', 1, '2026-01-01 00:00:00')"
             )
         )
+        for i in range(3):
+            conn.execute(
+                text(
+                    "INSERT INTO audit_log (user_id, action, target_type, target_id, project_id, "
+                    "detail, created_at) VALUES (1, 'a.b', 'x', :i, 1, '{\"k\": 1}', "
+                    "'2026-01-01 00:00:0" + str(i) + ".000000')"
+                ),
+                {"i": i},
+            )
     with eng.begin() as conn:
         command.upgrade(_cfg(conn), "head")
         assert _current(conn) != gdb.BASELINE_REV or _heads() == {gdb.BASELINE_REV}
         assert conn.execute(text("SELECT count(*) FROM projects")).scalar() == 1
+        # audit zanjiri backfill: barcha qatorlar ulangan
+        rows = conn.execute(
+            text("SELECT prev_hash, row_hash FROM audit_log ORDER BY id")
+        ).all()
+        assert rows[0][0] == "" and all(r[1] for r in rows)
+        assert [r[0] for r in rows[1:]] == [r[1] for r in rows[:-1]]
+    from ges_server import audit
+    from sqlalchemy.orm import Session
+
+    with Session(eng) as db:
+        assert audit.verify_chain(db)["ok"]
 
 
 def _heads() -> set[str]:

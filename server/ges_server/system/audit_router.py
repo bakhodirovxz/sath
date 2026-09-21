@@ -5,12 +5,44 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 
-from ..auth.deps import DB, CurrentUser, get_project_role, has_role
+from .. import audit
+from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role
+from ..config import get_settings
 from ..orm import AuditLog, Role, User
 
 router = APIRouter(prefix="/api/audit", tags=["system"])
+
+
+@router.get("/verify")
+def verify(_: AdminUser, db: DB):
+    """Hash zanjirini boshidan tekshiradi: {ok, checked, first_bad_id, head}."""
+    return audit.verify_chain(db)
+
+
+@router.get("/export")
+def export_day(_: AdminUser, db: DB, day: str = Query(..., description="YYYY-MM-DD (UTC)")):
+    """Bir kunlik yozuvlar JSONL + HMAC-SHA256 imzosi (X-Audit-Signature sarlavhasi, server kaliti
+    bilan). Saqlab qo'yilgan fayl keyin `hmac(secret, body)` bilan tekshiriladi."""
+    try:
+        d = datetime.fromisoformat(day).replace(tzinfo=timezone.utc)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "day: YYYY-MM-DD") from e
+    body, sig = audit.export_day(db, d, get_settings().ensure_secret_key())
+    audit.log(
+        db, user_id=_.id, action="export.audit", target_type="audit", detail={"day": day}
+    )
+    db.commit()
+    return Response(
+        body,
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": f'attachment; filename="audit-{day}.jsonl"',
+            "X-Audit-Signature": sig,
+        },
+    )
 
 
 class AuditOut(BaseModel):

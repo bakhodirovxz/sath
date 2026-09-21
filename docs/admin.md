@@ -127,7 +127,12 @@ Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` 
 
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.
 - `GES_SECRET_KEY` — o'zgartirilsa hamma sessiya tugaydi (avtomatik yaratilgani `data/secret.key`).
-- Audit: `audit_log` jadvali (kim, nima, qachon) — barcha o'zgarishlar.
+- Audit: `audit_log` jadvali (kim, nima, qachon) — barcha o'zgarishlar, shu jumladan kirish xatolari
+  (`auth.login_failed`), parol o'zgarishi, WebSocket ulanishlari, ingest partiyalari (`readings.ingest`),
+  eksportlar, ingest kalitini o'qish. Yozuvlar SHA-256 hash zanjiri bilan bog'langan:
+  `GET /api/audit/verify` (admin) zanjirni tekshiradi va buzilgan birinchi qatorni qaytaradi;
+  `GET /api/audit/export?day=YYYY-MM-DD` — kunlik JSONL + `X-Audit-Signature` (HMAC, server kaliti).
+  Kunlik eksportni tashqi joyga saqlab boring — DB o'zgartirilsa zanjir va imzo buni ko'rsatadi.
 - Ingest kaliti o'lchov yuborish (`POST /readings`) bilan birga gateway buyruq kanalini ham avtorizatsiya qiladi
   (`/commands/pending`, `/commands/{id}/ack`) — ya'ni kalit sizib chiqsa buyruqlarni o'qish/soxta ack qilish mumkin.
   Kalitni faqat gateway hostida saqlang; alohida `command_key` roadmap B3 da.

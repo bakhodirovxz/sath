@@ -36,6 +36,10 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     finally:
+        left = db.info.get("audit")
+        if left:
+            # audit.log() chaqirilgan, lekin commit yo'q — yozuv yo'qoladi (dasturchi xatosi)
+            log.warning("audit: commit siz %d yozuv tashlandi: %s", len(left), [e["action"] for e in left])
         db.close()
 
 

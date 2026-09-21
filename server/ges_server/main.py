@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__
+from . import __version__, audit  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
 from .auth.router import router as auth_router
 from .auth.security import hash_password
 from .config import get_settings, write_private

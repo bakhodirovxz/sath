@@ -53,6 +53,14 @@ class PasswordChange(BaseModel):
 def login(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: DB):
     user = db.query(User).filter_by(username=form.username).one_or_none()
     if user is None or not user.is_active or not verify_password(form.password, user.password_hash):
+        # asosiy tranzaksiya yo'q — darhol yoziladi (brute force izini qoldirish uchun)
+        audit.log_now(
+            user_id=user.id if user else None,
+            action="auth.login_failed",
+            target_type="user",
+            target_id=user.id if user else None,
+            detail={"username": form.username[:64], "inactive": bool(user and not user.is_active)},
+        )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login yoki parol noto'g'ri")
     audit.log(db, user_id=user.id, action="login", target_type="user", target_id=user.id)
     db.commit()
@@ -69,6 +77,9 @@ def change_password(body: PasswordChange, user: CurrentUser, db: DB):
     if not verify_password(body.old_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Eski parol noto'g'ri")
     user.password_hash = hash_password(body.new_password)
+    audit.log(
+        db, user_id=user.id, action="auth.password_changed", target_type="user", target_id=user.id
+    )
     db.commit()
 
 
@@ -125,7 +136,10 @@ def update_user(user_id: int, body: UserUpdate, admin: AdminUser, db: DB):
         action="user.update",
         target_type="user",
         target_id=user.id,
-        detail=body.model_dump(exclude_none=True, exclude={"password"}),
+        detail={
+            **body.model_dump(exclude_none=True, exclude={"password"}),
+            **({"password_changed": True} if body.password is not None else {}),
+        },
     )
     db.commit()
     return user

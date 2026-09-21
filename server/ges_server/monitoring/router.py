@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import math
@@ -355,11 +356,19 @@ def delete_sensor(sensor_id: int, user: CurrentUser, db: DB):
 
 
 @router.get("/projects/{project_id}/ingest-key")
-def get_ingest_key(project: ApproverProject, db: DB):
-    """SCADA/gateway uchun kalit; bo'lmasa yaratiladi. Sarlavha: X-Ingest-Key."""
+def get_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+    """SCADA/gateway uchun kalit; bo'lmasa yaratiladi. Sarlavha: X-Ingest-Key. Har o'qish auditda."""
     if not project.ingest_key:
         project.ingest_key = secrets.token_urlsafe(24)
-        db.commit()
+    audit.log(
+        db,
+        user_id=user.id,
+        action="project.ingest_key.read",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+    )
+    db.commit()
     return {"ingest_key": project.ingest_key, "url": f"/api/projects/{project.id}/readings"}
 
 
@@ -393,6 +402,7 @@ def push_readings(
     ok = bool(project.ingest_key and x_ingest_key) and secrets.compare_digest(
         x_ingest_key, project.ingest_key
     )
+    auth_kind, actor_id = ("key", None) if ok else (None, None)
     if not ok and authorization and authorization.lower().startswith("bearer "):
         uid = decode_access_token(authorization[7:])
         user = db.get(User, uid) if uid else None
@@ -401,18 +411,40 @@ def push_readings(
             and user.is_active
             and has_role(get_project_role(db, project_id, user), Role.engineer)
         )
+        if ok:
+            auth_kind, actor_id = "token", user.id
     if not ok:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
     if len(body) > 10000:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
         )
-    return live.ingest(
+    out = live.ingest(
         db,
         project_id,
         [b.model_dump() for b in body],
         max_age=timedelta(days=get_settings().ingest_max_age_days),
     )
+    # Partiya bo'yicha bitta jamlangan yozuv (har o'lchov emas)
+    audit.log(
+        db,
+        user_id=actor_id,
+        action="readings.ingest",
+        target_type="project",
+        target_id=project_id,
+        project_id=project_id,
+        detail={
+            "count": len(body),
+            "accepted": out["accepted"],
+            "bad": out["bad"],
+            "unknown": len(out["unknown"]),
+            "rejected": len(out["rejected"]),
+            "auth": auth_kind,
+            "key_prefix": (x_ingest_key or "")[:6] if auth_kind == "key" else None,
+        },
+    )
+    db.commit()
+    return out
 
 
 @router.post("/sensors/{sensor_id}/import")
@@ -434,7 +466,18 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
         items.append(it)
     if not items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
-    return live.ingest(db, s.project_id, items, source="csv")
+    out = live.ingest(db, s.project_id, items, source="csv")
+    audit.log(
+        db,
+        user_id=user.id,
+        action="readings.ingest",
+        target_type="sensor",
+        target_id=s.id,
+        project_id=s.project_id,
+        detail={"count": len(items), "accepted": out["accepted"], "bad": out["bad"], "auth": "csv"},
+    )
+    db.commit()
+    return out
 
 
 # ---------- Tarix / holat ----------
@@ -535,6 +578,16 @@ def export_csv(
         .yield_per(1000)
     ):
         w.writerow([live._aware(t).isoformat(), v, q, live._aware(st).isoformat() if st else ""])
+    audit.log(
+        db,
+        user_id=user.id,
+        action="export.csv",
+        target_type="sensor",
+        target_id=s.id,
+        project_id=s.project_id,
+        detail={"hours": hours},
+    )
+    db.commit()
     return Response(
         buf.getvalue(),
         media_type="text/csv",
@@ -806,6 +859,7 @@ def save_dashboard(body: DashboardIn, project: EngineerProject, user: CurrentUse
 @router.get("/projects/{project_id}/report")
 def report(
     project: ViewerProject,
+    user: CurrentUser,
     db: DB,
     period: Literal["day", "week", "month"] = "day",
     date: str | None = None,
@@ -821,6 +875,16 @@ def report(
         except ValueError as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "date: YYYY-MM-DD") from e
     out = historian.build_report(db, project, period, start, now)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="export.report",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"period": period, "date": date, "format": format},
+    )
+    db.commit()
     start, end = datetime.fromisoformat(out["start"]), datetime.fromisoformat(out["end"])
     rows = out["sensors"]
     if format == "csv":
@@ -877,7 +941,17 @@ async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
         snapshot = [
             live.sensor_message(s) for s in db.query(Sensor).filter_by(project_id=project_id).all()
         ]
+        uid = user.id
     await live.hub.connect(project_id, ws)
+    opened = datetime.now(timezone.utc)
+    await asyncio.to_thread(
+        audit.log_now,
+        user_id=uid,
+        action="ws.connect",
+        target_type="project",
+        target_id=project_id,
+        project_id=project_id,
+    )
     try:
         await ws.send_json({"type": "snapshot", "sensors": snapshot})
         while True:
@@ -886,3 +960,12 @@ async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
         pass
     finally:
         live.hub.disconnect(project_id, ws)
+        await asyncio.to_thread(
+            audit.log_now,
+            user_id=uid,
+            action="ws.disconnect",
+            target_type="project",
+            target_id=project_id,
+            project_id=project_id,
+            detail={"duration_s": round((datetime.now(timezone.utc) - opened).total_seconds(), 1)},
+        )

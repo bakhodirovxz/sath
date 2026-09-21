@@ -139,7 +139,7 @@ Qabul mezoni:
 
 Bog'liqlik: yo'q. Eng birinchi bajarilishi kerak.
 
-### A3 — Kiruvchi qiymat va vaqt tamg'asi validatsiyasi ✅
+### A3 — Kiruvchi qiymat va vaqt tamg'asi validatsiyasi ✅ (`186a4b3`)
 
 Muammo: `monitoring/router.py:103` — `value: Any`, `live.py:171` — yalang'och `float()`.
 `"nan"`, `"inf"`, `"1e400"` o'tadi. NaN kelsa `evaluate_alarm` (`live.py:60`) dagi barcha
@@ -159,7 +159,7 @@ Fayllar: `server/ges_server/monitoring/router.py`, `monitoring/live.py`, `orm.py
 Qabul mezoni: NaN, inf, 9999-yil va 1970-yil tamg'alari uchun negativ testlar bor va o'tadi.
 Bog'liqlik: A1.
 
-### A4 — Audit jurnali yaxlitligi
+### A4 — Audit jurnali yaxlitligi ✅
 
 Muammo: `orm.py:657` — `AuditLog` oddiy o'zgaruvchan jadval. Hash zanjiri, imzo, append-only
 yo'q. `audit.py:16` commit ni chaqiruvchiga qoldiradi va so'rov tranzaksiyasini baham ko'radi —
