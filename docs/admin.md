@@ -114,7 +114,9 @@ Monitoring → «Ulanish kaliti» (tasdiqlovchi). SCADA tomonidagi kompyuterda `
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.
 - `GES_SECRET_KEY` — o'zgartirilsa hamma sessiya tugaydi (avtomatik yaratilgani `data/secret.key`).
 - Audit: `audit_log` jadvali (kim, nima, qachon) — barcha o'zgarishlar.
-- Ingest kaliti faqat o'lchov yuboradi; boshqa hech narsaga ruxsat bermaydi.
+- Ingest kaliti o'lchov yuborish (`POST /readings`) bilan birga gateway buyruq kanalini ham avtorizatsiya qiladi
+  (`/commands/pending`, `/commands/{id}/ack`) — ya'ni kalit sizib chiqsa buyruqlarni o'qish/soxta ack qilish mumkin.
+  Kalitni faqat gateway hostida saqlang; alohida `command_key` roadmap B3 da.
 
 ## API
 

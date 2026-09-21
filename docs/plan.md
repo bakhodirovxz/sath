@@ -23,12 +23,12 @@ Litsenziya: ichki foydalanish — GPL/LGPL/AGPL komponentlar bemalol ishlatiladi
 | 2 — Taqriz va tasdiqlash | ✅ | CR oqimi, ifcdiff (3D rang), BCF issue lar (IFC fazosidagi viewpoint), BCF 2.1 eksport/import, email bildirishnomalar (SMTP), audit |
 | 3 — AutoCAD uslubidagi UX | ✅ | web: buyruqlar qatori, sichqoncha odatlari, qatlamlar, o'lchash, kesim, saqlangan ko'rinishlar (VSAVE/VIEW); desktop (FreeCAD 1.1 da sinalgan): FreeCAD Dark paketi, CAD navigatsiya, metr birliklar, GES obyektlar ikonkalar bilan |
 | 4 — Simulyatsiya I | ✅ | ges_sim (suv ombori, quvur, turbina, 5 rejim), server API, web panel (grafiklar, vaqt slayderi, 3D suv sathi) |
-| 5 — Monitoring | ✅ | sensorlar, HTTP/CSV/MQTT ingest, WebSocket jonli, 3D rang, gateway (Modbus/OPC UA/CSV); **SCADA darajasi**: dispetcher paneli (mimik sxema, KPI, trendlar), alarm jurnali + kvitlash, historian (soatlik agregat, retention), hisobotlar (CSV), bildirishnomalar (ilova ichi + email), audit ko'rish |
+| 5 — Monitoring | ✅ | sensorlar, HTTP/CSV/MQTT ingest, WebSocket jonli, 3D rang, gateway (Modbus/OPC UA/CSV); **dispetcher qatlami** (SCADA dan ma'lumot oluvchi zavod axborot qatlami, Purdue L3/3.5; boshqaruv tizimi o'rnini bosmaydi): dispetcher paneli (mimik sxema, KPI, trendlar), alarm jurnali + kvitlash, historian (soatlik agregat, retention), hisobotlar (CSV), bildirishnomalar (ilova ichi + email), audit ko'rish |
 | 6 — CFD | ✅ | OpenFOAM case generatorlar (quvur wedge simpleFoam, suv tashlagich interFoam, **model geometriyasi STL → snappyHexMesh + simpleFoam**), Docker/worker runner, natijalar (grafik, 2D xarita, 3D tekislik, kuchlar). Docker da sinalgan |
 | 7 — Sayqal va tarqatish | ✅ | Docker (+ HTTPS Caddy profili), qo'llanmalar; desktop — **FreeCAD 1.1.3 forki** (brending, Mod/Ges, NSIS installer + zip, CI), serverdan tarqatiladi, yangilanish tekshiruvi; **katta IFC — server tomonda fragments** (.frag, Node); Playwright e2e |
 | + BIM tekshiruvlar | ✅ | to'qnashuvlarni aniqlash (clash), hajm-miqdor hisobi (QTO) — web paneli, CSV |
 | + UI | ✅ | Blender/3ds Max uslubidagi ish maydoni (menyular, ish maydonlari, shading Solid/Wire/X-ray/Rendered, gizmo, kamera rejimlari, kesim qutisi, rang sxemalari, hover, render, outliner qidiruv/ko'z, yo'riqnoma) |
-| + SCADA tenglik | ✅ | dispetcher roli, alarm ustuvorligi/ovoz, supervisory control (buyruqlar → gateway), smena jurnali, kunlik hisobot emaili, vaqt mashinasi |
+| + Dispetcher funksiyalari | ✅ | dispetcher roli, alarm ustuvorligi/ovoz, supervisory control (buyruqlar → gateway), smena jurnali, kunlik hisobot emaili, vaqt mashinasi |
 | + Raqamli egizak | ✅ | jonli holat ↔ model (kutilgan quvvat/og'ish/FIK, virtual sensorlar, og'ish alarmlari), 3D jonli suv sathi, simulyatsiya jonli holatdan, aktivlar (ish soatlari, texnik xizmat) |
 | + Versiya boshqaruvi | ✅ | qayta tiklash (revert), izoh/yorliq (teg), istalgan ikki versiya farqi |
 | + Simulyatsiya katalogi | ✅ | 17 tur (gidravlik zarba, minora, HYGOV, to'g'on barqarorligi, yorilish, filtratsiya, to'g'on turi, zilzila, yog'in→toshqin/GLOF, toshqin/yorilish, ko'chki to'lqini, loyqa, dispatch, maxsus formulalar), maydon pasporti, materiallar katalogi |
@@ -139,7 +139,7 @@ BIM/
 - `sensors` (project, name, protocol, address, element_guid, unit), `readings` (sensor_id, ts, value) — kengayganda TimescaleDB
 - `audit_log` (kim, nima, qachon, obyekt)
 
-### Tasdiqlash oqimi (ISO 19650 soddalashtirilgan)
+### Tasdiqlash oqimi (ISO 19650 jarayoni bo'yicha moslashtirilgan; to'liq muvofiqlik — roadmap G4)
 
 ```
 Muhandis: commit → version(state=wip)

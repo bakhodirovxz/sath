@@ -17,7 +17,7 @@ versiyalash va rol orqali tasdiqlash. Server = "BIM uchun GitHub": fayllar, vers
 - **Loyihalar, modellar, versiyalar** — har IFC yuklash = versiya (commit izohi, ota versiya, sha256 dedup, yorliq/teg,
   qayta tiklash, ikki versiya farqi).
 - **Rollar**: administrator, loyiha ichida Ko'ruvchi / Dispetcher / Muhandis / Tasdiqlovchi.
-- **Tasdiqlash oqimi** (ISO 19650 soddalashtirilgan): Ishda → Tasdiqda → Tasdiqlangan → Arxiv;
+- **Tasdiqlash oqimi** (ISO 19650 jarayoni bo'yicha moslashtirilgan, to'liq muvofiq emas — `docs/roadmap-bim-scada.md` G4): Ishda → Tasdiqda → Tasdiqlangan → Arxiv;
   tasdiqlash so'rovi (GitHub PR kabi), izoh / o'zgartirish so'rash / ma'qullash / tasdiqlash, audit log.
 - **Versiyalar farqi** (ifcdiff): qo'shilgan / o'zgargan / o'chirilgan elementlar 3D da rang bilan.
 - **Issue lar** (BCF uslubi): 3D ko'rinish (kamera, tanlangan elementlar, kesimlar) bilan, ijrochi, holat, izohlar.
@@ -34,7 +34,8 @@ versiyalash va rol orqali tasdiqlash. Server = "BIM uchun GitHub": fayllar, vers
 - **CFD (OpenFOAM)**: bosimli quvur (o'q-simmetrik, k-ε), suv tashlagich (2D erkin sirt, VOF) va **model geometriyasi**
   (tanlangan IFC elementlari → STL → snappyHexMesh + simpleFoam: gidrodinamik kuch, sirtdagi bosim);
   Docker yoki alohida worker; natija — napor yo'qotishi, tezlik/bosim maydoni (2D xarita, 3D tekislik), suv sirti profili.
-- **Monitoring / SCADA (digital twin)**: sensorlar IFC elementga bog'lanadi, SCADA dan HTTP/MQTT/CSV (gateway: Modbus, OPC UA),
+- **Monitoring / raqamli egizak** (SCADA dan ma'lumot oluvchi zavod axborot qatlami — Purdue L3/3.5; stansiya boshqaruv
+  tizimi (DCS/PLC) o'rnini bosmaydi): sensorlar IFC elementga bog'lanadi, SCADA dan HTTP/MQTT/CSV (gateway: Modbus, OPC UA),
   jonli qiymatlar (WebSocket), 3D da rang; **dispetcher paneli** — GES mimik sxemasi, KPI, trendlar, **alarm jurnali**
   (kvitlash, ustuvorlik, ovoz), kun/hafta/oy **hisobot** (energiya, CSV, kunlik email); historian (soatlik agregat,
   saqlash muddati), **supervisory control** (setpoint buyruqlari → gateway → Modbus/OPC UA, audit), **smena jurnali**,
