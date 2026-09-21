@@ -1294,7 +1294,7 @@ Fayllar: `sim/ges_sim/governor.py`
 Qabul mezoni: yuk tashlash testida `h`, `q`, `P_mech` fizik chegaralarda qoladi.
 Bog'liqlik: yo'q.
 
-### J6 — To'g'on yorilishi va pastki oqim
+### J6 — To'g'on yorilishi va pastki oqim ✅
 
 Muammo: `flood.py:369-395`, `:398` — yorilish gidrografi marshrutlash siklidan keyin quriladi va
 hech qachon teskari uzatilmaydi. Tekshirilgan: yorilish 595.79 Mm³ ni chiqaradi, Qp = 37 941 m³/s,
@@ -1418,7 +1418,7 @@ Qabul mezoni: har usul uchun diapazondan tashqari kiritmada ogohlantirish chiqis
 tekshiradigan test.
 Bog'liqlik: yo'q.
 
-### J10 — Ombor balansi va suv tashlagich ✅
+### J10 — Ombor balansi va suv tashlagich ✅ (`dd0be0f`)
 
 Muammo:
 - `reservoir.py:125-129` — `q_spill` qadam boshidagi sathdan hisoblanadi va to'liq `dt` uchun

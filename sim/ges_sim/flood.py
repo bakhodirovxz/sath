@@ -20,6 +20,7 @@ from .penstock import G
 from .reservoir import StorageCurve
 from .schema import Field, Meta
 from .spillway import Spillway
+from .validity import check_range
 
 META = Meta(
     id="flood",
@@ -299,6 +300,26 @@ FIELDS = [
         group="Quyi byef",
     ),
     Field(
+        "fp_width_m",
+        "Qayir kengligi (ikki tomon jami)",
+        "m",
+        default=0,
+        min=0,
+        group="Quyi byef",
+        hint="0 — qayir yo'q (cheksiz trapetsiya); qirg'oq chuqurligidan yuqorida oqim qayirga chiqadi",
+    ),
+    Field(
+        "fp_manning",
+        "Qayir Manning n",
+        "",
+        default=0.06,
+        min=0.02,
+        max=0.2,
+        step=0.005,
+        group="Quyi byef",
+        advanced=True,
+    ),
+    Field(
         "dt_min", "Hisob qadami", "min", default=15, min=1, max=60, group="Quyi byef", advanced=True
     ),
 ]
@@ -313,6 +334,54 @@ def synthetic_hydrograph(
         x = t / tp_h
         out.append(base + (qp - base) * (x**m) * math.exp(m * (1 - x)) if x > 0 else base)
     return out
+
+
+def compound_discharge(
+    y: float, b: float, z: float, s0: float, n: float, d_bank: float, fp_w: float, fp_n: float
+) -> float:
+    """Kompaund kesim (asosiy trapetsiya o'zan + qayir) uchun Manning sarfi, bo'laklab
+    (Chow 1959 §6-5: har bo'lak o'z gidravlik radiusi bilan, ajratish chizig'i perimetrga kirmaydi)."""
+    if y <= 0:
+        return 0.0
+    yc = min(y, d_bank) if fp_w > 0 else y
+    a = (b + z * yc) * yc
+    pw = b + 2 * yc * math.sqrt(1 + z * z)
+    q = a * (a / pw) ** (2 / 3) * math.sqrt(s0) / n
+    if fp_w > 0 and y > d_bank:
+        yf = y - d_bank
+        top = b + 2 * z * d_bank
+        a2 = top * yf  # o'zan ustidagi qism (to'rtburchak, qirg'oq kengligida)
+        q += a2 * (a2 / top) ** (2 / 3) * math.sqrt(s0) / n
+        af = fp_w * yf
+        pf = fp_w + 2 * yf
+        q += af * (af / pf) ** (2 / 3) * math.sqrt(s0) / fp_n
+    return q
+
+
+def compound_depth(
+    q: float, b: float, z: float, s0: float, n: float, d_bank: float = 1e9, fp_w: float = 0.0,
+    fp_n: float = 0.06,
+) -> float:
+    """Kompaund kesimda normal chuqurlik — bisection (monoton Q(y))."""
+    if q <= 0:
+        return 0.0
+    lo, hi = 0.0, 1.0
+    while compound_discharge(hi, b, z, s0, n, d_bank, fp_w, fp_n) < q and hi < 1e4:
+        hi *= 2
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if compound_discharge(mid, b, z, s0, n, d_bank, fp_w, fp_n) < q:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def sig2(v: float) -> float:
+    """2 ma'noli raqam — indikativ natijalar uchun (yolg'on aniqlik bermaslik)."""
+    if v == 0:
+        return 0.0
+    return float(f"{v:.2g}")
 
 
 def manning_depth(q: float, b: float, z: float, s0: float, n: float) -> float:
@@ -422,39 +491,119 @@ def run(p: dict) -> dict:
     )
     qt = p["turbine_m3s"]
 
-    def outflow(level: float) -> tuple[float, float, float, float]:
+    breach_geom: dict | None = None  # {t0, tf, b_avg, z_top, z_bot}
+
+    def breach_q(level: float, t: float) -> float:
+        """Yorilish orqali oqim: t_f davomida chiziqli o'sadigan trapetsiya tirqish (DAMBRK, Fread 1988):
+        Q = 1.7·b_tub(t)·H^1.5 + 1.35·z·H^2.5,  H = sath − z_b(t); z — yon qiyalik (Froehlich 2008:
+        gerbdan oshish 1.4, piping 0.9), b_tub = b_avg − z·h_b (o'rtacha kenglik o'rta balandlikda)."""
+        if breach_geom is None or t < breach_geom["t0"]:
+            return 0.0
+        f = min((t - breach_geom["t0"]) / max(breach_geom["tf"], 1.0), 1.0)
+        b_t = breach_geom["b_bot"] * f
+        z_t = breach_geom["z_top"] - (breach_geom["z_top"] - breach_geom["z_bot"]) * f
+        h = max(level - z_t, 0.0)
+        return 1.7 * b_t * h**1.5 + 1.35 * breach_geom["z_side"] * f * h**2.5
+
+    def outflow(level: float, t: float = -1.0) -> tuple[float, float, float, float, float]:
         spill = spillway.discharge(level) if sb > 0 else 0.0
         ho = max(level - p["outlet_sill_m"], 0.0)
         outlet = (
             0.6 * p["outlet_area_m2"] * math.sqrt(2 * G * ho) if p["outlet_area_m2"] > 0 else 0.0
         )
         over = 1.7 * lcrest * max(level - crest, 0.0) ** 1.5
-        return spill, outlet, over, spill + outlet + over + qt
+        br = breach_q(level, t)
+        return spill, outlet, over, br, spill + outlet + over + br + qt
 
-    level = p["initial_level_m"]
-    S = curve.volume(level)
-    ts, levels, outs, spills, overs = [], [], [], [], []
-    over_start = None
-    for i in range(n):
-        q_in = inflow[i]
-        q_in_next = inflow[min(i + 1, n - 1)]
-        # Yarim qadam iteratsiya (Puls): O sath funksiyasi, 3 marta takrorlash yetarli
-        o1 = outflow(level)[3]
-        lv = level
-        for _ in range(3):
-            o2 = outflow(lv)[3]
-            s_next = S + ((q_in + q_in_next) / 2 - (o1 + o2) / 2) * dt
-            lv = curve.elevation(max(s_next, 0.0))
-        sp, ou, ov, o = outflow(lv)
-        ts.append(round(i * dt_h, 3))
-        levels.append(round(lv, 3))
-        outs.append(round(o, 2))
-        spills.append(round(sp, 2))
-        overs.append(round(ov, 2))
-        if ov > 0 and over_start is None:
-            over_start = i * dt_h
-        S, level = max(s_next, 0.0), lv
+    def route() -> dict:
+        level = p["initial_level_m"]
+        S = curve.volume(level)
+        ts, levels, outs, spills, overs, brs = [], [], [], [], [], []
+        over_start = None
+        for i in range(n):
+            t = i * dt
+            q_in = inflow[i]
+            q_in_next = inflow[min(i + 1, n - 1)]
+            # Yarim qadam iteratsiya (Puls): O sath (va vaqt) funksiyasi, 3 marta takrorlash yetarli
+            o1 = outflow(level, t)[4]
+            lv = level
+            for _ in range(3):
+                o2 = outflow(lv, t + dt)[4]
+                s_next = S + ((q_in + q_in_next) / 2 - (o1 + o2) / 2) * dt
+                lv = curve.elevation(max(s_next, 0.0))
+            sp, ou, ov, br, o = outflow(lv, t + dt)
+            ts.append(round(i * dt_h, 3))
+            levels.append(round(lv, 3))
+            outs.append(round(o, 2))
+            spills.append(round(sp, 2))
+            overs.append(round(ov, 2))
+            brs.append(round(br, 2))
+            if ov > 0 and over_start is None:
+                over_start = i * dt_h
+            S, level = max(s_next, 0.0), lv
+        return {
+            "ts": ts, "levels": levels, "outs": outs, "spills": spills, "overs": overs,
+            "brs": brs, "over_start": over_start,
+        }
 
+    # 1-o'tish: yorilishsiz — gerbdan oshish vaqti va maksimal sath
+    r0 = route()
+    max_level0 = max(r0["levels"])
+    overtopped0 = crest - max_level0 < 0
+    mode = p["breach"]
+    breach = None
+    do_breach = mode == "force" or (mode == "auto" and overtopped0)
+    if do_breach:
+        # Froehlich (1995): V_w, h_w bo'yicha o'rtacha kenglik, hosil bo'lish vaqti, cho'qqi (regressiya)
+        if mode == "auto":
+            t0_h = r0["over_start"] if r0["over_start"] is not None else r0["ts"][r0["levels"].index(max_level0)]
+        else:
+            t0_h = r0["ts"][r0["levels"].index(max_level0)]
+        z_top = min(max_level0, crest)
+        hb = max(z_top - p["breach_bottom_m"], 1.0)  # yorilish balandligi
+        vw = max(curve.volume(max_level0) - curve.volume(p["breach_bottom_m"]), 1.0)  # m³
+        check_range(warnings, "Yorilish: suv hajmi V_w (Froehlich 1995)", vw / 1e6, 0.0139, 660, "mln m³")
+        check_range(warnings, "Yorilish: suv balandligi h_w (Froehlich 1995)", hb, 3.66, 77, "m")
+        k0 = 1.3 if mode == "auto" else 1.0
+        b_avg = 0.27 * k0 * vw**0.32 * hb**0.04
+        tf = 63.2 * math.sqrt(vw / (G * hb**2))  # s
+        qp_regr = 0.607 * vw**0.295 * hb**1.24
+        z_side = 1.4 if mode == "auto" else 0.9  # Froehlich 2008
+        breach_geom = {
+            "t0": t0_h * 3600,
+            "tf": tf,
+            "b_bot": max(b_avg - z_side * hb, 0.1 * b_avg),
+            "z_side": z_side,
+            "z_top": z_top,
+            "z_bot": p["breach_bottom_m"],
+        }
+        # 2-o'tish: yorilish ombor balansiga ulangan (sath tushadi, oqim sathga bog'liq)
+        r1 = route()
+        qp_sim = max(r1["brs"])
+        if qp_sim > 0 and not (0.5 <= qp_sim / qp_regr <= 2.0):
+            warnings.append(
+                f"yorilish cho'qqisi: simulyatsiya {qp_sim:.0f} m³/s, Froehlich regressiyasi {qp_regr:.0f} m³/s "
+                "— 2 barobardan ko'p farq (yorilish geometriyasi/ombor egri chizig'ini tekshiring)"
+            )
+        breach = {
+            "width_m": round(b_avg, 1),
+            "bottom_width_m": round(breach_geom["b_bot"], 1),
+            "side_slope": z_side,
+            "height_m": round(hb, 1),
+            "volume_mcm": round(vw / 1e6, 2),
+            "start_h": round(t0_h, 2),
+            "formation_h": round(tf / 3600, 2),
+            "peak_m3s": round(qp_sim, 0),
+            "peak_froehlich_m3s": round(qp_regr, 0),
+            # regressiya sochilishi ≈ 2 barobar (Froehlich 1995, Wahl 2004)
+            "peak_range_m3s": [round(qp_regr / 2, 0), round(qp_regr * 2, 0)],
+            "hydrograph": r1["brs"],
+        }
+        rr = r1
+    else:
+        rr = r0
+    ts, levels, outs, spills, overs = rr["ts"], rr["levels"], rr["outs"], rr["spills"], rr["overs"]
+    over_start = rr["over_start"]
     max_level = max(levels)
     i_max = levels.index(max_level)
     peak_in = max(inflow)
@@ -462,36 +611,8 @@ def run(p: dict) -> dict:
     freeboard = crest - max_level
     overtopped = freeboard < 0
 
-    # Yorilish
-    mode = p["breach"]
-    breach = None
-    do_breach = mode == "force" or (mode == "auto" and overtopped)
-    if do_breach:
-        hb = max(max_level - p["breach_bottom_m"], 1.0)  # yorilish balandligi
-        vw = max(curve.volume(max_level) - curve.volume(p["breach_bottom_m"]), 1.0)  # m³
-        k0 = 1.3 if mode == "auto" else 1.0
-        b_avg = 0.27 * k0 * vw**0.32 * hb**0.04
-        tf = 63.2 * math.sqrt(vw / (G * hb**2))  # s
-        qp = 0.607 * vw**0.295 * hb**1.24
-        # Uchburchak gidrograf: cho'qqi t_f da, hajm V_w → davomiyligi T = 2V_w/Q_p
-        t_total = 2 * vw / qp
-        n_b = int(t_total / dt) + 2
-        bh = [
-            max(qp * (t / tf) if t <= tf else qp * (1 - (t - tf) / (t_total - tf)), 0.0)
-            for t in (k * dt for k in range(n_b))
-        ]
-        breach = {
-            "width_m": round(b_avg, 1),
-            "height_m": round(hb, 1),
-            "volume_mcm": round(vw / 1e6, 2),
-            "formation_h": round(tf / 3600, 2),
-            "peak_m3s": round(qp, 0),
-            "duration_h": round(t_total / 3600, 1),
-            "hydrograph": [round(v, 1) for v in bh],
-        }
-
-    # Quyi byef: yorilish bo'lsa yorilish gidrografi (+ bazaviy), bo'lmasa ombor chiqimi
-    ds_in = [b + p["base_m3s"] for b in breach["hydrograph"]] if breach else outs
+    # Quyi byef: ombor umumiy chiqimi (tashlama + yorilish + ... vaqtda birga) marshrutlanadi
+    ds_in = outs
     n_reach, x, sub = muskingum_plan(
         p["reach_length_km"] * 1000, p["wave_speed_ms"], p["musk_x"], dt, p["reach_count"], warnings
     )
@@ -511,13 +632,29 @@ def run(p: dict) -> dict:
             "(seriya oxiri to'lqinni to'liq o'tkazmagan bo'lishi mumkin — davomiylikni oshiring)"
         )
     t_peak_ds = fine.index(peak_ds) * dt_h / sub
+    fp_w = p["fp_width_m"]
     depth_ds = [
         round(
-            manning_depth(q, p["ch_width_m"], p["ch_side_slope"], p["ch_slope"], p["ch_manning"]), 2
+            compound_depth(
+                q, p["ch_width_m"], p["ch_side_slope"], p["ch_slope"], p["ch_manning"],
+                p["ch_bank_depth_m"] if fp_w > 0 else 1e9, fp_w, p["fp_manning"],
+            ),
+            2,
         )
         for q in routed
     ]
     max_depth = max(depth_ds)
+    if breach:
+        warnings.append(
+            "quyi byef natijalari INDIKATIV: yorilish to'lqini gidrologik (Muskingum) usul bilan "
+            "marshrutlangan — front uchun dinamik model (Sen-Venan) kerak; chuqurlik normal chuqurlik "
+            "(Manning), 2 ma'noli raqamgacha"
+        )
+    if fp_w <= 0 and max_depth > p["ch_bank_depth_m"]:
+        warnings.append(
+            "qirg'oqdan oshgan oqim cheksiz trapetsiyada hisoblandi (qayir kengligi berilmagan) — "
+            "chuqurlik oshirib ko'rsatilgan bo'lishi mumkin"
+        )
     bank_q = None
     if max_depth > p["ch_bank_depth_m"]:
         bank_q = next(
@@ -532,7 +669,9 @@ def run(p: dict) -> dict:
         verdict.append(f"zaxira balandlik faqat {freeboard:.2f} m")
     if breach:
         verdict.append(
-            f"yorilish: Q_p = {breach['peak_m3s']:.0f} m³/s, {breach['formation_h']:.1f} soatda"
+            f"yorilish (t = {breach['start_h']:.1f} soat): Q_p ≈ {sig2(breach['peak_m3s']):.0f} m³/s "
+            f"({breach['formation_h']:.1f} soatda; Froehlich {breach['peak_froehlich_m3s']:.0f}, "
+            f"±2×), ombor bo'shaydi"
         )
     if max_depth > p["ch_bank_depth_m"]:
         verdict.append(
@@ -546,6 +685,7 @@ def run(p: dict) -> dict:
             "level": levels,
             "spill": spills,
             "overtop": overs,
+            "breach": rr["brs"],
         },
         "downstream": {"t": t_ds, "q": [round(v, 1) for v in routed], "depth": depth_ds},
         "breach": breach,
@@ -560,9 +700,12 @@ def run(p: dict) -> dict:
             "overtop_start_h": round(over_start, 2) if over_start is not None else None,
             "max_spill_m3s": round(max(spills), 1),
             "breach_peak_m3s": breach["peak_m3s"] if breach else 0.0,
-            "downstream_peak_m3s": round(peak_ds, 1),
+            "breach_peak_froehlich_m3s": breach["peak_froehlich_m3s"] if breach else 0.0,
+            "breach_start_h": breach["start_h"] if breach else None,
+            "downstream_peak_m3s": sig2(peak_ds) if breach else round(peak_ds, 1),
             "downstream_peak_time_h": round(t_peak_ds, 2),
-            "downstream_max_depth_m": round(max_depth, 2),
+            "downstream_max_depth_m": sig2(max_depth) if breach else round(max_depth, 2),
+            "downstream_indicative": bool(breach),
             "bank_overflow_q_m3s": round(bank_q, 1) if bank_q else None,
             "muskingum_reaches": n_reach,
             "muskingum_x": round(x, 3),
