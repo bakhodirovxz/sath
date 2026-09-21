@@ -21,6 +21,7 @@ Ko'rsatkichlar: chastota maksimal og'ishi, o'rnashish vaqti (±0.2 %), tebranish
 from __future__ import annotations
 
 from .schema import Field, Meta
+from .validity import check_budget
 
 META = Meta(
     id="governor",
@@ -264,6 +265,7 @@ def run(p: dict) -> dict:
     p_ref = p0
     dt = 0.01
     n = int(p["sim_s"] / dt)
+    check_budget(n, "Regulyator", "sim_s ni kamaytiring")
     ts, fs, gs, pms, qs, hs = [], [], [], [], [], []
     t_event = 1.0
     max_rate = 0.0

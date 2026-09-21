@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from . import flood
 from .schema import Field, Meta, parse
-from .validity import check_range, nice_step
+from .validity import check_budget, check_range, nice_step
 
 # NRCS o'lchovsiz birlik gidrografi (t/T_p → q/q_p)
 _DUH = [
@@ -405,6 +405,7 @@ def hydrograph(p: dict) -> dict:
     duh_len = int(5 * tp / dt) + 1
     uh = [qp * _interp(_DUH, (k * dt) / tp) for k in range(duh_len)]
     n_total = max(n_rain + int(round(48 / dt)), duh_len + n_rain + int(round(24 / dt)))
+    check_budget(n_total * duh_len, "Yog'in-oqim", "yog'in davomiyligini kamaytiring")
     q = [0.0] * n_total
     inputs = [
         (excess[k] if k < n_rain else 0.0) + (melt_mm_h * dt if k < n_melt else 0.0)

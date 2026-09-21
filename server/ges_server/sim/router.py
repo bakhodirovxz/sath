@@ -23,7 +23,7 @@ from ..db import SessionLocal
 from ..models import storage
 from ..models.router import get_model_checked, get_version_checked
 from ..orm import Role, SimJob, SimStatus, SimTemplate, Version, utcnow
-from . import ges_params
+from . import compute, ges_params
 
 log = logging.getLogger("ges_server.sim")
 router = APIRouter(prefix="/api", tags=["simulation"])
@@ -106,9 +106,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
         db.commit()
         kind, params = job.kind, dict(job.params)
     try:
-        if kind == "hydro":
-            result = scenario.run(params)
-        elif kind == "cfd":
+        if kind == "cfd":
             mode = cfd_mode or settings.cfd_mode
             if mode == "off":
                 raise ValueError("CFD o'chirilgan (GES_CFD_MODE=off)")
@@ -125,12 +123,11 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
                 on_progress=lambda p, note: _set_progress(job_id, p, note),
             )
             result = collect_results(case, case_dir)
-        elif kind == "custom":
-            result = custom.run(params["template"], params.get("inputs") or {})
-        elif kind in catalog.REGISTRY:
-            result = catalog.run(kind, params)
+        elif settings.sim_isolate:
+            # analitik: alohida jarayon + vaqt chegarasi (sof Python sikli thread dan to'xtamaydi)
+            result = compute.run_isolated(kind, params, settings.sim_timeout_s)
         else:
-            raise ValueError(f"Noma'lum simulyatsiya turi: {kind}")
+            result = compute.compute(kind, params)
         _result_path(job_id).write_text(json.dumps(result), encoding="utf-8")
         ok, summary, err = True, result["summary"], ""
     except Exception as e:  # noqa: BLE001 — foydalanuvchiga xato matni ko'rsatiladi
@@ -216,8 +213,26 @@ def _hydro_from_site(params: dict, site: dict | None) -> None:
 
 @router.post("/models/{model_id}/sim", response_model=SimOut, status_code=202)
 def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks: BackgroundTasks):
-    """Simulyatsiyani navbatga qo'yadi. Ko'ruvchi ham ishga tushira oladi (natija modelni o'zgartirmaydi)."""
-    model = get_model_checked(db, model_id, user, Role.viewer)
+    """Simulyatsiyani navbatga qo'yadi. Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi;
+    byudjet, vaqt chegarasi va foydalanuvchi kvotasi bilan cheklangan); CFD — muhandis+."""
+    model = get_model_checked(
+        db, model_id, user, Role.engineer if body.kind == "cfd" else Role.viewer
+    )
+    settings = get_settings()
+    active = (
+        db.query(SimJob)
+        .filter(
+            SimJob.author_id == user.id,
+            SimJob.status.in_([SimStatus.queued, SimStatus.running]),
+        )
+        .count()
+    )
+    if active >= settings.sim_max_active_per_user:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Bir vaqtda {settings.sim_max_active_per_user} tadan ko'p simulyatsiya mumkin emas — "
+            "avvalgilarini kuting",
+        )
     if body.version_id is not None:
         v = db.get(Version, body.version_id)
         if v is None or v.model_id != model.id:

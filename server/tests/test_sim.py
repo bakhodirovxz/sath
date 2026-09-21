@@ -96,10 +96,19 @@ def test_ges_params_from_ifc(client, users, model_id):
 def test_cfd_status_and_validation(client, users, model_id):
     r = client.get("/api/sim/cfd-status", headers=users["viewer"])
     assert r.status_code == 200 and r.json()["mode"] in ("docker", "local", "worker", "off")
+    # CFD — muhandis+ (J12/L3): ko'ruvchi 403
+    assert (
+        client.post(
+            f"/api/models/{model_id}/sim",
+            json={"kind": "cfd", "params": {"kind": "penstock"}},
+            headers=users["viewer"],
+        ).status_code
+        == 403
+    )
     bad = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "cfd", "params": {"kind": "penstock", "diameter_m": -2}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert bad.status_code == 400 and "musbat" in bad.json()["detail"]
     bad = client.post(
@@ -194,7 +203,7 @@ def test_cfd_geometry_job_writes_stl(client, users, monkeypatch):
     bad = client.post(
         f"/api/models/{mid}/sim",
         json={"kind": "cfd", "version_id": v["id"], "params": {"kind": "geometry"}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert bad.status_code == 400 and "element_guids" in bad.json()["detail"]
     r = client.post(
@@ -205,7 +214,7 @@ def test_cfd_geometry_job_writes_stl(client, users, monkeypatch):
             "name": "Tashlagich atrofida",
             "params": {"kind": "geometry", "element_guids": [guid], "velocity_ms": 1.5},
         },
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 202, r.text
     job = r.json()

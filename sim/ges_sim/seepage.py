@@ -23,7 +23,7 @@ import math
 import numpy as np
 
 from .schema import Field, Meta
-from .validity import check_range
+from .validity import check_budget, check_range
 
 SOILS = {  # kalit → (nom, Lane [C_w], Khosla xavfsiz chiqish gradiyenti)
     "very_fine_sand": ("Juda mayda qum / loyqa", 8.5, 1 / 7),
@@ -219,6 +219,7 @@ def flow_net(
     dx = min(dx, T / 8)
     x0, x1 = -(apron + Lu), b + Ld
     nx, ny = int(round((x1 - x0) / dx)) + 1, int(round(T / dx)) + 1
+    check_budget(nx * ny * 5, "Oqim to'ri", "qatlam qalinligi T yoki tag kengligini kamaytiring")
     xs = x0 + dx * np.arange(nx)
     x_cut = b if cutoff_downstream else 0.0
     ic = int(round((x_cut - x0) / dx))  # shpunt ustunlar orasida: ic-1 | ic

@@ -23,6 +23,7 @@ import math
 
 from .penstock import RHO, G, PenstockSpec, friction_factor, reynolds
 from .schema import Field, Meta
+from .validity import check_budget
 
 K_WATER = 2.15e9  # suvning hajmiy elastiklik moduli, Pa
 MATERIALS = {
@@ -230,7 +231,18 @@ def wave_speed(diameter_m: float, wall_m: float, e_pa: float, c1: float = 1.0) -
     return math.sqrt(K_WATER / RHO) / math.sqrt(1 + (K_WATER / e_pa) * (diameter_m / wall_m) * c1)
 
 
+BUDGET_ADVICE = "sim_s ni yoki oraliqlar sonini (reaches) kamaytiring"
+
+
+def budget(p: dict) -> float:
+    """MOC: qadamlar × tugunlar; Δt = (L/N)/a, a ≈ 1000 m/s."""
+    n = int(p["reaches"])
+    a = 1000.0
+    return (p["sim_s"] / ((p["length_m"] / n) / a) + 1) * (n + 1)
+
+
 def run(p: dict) -> dict:
+    check_budget(budget(p), "Gidrozarba", BUDGET_ADVICE)
     L, D = p["length_m"], p["diameter_m"]
     e = p["wall_mm"] / 1000
     mat_name, E, sigma_all = MATERIALS[p["material"]]

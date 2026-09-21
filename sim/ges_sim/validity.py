@@ -30,6 +30,17 @@ def check_range(
     return True
 
 
+BUDGET_OPS = 5_000_000  # bitta hisob uchun ichki amallar (qadam × tugun) chegarasi
+
+
+def check_budget(ops: float, label: str, advice: str) -> None:
+    """Hisob hajmi chegaradan oshsa ValueError — server 400 qaytaradi (J12)."""
+    if ops > BUDGET_OPS:
+        raise ValueError(
+            f"{label}: hisob hajmi {ops:.2e} amal > chegara {BUDGET_OPS:.0e} — {advice}"
+        )
+
+
 def nice_step(x: float, steps: tuple[float, ...] = (1.0, 0.5, 0.25, 0.1, 0.05)) -> float:
     """x dan katta bo'lmagan eng katta "chiroyli" qadam (soat)."""
     for s in steps:

@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     cfd_mode: str = "docker"
     cfd_image: str = "opencfd/openfoam-default:2406"
     cfd_cpus: float = 2.0
+    # Analitik simulyatsiya: alohida jarayonda (spawn) vaqt chegarasi bilan; testlarda o'chiriladi
+    sim_isolate: bool = True
+    sim_timeout_s: int = 300
+    # Foydalanuvchi bo'yicha bir vaqtda navbatda/ishlayotgan simulyatsiyalar soni
+    sim_max_active_per_user: int = 3
     cfd_timeout_s: int = 3 * 3600
     # Ixtiyoriy SMTP: smtp://user:pass@host:587?from=ges@company.uz  (smtps:// — SSL)
     smtp_url: str | None = None

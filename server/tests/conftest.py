@@ -9,6 +9,7 @@ os.environ["GES_DATABASE_URL"] = f"sqlite:///{(_TMP / 'test.db').as_posix()}"
 os.environ["GES_DATA_DIR"] = str(_TMP)
 os.environ["GES_SECRET_KEY"] = "test-secret-key-that-is-at-least-32-bytes-long"
 os.environ["GES_ADMIN_PASSWORD"] = "admin123"
+os.environ["GES_SIM_ISOLATE"] = "false"  # testlarda simulyatsiya shu jarayonda (tezlik); izolyatsiya test_sim_limits da
 
 import pytest
 from argon2 import PasswordHasher

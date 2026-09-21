@@ -104,10 +104,21 @@ def kinds() -> list[str]:
 
 
 def parse(kind: str, params: dict) -> dict:
+    """Parametrlarni tekshiradi; modulda `budget(p)` bo'lsa hisob hajmi chegarasi ham (ValueError)."""
     e = REGISTRY.get(kind)
     if e is None:
         raise ValueError(f"Noma'lum simulyatsiya turi: {kind}")
-    return schema.parse(e["fields"], params)
+    p = schema.parse(e["fields"], params)
+    mod = next((m for m in _MODULES if m.META.id == kind), None)
+    if mod is not None and hasattr(mod, "budget"):
+        from .validity import check_budget
+
+        check_budget(
+            mod.budget(p),
+            e["meta"].title,
+            getattr(mod, "BUDGET_ADVICE", "davomiylik/qadam/oraliqlar sonini kamaytiring"),
+        )
+    return p
 
 
 def run(kind: str, params: dict) -> dict:

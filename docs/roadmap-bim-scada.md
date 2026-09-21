@@ -1317,7 +1317,7 @@ Fayllar: `sim/ges_sim/flood.py`
 Qabul mezoni: yorilishda ombor sathi tushadi (test); diapazondan tashqarida ogohlantirish.
 Bog'liqlik: yo'q.
 
-### J7 — Sizib o'tish modulini qayta ko'rib chiqish ✅
+### J7 — Sizib o'tish modulini qayta ko'rib chiqish ✅ (`bcf59e8`)
 
 Muammo (`sim/ges_sim/seepage.py`):
 - `:236` — `i_exit = (h_ld − h2)/ld` bu Dyupyui parabolasining 30 m dagi o'rtacha gorizontal
@@ -1480,7 +1480,7 @@ Fayllar: `sim/ges_sim/dam_stability.py`, `cracking.py`
 Qabul mezoni: ikki modul bir xil to'g'on uchun bir xil ko'tarish bosimi va kuchlanish beradi.
 Bog'liqlik: J2.
 
-### J12 — Hisoblash resursi chegarasi
+### J12 — Hisoblash resursi chegarasi ✅
 
 Muammo: `water_hammer.py:214` — `steps = int(sim_s/dt) + 1`, `dt = (L/N)/a`. `sim_s` ning
 maksimumi yo'q (shuningdek `surge_tank.sim_s`, `flood.duration_h`). Maydon chegaralari ichidagi

@@ -20,7 +20,7 @@ from .penstock import G
 from .reservoir import StorageCurve
 from .schema import Field, Meta
 from .spillway import Spillway
-from .validity import check_range
+from .validity import check_budget, check_range
 
 META = Meta(
     id="flood",
@@ -478,6 +478,11 @@ def run(p: dict) -> dict:
     else:
         n = int(p["duration_h"] / dt_h) + 1
         inflow = synthetic_hydrograph(p["peak_m3s"], p["time_to_peak_h"], p["base_m3s"], n, dt_h)
+    check_budget(
+        n * 3 + n * p["reach_count"] * 40,
+        "Toshqin",
+        "davomiylikni (duration_h) yoki qadamni (dt_min) o'zgartiring",
+    )
     crest, lcrest = p["crest_m"], p["crest_length_m"]
     sb = p["spill_width_m"]
     spillway = Spillway(

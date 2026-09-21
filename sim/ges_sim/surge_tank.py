@@ -15,6 +15,7 @@ import math
 
 from .penstock import G, PenstockSpec, friction_factor, reynolds
 from .schema import Field, Meta
+from .validity import check_budget
 
 META = Meta(
     id="surge_tank",
@@ -156,6 +157,7 @@ def run(p: dict) -> dict:
 
     dt = 0.25
     n = int(p["sim_s"] / dt) + 1
+    check_budget(n * 4, "Minora", "sim_s ni kamaytiring")
     ts, zs, vs, qs = [], [], [], []
     for k in range(n):
         t = k * dt

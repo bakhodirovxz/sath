@@ -26,6 +26,7 @@ from __future__ import annotations
 import math
 
 from .schema import Field, Meta
+from .validity import check_budget
 
 COOLING = {  # rejim → (x, y, Δθ_or, Δθ_hr, τ_o daqiqa, τ_w daqiqa, k11, k21, k22)
     "ONAN": (0.8, 1.3, 55.0, 23.0, 210.0, 10.0, 0.5, 2.0, 2.0),
@@ -210,6 +211,7 @@ def run(p: dict) -> dict:
     cosphi = p["cos_phi"]
     dt = 1.0  # daqiqa
     n_day = 24 * 60
+    check_budget(int(p["days"]) * n_day * 3, "Transformator", "kunlar sonini kamaytiring")
     # Boshlang'ich holat: birinchi soat yuki bilan statsionar (kunlar takrorlanib o'rnashadi)
     K0 = (prof[0] / cosphi) / S if S > 0 else 0.0
     theta_o = amb[0] + ((1 + R * K0**2) / (1 + R)) ** x * dor
