@@ -5,6 +5,10 @@
   "commands": false,
   "command_key": "<faqat commands=true bo'lsa: Buyruq kaliti (yoki GES_GATEWAY_COMMAND_KEY)>",
   "interval_s": 10,
+  "spool_path": "gateway_spool.db",
+  "spool_max_rows": 1000000,
+  "spool_overflow": "drop_oldest",
+  "diag": false,
   "sources": [
     {
       "type": "sim",

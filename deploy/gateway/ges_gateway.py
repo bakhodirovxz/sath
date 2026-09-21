@@ -18,9 +18,12 @@ import logging
 import math
 import os
 import random
+import sqlite3
 import sys
+import threading
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -30,9 +33,39 @@ log = logging.getLogger("ges_gateway")
 # ---------- Manbalar ----------
 
 
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 class Source:
+    """Manba: read() → [{key, value, quality?, src_ts?}]. Aloqa uzilganda har teg uchun BITTA
+    quality=bad yozuv (takrorlanmaydi), qayta ulanganda haqiqiy qiymatlar davom etadi (E2)."""
+
+    def __init__(self) -> None:
+        self._bad_sent: set[str] = set()
+
     def read(self) -> list[dict]:
         raise NotImplementedError
+
+    def tag_keys(self) -> list[str]:
+        return []
+
+    def read_safe(self) -> list[dict]:
+        """read() xatosini ushlaydi: aloqa yo'q → har teg uchun bir marta quality=bad."""
+        try:
+            out = self.read()
+        except Exception as e:  # noqa: BLE001 — manba xatosi siklni to'xtatmasin
+            log.warning("%s: aloqa yo'q: %s", type(self).__name__, e)
+            out = []
+            for key in self.tag_keys():
+                if key not in self._bad_sent:
+                    self._bad_sent.add(key)
+                    out.append({"key": key, "value": 0.0, "quality": "bad", "src_ts": now_iso()})
+            return out
+        for it in out:
+            if it.get("quality") != "bad":
+                self._bad_sent.discard(it["key"])
+        return out
 
     def close(self) -> None:
         pass
@@ -42,11 +75,16 @@ class SimSource(Source):
     """Sinov: sinusoida + shovqin. tags: [{key, base, amplitude, period_s}]"""
 
     def __init__(self, cfg: dict):
+        super().__init__()
         self.tags = cfg["tags"]
         self.t0 = time.time()
 
+    def tag_keys(self) -> list[str]:
+        return [t["key"] for t in self.tags]
+
     def read(self) -> list[dict]:
         t = time.time() - self.t0
+        ts = now_iso()
         return [
             {
                 "key": tag["key"],
@@ -56,6 +94,8 @@ class SimSource(Source):
                     + random.gauss(0, tag.get("noise", 0.05)),
                     3,
                 ),
+                "quality": tag.get("quality", "good"),
+                "src_ts": ts,
             }
             for tag in self.tags
         ]
@@ -65,15 +105,21 @@ class ModbusSource(Source):
     """Modbus TCP. tags: [{key, address, count?:1|2, type?: "int16"|"uint16"|"int32"|"float32", scale?:1, unit_id?:1, kind?: "holding"|"input"}]"""
 
     def __init__(self, cfg: dict):
+        super().__init__()
         from pymodbus.client import ModbusTcpClient
 
         self.client = ModbusTcpClient(cfg["host"], port=cfg.get("port", 502))
         self.tags = cfg["tags"]
         self.client.connect()
 
+    def tag_keys(self) -> list[str]:
+        return [t["key"] for t in self.tags]
+
     def read(self) -> list[dict]:
         from pymodbus.client.mixin import ModbusClientMixin
 
+        if not self.client.connected and not self.client.connect():
+            raise ConnectionError("Modbus ulanmadi")
         out = []
         for tag in self.tags:
             typ = tag.get("type", "int16")
@@ -83,9 +129,18 @@ class ModbusSource(Source):
                 if tag.get("kind") == "input"
                 else self.client.read_holding_registers
             )
-            rr = fn(tag["address"], count=count, slave=tag.get("unit_id", 1))
-            if rr.isError():
-                log.warning("modbus %s: %s", tag["key"], rr)
+            ts = now_iso()  # o'qish payti — manbadagi vaqt (Modbus tamg'a bermaydi)
+            try:
+                rr = fn(tag["address"], count=count, slave=tag.get("unit_id", 1))
+            except Exception as e:  # noqa: BLE001 — bitta teg xatosi qolganini to'xtatmasin
+                rr = None
+                log.warning("modbus %s: %s", tag["key"], e)
+            if rr is None or rr.isError():
+                if rr is not None:
+                    log.warning("modbus %s: %s", tag["key"], rr)
+                if tag["key"] not in self._bad_sent:
+                    self._bad_sent.add(tag["key"])
+                    out.append({"key": tag["key"], "value": 0.0, "quality": "bad", "src_ts": ts})
                 continue
             dt = {
                 "int16": ModbusClientMixin.DATATYPE.INT16,
@@ -95,7 +150,9 @@ class ModbusSource(Source):
                 "float32": ModbusClientMixin.DATATYPE.FLOAT32,
             }[typ]
             value = self.client.convert_from_registers(rr.registers, dt)
-            out.append({"key": tag["key"], "value": value * tag.get("scale", 1)})
+            out.append(
+                {"key": tag["key"], "value": value * tag.get("scale", 1), "quality": "good", "src_ts": ts}
+            )
         return out
 
     def write(self, tag: dict, value: float) -> None:
@@ -124,6 +181,7 @@ class OpcUaSource(Source):
     """OPC UA (sync klient). tags: [{key, node_id: "ns=2;i=1001"}]"""
 
     def __init__(self, cfg: dict):
+        super().__init__()
         from asyncua.sync import Client
 
         self.client = Client(cfg["url"])
@@ -133,13 +191,20 @@ class OpcUaSource(Source):
         self.client.connect()
         self.nodes = [(tag["key"], self.client.get_node(tag["node_id"])) for tag in cfg["tags"]]
 
+    def tag_keys(self) -> list[str]:
+        return [k for k, _ in self.nodes]
+
     def read(self) -> list[dict]:
         out = []
         for key, node in self.nodes:
             try:
-                out.append({"key": key, "value": float(node.read_value())})
+                dv = node.read_data_value()  # StatusCode + SourceTimestamp (E2)
+                out.append(opcua_item(key, dv))
             except Exception as e:  # noqa: BLE001 — bitta teg xatosi qolganini to'xtatmasin
                 log.warning("opcua %s: %s", key, e)
+                if key not in self._bad_sent:
+                    self._bad_sent.add(key)
+                    out.append({"key": key, "value": 0.0, "quality": "bad", "src_ts": now_iso()})
         return out
 
     def write(self, tag: dict, value: float) -> None:
@@ -150,10 +215,36 @@ class OpcUaSource(Source):
         self.client.disconnect()
 
 
+def opcua_quality(status_code) -> str:
+    """OPC UA StatusCode → Sath sifati: Good* → good, Uncertain* → uncertain, Bad* → bad."""
+    try:
+        v = int(status_code.value)
+    except (AttributeError, TypeError, ValueError):
+        return "good"
+    sev = (v >> 30) & 0x3  # yuqori 2 bit: 00 Good, 01 Uncertain, 10 Bad
+    return {0: "good", 1: "uncertain", 2: "bad", 3: "bad"}[sev]
+
+
+def opcua_item(key: str, dv) -> dict:
+    """DataValue → o'lchov: qiymat (bad bo'lsa 0), sifat, SourceTimestamp (bo'lmasa ServerTimestamp)."""
+    q = opcua_quality(getattr(dv, "StatusCode", None))
+    try:
+        value = float(dv.Value.Value) if q != "bad" else 0.0
+    except (TypeError, ValueError):
+        value, q = 0.0, "bad"
+    if not math.isfinite(value):
+        value, q = 0.0, "bad"
+    ts = getattr(dv, "SourceTimestamp", None) or getattr(dv, "ServerTimestamp", None)
+    if ts is not None and ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return {"key": key, "value": value, "quality": q, "src_ts": (ts or datetime.now(timezone.utc)).isoformat()}
+
+
 class CsvTailSource(Source):
-    """SCADA eksport qiladigan CSV faylning yangi qatorlarini o'qiydi: ts,key,value"""
+    """SCADA eksport qiladigan CSV faylning yangi qatorlarini o'qiydi: ts,key,value[,quality]"""
 
     def __init__(self, cfg: dict):
+        super().__init__()
         self.path = cfg["path"]
         self.pos = 0
 
@@ -165,7 +256,10 @@ class CsvTailSource(Source):
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 3:
                     try:
-                        out.append({"ts": parts[0], "key": parts[1], "value": float(parts[2])})
+                        it = {"ts": parts[0], "src_ts": parts[0], "key": parts[1], "value": float(parts[2])}
+                        if len(parts) >= 4 and parts[3]:
+                            it["quality"] = parts[3].lower()
+                        out.append(it)
                     except ValueError:
                         pass
             self.pos = fh.tell()
@@ -257,17 +351,118 @@ class Commander:
             log.warning("buyruq #%s readback yuborilmadi: %s", c["id"], e)
 
 
+class Spool:
+    """Diskdagi store-and-forward navbati (SQLite): restartda yo'qolmaydi (E1).
+
+    Qatorlar: (id, ts, payload JSON, attempts). Yuborilgach o'chiriladi. To'lganda (`max_rows`)
+    siyosat: `drop_oldest` (eng eskisi o'chiriladi, ogohlantirish) yoki `stop` (yangi yozuv qabul
+    qilinmaydi, ogohlantirish) — konfiguratsiyada."""
+
+    def __init__(self, path: str, max_rows: int = 1_000_000, overflow: str = "drop_oldest"):
+        self.path = path
+        self.max_rows = int(max_rows)
+        self.overflow = overflow
+        self._lock = threading.Lock()
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS spool (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, "
+            "payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0)"
+        )
+        self.conn.commit()
+        self.dropped = 0
+
+    def add(self, items: list[dict]) -> int:
+        """Qaytaradi: qo'shilgan qatorlar soni (stop siyosatida to'lganda 0)."""
+        if not items:
+            return 0
+        with self._lock:
+            n = self.size()
+            if self.overflow == "stop" and n + len(items) > self.max_rows:
+                log.warning("spool to'lgan (%d) — yangi o'lchovlar qabul qilinmayapti (stop)", n)
+                return 0
+            self.conn.executemany(
+                "INSERT INTO spool (ts, payload) VALUES (?, ?)",
+                [(it.get("ts") or now_iso(), json.dumps(it, separators=(",", ":"))) for it in items],
+            )
+            excess = n + len(items) - self.max_rows
+            if excess > 0:  # drop_oldest
+                self.conn.execute(
+                    "DELETE FROM spool WHERE id IN (SELECT id FROM spool ORDER BY id LIMIT ?)", (excess,)
+                )
+                self.dropped += excess
+                log.warning("spool to'lgan — eng eski %d yozuv o'chirildi (jami %d)", excess, self.dropped)
+            self.conn.commit()
+            return len(items)
+
+    def batch(self, limit: int = 5000) -> tuple[list[int], list[dict]]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id, payload FROM spool ORDER BY id LIMIT ?", (limit,)
+            ).fetchall()
+        return [r[0] for r in rows], [json.loads(r[1]) for r in rows]
+
+    def ack(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        with self._lock:
+            self.conn.executemany("DELETE FROM spool WHERE id = ?", [(i,) for i in ids])
+            self.conn.commit()
+
+    def fail(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        with self._lock:
+            self.conn.executemany("UPDATE spool SET attempts = attempts + 1 WHERE id = ?", [(i,) for i in ids])
+            self.conn.commit()
+
+    def size(self) -> int:
+        return int(self.conn.execute("SELECT count(*) FROM spool").fetchone()[0])
+
+    def oldest_age_s(self) -> float:
+        row = self.conn.execute("SELECT ts FROM spool ORDER BY id LIMIT 1").fetchone()
+        if not row:
+            return 0.0
+        try:
+            t = datetime.fromisoformat(row[0].replace("Z", "+00:00"))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            return max((datetime.now(timezone.utc) - t).total_seconds(), 0.0)
+        except ValueError:
+            return 0.0
+
+    def close(self) -> None:
+        self.conn.close()
+
+
 class Pusher:
+    """O'lchovlarni spool orqali serverga yuboradi: har siklda eng eski partiyalar, xatoda eksponensial
+    kechikish (2…300 s). Diagnostika teglari (`diag: true`): GW.spool_rows, GW.spool_oldest_age_s,
+    GW.spool_dropped, GW.clock_offset_s (server Date sarlavhasi bilan farq; NTP tekshiruvi o'rnini bosadi)."""
+
     def __init__(self, cfg: dict):
         self.url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/readings"
         self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
-        self.buffer: list[dict] = []
-        self.max_buffer = cfg.get("max_buffer", 50000)  # tarmoq uzilganda saqlab turish
+        self.spool = Spool(
+            cfg.get("spool_path", "gateway_spool.db"),
+            cfg.get("spool_max_rows", 1_000_000),
+            cfg.get("spool_overflow", "drop_oldest"),
+        )
+        self.batch_size = int(cfg.get("batch_size", 5000))
+        self.max_batches_per_cycle = int(cfg.get("max_batches_per_cycle", 10))
+        self.diag = bool(cfg.get("diag", False))
+        self.diag_prefix = cfg.get("diag_prefix", "GW")
+        self.clock_warn_s = float(cfg.get("clock_warn_s", 5.0))
+        self.backoff_s = 0.0
+        self.next_try = 0.0
+        self.clock_offset_s: float | None = None
 
-    def push(self, items: list[dict]) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+    @staticmethod
+    def sanitize(items: list[dict]) -> list[dict]:
+        now = now_iso()
         for it in items:
             it.setdefault("ts", now)
+            it.setdefault("src_ts", it["ts"])
             # Server chekli bo'lmagan qiymatga butun paketni 422 bilan rad etadi — o'qish xatosi
             # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3)
             try:
@@ -277,22 +472,78 @@ class Pusher:
             if not math.isfinite(v):
                 it["value"] = 0.0
                 it["quality"] = "bad"
-        self.buffer.extend(items)
-        self.buffer = self.buffer[-self.max_buffer :]
-        if not self.buffer:
+        return items
+
+    def diag_items(self) -> list[dict]:
+        p = self.diag_prefix
+        out = [
+            {"key": f"{p}.spool_rows", "value": float(self.spool.size())},
+            {"key": f"{p}.spool_oldest_age_s", "value": round(self.spool.oldest_age_s(), 1)},
+            {"key": f"{p}.spool_dropped", "value": float(self.spool.dropped)},
+        ]
+        if self.clock_offset_s is not None:
+            out.append({"key": f"{p}.clock_offset_s", "value": round(self.clock_offset_s, 2)})
+        return out
+
+    def push(self, items: list[dict]) -> None:
+        items = self.sanitize(items)
+        if self.diag:
+            items = items + self.sanitize(self.diag_items())
+        self.spool.add(items)
+        self.flush()
+
+    def flush(self) -> None:
+        if time.time() < self.next_try:
+            return
+        for _ in range(self.max_batches_per_cycle):
+            ids, batch = self.spool.batch(self.batch_size)
+            if not ids:
+                return
+            try:
+                r = requests.post(self.url, json=batch, headers=self.headers, timeout=15)
+                self._check_clock(r)
+                if r.status_code == 422:
+                    # Validatsiya xatosi — partiya hech qachon qabul qilinmaydi: o'chirib, loglaymiz
+                    log.error("server 422: partiya (%d) tashlandi: %s", len(batch), r.text[:300])
+                    self.spool.ack(ids)
+                    continue
+                r.raise_for_status()
+                resp = r.json()
+                if resp.get("unknown"):
+                    log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
+                if resp.get("rejected"):
+                    log.warning("server rad etdi: %s", resp["rejected"][:10])
+                log.info("yuborildi: %d (qabul %d, spoolda %d)", len(batch), resp.get("accepted", 0), self.spool.size() - len(ids))
+                self.spool.ack(ids)
+                self.backoff_s = 0.0
+            except requests.RequestException as e:
+                self.spool.fail(ids)
+                self.backoff_s = min(max(self.backoff_s * 2, 2.0), 300.0)
+                self.next_try = time.time() + self.backoff_s
+                log.warning(
+                    "yuborib bo'lmadi (spoolda %d, %.0f s dan keyin qayta): %s",
+                    self.spool.size(),
+                    self.backoff_s,
+                    e,
+                )
+                return
+
+    def _check_clock(self, r) -> None:
+        """Server `Date` sarlavhasi (1 s aniqlik) bilan lokal soat farqi — NTP buzilganini ko'rsatadi."""
+        date = r.headers.get("Date") if hasattr(r, "headers") else None
+        if not date:
             return
         try:
-            r = requests.post(self.url, json=self.buffer, headers=self.headers, timeout=15)
-            r.raise_for_status()
-            resp = r.json()
-            if resp.get("unknown"):
-                log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
-            if resp.get("rejected"):
-                log.warning("server rad etdi: %s", resp["rejected"][:10])
-            log.info("yuborildi: %d (qabul %d)", len(self.buffer), resp.get("accepted", 0))
-            self.buffer.clear()
-        except requests.RequestException as e:
-            log.warning("yuborib bo'lmadi (buferda %d): %s", len(self.buffer), e)
+            server = parsedate_to_datetime(date)
+            if server.tzinfo is None:
+                server = server.replace(tzinfo=timezone.utc)
+            self.clock_offset_s = (datetime.now(timezone.utc) - server).total_seconds()
+            if abs(self.clock_offset_s) > self.clock_warn_s:
+                log.warning(
+                    "gateway soati server bilan %.0f s farq qiladi — NTP ni tekshiring", self.clock_offset_s
+                )
+        except (TypeError, ValueError):
+            pass
 
 
 def load_config(config_path: str | None) -> dict:
@@ -344,10 +595,7 @@ def main(config_path: str | None) -> None:
         while True:
             items = []
             for src in sources:
-                try:
-                    items.extend(src.read())
-                except Exception as e:  # noqa: BLE001 — manba xatosi siklni to'xtatmasin
-                    log.warning("%s: %s", type(src).__name__, e)
+                items.extend(src.read_safe())
             pusher.push(items)
             if commander is not None:
                 commander.run_once()  # dispetcher buyruqlari (setpoint) → SCADA
@@ -357,6 +605,7 @@ def main(config_path: str | None) -> None:
     finally:
         for src in sources:
             src.close()
+        pusher.spool.close()
 
 
 def browse_opcua(url: str, out_csv: str, depth: int = 4, username: str = "", password: str = "") -> int:

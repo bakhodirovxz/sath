@@ -302,7 +302,7 @@ Qabul mezoni:
 
 Bog'liqlik: A4 (audit), B1.
 
-### B4 — Blokirovkalar (interlock) ✅
+### B4 — Blokirovkalar (interlock) ✅ (`6839a2d`)
 
 Muammo: buyruqda texnologik blokirovka tushunchasi yo'q. Masalan, zatvorni ochish agregat
 to'xtaganda yoki sath ma'lum chegaradan pastda bo'lsa taqiqlanishi kerak.
@@ -502,7 +502,7 @@ Bog'liqlik: D1.
 Haqiqiy SCADA hozir yo'q, shuning uchun bu bosqich simulyator ustida quriladi va protokol
 klientlari simulyator bilan sinaladi.
 
-### E1 — Gateway da diskka yoziladigan store-and-forward
+### E1 — Gateway da diskka yoziladigan store-and-forward ✅
 
 Muammo: `deploy/gateway/ges_gateway.py` — `Pusher.buffer` xotiradagi Python ro'yxati, 50 000 da
 eng eskisini jimgina kesadi. Jarayon restart bo'lsa hammasi yo'qoladi.
@@ -518,7 +518,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`, `deploy/gateway/README.md`
 Qabul mezoni: gateway restartidan keyin yuborilmagan o'lchovlar yo'qolmaydi (test).
 Bog'liqlik: yo'q.
 
-### E2 — Sifat va manbadagi vaqt tamg'asini gateway da to'ldirish
+### E2 — Sifat va manbadagi vaqt tamg'asini gateway da to'ldirish ✅
 
 Muammo: Modbus va OPC UA o'qishlari vaqt tamg'asi bermaydi; OPC UA `StatusCode` o'qilmaydi
 (`ges_gateway.py` `OpcUaSource` faqat `node.read_value()`).
