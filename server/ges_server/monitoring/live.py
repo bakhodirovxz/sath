@@ -244,6 +244,26 @@ def ingest(
     return {"accepted": accepted, "unknown": unknown, "bad": bad, "rejected": rejected}
 
 
+def mark_bad(db: Session, project_id: int, sensor_ids: list[int], source: str = "server") -> list[Sensor]:
+    """Aloqa uzilganda (MQTT/gateway kanali) sensorlarga `quality=bad`: oxirgi qiymat bilan bitta bad
+    Reading yoziladi (tarixda uzilish ko'rinsin), `last_quality=bad`, jonli oqimga chiqadi; `last_value`
+    va alarm holati o'zgarmaydi (stale ni fon tekshiruvi beradi)."""
+    now = datetime.now(timezone.utc)
+    changed = []
+    for s in db.query(Sensor).filter(Sensor.project_id == project_id, Sensor.id.in_(sensor_ids)).all():
+        if s.last_quality == "bad":
+            continue
+        if s.last_value is not None:
+            db.add(Reading(sensor_id=s.id, ts=now, value=float(s.last_value), quality="bad"))
+        s.last_quality = "bad"
+        changed.append(s)
+    if changed:
+        db.commit()
+        for s in changed:
+            hub.publish(project_id, {**sensor_message(s), "source": source})
+    return changed
+
+
 def mark_stale(db: Session, project_id: int) -> list[Sensor]:
     """stale_after_s dan beri ma'lumot kelmagan sensorlarni 'stale' qiladi."""
     now = datetime.now(timezone.utc)

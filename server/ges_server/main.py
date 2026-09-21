@@ -70,7 +70,7 @@ def init_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    mqtt_bridge.start_if_configured(get_settings().mqtt_url)
+    mqtt_bridge.start_if_configured(get_settings())
     stop = asyncio.Event()
     task = asyncio.create_task(background.loop(stop))  # stale sensorlar, historian
     yield

@@ -588,7 +588,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`, `deploy/simulator/`, `deploy/gateway/R
 Qabul mezoni: simulyatordagi 104 serverdan vaqt tamg'ali o'lchov va SOE olinadi (test).
 Bog'liqlik: E1, E2, E4.
 
-### E6 — MQTT ko'prigini mustahkamlash
+### E6 — MQTT ko'prigini mustahkamlash ✅
 
 Muammo (`server/ges_server/monitoring/mqtt_bridge.py`):
 - `GES_MQTT_URL=mqtt://user:pass@host:1883` — parol muhit o'zgaruvchisida va loglanadigan URL da;

@@ -17,7 +17,7 @@ Ixtiyoriy profillar:
 - **Sxema migratsiyasi**: Alembic (`server/ges_server/migrations/`). Startda `GES_AUTO_MIGRATE=true` (default) bo'lsa `upgrade head` avtomatik; eski (Alembic siz) DB birinchi startda baseline ga belgilanadi va yangilanadi. Qo'lda: `cd server && alembic upgrade head`; `GES_AUTO_MIGRATE=false` da sxema eskirgan bo'lsa server ishga tushmaydi. Yangilashdan oldin zaxira oling.
 - **Postgres** (20+ foydalanuvchi): `.env` da `GES_DATABASE_URL=postgresql+psycopg://ges:ges@postgres:5432/ges`, `docker compose --profile postgres up -d`.
 - **CFD** (OpenFOAM worker, ~1.5 GB obraz): `.env` da `GES_CFD_MODE=worker`, `docker compose --profile cfd up -d`. `CFD_CPUS` — worker uchun CPU.
-- **MQTT**: `GES_MQTT_URL=mqtt://user:pass@broker:1883` — sensorlar `protocol=mqtt` bilan topic ga obuna bo'ladi (paho-mqtt kerak: `pip install "./server[mqtt]"` Docker obrazida qo'shilgan).
+- **MQTT**: `GES_MQTT_URL=mqtts://broker:8883` + `GES_MQTT_CA_FILE` (majburiy), `GES_MQTT_USERNAME`/`GES_MQTT_PASSWORD` (yoki `_PASSWORD_FILE`; parol URL da emas), ixtiyoriy mTLS `GES_MQTT_CERT_FILE`+`_KEY_FILE` — sensorlar `protocol=mqtt` bilan topic ga obuna bo'ladi (paho-mqtt: `pip install "./server[mqtt]"`, Docker obrazida bor). TLS siz `mqtt://` faqat loopback ga; boshqa hostga faqat `GES_MQTT_ALLOW_INSECURE=true` bilan, aks holda server ishga tushmaydi. `GES_MQTT_TOPIC_ALLOW` (masalan `sath/{project_id}/#`) — sensor topigi ro'yxatga mos kelmasa obuna bo'lmaydi. Aloqa uzilsa obuna sensorlari `bad`, qayta ulanishda qayta obuna; xabarlar partiyalab (`GES_MQTT_BATCH_SIZE/_MS`) yoziladi.
 - **Email**: `GES_SMTP_URL=smtp://user:pass@mail.company.uz:587?from=ges@company.uz` — tasdiqlash hodisalari.
 
 Docker siz (Windows/Linux, Python 3.10+):

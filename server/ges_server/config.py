@@ -50,8 +50,23 @@ class Settings(BaseSettings):
     smtp_url: str | None = None
     # Web manzili — email dagi havolalar uchun (masalan http://ges-server:8000)
     public_url: str = ""
-    # Ixtiyoriy MQTT broker: mqtt://user:pass@host:1883 — SCADA/gateway o'lchovlari uchun
+    # Ixtiyoriy MQTT broker: mqtts://broker:8883 (tavsiya) yoki mqtt://localhost:1883 (dev). Parol URL da
+    # emas — GES_MQTT_USERNAME/GES_MQTT_PASSWORD yoki GES_MQTT_PASSWORD_FILE (Docker secret).
     mqtt_url: str | None = None
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_password_file: Path | None = None
+    # mqtts:// uchun CA majburiy (pinning); mTLS — klient sertifikati + kaliti
+    mqtt_ca_file: Path | None = None
+    mqtt_cert_file: Path | None = None
+    mqtt_key_file: Path | None = None
+    # TLS siz mqtt:// loopback bo'lmagan hostga faqat shu bilan (ochiq matn xavfi qabul qilinadi)
+    mqtt_allow_insecure: bool = False
+    # Obuna ruxsati: vergul bilan MQTT filtrlar, {project_id} o'rinbosari (masalan "sath/{project_id}/#")
+    mqtt_topic_allow: str = "#"
+    # Partiyalash: xabarlar shuncha (yoki shuncha ms) yig'ilib bitta tranzaksiyada yoziladi
+    mqtt_batch_size: int = 200
+    mqtt_batch_ms: int = 250
     # Historian: xom o'lchovlar shuncha kun saqlanadi (soatlik agregat abadiy); 0 — o'chirilmaydi
     readings_retention_days: int = 90
     # Jonli ingest (http/mqtt) vaqt tamg'asi oynasi: bundan eski yoki kelajakdagi qiymat rad etiladi

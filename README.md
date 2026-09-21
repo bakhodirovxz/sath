@@ -35,7 +35,7 @@ versiyalash va rol orqali tasdiqlash. Server = "BIM uchun GitHub": fayllar, vers
   (tanlangan IFC elementlari → STL → snappyHexMesh + simpleFoam: gidrodinamik kuch, sirtdagi bosim);
   Docker yoki alohida worker; natija — napor yo'qotishi, tezlik/bosim maydoni (2D xarita, 3D tekislik), suv sirti profili.
 - **Monitoring / raqamli egizak** (SCADA dan ma'lumot oluvchi zavod axborot qatlami — Purdue L3/3.5; stansiya boshqaruv
-  tizimi (DCS/PLC) o'rnini bosmaydi): sensorlar IFC elementga bog'lanadi, SCADA dan HTTP/MQTT/CSV (gateway: Modbus, OPC UA),
+  tizimi (DCS/PLC) o'rnini bosmaydi): sensorlar IFC elementga bog'lanadi, SCADA dan HTTP/MQTT(S)/CSV (gateway: Modbus, OPC UA, IEC 60870-5-104),
   jonli qiymatlar (WebSocket), 3D da rang; **dispetcher paneli** — GES mimik sxemasi, KPI, trendlar, **alarm jurnali**
   (kvitlash, ustuvorlik, ovoz), kun/hafta/oy **hisobot** (energiya, CSV, kunlik email); historian (soatlik agregat,
   saqlash muddati), **supervisory control** (setpoint buyruqlari → gateway → Modbus/OPC UA, audit), **smena jurnali**,
