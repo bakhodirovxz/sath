@@ -552,6 +552,27 @@ class Command(Base):
     approver: Mapped[User | None] = relationship(foreign_keys=[approved_by])
 
 
+class Interlock(Base):
+    """Texnologik blokirovka (B4): boshqariladigan sensor uchun shart ifodasi (ges_sim.custom, faqat
+    sensor qiymatlari ustida). Shart False → buyruq 409; chetlab o'tish faqat tasdiqlovchi, audit + alarm."""
+
+    __tablename__ = "interlocks"
+    __table_args__ = (Index("ix_interlocks_sensor", "sensor_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    # masalan: "AGG1_RUN == 0 and RES_H > 890" (sensor kalitlari identifikatorga keltirilgan, `value` — buyruq)
+    condition: Mapped[str] = mapped_column(String(1000))
+    message: Mapped[str] = mapped_column(String(300), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    sensor: Mapped[Sensor] = relationship()
+
+
 class JournalEntry(Base):
     """Smena (dispetcher) jurnali: qo'lda yozuvlar, smena qabul/topshirish, hodisalar."""
 

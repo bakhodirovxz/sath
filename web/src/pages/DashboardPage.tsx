@@ -305,7 +305,7 @@ export default function DashboardPage() {
         {section === "workorders" && <WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} />}
         {section === "parts" && <PartsPanel projectId={pid} canOperate={canOperate} canEdit={canEdit} />}
         {section === "assets" && <AssetsPanel projectId={pid} sensors={sensors} canEdit={canEdit} canMaint={canOperate} />}
-        {section === "control" && <CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} />}
+        {section === "control" && <CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} canOverride={project?.my_role === "approver"} />}
         {section === "journal" && <JournalPanel projectId={pid} canWrite={canOperate} live={liveJournal} />}
         <p className="dim small">Sensorlarni qo'shish/bog'lash — model sahifasidagi <Link to={`/projects/${pid}`}>Monitoring</Link> panelida; SCADA ulanishi — <code>deploy/gateway</code>.</p>
       </div>

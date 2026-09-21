@@ -74,7 +74,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
 }
 
 /** Boshqaruv buyruqlari: writable sensorlarga setpoint, holat jonli. */
-export function CommandsPanel({ projectId, sensors, canCommand, live }: { projectId: number; sensors: Sensor[]; canCommand: boolean; live: Command | null }) {
+export function CommandsPanel({ projectId, sensors, canCommand, live, canOverride = false }: { projectId: number; sensors: Sensor[]; canCommand: boolean; live: Command | null; canOverride?: boolean }) {
   const [cmds, setCmds] = useState<Command[]>([]);
   const [target, setTarget] = useState<Sensor | null>(null);
   const [value, setValue] = useState("");
@@ -83,6 +83,7 @@ export function CommandsPanel({ projectId, sensors, canCommand, live }: { projec
   // Select-before-operate: 1) tanlash → 30 s li token, 2) bajarish token bilan
   const [sel, setSel] = useState<SelectResult | null>(null);
   const [left, setLeft] = useState(0);
+  const [ovReason, setOvReason] = useState("");
   useEffect(() => { api.commands(projectId).then(setCmds).catch((e) => setErr(e.message)); }, [projectId]);
   useEffect(() => { if (live) setCmds((prev) => [live, ...prev.filter((c) => c.id !== live.id)]); }, [live]);
   useEffect(() => {
@@ -94,9 +95,9 @@ export function CommandsPanel({ projectId, sensors, canCommand, live }: { projec
   }, [sel]);
   const writable = sensors.filter((s) => s.writable);
   function closeDialog() { setTarget(null); setValue(""); setNote(""); setSel(null); }
-  async function select() {
+  async function select(override?: { reason: string }) {
     if (!target) return;
-    try { setSel(await api.selectCommand(projectId, target.id, Number(value), note)); setErr(""); }
+    try { setSel(await api.selectCommand(projectId, target.id, Number(value), note, override)); setErr(""); }
     catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); }
   }
   async function execute() {
@@ -144,7 +145,9 @@ export function CommandsPanel({ projectId, sensors, canCommand, live }: { projec
           <label className="field"><span>Yangi qiymat, {target.unit}{target.min_setpoint != null || target.max_setpoint != null ? ` (ruxsat: ${target.min_setpoint ?? "−∞"} … ${target.max_setpoint ?? "+∞"})` : ""}</span><input className="input" type="number" step="any" min={target.min_setpoint ?? undefined} max={target.max_setpoint ?? undefined} value={value} onChange={(e) => setValue(e.target.value)} autoFocus /></label>
           {value !== "" && ((target.min_setpoint != null && Number(value) < target.min_setpoint) || (target.max_setpoint != null && Number(value) > target.max_setpoint)) && <div className="error small">Qiymat ruxsat etilgan diapazondan tashqarida — server rad etadi</div>}
           <label className="field"><span>Izoh (sabab)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          {sel && <p className="small" style={{ color: "var(--warn, #b98626)" }}>Tanlandi: {target.name} → {fmtValue(sel.value)} {target.unit}. Bajarish uchun {left} s qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}.</p>}
+          {sel && <p className="small" style={{ color: "var(--warn, #b98626)" }}>Tanlandi: {target.name} → {fmtValue(sel.value)} {target.unit}. Bajarish uchun {left} s qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}{sel.override ? " · BLOKIROVKA CHETLAB O'TILDI" : ""}.</p>}
+          {sel?.interlocks && sel.interlocks.length > 0 && <ul className="small" style={{ margin: "4px 0", paddingLeft: 16 }}>{sel.interlocks.map((il) => <li key={il.interlock_id} style={{ color: il.ok ? "var(--ok)" : "var(--danger)" }}>{il.ok ? "✓" : "✗"} {il.name}{il.message ? ` — ${il.message}` : ""}</li>)}</ul>}
+          {err && err.startsWith("Blokirovka") && canOverride && !sel && <div className="row" style={{ gap: 6 }}><input className="input" placeholder="Chetlab o'tish sababi (majburiy)" value={ovReason} onChange={(e) => setOvReason(e.target.value)} /><button className="btn sm danger" disabled={ovReason.trim().length < 5} onClick={() => void select({ reason: ovReason })}>Chetlab o'tish (tasdiqlovchi)</button></div>}
           <div className="actions">
             <button className="btn" onClick={closeDialog}>Bekor</button>
             {!sel

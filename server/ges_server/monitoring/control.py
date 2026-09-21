@@ -29,8 +29,8 @@ from sqlalchemy.exc import IntegrityError
 from .. import audit, notifications
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..config import get_settings
-from ..orm import Command, CommandStatus, JournalEntry, Project, Role, Sensor, utcnow
-from . import keys, live
+from ..orm import Command, CommandStatus, Interlock, JournalEntry, Project, Role, Sensor, utcnow
+from . import interlock, keys, live
 
 router = APIRouter(prefix="/api", tags=["control"])
 
@@ -86,17 +86,54 @@ class CommandAck(BaseModel):
     result: str = Field("", max_length=400)
 
 
+class InterlockResult(BaseModel):
+    interlock_id: int
+    name: str
+    ok: bool
+    message: str
+
+
 class SelectOut(BaseModel):
     select_token: str
     sensor_id: int
     value: float
     expires_at: datetime
     requires_approval: bool
+    interlocks: list[InterlockResult] = []
+    override: bool = False
 
 
 class ExecuteIn(BaseModel):
     select_token: str
     note: str = Field("", max_length=200)
+
+
+class InterlockIn(BaseModel):
+    sensor_id: int
+    name: str = Field(min_length=1, max_length=128)
+    condition: str = Field(min_length=1, max_length=1000)
+    message: str = Field("", max_length=300)
+    enabled: bool = True
+
+
+class InterlockPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+    condition: str | None = Field(None, min_length=1, max_length=1000)
+    message: str | None = Field(None, max_length=300)
+    enabled: bool | None = None
+
+
+class InterlockOut(BaseModel):
+    id: int
+    project_id: int
+    sensor_id: int
+    sensor_key: str
+    name: str
+    condition: str
+    message: str
+    enabled: bool
+    current_ok: bool | None = None  # hozirgi qiymatlar bilan (value siz) baholash
+    current_message: str = ""
 
 
 class ReadbackIn(BaseModel):
@@ -119,11 +156,20 @@ def _sign(payload: bytes) -> str:
     return hmac.new(key, payload, hashlib.sha256).hexdigest()[:32]
 
 
-def make_select_token(user_id: int, project_id: int, sensor_id: int, value: float) -> tuple[str, datetime]:
-    """Imzolangan, holatsiz token: (user, project, sensor, value, exp) — 30 s."""
+def make_select_token(
+    user_id: int, project_id: int, sensor_id: int, value: float, override: bool = False
+) -> tuple[str, datetime]:
+    """Imzolangan, holatsiz token: (user, project, sensor, value, exp, override) — 30 s."""
     exp = utcnow() + timedelta(seconds=SELECT_TTL_S)
     body = json.dumps(
-        {"u": user_id, "p": project_id, "s": sensor_id, "v": value, "e": int(exp.timestamp())},
+        {
+            "u": user_id,
+            "p": project_id,
+            "s": sensor_id,
+            "v": value,
+            "e": int(exp.timestamp()),
+            "o": bool(override),
+        },
         separators=(",", ":"),
     ).encode("utf-8")
     b = base64.urlsafe_b64encode(body).decode("ascii").rstrip("=")
@@ -323,11 +369,67 @@ def create_command_legacy(project: OperatorProject):
     )
 
 
+def _interlock_results(db, s: Sensor, value: float) -> list[InterlockResult]:
+    return [
+        InterlockResult(interlock_id=r.interlock_id, name=r.name, ok=r.ok, message=r.message)
+        for r in interlock.evaluate(db, s, value)
+    ]
+
+
 @router.post("/projects/{project_id}/commands/select", response_model=SelectOut)
-def select_command(body: CommandIn, project: OperatorProject, user: CurrentUser, db: DB):
-    """1-bosqich: tanlash — sensor/qiymat tekshiriladi, 30 s li imzolangan token qaytadi, yozilmaydi."""
+def select_command(
+    body: CommandIn,
+    project: OperatorProject,
+    user: CurrentUser,
+    db: DB,
+    override: bool = Query(False, description="Blokirovkani chetlab o'tish (faqat tasdiqlovchi)"),
+    override_reason: str = Query("", max_length=300),
+):
+    """1-bosqich: tanlash — sensor/qiymat tekshiriladi, blokirovkalar baholanadi (natija javobda),
+    30 s li imzolangan token qaytadi, yozilmaydi. Blokirovka bajarilmasa 409 (sabablar bilan);
+    `override=true` — faqat tasdiqlovchi, sabab majburiy, audit + dispetcherlarga alarm."""
     s = _target_sensor(db, project, body.sensor_id, body.value)
-    token, exp = make_select_token(user.id, project.id, s.id, body.value)
+    results = _interlock_results(db, s, body.value)
+    blocked = [r for r in results if not r.ok]
+    if blocked and override:
+        if not has_role(get_project_role(db, project.id, user), Role.approver):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Blokirovkani chetlab o'tish — faqat tasdiqlovchi"
+            )
+        if len(override_reason.strip()) < 5:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Chetlab o'tish sababi majburiy (kamida 5 belgi)"
+            )
+        audit.log(
+            db,
+            user_id=user.id,
+            action="command.interlock_override",
+            target_type="sensor",
+            target_id=s.id,
+            project_id=project.id,
+            detail={
+                "sensor": s.key,
+                "value": body.value,
+                "reason": override_reason.strip(),
+                "blocked": [f"{r.name}: {r.message}" for r in blocked],
+            },
+        )
+        notifications.push(
+            db,
+            notifications.member_ids(db, project.id, Role.operator, exclude=user.id, at_least=True),
+            "alarm",
+            f"Blokirovka chetlab o'tildi: {s.name} → {body.value:g} {s.unit}",
+            f"{user.username}: {override_reason.strip()} — {'; '.join(r.name for r in blocked)}",
+            f"/projects/{project.id}/dashboard",
+        )
+        db.commit()
+    elif blocked:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Blokirovka: " + "; ".join(f"{r.name} — {r.message}" for r in blocked),
+        )
+    token, exp = make_select_token(user.id, project.id, s.id, body.value, bool(blocked and override))
     audit.log(
         db,
         user_id=user.id,
@@ -335,7 +437,7 @@ def select_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         target_type="sensor",
         target_id=s.id,
         project_id=project.id,
-        detail={"sensor": s.key, "value": body.value},
+        detail={"sensor": s.key, "value": body.value, "override": bool(blocked and override)},
     )
     db.commit()
     return SelectOut(
@@ -344,6 +446,8 @@ def select_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         value=body.value,
         expires_at=exp,
         requires_approval=bool(s.requires_dual_approval),
+        interlocks=results,
+        override=bool(blocked and override),
     )
 
 
@@ -354,6 +458,13 @@ def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser
     tok = parse_select_token(body.select_token, user.id, project.id)
     s = _target_sensor(db, project, int(tok["s"]), float(tok["v"]))
     value = float(tok["v"])
+    # Blokirovkalar select dan keyin o'zgargan bo'lishi mumkin — execute da qayta baholanadi
+    blocked = [r for r in _interlock_results(db, s, value) if not r.ok]
+    if blocked and not tok.get("o"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Blokirovka: " + "; ".join(f"{r.name} — {r.message}" for r in blocked),
+        )
     for c in expire_pending(db, project.id):  # eskirgan pending sensorni band qilmasin
         _publish(c)
     open_ = (
@@ -398,7 +509,13 @@ def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser
         target_type="command",
         target_id=c.id,
         project_id=project.id,
-        detail={"sensor": s.key, "value": value, "note": body.note, "approval": needs_approval},
+        detail={
+            "sensor": s.key,
+            "value": value,
+            "note": body.note,
+            "approval": needs_approval,
+            "interlock_override": bool(tok.get("o")),
+        },
     )
     if needs_approval:
         # Tasdiqlashi mumkin bo'lganlar (operator+, muallifdan tashqari)
@@ -622,6 +739,137 @@ def readback_command(
     db.commit()
     _publish(c)
     return _out(c)
+
+
+# ---------- Blokirovkalar (interlock) ----------
+
+EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
+
+
+def _il_out(db, il: Interlock) -> InterlockOut:
+    cur_ok, cur_msg = None, ""
+    try:
+        env = interlock.env_for(db, il.project_id)
+        from ges_sim import custom as _custom
+
+        cur_ok = bool(_custom.evaluate(_custom.compile_expr(il.condition), env))
+        cur_msg = "" if cur_ok else (il.message or "shart bajarilmayapti")
+    except NameError as e:
+        cur_ok, cur_msg = None, f"baholab bo'lmadi: {e}"
+    except (ValueError, TypeError, ArithmeticError) as e:
+        cur_ok, cur_msg = None, f"ifoda xatosi: {e}"
+    return InterlockOut(
+        id=il.id,
+        project_id=il.project_id,
+        sensor_id=il.sensor_id,
+        sensor_key=il.sensor.key,
+        name=il.name,
+        condition=il.condition,
+        message=il.message,
+        enabled=il.enabled,
+        current_ok=cur_ok,
+        current_message=cur_msg,
+    )
+
+
+@router.get("/projects/{project_id}/interlocks", response_model=list[InterlockOut])
+def list_interlocks(project: ViewerProject, db: DB):
+    rows = db.query(Interlock).filter_by(project_id=project.id).order_by(Interlock.id).all()
+    return [_il_out(db, il) for il in rows]
+
+
+@router.get("/projects/{project_id}/interlocks/variables")
+def interlock_variables(project: ViewerProject, db: DB):
+    """Ifodada ishlatiladigan o'zgaruvchilar: sensor kaliti → identifikator, joriy qiymat (ishonchli bo'lsa)."""
+    env = interlock.env_for(db, project.id)
+    return [
+        {"key": s.key, "var": interlock.var_name(s.key), "value": env.get(interlock.var_name(s.key))}
+        for s in db.query(Sensor).filter_by(project_id=project.id, enabled=True).order_by(Sensor.key).all()
+    ] + [{"key": "(buyruq qiymati)", "var": "value", "value": None}]
+
+
+@router.post("/projects/{project_id}/interlocks", response_model=InterlockOut, status_code=201)
+def create_interlock(body: InterlockIn, project: EngineerProject, user: CurrentUser, db: DB):
+    s = db.get(Sensor, body.sensor_id)
+    if s is None or s.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sensor topilmadi")
+    if not s.writable:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Blokirovka faqat boshqariladigan (writable) sensorga")
+    try:
+        interlock.validate(body.condition)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Shart ifodasi: {e}") from e
+    il = Interlock(
+        project_id=project.id,
+        sensor_id=s.id,
+        name=body.name,
+        condition=body.condition,
+        message=body.message,
+        enabled=body.enabled,
+        created_by=user.id,
+    )
+    db.add(il)
+    db.flush()
+    audit.log(
+        db,
+        user_id=user.id,
+        action="interlock.create",
+        target_type="interlock",
+        target_id=il.id,
+        project_id=project.id,
+        detail={"sensor": s.key, "name": body.name, "condition": body.condition},
+    )
+    db.commit()
+    db.refresh(il)
+    return _il_out(db, il)
+
+
+@router.patch("/interlocks/{interlock_id}", response_model=InterlockOut)
+def update_interlock(interlock_id: int, body: InterlockPatch, user: CurrentUser, db: DB):
+    il = db.get(Interlock, interlock_id)
+    if il is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Blokirovka topilmadi")
+    if not has_role(get_project_role(db, il.project_id, user), Role.engineer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi kerak")
+    changes = body.model_dump(exclude_none=True)
+    if "condition" in changes:
+        try:
+            interlock.validate(changes["condition"])
+        except ValueError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Shart ifodasi: {e}") from e
+    for k, v in changes.items():
+        setattr(il, k, v)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="interlock.update",
+        target_type="interlock",
+        target_id=il.id,
+        project_id=il.project_id,
+        detail=changes,
+    )
+    db.commit()
+    return _il_out(db, il)
+
+
+@router.delete("/interlocks/{interlock_id}", status_code=204)
+def delete_interlock(interlock_id: int, user: CurrentUser, db: DB):
+    il = db.get(Interlock, interlock_id)
+    if il is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Blokirovka topilmadi")
+    if not has_role(get_project_role(db, il.project_id, user), Role.engineer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi kerak")
+    audit.log(
+        db,
+        user_id=user.id,
+        action="interlock.delete",
+        target_type="interlock",
+        target_id=il.id,
+        project_id=il.project_id,
+        detail={"name": il.name},
+    )
+    db.delete(il)
+    db.commit()
 
 
 # ---------- Smena jurnali ----------

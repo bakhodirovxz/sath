@@ -286,7 +286,9 @@ export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
 export interface GatewayKey { kind: GatewayKeyKind; key: string; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
-export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean }
+export interface InterlockResult { interlock_id: number; name: string; ok: boolean; message: string }
+export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean; interlocks?: InterlockResult[]; override?: boolean }
+export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
 export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean }
@@ -629,7 +631,11 @@ export const api = {
   twinRun: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin/run`, { method: "POST" }),
   commands: (projectId: number, hours = 168) => request<Command[]>(`/api/projects/${projectId}/commands?hours=${hours}`),
   /** Select-before-operate: 1) select → 30 s li token, 2) execute token bilan */
-  selectCommand: (projectId: number, sensor_id: number, value: number, note = "") => request<SelectResult>(`/api/projects/${projectId}/commands/select`, { method: "POST", body: json({ sensor_id, value, note }) }),
+  selectCommand: (projectId: number, sensor_id: number, value: number, note = "", override?: { reason: string }) => request<SelectResult>(`/api/projects/${projectId}/commands/select${override ? `?override=true&override_reason=${encodeURIComponent(override.reason)}` : ""}`, { method: "POST", body: json({ sensor_id, value, note }) }),
+  interlocks: (projectId: number) => request<Interlock[]>(`/api/projects/${projectId}/interlocks`),
+  createInterlock: (projectId: number, body: { sensor_id: number; name: string; condition: string; message?: string; enabled?: boolean }) => request<Interlock>(`/api/projects/${projectId}/interlocks`, { method: "POST", body: json(body) }),
+  updateInterlock: (id: number, body: Partial<{ name: string; condition: string; message: string; enabled: boolean }>) => request<Interlock>(`/api/interlocks/${id}`, { method: "PATCH", body: json(body) }),
+  deleteInterlock: (id: number) => request<void>(`/api/interlocks/${id}`, { method: "DELETE" }),
   executeCommand: (projectId: number, select_token: string, note = "") => request<Command>(`/api/projects/${projectId}/commands/execute`, { method: "POST", body: json({ select_token, note }) }),
   approveCommand: (id: number) => request<Command>(`/api/commands/${id}/approve`, { method: "POST" }),
   cancelCommand: (id: number) => request<Command>(`/api/commands/${id}/cancel`, { method: "POST" }),

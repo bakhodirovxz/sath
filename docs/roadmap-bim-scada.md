@@ -274,7 +274,7 @@ Qabul mezoni:
 
 Bog'liqlik: B1.
 
-### B3 — Kalitlarni ajratish va default read-only ✅
+### B3 — Kalitlarni ajratish va default read-only ✅ (`1c260f3`)
 
 Muammo:
 - Bitta statik `Project.ingest_key` ham telemetriyani, ham buyruq olish/ack ni avtorizatsiya
@@ -302,7 +302,7 @@ Qabul mezoni:
 
 Bog'liqlik: A4 (audit), B1.
 
-### B4 — Blokirovkalar (interlock)
+### B4 — Blokirovkalar (interlock) ✅
 
 Muammo: buyruqda texnologik blokirovka tushunchasi yo'q. Masalan, zatvorni ochish agregat
 to'xtaganda yoki sath ma'lum chegaradan pastda bo'lsa taqiqlanishi kerak.

@@ -84,6 +84,11 @@ Buyruq ikki bosqichli (select-before-operate): `POST .../commands/select` → 30
 olib tashlangan (410) — gateway `POST .../commands/claim`. Gateway olgan (`sent`) buyruq `GES_COMMAND_SENT_TIMEOUT_S` (120 s) ichida javob
 qaytarmasa watchdog uni `failed` qiladi va sensor bo'shaydi; `sent` ni qo'lda bekor qilib bo'lmaydi
 (PLC ga yozilgan bo'lishi mumkin). Bitta sensorga bir vaqtda bitta ochiq buyruq — DB indeksi bilan.
+Blokirovkalar (interlock): muhandis `POST /api/projects/{id}/interlocks` bilan boshqariladigan sensorga shart
+ifodasi qo'yadi (`GET .../interlocks/variables` — o'zgaruvchilar: `AGG1.RUN` → `AGG1_RUN`, `value` — buyruq
+qiymati; masalan `AGG1_RUN == 0 and RES_H > 890`). Shart bajarilmasa buyruq 409 (sabab bilan); `bad`/`stale`
+sensor ifodada bo'lsa baholab bo'lmaydi — taqiq. Chetlab o'tish faqat tasdiqlovchi, sabab majburiy
+(`select?override=true&override_reason=...`), audit `command.interlock_override` + dispetcherlarga alarm.
 Kunlik hisobot: `GES_DAILY_REPORT_HOUR` (UTC soat, default 6; -1 — o'chirilgan) — muhandis/tasdiqlovchi/
 dispetcherlarning emailiga.
 
