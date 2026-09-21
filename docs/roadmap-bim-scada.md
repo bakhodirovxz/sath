@@ -1480,7 +1480,7 @@ Fayllar: `sim/ges_sim/dam_stability.py`, `cracking.py`
 Qabul mezoni: ikki modul bir xil to'g'on uchun bir xil ko'tarish bosimi va kuchlanish beradi.
 Bog'liqlik: J2.
 
-### J12 — Hisoblash resursi chegarasi ✅
+### J12 — Hisoblash resursi chegarasi ✅ (`7290111`)
 
 Muammo: `water_hammer.py:214` — `steps = int(sim_s/dt) + 1`, `dt = (L/N)/a`. `sim_s` ning
 maksimumi yo'q (shuningdek `surge_tank.sim_s`, `flood.duration_h`). Maydon chegaralari ichidagi
@@ -1500,7 +1500,7 @@ Fayllar: `sim/ges_sim/*`, `server/ges_server/sim/router.py`, `sim/worker.py`
 Qabul mezoni: chegaradan oshgan parametr 400 beradi (test).
 Bog'liqlik: L3.
 
-### J13 — Tashqi benchmark testlari
+### J13 — Tashqi benchmark testlari ✅ (qisman: Heller–Hager nashr etilgan holat va USBR misoli — manba matni kerak, qo'lda hisob bilan almashtirildi)
 
 Muammo: mavjud testlar yaxshi, lekin deyarli hammasi modulni o'zi amalga oshirgan formula bilan
 tekshiradi (Joukovskiy, ishqalanishsiz surge, Korteveg) — bu o'z-o'ziga izchillik.
