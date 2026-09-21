@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import notifications, notify
 from ..config import get_settings
-from ..orm import AlarmEvent, AlarmState, ProjectMember, Reading, Role, Sensor, utcnow
+from ..orm import QUALITIES, AlarmEvent, AlarmState, ProjectMember, Reading, Role, Sensor, utcnow
 
 log = logging.getLogger("ges_server.monitoring")
 
@@ -147,6 +147,7 @@ def sensor_message(sensor: Sensor) -> dict:
         "value": sensor.last_value,
         "ts": _aware(sensor.last_ts).isoformat() if sensor.last_ts else None,
         "alarm": sensor.alarm.value,
+        "quality": sensor.last_quality or "good",
         "element_guid": sensor.element_guid,
         "unit": sensor.unit,
     }
@@ -155,12 +156,14 @@ def sensor_message(sensor: Sensor) -> dict:
 def ingest(db: Session, project_id: int, items: list[dict], source: str = "http") -> dict:
     """O'lchovlarni saqlaydi, alarm holatini yangilaydi, jonli oqimga yuboradi.
 
-    items: [{"key": "AGG1.P", "value": 24.3, "ts": "2026-...Z"?}]  (yoki "sensor_id")
-    Qaytaradi: {"accepted": n, "unknown": [key...]}
+    items: [{"key": "AGG1.P", "value": 24.3, "ts": "2026-...Z"?, "quality": "good"?, "src_ts": ...?}]
+    (yoki "sensor_id"). Sifat: QUALITIES; noma'lum/yo'q → good. `bad` qiymat tarixga yoziladi, lekin
+    sensor holatini (last_value, alarm) o'zgartirmaydi va jonli oqimga chiqmaydi.
+    Qaytaradi: {"accepted": n, "unknown": [key...], "bad": n}
     """
     sensors = {s.key: s for s in db.query(Sensor).filter_by(project_id=project_id).all()}
     by_id = {s.id: s for s in sensors.values()}
-    accepted, unknown, changed, events = 0, [], [], []
+    accepted, bad, unknown, changed, events = 0, 0, [], [], []
     now = datetime.now(timezone.utc)
     for it in items:
         sensor = sensors.get(str(it.get("key", ""))) or by_id.get(it.get("sensor_id"))
@@ -173,13 +176,28 @@ def ingest(db: Session, project_id: int, items: list[dict], source: str = "http"
             unknown.append(it.get("key"))
             continue
         ts = _parse_ts(it.get("ts")) or now
-        db.add(Reading(sensor_id=sensor.id, ts=ts, value=value))
+        quality = str(it.get("quality") or "good")
+        if quality not in QUALITIES:
+            quality = "good"
+        db.add(
+            Reading(
+                sensor_id=sensor.id,
+                ts=ts,
+                value=value,
+                quality=quality,
+                src_ts=_parse_ts(it.get("src_ts")),
+            )
+        )
+        accepted += 1
+        if quality == "bad":
+            bad += 1
+            continue
         if sensor.last_ts is None or ts >= _aware(sensor.last_ts):
             sensor.last_value = value
             sensor.last_ts = ts
+            sensor.last_quality = quality
             if sensor not in changed:
                 changed.append(sensor)
-        accepted += 1
     # Alarm holati — har sensor uchun paketdagi eng so'nggi qiymat bo'yicha bir marta
     # (tarixiy import/CSV da har nuqta uchun hodisa ochilib "alarm toshqini" bo'lmasin)
     for sensor in changed:
@@ -190,7 +208,7 @@ def ingest(db: Session, project_id: int, items: list[dict], source: str = "http"
     for s in changed:
         hub.publish(project_id, {**sensor_message(s), "source": source})
     announce(db, project_id, events)
-    return {"accepted": accepted, "unknown": unknown}
+    return {"accepted": accepted, "unknown": unknown, "bad": bad}
 
 
 def mark_stale(db: Session, project_id: int) -> list[Sensor]:

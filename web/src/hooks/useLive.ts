@@ -23,9 +23,9 @@ export function useLive(
       ws.onmessage = (ev) => {
         const m = JSON.parse(ev.data) as LiveMessage;
         if (m.type === "snapshot" && m.sensors) {
-          setSensors((prev) => prev.map((s) => { const u = m.sensors!.find((x) => x.sensor_id === s.id); return u ? { ...s, last_value: u.value, last_ts: u.ts, alarm: u.alarm } : s; }));
+          setSensors((prev) => prev.map((s) => { const u = m.sensors!.find((x) => x.sensor_id === s.id); return u ? { ...s, last_value: u.value, last_ts: u.ts, alarm: u.alarm, last_quality: u.quality ?? s.last_quality } : s; }));
         } else if (m.type === "reading" && m.sensor_id != null) {
-          setSensors((prev) => prev.map((s) => (s.id === m.sensor_id ? { ...s, last_value: m.value ?? null, last_ts: m.ts ?? null, alarm: m.alarm ?? s.alarm } : s)));
+          setSensors((prev) => prev.map((s) => (s.id === m.sensor_id ? { ...s, last_value: m.value ?? null, last_ts: m.ts ?? null, alarm: m.alarm ?? s.alarm, last_quality: m.quality ?? s.last_quality } : s)));
         }
         cb.current?.(m);
       };

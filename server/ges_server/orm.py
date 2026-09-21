@@ -371,6 +371,24 @@ class SimTemplate(Base):
     author: Mapped[User] = relationship()
 
 
+# O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
+# good — haqiqiy o'lchov; uncertain — shubhali (aloqa/diapazon); bad — yaroqsiz (alarm baholanmaydi,
+# last_value yangilanmaydi); substituted — o'rnini bosuvchi (hisoblangan/oldingi); manual — qo'lda kiritilgan
+QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
+
+
+# O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
+# good — haqiqiy o'lchov; uncertain — shubhali (aloqa/diapazon); bad — yaroqsiz (alarm baholanmaydi,
+# last_value yangilanmaydi); substituted — o'rnini bosuvchi (hisoblangan/oldingi); manual — qo'lda kiritilgan
+QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
+
+
+# O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
+# good — haqiqiy o'lchov; uncertain — shubhali (aloqa/diapazon); bad — yaroqsiz (alarm baholanmaydi,
+# last_value yangilanmaydi); substituted — o'rnini bosuvchi (hisoblangan/oldingi); manual — qo'lda kiritilgan
+QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
+
+
 class AlarmState(str, enum.Enum):
     ok = "ok"
     low = "low"
@@ -412,6 +430,8 @@ class Sensor(Base):
     writable: Mapped[bool] = mapped_column(Boolean, default=False)
     last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # oxirgi qabul qilingan (bad bo'lmagan) qiymatning sifati — QUALITIES
+    last_quality: Mapped[str] = mapped_column(String(16), default="good", server_default="good")
     alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState), default=AlarmState.stale)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -424,6 +444,10 @@ class Reading(Base):
     sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id", ondelete="CASCADE"))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     value: Mapped[float] = mapped_column(Float)
+    # QUALITIES; bad qiymat tarixda qoladi, lekin agregat/alarm/egizak uni ishlatmaydi
+    quality: Mapped[str] = mapped_column(String(16), default="good", server_default="good")
+    # manbadagi vaqt tamg'asi (OPC UA SourceTimestamp, gateway o'qish vaqti); yo'q bo'lsa ts
+    src_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AlarmEvent(Base):
@@ -636,6 +660,12 @@ class ReadingHourly(Base):
     avg: Mapped[float] = mapped_column(Float)
     min: Mapped[float] = mapped_column(Float)
     max: Mapped[float] = mapped_column(Float)
+    # soat ichida good ulushi (0..1) va bad soni — n ga faqat bad bo'lmaganlar kiradi
+    pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
+    n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # soat ichida good ulushi (0..1) va bad soni — n ga faqat bad bo'lmaganlar kiradi
+    pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
+    n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Notification(Base):

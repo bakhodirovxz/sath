@@ -39,14 +39,23 @@ def rollup(db: Session, now: datetime | None = None) -> int:
         if start >= current_hour:
             continue
         rows = (
-            db.query(Reading.ts, Reading.value)
+            db.query(Reading.ts, Reading.value, Reading.quality)
             .filter(Reading.sensor_id == sensor_id, Reading.ts >= start, Reading.ts < current_hour)
             .all()
         )
-        buckets: dict[datetime, list[float]] = {}
-        for ts, v in rows:
-            buckets.setdefault(floor_hour(ts), []).append(v)
-        for hour, vals in buckets.items():
+        # soat → (qabul qilingan qiymatlar, good soni, bad soni); bad agregatga kirmaydi
+        buckets: dict[datetime, tuple[list[float], int, int]] = {}
+        for ts, v, q in rows:
+            vals, n_good, n_bad = buckets.setdefault(floor_hour(ts), ([], 0, 0))
+            if q == "bad":
+                buckets[floor_hour(ts)] = (vals, n_good, n_bad + 1)
+                continue
+            vals.append(v)
+            buckets[floor_hour(ts)] = (vals, n_good + (q == "good"), n_bad)
+        for hour, (vals, n_good, n_bad) in buckets.items():
+            if not vals:
+                # faqat bad qiymatli soat: avg/min/max yo'q — qator yozilmaydi (bo'shliq = ma'lumot yo'q)
+                continue
             db.add(
                 ReadingHourly(
                     sensor_id=sensor_id,
@@ -55,6 +64,8 @@ def rollup(db: Session, now: datetime | None = None) -> int:
                     avg=sum(vals) / len(vals),
                     min=min(vals),
                     max=max(vals),
+                    pct_good=n_good / (len(vals) + n_bad),
+                    n_bad=n_bad,
                 )
             )
             written += 1
@@ -102,6 +113,7 @@ def hourly_points(db: Session, sensor_id: int, since: datetime, until: datetime)
             "v": round(r.avg, 4),
             "min": round(r.min, 4),
             "max": round(r.max, 4),
+            "pct_good": round(r.pct_good if r.pct_good is not None else 1.0, 3),
         }
         for r in rows
     ]
@@ -122,7 +134,12 @@ def sensor_stats(db: Session, sensor: Sensor, since: datetime, until: datetime) 
     raw_since = max(since, last_hour + timedelta(hours=1)) if last_hour else since
     raw = (
         db.query(Reading.ts, Reading.value)
-        .filter(Reading.sensor_id == sensor.id, Reading.ts >= raw_since, Reading.ts < until)
+        .filter(
+            Reading.sensor_id == sensor.id,
+            Reading.ts >= raw_since,
+            Reading.ts < until,
+            Reading.quality != "bad",
+        )
         .all()
     )
     n = sum(h.n for h in hourly) + len(raw)

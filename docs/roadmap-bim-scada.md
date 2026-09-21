@@ -82,7 +82,7 @@ xavfsizlik qarorlariga ta'sir qiladi.
 
 Butun tizimning eng past qatlami. Bu bosqich tugamaguncha yuqoridagi hech narsa ishonchli emas.
 
-### A1 — Reading ga sifat bayrog'i va manbadagi vaqt tamg'asi
+### A1 — Reading ga sifat bayrog'i va manbadagi vaqt tamg'asi ✅
 
 Muammo: `server/ges_server/orm.py:419` — `Reading` faqat `(sensor_id, ts, value)`. Sifat tushunchasi
 yo'q. OPC UA `StatusCode`, IEC 61850 quality bitlari, qo'lda kiritilgan qiymat, o'rnini bosuvchi
@@ -115,7 +115,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2 (migratsiya mexanizmi) bilan birga bajarilishi kerak.
 
-### A2 — Alembic migratsiyalari ✅
+### A2 — Alembic migratsiyalari ✅ (`246da9e`)
 
 Muammo: `server/ges_server/db.py:44` dagi `ensure_columns()` faqat `ADD COLUMN` qila oladi.
 Tur o'zgarishi, o'chirish, qayta nomlash, backfill, downgrade, versiya jadvali — hech biri yo'q.

@@ -79,16 +79,28 @@ def test_downgrade_to_base_and_back(tmp_path):
 def test_migrate_legacy_db_without_alembic_version(tmp_path, monkeypatch):
     """create_all davridagi DB (alembic_version yo'q) → stamp baseline → head."""
     eng = _engine(tmp_path)
-    Base.metadata.create_all(eng)
     with eng.begin() as conn:
-        # Baseline dan ham eski holatni taqlid qilamiz: bitta ustunni olib tashlaymiz
+        command.upgrade(_cfg(conn), gdb.BASELINE_REV)
+        conn.exec_driver_sql("DROP TABLE alembic_version")
+        # Baseline dan ham eski holatni taqlid qilamiz: bitta ustun va bitta jadval yo'q
         conn.exec_driver_sql("ALTER TABLE sensors DROP COLUMN priority")
+        conn.exec_driver_sql("DROP TABLE journal_entries")
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, full_name, email, password_hash, is_admin, "
+                "is_active, created_at) VALUES (1, 'a', 'A', '', 'x', 1, 1, '2026-01-01 00:00:00')"
+            )
+        )
     monkeypatch.setattr(gdb, "engine", eng)
     gdb.migrate()
     with eng.connect() as conn:
         assert _current(conn) in _heads()
         cols = {c["name"] for c in inspect(conn).get_columns("sensors")}
-        assert "priority" in cols
+        assert {"priority", "last_quality"} <= cols
+        assert "journal_entries" in inspect(conn).get_table_names()
+        assert conn.execute(text("SELECT count(*) FROM users")).scalar() == 1
+        ctx = MigrationContext.configure(conn, opts={"compare_type": True})
+        assert compare_metadata(ctx, Base.metadata) == []
 
 
 def test_assert_at_head_rejects_stale_schema(tmp_path, monkeypatch):

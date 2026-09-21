@@ -99,7 +99,7 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
         headers={"X-Ingest-Key": key},
     )
     assert r.status_code == 200, r.text
-    assert r.json() == {"accepted": 1, "unknown": ["NOMALUM", "AGG1.P"]}
+    assert r.json() == {"accepted": 1, "unknown": ["NOMALUM", "AGG1.P"], "bad": 0}
     s = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]
     assert s["last_value"] == 20 and s["alarm"] == "ok" and s["last_ts"]
 

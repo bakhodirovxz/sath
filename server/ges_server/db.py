@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import MetaData, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -57,8 +57,8 @@ def migrate() -> None:
     """Sxemani Alembic bilan `head` ga keltiradi (server startida, GES_AUTO_MIGRATE=true).
 
     - bo'sh DB → barcha migratsiyalar;
-    - Alembic versiyasiz eski DB (create_all davri) → bir martalik catch-up (`ensure_columns` +
-      `create_all`), `BASELINE_REV` ga stamp, keyin `head`;
+    - Alembic versiyasiz eski DB (create_all davri) → bir martalik catch-up baseline sxemasigacha,
+      `BASELINE_REV` ga stamp, keyin `head`;
     - aks holda → `upgrade head`.
     Bir vaqtda faqat bitta jarayon chaqirishi kerak (uvicorn --workers 1).
     """
@@ -107,41 +107,68 @@ def assert_at_head() -> None:
         )
 
 
+def _baseline_metadata() -> MetaData:
+    """`BASELINE_REV` migratsiyasini xotiradagi SQLite da bajarib, o'sha sxemani reflect qiladi."""
+    from alembic import command
+
+    mem = create_engine("sqlite://")
+    cfg = _alembic_config()
+    with mem.begin() as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, BASELINE_REV)
+    md = MetaData()
+    md.reflect(bind=mem)
+    md.remove(md.tables["alembic_version"])
+    mem.dispose()
+    return md
+
+
 def _legacy_catch_up(conn) -> None:
-    """Alembic dan oldingi DB ni baseline holatiga keltiradi (bir marta, stamp dan oldin).
+    """Alembic dan oldingi DB ni aynan baseline holatiga keltiradi (bir marta, stamp dan oldin).
 
-    Baseline dan ham eski DB da yetishmagan ustunlar/jadvallar bo'lishi mumkin — `ensure_columns`
-    va `create_all` ularni qo'shadi. Keyingi relizda olib tashlanadi.
+    Baseline dan ham eski DB da yetishmagan ustunlar/jadvallar bo'lishi mumkin; ular baseline
+    sxemasidan (hozirgi ORM dan emas — keyingi migratsiyalar ikki marta qo'shmasin) olinadi.
+    Keyingi relizda olib tashlanadi.
     """
-    from . import orm  # noqa: F401  (barcha modellar Base.metadata da ro'yxatga olinsin)
+    from . import orm  # noqa: F401  (python default lar uchun Base.metadata to'liq bo'lsin)
 
-    _ensure_columns_on(conn)
-    Base.metadata.create_all(conn)
-
-
-def ensure_columns() -> None:
-    """Eski yengil migratsiya (faqat `migrate()` legacy yo'li uchun saqlanadi)."""
-    with engine.begin() as conn:
-        _ensure_columns_on(conn)
-
-
-def _ensure_columns_on(conn) -> None:
-    """Modelda bor, jadvalda yo'q ustunlarni ADD COLUMN qiladi. Ustun o'chirish/o'zgartirish yo'q."""
+    base_md = _baseline_metadata()
     insp = inspect(conn)
-    for table in Base.metadata.sorted_tables:
-        if not insp.has_table(table.name):
+    existing_tables = set(insp.get_table_names())
+    missing = [t for t in base_md.sorted_tables if t.name not in existing_tables]
+    if missing:
+        log.warning("DB migratsiya (legacy): jadvallar %s", [t.name for t in missing])
+        base_md.create_all(conn, tables=missing)
+    for table in base_md.sorted_tables:
+        if table.name not in existing_tables:
             continue
         existing = {c["name"] for c in insp.get_columns(table.name)}
+        orm_table = Base.metadata.tables.get(table.name)
         for col in table.columns:
             if col.name in existing:
                 continue
             ddl = f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(conn.dialect)}"
-            if col.default is not None and getattr(col.default, "is_scalar", False):
-                v = col.default.arg
-                ddl += (
-                    f" DEFAULT {v!r}"
-                    if isinstance(v, str)
-                    else f" DEFAULT {int(v) if isinstance(v, bool) else v}"
-                )
+            orm_col = orm_table.columns.get(col.name) if orm_table is not None else None
+            default = orm_col.default if orm_col is not None else None
+            v = default.arg if default is not None and getattr(default, "is_scalar", False) else None
+            if v is None and not col.nullable:
+                v = _type_default(col.type)
+            if v is not None:
+                ddl += f" DEFAULT {v!r}" if isinstance(v, str) else f" DEFAULT {int(v)}"
+                if not col.nullable:
+                    ddl += " NOT NULL"
             log.warning("DB migratsiya (legacy): %s", ddl)
             conn.execute(text(ddl))
+
+
+def _type_default(t) -> str | int | None:
+    """NOT NULL ustun uchun turga qarab bo'sh default (legacy catch-up)."""
+    from sqlalchemy import JSON, Boolean, Float, Integer, String, Text
+
+    if isinstance(t, JSON):
+        return "{}"
+    if isinstance(t, String | Text):
+        return ""
+    if isinstance(t, Integer | Float | Boolean):
+        return 0
+    return None

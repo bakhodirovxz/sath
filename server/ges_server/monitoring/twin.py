@@ -373,7 +373,12 @@ def unit_day_stats(db: Session, sensor: Sensor, day: datetime) -> dict:
     end = start + timedelta(days=1)
     rows = (
         db.query(Reading.ts, Reading.value)
-        .filter(Reading.sensor_id == sensor.id, Reading.ts >= start, Reading.ts < end)
+        .filter(
+            Reading.sensor_id == sensor.id,
+            Reading.ts >= start,
+            Reading.ts < end,
+            Reading.quality != "bad",
+        )
         .order_by(Reading.ts)
         .all()
     )
@@ -531,14 +536,18 @@ def snapshot(db: Session, project_id: int, at: datetime) -> list[dict]:
     out = []
     for s in db.query(Sensor).filter_by(project_id=project_id, enabled=True).all():
         r = (
-            db.query(Reading.ts, Reading.value)
+            db.query(Reading.ts, Reading.value, Reading.quality)
             .filter(
-                Reading.sensor_id == s.id, Reading.ts <= at, Reading.ts >= at - timedelta(hours=6)
+                Reading.sensor_id == s.id,
+                Reading.ts <= at,
+                Reading.ts >= at - timedelta(hours=6),
+                Reading.quality != "bad",
             )
             .order_by(Reading.ts.desc())
             .first()
         )
         ts, val = (live._aware(r[0]), r[1]) if r else (None, None)
+        quality = r[2] if r else "good"
         if r is None:
             h = (
                 db.query(ReadingHourly)
@@ -558,6 +567,7 @@ def snapshot(db: Session, project_id: int, at: datetime) -> list[dict]:
                 "value": val,
                 "ts": ts.isoformat() if ts else None,
                 "alarm": alarm,
+                "quality": quality,
                 "element_guid": s.element_guid,
                 "unit": s.unit,
             }

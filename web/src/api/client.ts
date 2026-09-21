@@ -231,6 +231,8 @@ export interface GesParams {
 }
 
 export type AlarmState = "ok" | "low" | "high" | "stale";
+/** O'lchov sifati (OPC UA/IEC 61850 ga mos soddalashtirilgan): bad — qiymat ishonchsiz, alarm baholanmaydi */
+export type Quality = "good" | "uncertain" | "bad" | "substituted" | "manual";
 export type SensorKind = "level" | "flow" | "power" | "pressure" | "temperature" | "vibration" | "status" | "position" | "value";
 export type SensorProtocol = "http" | "csv" | "mqtt" | "opcua" | "modbus" | "twin";
 export interface Sensor {
@@ -250,6 +252,7 @@ export interface Sensor {
   enabled: boolean;
   last_value: number | null;
   last_ts: string | null;
+  last_quality?: Quality;
   alarm: AlarmState;
   priority: "low" | "medium" | "high" | "critical";
   writable: boolean;
@@ -334,10 +337,11 @@ export interface LiveMessage {
   value?: number | null;
   ts?: string | null;
   alarm?: AlarmState;
+  quality?: Quality;
   element_guid?: string | null;
   unit?: string;
 }
-export interface LiveReading { sensor_id: number; key: string; value: number | null; ts: string | null; alarm: AlarmState; element_guid: string | null; unit: string }
+export interface LiveReading { sensor_id: number; key: string; value: number | null; ts: string | null; alarm: AlarmState; quality?: Quality; element_guid: string | null; unit: string }
 
 const TOKEN_KEY = "ges_token";
 

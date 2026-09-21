@@ -110,6 +110,13 @@ Monitoring → «Ulanish kaliti» (tasdiqlovchi). SCADA tomonidagi kompyuterda `
 (Modbus TCP / OPC UA / CSV) yoki har qanday skript `POST /api/projects/{id}/readings` ga
 `X-Ingest-Key` bilan JSON `[{"key":"AGG1.P","value":24.3}]` yuboradi. Kalitni almashtirish — o'sha tugma.
 
+Har o'lchovda ixtiyoriy `quality` (`good` — default, `uncertain`, `bad`, `substituted`, `manual`) va
+`src_ts` (manbadagi vaqt tamg'asi — OPC UA SourceTimestamp yoki gateway o'qish vaqti) bo'lishi mumkin:
+`{"key":"AGG1.P","value":24.3,"ts":"...","src_ts":"...","quality":"uncertain"}`. `bad` sifatli qiymat
+tarixga yoziladi, lekin sensor holatini, alarmni, agregatni va egizakni o'zgartirmaydi — faqat `bad`
+kelayotgan sensor `stale_after_s` dan keyin «aloqa yo'q» bo'ladi. Soatlik agregatda `pct_good` (good ulushi)
+va `n_bad` saqlanadi.
+
 ## Xavfsizlik
 
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.

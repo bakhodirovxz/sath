@@ -94,6 +94,7 @@ class SensorOut(BaseModel):
     enabled: bool
     last_value: float | None
     last_ts: datetime | None
+    last_quality: str = "good"
     alarm: AlarmState
     priority: str = "medium"
     writable: bool = False
@@ -108,6 +109,10 @@ class ReadingIn(BaseModel):
     sensor_id: int | None = None
     value: Any
     ts: datetime | float | str | None = None
+    # QUALITIES (good|uncertain|bad|substituted|manual); yo'q bo'lsa good
+    quality: str | None = None
+    # manbadagi vaqt tamg'asi (OPC UA SourceTimestamp, gateway o'qish vaqti)
+    src_ts: datetime | float | str | None = None
 
 
 # ---------- Sensorlar ----------
@@ -387,7 +392,7 @@ def push_readings(
 
 @router.post("/sensors/{sensor_id}/import")
 async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB):
-    """CSV: 'ts,value' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya."""
+    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya; quality — QUALITIES."""
     s = _get_sensor(db, sensor_id, user, Role.engineer)
     text = (await file.read()).decode("utf-8-sig", errors="replace")
     items = []
@@ -398,7 +403,10 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
             float(row[1])
         except ValueError:
             continue  # sarlavha
-        items.append({"sensor_id": s.id, "ts": row[0].strip(), "value": row[1].strip()})
+        it = {"sensor_id": s.id, "ts": row[0].strip(), "value": row[1].strip()}
+        if len(row) > 2 and row[2].strip():
+            it["quality"] = row[2].strip().lower()
+        items.append(it)
     if not items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
     return live.ingest(db, s.project_id, items, source="csv")
@@ -428,7 +436,7 @@ def readings(
         )
         rows = (
             db.query(Reading.ts, Reading.value)
-            .filter(Reading.sensor_id == s.id, Reading.ts >= tail_since)
+            .filter(Reading.sensor_id == s.id, Reading.ts >= tail_since, Reading.quality != "bad")
             .order_by(Reading.ts)
             .all()
         )
@@ -453,7 +461,7 @@ def readings(
         }
     rows = (
         db.query(Reading.ts, Reading.value)
-        .filter(Reading.sensor_id == s.id, Reading.ts >= since)
+        .filter(Reading.sensor_id == s.id, Reading.ts >= since, Reading.quality != "bad")
         .order_by(Reading.ts)
         .all()
     )
@@ -489,19 +497,19 @@ def readings(
 def export_csv(
     sensor_id: int, user: CurrentUser, db: DB, hours: float = Query(24, gt=0, le=24 * 366)
 ):
-    """Xom o'lchovlar CSV (ts,value) — tahlil/Excel uchun."""
+    """Xom o'lchovlar CSV (ts,value,quality,src_ts) — tahlil/Excel uchun; bad qatorlar ham kiradi."""
     s = _get_sensor(db, sensor_id, user, Role.viewer)
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ts", f"value_{s.unit or 'raw'}"])
-    for t, v in (
-        db.query(Reading.ts, Reading.value)
+    w.writerow(["ts", f"value_{s.unit or 'raw'}", "quality", "src_ts"])
+    for t, v, q, st in (
+        db.query(Reading.ts, Reading.value, Reading.quality, Reading.src_ts)
         .filter(Reading.sensor_id == s.id, Reading.ts >= since)
         .order_by(Reading.ts)
         .yield_per(1000)
     ):
-        w.writerow([live._aware(t).isoformat(), v])
+        w.writerow([live._aware(t).isoformat(), v, q, live._aware(st).isoformat() if st else ""])
     return Response(
         buf.getvalue(),
         media_type="text/csv",

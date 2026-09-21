@@ -51,7 +51,7 @@ class MqttBridge:
         if not targets:
             return
         for project_id, sensor_id, field in targets:
-            value, ts = _parse_payload(raw, field)
+            value, ts, quality = _parse_payload(raw, field)
             if value is None:
                 log.debug("mqtt %s: raqam topilmadi: %s", msg.topic, raw[:80])
                 continue
@@ -59,7 +59,7 @@ class MqttBridge:
                 live.ingest(
                     db,
                     project_id,
-                    [{"sensor_id": sensor_id, "value": value, "ts": ts}],
+                    [{"sensor_id": sensor_id, "value": value, "ts": ts, "quality": quality}],
                     source="mqtt",
                 )
 
@@ -101,25 +101,29 @@ class MqttBridge:
             self.client.disconnect()
 
 
-def _parse_payload(raw: str, field: str | None) -> tuple[float | None, str | float | None]:
+def _parse_payload(
+    raw: str, field: str | None
+) -> tuple[float | None, str | float | None, str | None]:
+    """Qaytaradi: (qiymat, ts, quality). JSON da "quality" (yoki "q") bo'lsa olinadi."""
     try:
-        return float(raw), None
+        return float(raw), None, None
     except ValueError:
         pass
     try:
         data = json.loads(raw)
     except ValueError:
-        return None, None
+        return None, None, None
     if isinstance(data, dict):
         v = data.get(field) if field else data.get("value", data.get("v"))
         ts = data.get("ts") or data.get("timestamp") or data.get("time")
+        q = data.get("quality") or data.get("q")
         try:
-            return float(v), ts
+            return float(v), ts, (str(q).lower() if q is not None else None)
         except (TypeError, ValueError):
-            return None, None
+            return None, None, None
     if isinstance(data, int | float):
-        return float(data), None
-    return None, None
+        return float(data), None, None
+    return None, None, None
 
 
 bridge: MqttBridge | None = None
