@@ -23,6 +23,7 @@ def tick_stale() -> int:
         for (pid,) in db.query(Project.id).all():
             n += len(live.mark_stale(db, pid))
             n += len(live.settle_pending(db, pid))  # kechikishi o'tgan alarmlar (C1)
+            n += len(live.unshelve_expired(db, pid))  # shelving muddati (C2)
         return n
 
 

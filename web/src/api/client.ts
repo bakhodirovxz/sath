@@ -255,6 +255,11 @@ export interface Sensor {
   on_delay_s?: number;
   off_delay_s?: number;
   roc_limit_per_min?: number | null;
+  suppress_condition?: string;
+  suppressed?: boolean;
+  alarm_mode?: "normal" | "shelved" | "out_of_service";
+  alarm_mode_until?: string | null;
+  alarm_mode_reason?: string;
   min_raw?: number | null;
   max_raw?: number | null;
   min_setpoint?: number | null;
@@ -289,6 +294,11 @@ export interface SensorIn {
   on_delay_s?: number;
   off_delay_s?: number;
   roc_limit_per_min?: number | null;
+  suppress_condition?: string;
+  suppressed?: boolean;
+  alarm_mode?: "normal" | "shelved" | "out_of_service";
+  alarm_mode_until?: string | null;
+  alarm_mode_reason?: string;
   stale_after_s: number;
   enabled: boolean;
   priority?: "low" | "medium" | "high" | "critical";
@@ -331,6 +341,8 @@ export interface AlarmEvent {
   acked_by: number | null;
   acked_at: string | null;
   comment: string;
+  suppressed?: string | null;
+  alarm_state?: string;
 }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
 export interface Dashboard {
@@ -627,6 +639,10 @@ export const api = {
   alarmEvents: (projectId: number, active: boolean, hours = 168) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}`),
   ackAlarm: (id: number, comment = "") => request<AlarmEvent>(`/api/alarm-events/${id}/ack`, { method: "POST", body: json({ comment }) }),
   ackAll: (projectId: number) => request<{ acked: number }>(`/api/projects/${projectId}/alarm-events/ack-all`, { method: "POST" }),
+  shelveSensor: (id: number, reason: string, hours?: number) => request<Sensor>(`/api/sensors/${id}/shelve`, { method: "POST", body: json({ reason, hours }) }),
+  unshelveSensor: (id: number) => request<Sensor>(`/api/sensors/${id}/unshelve`, { method: "POST" }),
+  sensorOutOfService: (id: number, reason: string) => request<Sensor>(`/api/sensors/${id}/out-of-service`, { method: "POST", body: json({ reason }) }),
+  sensorInService: (id: number) => request<Sensor>(`/api/sensors/${id}/in-service`, { method: "POST" }),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),
   saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),

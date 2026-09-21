@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     tools_dir: Path | None = None
     # Fon tekshiruv davri (stale sensorlar, agregat), soniya
     monitor_interval_s: int = 30
+    # Alarm shelving (ISA-18.2): default va maksimal muddat, soat
+    alarm_shelve_default_h: float = 8.0
+    alarm_shelve_max_h: float = 24.0
     # Buyruq watchdog: gateway olib (sent) shuncha soniyada ack/failed qaytarmasa → failed, sensor bo'shaydi
     command_sent_timeout_s: int = 120
     # Kunlik hisobot emaili (UTC soat); -1 — o'chirilgan. Muhandis/tasdiqlovchi/operatorlarga (SMTP bo'lsa)

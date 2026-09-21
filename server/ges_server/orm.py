@@ -452,6 +452,17 @@ class Sensor(Base):
     # Kechikish holat mashinasi: kutilayotgan holat va qachondan beri
     alarm_pending: Mapped[str | None] = mapped_column(String(16), nullable=True)
     alarm_pending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ISA-18.2 alarm rejimi (C2): normal | shelved (muddatli, operator) | out_of_service (muhandis).
+    # Rejim normal bo'lmasa hodisa jurnalga `suppressed` belgisi bilan yoziladi, bildirishnoma yo'q.
+    alarm_mode: Mapped[str] = mapped_column(String(24), default="normal", server_default="normal")
+    alarm_mode_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    alarm_mode_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    alarm_mode_reason: Mapped[str] = mapped_column(Text, default="", server_default="")
+    alarm_mode_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Suppression-by-design: shart ifodasi (interlock sintaksisi, masalan `AGG1_RUN == 0`) rost bo'lsa
+    # alarm bostiriladi; natija `suppressed` da (ingest da baholanadi)
+    suppress_condition: Mapped[str] = mapped_column(Text, default="", server_default="")
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Fizik (o'lchov) diapazoni: tashqaridagi qiymat quality=bad bilan saqlanadi, holatga ta'sir qilmaydi
     min_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -514,8 +525,20 @@ class AlarmEvent(Base):
     acked_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     comment: Mapped[str] = mapped_column(Text, default="")
+    # Ochilganda sensor rejimi normal bo'lmagan: shelved | out_of_service | suppressed_by_design.
+    # Jurnalda qoladi (KPI alohida hisoblaydi), lekin ko'rsatilmaydi/bildirilmaydi.
+    suppressed: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     sensor: Mapped[Sensor] = relationship()
+
+    @property
+    def alarm_state(self) -> str:
+        """ISA-18.2 alarm holati: unack → acked → (rtn_unack) → normal."""
+        if self.suppressed:
+            return self.suppressed
+        if self.ended_at is None:
+            return "unack" if self.acked_at is None else "acked"
+        return "rtn_unack" if self.acked_at is None else "normal"
 
 
 class CommandStatus(str, enum.Enum):

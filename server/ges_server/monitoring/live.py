@@ -178,11 +178,30 @@ def event_message(ev: AlarmEvent, sensor: Sensor) -> dict:
     }
 
 
+MODE_LABEL = {
+    "shelved": "shelved (vaqtincha yashirilgan)",
+    "out_of_service": "xizmatdan chiqarilgan",
+    "suppressed_by_design": "shart bo'yicha bostirilgan",
+}
+
+
+def effective_mode(sensor: Sensor) -> str | None:
+    """Hodisa uchun bostirish sababi: out_of_service > shelved > suppressed_by_design; None — normal."""
+    if sensor.alarm_mode == "out_of_service":
+        return "out_of_service"
+    if sensor.alarm_mode == "shelved":
+        return "shelved"
+    if sensor.suppressed:
+        return "suppressed_by_design"
+    return None
+
+
 def transition(
     db: Session, sensor: Sensor, new_state: AlarmState, value: float | None
 ) -> AlarmEvent | None:
     """Sensor holati o'zgarganda alarm jurnalini yuritadi: faol hodisani yopadi, yangisini ochadi.
-    Qaytaradi: yangi ochilgan hodisa (bildirishnoma uchun) yoki None. Commit chaqiruvchida."""
+    Rejim normal bo'lmasa (shelved/OOS/bostirilgan) hodisa `suppressed` bilan yoziladi — chaqiruvchi
+    (`announce`) uni bildirmaydi. Qaytaradi: yangi ochilgan hodisa yoki None. Commit chaqiruvchida."""
     old = sensor.alarm
     if new_state == old:
         return None
@@ -199,13 +218,16 @@ def transition(
         state=new_state,
         value=value,
         started_at=now,
+        suppressed=effective_mode(sensor),
     )
     db.add(ev)
     return ev
 
 
 def announce(db: Session, project_id: int, events: list[tuple[AlarmEvent, Sensor]]) -> None:
-    """Yangi alarm hodisalari: jonli oqim, ilova ichi bildirishnoma (a'zolar + adminlar), email (muhandis+)."""
+    """Yangi alarm hodisalari: jonli oqim, ilova ichi bildirishnoma (a'zolar + adminlar), email (muhandis+).
+    Bostirilgan (shelved/OOS/shart) hodisalar jurnalda qoladi, lekin bildirilmaydi."""
+    events = [(ev, s) for ev, s in events if not ev.suppressed]
     if not events:
         return
     members = notifications.member_ids(db, project_id, with_admins=True)  # adminlar ham (taqriz kabi)
@@ -243,6 +265,7 @@ def sensor_message(sensor: Sensor) -> dict:
         "value": sensor.last_value,
         "ts": _aware(sensor.last_ts).isoformat() if sensor.last_ts else None,
         "alarm": sensor.alarm.value,
+        "alarm_mode": effective_mode(sensor) or "normal",
         "quality": sensor.last_quality or "good",
         "element_guid": sensor.element_guid,
         "unit": sensor.unit,
@@ -331,6 +354,8 @@ def ingest(
                 changed.append(sensor)
     # Alarm holati — har sensor uchun paketdagi eng so'nggi qiymat bo'yicha bir marta
     # (tarixiy import/CSV da har nuqta uchun hodisa ochilib "alarm toshqini" bo'lmasin)
+    if any(s.suppress_condition for s in changed):
+        evaluate_suppression(db, project_id, [s for s in changed if s.suppress_condition], fresh=changed)
     for sensor in changed:
         p_val, p_ts = prev.get(sensor.id, (None, None))
         rate = None
@@ -347,6 +372,97 @@ def ingest(
         hub.publish(project_id, {**sensor_message(s), "source": source})
     announce(db, project_id, events)
     return {"accepted": accepted, "unknown": unknown, "bad": bad, "rejected": rejected}
+
+
+def evaluate_suppression(
+    db: Session, project_id: int, sensors: list[Sensor], fresh: list[Sensor] | None = None
+) -> list[Sensor]:
+    """Suppression-by-design: `suppress_condition` (interlock ifodasi, loyiha sensorlari muhitida) rost →
+    `suppressed=True`. Baholab bo'lmasa (sensor ma'lumoti yo'q/ifoda xatosi) — bostirilMAYDI (alarm
+    ko'rinadi, xavfsiz tomon). O'zgargan sensorlar qaytariladi; hodisa `suppressed` belgisi hozirgi
+    natijaga qarab yoziladi. Commit chaqiruvchida."""
+    from ges_sim import custom
+
+    from . import interlock
+
+    env = interlock.env_for(db, project_id)
+    for f in fresh or []:  # shu paketda kelgan qiymatlar (alarm holati hali yangilanmagan bo'lishi mumkin)
+        if f.last_value is not None and (f.last_quality or "good") != "bad":
+            env[interlock.var_name(f.key)] = float(f.last_value)
+    changed = []
+    for s in sensors:
+        cond = (s.suppress_condition or "").strip()
+        if not cond:
+            new = False
+        else:
+            try:
+                new = bool(custom.evaluate(custom.compile_expr(cond), env))
+            except (NameError, ValueError, TypeError, ZeroDivisionError, ArithmeticError) as e:
+                log.warning("sensor %s suppress_condition baholanmadi (%s) — bostirilmaydi", s.key, e)
+                new = False
+        if new != bool(s.suppressed):
+            s.suppressed = new
+            changed.append(s)
+    return changed
+
+
+def set_alarm_mode(
+    db: Session,
+    sensor: Sensor,
+    mode: str,
+    user_id: int | None,
+    reason: str = "",
+    until: datetime | None = None,
+) -> AlarmEvent | None:
+    """Rejimni o'zgartiradi (normal | shelved | out_of_service). Normal ga qaytganda sensor alarm holatida
+    bo'lsa ochiq bostirilgan hodisa faollashtiriladi (bildirish uchun qaytariladi) — alarm "qaytadi".
+    Commit chaqiruvchida."""
+    sensor.alarm_mode = mode
+    sensor.alarm_mode_reason = reason
+    sensor.alarm_mode_by = user_id
+    sensor.alarm_mode_since = datetime.now(timezone.utc)
+    sensor.alarm_mode_until = until
+    reactivated = None
+    for ev in db.query(AlarmEvent).filter_by(sensor_id=sensor.id, ended_at=None).all():
+        want = effective_mode(sensor)
+        if ev.suppressed and not want:
+            ev.suppressed = None  # bostirish tugadi — hodisa faol, kvitlanmagan
+            reactivated = ev
+        elif want and not ev.suppressed:
+            ev.suppressed = want
+    return reactivated
+
+
+def unshelve_expired(db: Session, project_id: int) -> list[Sensor]:
+    """Shelving muddati tugagan sensorlarni normal ga qaytaradi (fon vazifasi); alarm davom etayotgan
+    bo'lsa bildirishnoma. Audit yozuvi tizim nomidan."""
+    from .. import audit
+
+    now = datetime.now(timezone.utc)
+    changed, events = [], []
+    q = db.query(Sensor).filter(Sensor.project_id == project_id, Sensor.alarm_mode == "shelved")
+    for s in q.all():
+        if s.alarm_mode_until is None or _aware(s.alarm_mode_until) > now:
+            continue
+        ev = set_alarm_mode(db, s, "normal", None, "")
+        audit.log(
+            db,
+            user_id=None,
+            action="alarm.unshelve_auto",
+            target_type="sensor",
+            target_id=s.id,
+            project_id=project_id,
+            detail={"key": s.key, "alarm": s.alarm.value},
+        )
+        changed.append(s)
+        if ev is not None:
+            events.append((ev, s))
+    if changed:
+        db.commit()
+        for s in changed:
+            hub.publish(project_id, sensor_message(s))
+        announce(db, project_id, events)
+    return changed
 
 
 def mark_bad(db: Session, project_id: int, sensor_ids: list[int], source: str = "server") -> list[Sensor]:

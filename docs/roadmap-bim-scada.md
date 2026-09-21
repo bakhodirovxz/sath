@@ -323,7 +323,7 @@ Bog'liqlik: B1, A1 (sifat — `bad` sifatli sensor blokirovkani baholay olmaydi,
 
 ## C. Alarm tizimi (ISA-18.2)
 
-### C1 — Ko'p bosqichli chegaralar va o'lik zona ✅
+### C1 — Ko'p bosqichli chegaralar va o'lik zona ✅ (`932ece8`)
 
 Bajarildi: `ll_alarm`/`hh_alarm`, `deadband`, `on_delay_s`/`off_delay_s`, `roc_limit_per_min`
 (migratsiya 0010); `evaluate_alarm` gisterezisli, `settle()` kechikish holat mashinasi (fon vazifasi ham
@@ -346,7 +346,12 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/live.py`, migratsiya
 Qabul mezoni: chegarada tebranayotgan signal bitta `AlarmEvent` yaratadi (test).
 Bog'liqlik: A1, A2.
 
-### C2 — Shelving, suppression, out-of-service
+### C2 — Shelving, suppression, out-of-service ✅
+
+Bajarildi: `Sensor.alarm_mode` (normal|shelved|out_of_service, sabab/kim/qachongacha), `suppress_condition`
+(interlock ifodasi) → `suppressed`; `AlarmEvent.suppressed` + `alarm_state` (unack/acked/rtn_unack/normal);
+`POST /sensors/{id}/shelve|unshelve|out-of-service|in-service`; muddat tugashi fon vazifasida (`unshelve_expired`),
+alarm davom etsa bildirishnoma; hodisa ro'yxati `include_suppressed`; migratsiya 0011; web: shelve tugmasi.
 
 Muammo: ISA-18.2 ning asosiy holat mashinasi yo'q. Operatorning yagona harakati — ack.
 

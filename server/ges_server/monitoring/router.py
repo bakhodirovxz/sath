@@ -29,7 +29,7 @@ from ..auth.security import decode_access_token
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import historian, keys, live, mqtt_bridge
+from . import historian, interlock, keys, live, mqtt_bridge
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -63,10 +63,23 @@ class SensorIn(BaseModel):
     on_delay_s: int = Field(0, ge=0, le=86400)
     off_delay_s: int = Field(0, ge=0, le=86400)
     roc_limit_per_min: float | None = Field(None, gt=0)
+    # Suppression-by-design (ISA-18.2): ifoda rost bo'lsa alarm bostiriladi (masalan `AGG1_RUN == 0`)
+    suppress_condition: str = ""
     # fizik diapazon: tashqarida quality=bad
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int = 600
+
+    @field_validator("suppress_condition")
+    @classmethod
+    def _cond(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v:
+            try:
+                interlock.validate(v)
+            except ValueError as e:
+                raise ValueError(f"suppress_condition: {e}") from e
+        return v
     enabled: bool = True
     priority: Priority = "medium"
     writable: bool = False
@@ -95,9 +108,23 @@ class SensorPatch(BaseModel):
     on_delay_s: int | None = Field(None, ge=0, le=86400)
     off_delay_s: int | None = Field(None, ge=0, le=86400)
     roc_limit_per_min: float | None = Field(None, gt=0)
+    suppress_condition: str | None = None
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int | None = None
+
+    @field_validator("suppress_condition")
+    @classmethod
+    def _cond(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if v:
+            try:
+                interlock.validate(v)
+            except ValueError as e:
+                raise ValueError(f"suppress_condition: {e}") from e
+        return v
     enabled: bool | None = None
     priority: Priority | None = None
     writable: bool | None = None
@@ -132,6 +159,13 @@ class SensorOut(BaseModel):
     on_delay_s: int = 0
     off_delay_s: int = 0
     roc_limit_per_min: float | None = None
+    suppress_condition: str = ""
+    suppressed: bool = False
+    alarm_mode: str = "normal"
+    alarm_mode_until: datetime | None = None
+    alarm_mode_by: int | None = None
+    alarm_mode_reason: str = ""
+    alarm_mode_since: datetime | None = None
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int
@@ -368,6 +402,8 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     if s.last_value is not None and s.alarm != AlarmState.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
         s.alarm_pending = s.alarm_pending_since = None
+    if "suppress_condition" in changes:
+        live.evaluate_suppression(db, s.project_id, [s])
     audit.log(
         db,
         user_id=user.id,
@@ -697,10 +733,21 @@ class AlarmEventOut(BaseModel):
     acked_by: int | None
     acked_at: datetime | None
     comment: str
+    suppressed: str | None = None  # shelved | out_of_service | suppressed_by_design
+    alarm_state: str = "unack"  # ISA-18.2: unack | acked | rtn_unack | normal | (bostirilgan rejim)
 
 
 class AckIn(BaseModel):
     comment: str = ""
+
+
+class ShelveIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    hours: float | None = Field(None, gt=0)
+
+
+class ModeReasonIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 def _event_out(e: AlarmEvent) -> AlarmEventOut:
@@ -718,6 +765,8 @@ def _event_out(e: AlarmEvent) -> AlarmEventOut:
         acked_by=e.acked_by,
         acked_at=live._aware(e.acked_at) if e.acked_at else None,
         comment=e.comment,
+        suppressed=e.suppressed,
+        alarm_state=e.alarm_state,
     )
 
 
@@ -728,10 +777,14 @@ def alarm_events(
     active: bool = False,
     hours: float = Query(24 * 7, gt=0, le=24 * 366),
     limit: int = Query(500, gt=0, le=5000),
+    include_suppressed: bool = False,
 ):
-    """Alarm jurnali: active=true — davom etayotgan yoki kvitlanmaganlar; aks holda tarix."""
+    """Alarm jurnali: active=true — davom etayotgan yoki kvitlanmaganlar; aks holda tarix.
+    Bostirilgan (shelved/OOS/shart) hodisalar faqat include_suppressed=true bilan (KPI/audit uchun)."""
     live.mark_stale(db, project.id)
     q = db.query(AlarmEvent).filter(AlarmEvent.project_id == project.id)
+    if not include_suppressed:
+        q = q.filter(AlarmEvent.suppressed.is_(None))
     if active:
         q = q.filter((AlarmEvent.ended_at.is_(None)) | (AlarmEvent.acked_at.is_(None)))
     else:
@@ -766,7 +819,7 @@ def ack_alarm(event_id: int, body: AckIn, user: CurrentUser, db: DB):
 @router.post("/projects/{project_id}/alarm-events/ack-all")
 def ack_all(project: OperatorProject, user: CurrentUser, db: DB):
     n = 0
-    for e in db.query(AlarmEvent).filter_by(project_id=project.id, acked_at=None).all():
+    for e in db.query(AlarmEvent).filter_by(project_id=project.id, acked_at=None, suppressed=None).all():
         e.acked_by, e.acked_at = user.id, utcnow()
         n += 1
     audit.log(
@@ -780,6 +833,68 @@ def ack_all(project: OperatorProject, user: CurrentUser, db: DB):
     )
     db.commit()
     return {"acked": n}
+
+
+# ---------- Alarm rejimi: shelving / out-of-service (ISA-18.2, C2) ----------
+
+
+def _mode_response(db, s: Sensor, user: User, action: str, detail: dict, reactivated: AlarmEvent | None) -> Sensor:
+    audit.log(
+        db,
+        user_id=user.id,
+        action=action,
+        target_type="sensor",
+        target_id=s.id,
+        project_id=s.project_id,
+        detail={"key": s.key, **detail},
+    )
+    db.commit()
+    live.hub.publish(s.project_id, live.sensor_message(s))
+    if reactivated is not None:
+        live.announce(db, s.project_id, [(reactivated, s)])
+    return s
+
+
+@router.post("/sensors/{sensor_id}/shelve", response_model=SensorOut)
+def shelve_sensor(sensor_id: int, body: ShelveIn, user: CurrentUser, db: DB):
+    """Shelving (operator+): alarm muddatga yashiriladi, sabab majburiy; muddat tugagach avtomatik qaytadi.
+    Default va maksimal muddat — GES_ALARM_SHELVE_DEFAULT_H / _MAX_H."""
+    s = _get_sensor(db, sensor_id, user, Role.operator)
+    st = get_settings()
+    hours = body.hours if body.hours is not None else st.alarm_shelve_default_h
+    if hours > st.alarm_shelve_max_h:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Shelving muddati ko'pi bilan {st.alarm_shelve_max_h:g} soat")
+    if s.alarm_mode == "out_of_service":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sensor xizmatdan chiqarilgan — avval xizmatga qaytaring")
+    until = datetime.now(timezone.utc) + timedelta(hours=hours)
+    live.set_alarm_mode(db, s, "shelved", user.id, body.reason, until)
+    return _mode_response(db, s, user, "alarm.shelve", {"hours": hours, "reason": body.reason, "alarm": s.alarm.value}, None)
+
+
+@router.post("/sensors/{sensor_id}/unshelve", response_model=SensorOut)
+def unshelve_sensor(sensor_id: int, user: CurrentUser, db: DB):
+    s = _get_sensor(db, sensor_id, user, Role.operator)
+    if s.alarm_mode != "shelved":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sensor shelved emas")
+    ev = live.set_alarm_mode(db, s, "normal", user.id, "")
+    return _mode_response(db, s, user, "alarm.unshelve", {"alarm": s.alarm.value}, ev)
+
+
+@router.post("/sensors/{sensor_id}/out-of-service", response_model=SensorOut)
+def out_of_service(sensor_id: int, body: ModeReasonIn, user: CurrentUser, db: DB):
+    """Out-of-service (muhandis+): texnik xizmat — alarm muddatsiz bostiriladi, sabab majburiy."""
+    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    live.set_alarm_mode(db, s, "out_of_service", user.id, body.reason)
+    return _mode_response(db, s, user, "alarm.out_of_service", {"reason": body.reason, "alarm": s.alarm.value}, None)
+
+
+@router.post("/sensors/{sensor_id}/in-service", response_model=SensorOut)
+def in_service(sensor_id: int, user: CurrentUser, db: DB):
+    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    if s.alarm_mode != "out_of_service":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sensor xizmatdan chiqarilmagan")
+    ev = live.set_alarm_mode(db, s, "normal", user.id, "")
+    return _mode_response(db, s, user, "alarm.in_service", {"alarm": s.alarm.value}, ev)
 
 
 # ---------- Dispetcher paneli / hisobot ----------
