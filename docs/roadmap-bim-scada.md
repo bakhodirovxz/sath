@@ -1222,7 +1222,7 @@ Fayllar: `sim/ges_sim/dam_stability.py`
 Qabul mezoni: qo'lda hisoblangan misol bilan solishtiriladigan test.
 Bog'liqlik: J1.
 
-### J3 — Seysmik koeffitsientni tuzatish ✅
+### J3 — Seysmik koeffitsientni tuzatish ✅ (`c5fe675`)
 
 Muammo: `seismic.py:57`, `:207` — `beta = S_e/a_g` allaqachon EC8 grunt faktorini o'z ichiga
 oladi, keyin `seismic_coefficient` `beta` ni 2.5 ga qirqadi va S yo'qoladi. Tekshirilgan,
@@ -1248,7 +1248,7 @@ Fayllar: `sim/ges_sim/seismic.py`, `server/ges_server/sim/safety.py`
 Qabul mezoni: grunt sinfi o'zgarganda `kh` o'zgaradi (test); ko'rsatilgan kuchlar izchil.
 Bog'liqlik: J1.
 
-### J4 — Gidrozarbada quvur profili va kavitatsiya
+### J4 — Gidrozarbada quvur profili va kavitatsiya ✅
 
 Muammo: `water_hammer.py:262` — `cav = hmin + 10.3 < 0.3`. `hmin` pyezometrik napor, quvur
 balandligi z(x) ayirilmaydi, ya'ni butun quvur zatvor balandligida yotadi deb faraz qilinadi.

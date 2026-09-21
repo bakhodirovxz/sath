@@ -110,3 +110,26 @@ def test_landslide_heller_hager_ranges():
     r = catalog.run("landslide", {"slope_deg": 25})["summary"]
     assert any("α" in w and "Heller" in w for w in r["warnings"])
     assert math.isfinite(r["runup_m"])
+
+
+def test_water_hammer_profile_high_point_cavitation_and_buckling():
+    from ges_sim import water_hammer
+
+    base = {"head_m": 120, "flow_m3s": 8, "close_s": 2, "length_m": 300, "valve_elev_m": 800}
+    flat = catalog.run("water_hammer", {**base, "intake_elev_m": 880})["summary"]
+    assert flat["cavitation_risk"] is False
+    assert not any("profil" in w and "berilmagan" in w and "0.7" in w for w in flat["warnings"])
+    # Yuqori nuqtali profil: o'rtada quvur 918 m ga ko'tariladi — pyezometrik napor pastga tushganda
+    # aynan shu nuqtada absolyut bosim yo'qoladi
+    hp = catalog.run(
+        "water_hammer", {**base, "profile_z": [880, 918, 918, 850, 800]}
+    )["summary"]
+    assert hp["cavitation_risk"] is True and 100 < hp["cavitation_x_m"] < 200
+    assert hp["p_abs_min_m"] < 0.3 and hp["buckling_factor"] < 99
+    assert hp["ok"] is False
+    # profilsiz — taxmin ogohlantirishi
+    auto = catalog.run("water_hammer", base)["summary"]
+    assert any("0.7" in w for w in auto["warnings"])
+    # buklanish: yupqa devor → kichik p_cr (Timoshenko)
+    p_cr = water_hammer.buckling_pressure(0.008, 2.0, 2.07e11)
+    assert abs(p_cr - 2 * 2.07e11 / 0.91 * (0.004) ** 3) < 1

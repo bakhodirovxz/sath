@@ -11,6 +11,10 @@ Vaqt-fazo yechimi — Wylie & Streeter, "Fluid Transients in Systems" (1993), 3-
 Chegaralar: yuqorida suv ombori (H = const), pastda zadvijka Q = Q0·τ(t)·sqrt(H/H0),
 τ(t) = (1 − t/Tc)^n (n=1 chiziqli, n>1 — oxirida tez yopiladigan).
 Halqa kuchlanish (Barlow):  σ = p·D / (2·e),  p = ρ·g·H_max.
+Kavitatsiya (ustun uzilishi) har tugunda: p_abs = H(x) − z(x) + 10.3 m — H pyezometrik napor
+  (zadvijka belgisiga nisbatan), z(x) — quvur o'qi balandligi (profil). Eng xavfli — yuqori nuqtalar.
+Tashqi bosimda buklanish (vakuum): p_cr = 2E/(1−ν²)·(e/D)³ (Timoshenko, uzun yupqa devorli silindr,
+  ν = 0.3); ASCE MOP 79: zaxira ≥ 2 (kuchaytiruvchi halqalarsiz quvur).
 """
 
 from __future__ import annotations
@@ -165,14 +169,60 @@ FIELDS = [
     ),
     Field(
         "valve_elev_m",
-        "Zadvijka belgisi (quvur eng past nuqtasi)",
+        "Zadvijka (quvur oxiri) belgisi",
         "m",
         default=0,
-        group="Rejim",
-        hint="Kavitatsiya tekshiruvi uchun (H_abs < −10 m)",
+        group="Profil",
+        hint="Absolyut belgi; profil va suv olish belgisi shunga nisbatan hisoblanadi",
+    ),
+    Field(
+        "intake_elev_m",
+        "Suv olish (quvur boshi) belgisi",
+        "m",
+        default=0,
+        group="Profil",
+        hint="0 — avtomatik: zadvijka + 0.7·H₀ (taxmin, ogohlantirish bilan). Profil berilmasa "
+        "quvur boshidan oxirigacha chiziqli",
+    ),
+    Field(
+        "profile_z",
+        "Quvur o'qi balandliklari (absolyut, boshidan oxirigacha teng oraliqda)",
+        "m",
+        type="series",
+        default=[],
+        group="Profil",
+        hint="Masalan: 950 948 960 930 900 — yuqori nuqtalar kavitatsiya uchun hal qiluvchi",
         advanced=True,
     ),
 ]
+
+
+def pipe_profile(p: dict, n: int, warnings: list[str]) -> list[float]:
+    """Har MOC tugunida quvur o'qi balandligi z(x), zadvijka belgisiga nisbatan (zadvijka = 0)."""
+    zv = p["valve_elev_m"]
+    prof = p["profile_z"]
+    if prof and len(prof) >= 2:
+        m = len(prof) - 1
+        out = []
+        for i in range(n + 1):
+            s = i / n * m
+            j = min(int(s), m - 1)
+            out.append(prof[j] + (prof[j + 1] - prof[j]) * (s - j) - zv)
+        return out
+    zi = p["intake_elev_m"] - zv if p["intake_elev_m"] else 0.7 * p["head_m"]
+    if not p["intake_elev_m"]:
+        warnings.append(
+            f"quvur profili berilmagan — suv olish belgisi zadvijka + {zi:.0f} m (0.7·H₀) deb "
+            "olindi, chiziqli profil; yuqori nuqtalar bo'lsa kavitatsiya tekshiruvi ishonchsiz"
+        )
+    else:
+        warnings.append("quvur profili berilmagan — boshidan oxirigacha chiziqli deb olindi")
+    return [zi * (1 - i / n) for i in range(n + 1)]
+
+
+def buckling_pressure(e_m: float, d_m: float, e_pa: float, nu: float = 0.3) -> float:
+    """Tashqi bosimda kritik bosim, Pa (Timoshenko & Gere, uzun silindr): p_cr = 2E/(1−ν²)·(e/D)³."""
+    return 2 * e_pa / (1 - nu**2) * (e_m / d_m) ** 3
 
 
 def wave_speed(diameter_m: float, wall_m: float, e_pa: float, c1: float = 1.0) -> float:
@@ -255,11 +305,24 @@ def run(p: dict) -> dict:
 
     hmax = max(h_max)
     hmin = min(h_min)
-    p_max = RHO * G * hmax  # Pa (manometrik)
+    warnings: list[str] = []
+    z = pipe_profile(p, N, warnings)
+    # Bosim napori har tugunda: pyezometrik − balandlik (zadvijka datumida); maksimal bosim ham shunday
+    ph_max = [h_max[i] - z[i] for i in range(N + 1)]
+    ph_min = [h_min[i] - z[i] for i in range(N + 1)]
+    i_pmax = max(range(N + 1), key=lambda i: ph_max[i])
+    p_max = RHO * G * max(ph_max[i_pmax], 0.0)  # Pa (manometrik)
     stress = p_max * D / (2 * e) / 1e6  # MPa
     sf = sigma_all / stress if stress > 0 else 99.0
-    # Kavitatsiya: absolyut napor ≈ H + 10.3 m; suv bug'lanish napori ≈ 0.24 m (20 °C)
-    cav = hmin + 10.3 < 0.3
+    # Kavitatsiya: absolyut bosim napori = H − z + 10.3 m; bug'lanish napori ≈ 0.24 m (20 °C)
+    i_cav = min(range(N + 1), key=lambda i: ph_min[i])
+    p_abs_min = ph_min[i_cav] + 10.3
+    cav = p_abs_min < 0.3
+    # Tashqi bosimda buklanish: vakuum (manfiy manometrik bosim, 10.3 m dan chuqur emas)
+    vac_m = max(-ph_min[i_cav], 0.0) if ph_min[i_cav] < 0 else 0.0
+    p_ext = RHO * G * min(vac_m, 10.3)
+    p_cr = buckling_pressure(e, D, E)
+    buck_sf = p_cr / p_ext if p_ext > 0 else 99.0
     x_series = [round(i * dx, 2) for i in range(N + 1)]
     verdict = (
         "XAVFLI: kuchlanish ruxsat etilgandan yuqori"
@@ -268,6 +331,13 @@ def run(p: dict) -> dict:
         if sf < 1.5
         else "Qoniqarli"
     )
+    if cav:
+        verdict += (
+            f" · kavitatsiya: x = {x_series[i_cav]} m (z = {z[i_cav] + p['valve_elev_m']:.1f} m) da "
+            f"absolyut napor {p_abs_min:.1f} m — ustun uzilishi"
+        )
+    if buck_sf < 2.0:
+        verdict += f" · vakuumda buklanish zaxirasi {buck_sf:.2f} < 2 (x = {x_series[i_cav]} m)"
     return {
         "series": {
             "t": t_series,
@@ -277,8 +347,10 @@ def run(p: dict) -> dict:
         },
         "profile": {
             "x": x_series,
+            "z": [round(v + p["valve_elev_m"], 2) for v in z],
             "h_max_x": [round(v, 2) for v in h_max],
             "h_min_x": [round(v, 2) for v in h_min],
+            "p_head_min_x": [round(v, 2) for v in ph_min],
             "frames": frames,
         },
         "summary": {
@@ -296,8 +368,14 @@ def run(p: dict) -> dict:
             "allowable_mpa": sigma_all,
             "safety_factor": round(sf, 2),
             "cavitation_risk": bool(cav),
+            "cavitation_x_m": x_series[i_cav],
+            "p_abs_min_m": round(p_abs_min, 2),
+            "p_max_x_m": x_series[i_pmax],
+            "buckling_p_cr_bar": round(p_cr / 1e5, 3),
+            "buckling_factor": round(min(buck_sf, 99.0), 2),
             "material": mat_name,
-            "verdict": verdict + (" · kavitatsiya xavfi (manfiy bosim)" if cav else ""),
-            "ok": sf >= 1.5 and not cav,
+            "verdict": verdict,
+            "ok": sf >= 1.5 and not cav and buck_sf >= 2.0,
+            "warnings": warnings,
         },
     }
