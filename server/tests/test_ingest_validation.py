@@ -50,7 +50,7 @@ def test_nan_does_not_poison_alarm_evaluation(client, users, power):
     [
         ("9999-12-31T00:00:00Z", "ts_future"),
         ("1970-01-01T00:00:00Z", "ts_too_old"),
-        (253402300799.0, "ts_future"),  # 9999-12-31 unix
+        (253402300799.0, {"ts_future", "ts_invalid"}),  # 9999-12-31 unix (Windows: fromtimestamp xato)
         (1e18, "ts_invalid"),  # fromtimestamp OverflowError/OSError
         ("bugun", "ts_invalid"),
     ],
@@ -59,7 +59,9 @@ def test_out_of_window_or_invalid_ts_is_rejected(client, users, power, ts, reaso
     r = _post(client, users, [{"key": "AGG1.P", "value": 1, "ts": ts}])
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["accepted"] == 0 and body["rejected"] == [{"key": "AGG1.P", "reason": reason}]
+    reasons = reason if isinstance(reason, set) else {reason}
+    assert body["accepted"] == 0 and len(body["rejected"]) == 1
+    assert body["rejected"][0]["key"] == "AGG1.P" and body["rejected"][0]["reason"] in reasons
     # kelajakdagi tamg'a last_ts ni qotirmagan: hozirgi qiymat qabul qilinadi
     r = _post(client, users, [{"key": "AGG1.P", "value": 2}]).json()
     assert r["accepted"] == 1 and r["rejected"] == []

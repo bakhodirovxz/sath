@@ -248,6 +248,8 @@ export interface Sensor {
   address: Record<string, unknown>;
   low_alarm: number | null;
   high_alarm: number | null;
+  min_raw?: number | null;
+  max_raw?: number | null;
   stale_after_s: number;
   enabled: boolean;
   last_value: number | null;

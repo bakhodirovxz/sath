@@ -422,6 +422,9 @@ class Sensor(Base):
     )  # protokolga xos: topic, node_id, register...
     low_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
     high_alarm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Fizik (o'lchov) diapazoni: tashqaridagi qiymat quality=bad bilan saqlanadi, holatga ta'sir qilmaydi
+    min_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
     stale_after_s: Mapped[int] = mapped_column(Integer, default=600)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Alarm ustuvorligi: low|medium|high|critical (critical/high — ovoz + email)

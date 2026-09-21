@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from datetime import timedelta
 from urllib.parse import urlparse
 
+from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Sensor
 from . import live
@@ -61,6 +63,7 @@ class MqttBridge:
                     project_id,
                     [{"sensor_id": sensor_id, "value": value, "ts": ts, "quality": quality}],
                     source="mqtt",
+                    max_age=timedelta(days=get_settings().ingest_max_age_days),
                 )
 
     def start(self) -> bool:

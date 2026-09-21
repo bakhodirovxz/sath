@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     mqtt_url: str | None = None
     # Historian: xom o'lchovlar shuncha kun saqlanadi (soatlik agregat abadiy); 0 — o'chirilmaydi
     readings_retention_days: int = 90
+    # Jonli ingest (http/mqtt) vaqt tamg'asi oynasi: bundan eski yoki kelajakdagi qiymat rad etiladi
+    ingest_max_age_days: int = 30
+    ingest_future_s: int = 300
     # Yuklashdan keyin fonda QTO/clash hisoblash (katta modellarda CPU; o'chirsa — birinchi so'rovda)
     precompute_geometry: bool = True
     # IFC → fragments (.frag) konvertatsiya: Node + web/tools/ifc2frag.mjs (avto topiladi)

@@ -38,10 +38,11 @@ def test_bad_quality_is_stored_but_does_not_change_state_or_alarm(client, users,
         "accepted": 1,
         "unknown": [],
         "bad": 0,
+        "rejected": [],
     }
     # bad sifatli, alarm chegarasidan yuqori qiymat: tarixga yoziladi, holat o'zgarmaydi
     r = _push(client, users, [{"key": "AGG1.P", "value": 99, "quality": "bad"}])
-    assert r == {"accepted": 1, "unknown": [], "bad": 1}
+    assert r == {"accepted": 1, "unknown": [], "bad": 1, "rejected": []}
     s = _sensor(client, users, "AGG1.P")
     assert s["last_value"] == 20 and s["alarm"] == "ok" and s["last_quality"] == "good"
     assert client.get(f"/api/projects/{pid}/alarms", headers=users["viewer"]).json() == []

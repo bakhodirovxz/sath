@@ -94,12 +94,19 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
         json=[
             {"key": "AGG1.P", "value": 20},
             {"key": "NOMALUM", "value": 1},
-            {"key": "AGG1.P", "value": "xato"},
+            {"key": "AGG1.P", "value": "20"},
         ],
         headers={"X-Ingest-Key": key},
     )
     assert r.status_code == 200, r.text
-    assert r.json() == {"accepted": 1, "unknown": ["NOMALUM", "AGG1.P"], "bad": 0}
+    assert r.json() == {"accepted": 2, "unknown": ["NOMALUM"], "bad": 0, "rejected": []}
+    # matnli/yaroqsiz qiymat butun paketni 422 qiladi (gateway o'zi tozalashi kerak)
+    r = client.post(
+        f"/api/projects/{pid}/readings",
+        json=[{"key": "AGG1.P", "value": "xato"}],
+        headers={"X-Ingest-Key": key},
+    )
+    assert r.status_code == 422
     s = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]
     assert s["last_value"] == 20 and s["alarm"] == "ok" and s["last_ts"]
 
@@ -145,10 +152,17 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
 
 def test_ingest_with_user_token(client, users, sensor):
     pid = users["project_id"]
+    now = datetime.now(timezone.utc)
     # muhandis tokeni bilan ham yuborsa bo'ladi, ko'ruvchi — yo'q
     r = client.post(
         f"/api/projects/{pid}/readings",
-        json=[{"sensor_id": sensor["id"], "value": 12.5, "ts": "2026-01-01T10:00:00Z"}],
+        json=[
+            {
+                "sensor_id": sensor["id"],
+                "value": 12.5,
+                "ts": (now - timedelta(days=1)).isoformat(),
+            }
+        ],
         headers=users["engineer"],
     )
     assert r.status_code == 200 and r.json()["accepted"] == 1
@@ -163,7 +177,7 @@ def test_ingest_with_user_token(client, users, sensor):
     # eski vaqtli o'lchov last_value ni o'zgartirmaydi
     client.post(
         f"/api/projects/{pid}/readings",
-        json=[{"key": "AGG1.P", "value": 99, "ts": "2020-01-01T00:00:00Z"}],
+        json=[{"key": "AGG1.P", "value": 99, "ts": (now - timedelta(days=2)).isoformat()}],
         headers=users["engineer"],
     )
     s = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]

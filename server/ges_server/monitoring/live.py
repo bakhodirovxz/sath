@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timedelta, timezone
 
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
@@ -153,32 +154,64 @@ def sensor_message(sensor: Sensor) -> dict:
     }
 
 
-def ingest(db: Session, project_id: int, items: list[dict], source: str = "http") -> dict:
+def ingest(
+    db: Session,
+    project_id: int,
+    items: list[dict],
+    source: str = "http",
+    max_age: timedelta | None = None,
+) -> dict:
     """O'lchovlarni saqlaydi, alarm holatini yangilaydi, jonli oqimga yuboradi.
 
     items: [{"key": "AGG1.P", "value": 24.3, "ts": "2026-...Z"?, "quality": "good"?, "src_ts": ...?}]
     (yoki "sensor_id"). Sifat: QUALITIES; noma'lum/yo'q → good. `bad` qiymat tarixga yoziladi, lekin
     sensor holatini (last_value, alarm) o'zgartirmaydi va jonli oqimga chiqmaydi.
-    Qaytaradi: {"accepted": n, "unknown": [key...], "bad": n}
+
+    Validatsiya (A3): qiymat chekli son bo'lishi shart (NaN/inf → rejected); `ts` yaroqsiz, kelajakda
+    (> ingest_future_s) yoki `max_age` dan eski bo'lsa element rad etiladi (`rejected`, sabab bilan) —
+    kelajakdagi tamg'a `last_ts` ni qotirmasin. `max_age=None` — chegarasiz (tarixiy CSV import).
+    Sensor `min_raw`/`max_raw` dan tashqaridagi qiymat `quality=bad` bilan saqlanadi.
+    Qaytaradi: {"accepted": n, "unknown": [key...], "bad": n, "rejected": [{"key", "reason"}]}
     """
+    settings = get_settings()
     sensors = {s.key: s for s in db.query(Sensor).filter_by(project_id=project_id).all()}
     by_id = {s.id: s for s in sensors.values()}
-    accepted, bad, unknown, changed, events = 0, 0, [], [], []
+    accepted, bad, unknown, rejected, changed, events = 0, 0, [], [], [], []
     now = datetime.now(timezone.utc)
+    latest = now + timedelta(seconds=settings.ingest_future_s)
+    earliest = now - max_age if max_age is not None else None
     for it in items:
         sensor = sensors.get(str(it.get("key", ""))) or by_id.get(it.get("sensor_id"))
         if sensor is None or not sensor.enabled:
             unknown.append(it.get("key") or it.get("sensor_id"))
             continue
+        ident = it.get("key") or it.get("sensor_id")
         try:
             value = float(it["value"])
         except (KeyError, TypeError, ValueError):
             unknown.append(it.get("key"))
             continue
-        ts = _parse_ts(it.get("ts")) or now
+        if not math.isfinite(value):
+            rejected.append({"key": ident, "reason": "value_not_finite"})
+            continue
+        raw_ts = it.get("ts")
+        ts = _parse_ts(raw_ts) if raw_ts is not None else now
+        if ts is None:
+            rejected.append({"key": ident, "reason": "ts_invalid"})
+            continue
+        if ts > latest:
+            rejected.append({"key": ident, "reason": "ts_future"})
+            continue
+        if earliest is not None and ts < earliest:
+            rejected.append({"key": ident, "reason": "ts_too_old"})
+            continue
         quality = str(it.get("quality") or "good")
         if quality not in QUALITIES:
             quality = "good"
+        if (sensor.min_raw is not None and value < sensor.min_raw) or (
+            sensor.max_raw is not None and value > sensor.max_raw
+        ):
+            quality = "bad"  # fizik diapazondan tashqarida — o'lchov yaroqsiz
         db.add(
             Reading(
                 sensor_id=sensor.id,
@@ -208,7 +241,7 @@ def ingest(db: Session, project_id: int, items: list[dict], source: str = "http"
     for s in changed:
         hub.publish(project_id, {**sensor_message(s), "source": source})
     announce(db, project_id, events)
-    return {"accepted": accepted, "unknown": unknown, "bad": bad}
+    return {"accepted": accepted, "unknown": unknown, "bad": bad, "rejected": rejected}
 
 
 def mark_stale(db: Session, project_id: int) -> list[Sensor]:
@@ -237,12 +270,28 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _parse_ts(v) -> datetime | None:
+    """ISO 8601 (Z yoki offset; naive → UTC), Unix soniya (int/float yoki raqamli satr) yoki datetime.
+    Yaroqsiz/chegaradan tashqari → None (chaqiruvchi rad etadi)."""
     if v is None:
         return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    if isinstance(v, bool):
+        return None
     if isinstance(v, int | float):
-        return datetime.fromtimestamp(v, tz=timezone.utc)
+        if not math.isfinite(v):
+            return None
+        try:
+            return datetime.fromtimestamp(v, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    s = str(v).strip()
     try:
-        dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+    try:
+        return _parse_ts(float(s))
     except ValueError:
         return None

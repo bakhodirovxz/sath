@@ -117,6 +117,12 @@ tarixga yoziladi, lekin sensor holatini, alarmni, agregatni va egizakni o'zgarti
 kelayotgan sensor `stale_after_s` dan keyin «aloqa yo'q» bo'ladi. Soatlik agregatda `pct_good` (good ulushi)
 va `n_bad` saqlanadi.
 
+Validatsiya: `value` chekli son bo'lishi shart (NaN/inf/matn → butun so'rov 422; gateway o'zi
+tozalaydi — o'qish xatosi `quality=bad`, qiymat 0 bilan ketadi). `ts` yaroqsiz, kelajakda
+(`GES_INGEST_FUTURE_S`, default 300 s) yoki `GES_INGEST_MAX_AGE_DAYS` (default 30) dan eski bo'lsa element
+rad etiladi — javobdagi `rejected: [{key, reason}]` (CSV import tarixiy ma'lumot uchun yosh chegarasisiz).
+Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` bilan saqlanadi.
+
 ## Xavfsizlik
 
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.

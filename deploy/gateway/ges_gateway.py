@@ -237,6 +237,15 @@ class Pusher:
         now = datetime.now(timezone.utc).isoformat()
         for it in items:
             it.setdefault("ts", now)
+            # Server chekli bo'lmagan qiymatga butun paketni 422 bilan rad etadi — o'qish xatosi
+            # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3)
+            try:
+                v = float(it.get("value"))
+            except (TypeError, ValueError):
+                v = math.nan
+            if not math.isfinite(v):
+                it["value"] = 0.0
+                it["quality"] = "bad"
         self.buffer.extend(items)
         self.buffer = self.buffer[-self.max_buffer :]
         if not self.buffer:
@@ -247,6 +256,8 @@ class Pusher:
             resp = r.json()
             if resp.get("unknown"):
                 log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
+            if resp.get("rejected"):
+                log.warning("server rad etdi: %s", resp["rejected"][:10])
             log.info("yuborildi: %d (qabul %d)", len(self.buffer), resp.get("accepted", 0))
             self.buffer.clear()
         except requests.RequestException as e:

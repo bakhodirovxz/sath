@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
@@ -20,11 +21,12 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .. import audit
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..auth.security import decode_access_token
+from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
 from . import historian, live, mqtt_bridge
@@ -54,6 +56,9 @@ class SensorIn(BaseModel):
     address: dict[str, Any] = Field(default_factory=dict)
     low_alarm: float | None = None
     high_alarm: float | None = None
+    # fizik diapazon: tashqarida quality=bad
+    min_raw: float | None = None
+    max_raw: float | None = None
     stale_after_s: int = 600
     enabled: bool = True
     priority: Priority = "medium"
@@ -70,11 +75,14 @@ class SensorPatch(BaseModel):
     address: dict[str, Any] | None = None
     low_alarm: float | None = None
     high_alarm: float | None = None
+    min_raw: float | None = None
+    max_raw: float | None = None
     stale_after_s: int | None = None
     enabled: bool | None = None
     priority: Priority | None = None
     writable: bool | None = None
     clear_alarms: bool = False  # low/high ni null qilish uchun
+    clear_raw_range: bool = False  # min_raw/max_raw ni null qilish uchun
 
 
 class SensorOut(BaseModel):
@@ -90,6 +98,8 @@ class SensorOut(BaseModel):
     address: dict
     low_alarm: float | None
     high_alarm: float | None
+    min_raw: float | None = None
+    max_raw: float | None = None
     stale_after_s: int
     enabled: bool
     last_value: float | None
@@ -103,12 +113,20 @@ class SensorOut(BaseModel):
 
 
 class ReadingIn(BaseModel):
-    """Gateway ma'lumotlari — bitta yaroqsiz qiymat butun paketni rad etmasin (value tekshiruvi ingest da)."""
+    """Gateway ma'lumotlari. `value` chekli son bo'lishi shart (NaN/inf/matn → 422 — gateway o'zi
+    tozalashi kerak); `ts` tekshiruvi ingest da (yaroqsiz/kelajak/eski → `rejected`)."""
 
     key: str | None = None
     sensor_id: int | None = None
-    value: Any
+    value: float
     ts: datetime | float | str | None = None
+
+    @field_validator("value")
+    @classmethod
+    def _finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("qiymat chekli son bo'lishi kerak (NaN/inf emas)")
+        return v
     # QUALITIES (good|uncertain|bad|substituted|manual); yo'q bo'lsa good
     quality: str | None = None
     # manbadagi vaqt tamg'asi (OPC UA SourceTimestamp, gateway o'qish vaqti)
@@ -294,11 +312,13 @@ def _get_sensor(db, sensor_id: int, user: User, required: Role) -> Sensor:
 @router.patch("/sensors/{sensor_id}", response_model=SensorOut)
 def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     s = _get_sensor(db, sensor_id, user, Role.engineer)
-    changes = body.model_dump(exclude_none=True, exclude={"clear_alarms"})
+    changes = body.model_dump(exclude_none=True, exclude={"clear_alarms", "clear_raw_range"})
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:
         s.low_alarm = s.high_alarm = None
+    if body.clear_raw_range:
+        s.min_raw = s.max_raw = None
     if s.last_value is not None and s.alarm != AlarmState.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
     audit.log(
@@ -387,7 +407,12 @@ def push_readings(
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
         )
-    return live.ingest(db, project_id, [b.model_dump() for b in body])
+    return live.ingest(
+        db,
+        project_id,
+        [b.model_dump() for b in body],
+        max_age=timedelta(days=get_settings().ingest_max_age_days),
+    )
 
 
 @router.post("/sensors/{sensor_id}/import")

@@ -82,7 +82,7 @@ xavfsizlik qarorlariga ta'sir qiladi.
 
 Butun tizimning eng past qatlami. Bu bosqich tugamaguncha yuqoridagi hech narsa ishonchli emas.
 
-### A1 — Reading ga sifat bayrog'i va manbadagi vaqt tamg'asi ✅
+### A1 — Reading ga sifat bayrog'i va manbadagi vaqt tamg'asi ✅ (`2e4fb09`)
 
 Muammo: `server/ges_server/orm.py:419` — `Reading` faqat `(sensor_id, ts, value)`. Sifat tushunchasi
 yo'q. OPC UA `StatusCode`, IEC 61850 quality bitlari, qo'lda kiritilgan qiymat, o'rnini bosuvchi
@@ -139,7 +139,7 @@ Qabul mezoni:
 
 Bog'liqlik: yo'q. Eng birinchi bajarilishi kerak.
 
-### A3 — Kiruvchi qiymat va vaqt tamg'asi validatsiyasi
+### A3 — Kiruvchi qiymat va vaqt tamg'asi validatsiyasi ✅
 
 Muammo: `monitoring/router.py:103` — `value: Any`, `live.py:171` — yalang'och `float()`.
 `"nan"`, `"inf"`, `"1e400"` o'tadi. NaN kelsa `evaluate_alarm` (`live.py:60`) dagi barcha
