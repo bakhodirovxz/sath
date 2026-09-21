@@ -4,6 +4,7 @@ import threading
 from datetime import timedelta
 
 import pytest
+from conftest import send_command
 from ges_server import config
 from ges_server.db import SessionLocal
 from ges_server.monitoring import control
@@ -47,11 +48,7 @@ def gate(client, users):
 
 
 def _cmd(client, users, sid, value, hdr=None):
-    return client.post(
-        f"/api/projects/{users['project_id']}/commands",
-        json={"sensor_id": sid, "value": value, "note": "t"},
-        headers=hdr or users["engineer"],
-    )
+    return send_command(client, hdr or users["engineer"], users["project_id"], sid, value, "t")
 
 
 def _key(client, users):
@@ -115,7 +112,7 @@ def test_expired_pending_not_given_to_gateway(client, users, gate):
         c.expires_at = utcnow() - timedelta(seconds=1)
         db.commit()
     key = _key(client, users)
-    got = client.get(f"/api/projects/{users['project_id']}/commands/pending", headers={"X-Ingest-Key": key}).json()
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Ingest-Key": key}).json()
     assert got == []
     cmds = client.get(f"/api/projects/{users['project_id']}/commands", headers=users["viewer"]).json()
     assert cmds[0]["id"] == cid and cmds[0]["status"] == "expired"
@@ -130,7 +127,7 @@ def test_watchdog_frees_sensor_stuck_in_sent(client, users, gate, monkeypatch):
     monkeypatch.setattr(config.get_settings(), "command_sent_timeout_s", 30)
     cid = _cmd(client, users, gate["id"], 40).json()["id"]
     key = _key(client, users)
-    got = client.get(f"/api/projects/{users['project_id']}/commands/pending", headers={"X-Ingest-Key": key}).json()
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Ingest-Key": key}).json()
     assert len(got) == 1
     # yangi buyruq — sensor band (sent)
     assert _cmd(client, users, gate["id"], 41).status_code == 409

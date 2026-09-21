@@ -213,7 +213,7 @@ Bog'liqlik: A2.
 Hozir bu eng zaif joy. `POST /commands` amalda Modbus holding registeriga yozadigan REST
 endpoint, hech qanday sanoat qo'riqchisisiz.
 
-### B1 — Buyruq xavfsizlik konverti ✅
+### B1 — Buyruq xavfsizlik konverti ✅ (`b680e5c`)
 
 Muammo (`server/ges_server/monitoring/control.py:104`):
 - `CommandIn.value: float` cheksiz. Sensorda min/max maydoni umuman yo'q (`orm.py:384`) —
@@ -248,7 +248,7 @@ Qabul mezoni:
 
 Bog'liqlik: A2.
 
-### B2 — Select-before-operate va readback
+### B2 — Select-before-operate va readback ✅
 
 Muammo: buyruq bitta POST bilan yuboriladi. `ack` (`control.py:238`) gateway ning o'z so'zini
 yozadi — PLC qiymatni qabul qilgani tekshirilmaydi.

@@ -1,12 +1,23 @@
 """Supervisory control va smena jurnali.
 
-Buyruqlar: dispetcher (operator+) yozish mumkin bo'lgan sensorga (setpoint/rele) qiymat yuboradi →
-pending; gateway X-Ingest-Key bilan navbatni oladi (sent), SCADA ga yozadi va natijani qaytaradi
-(acked/failed). Har qadam audit va jonli oqimda. Smena jurnali: dispetcher yozuvlari.
+Buyruqlar — select-before-operate (IEC 60870-5-101/104 va ISA-101 amaliyoti, B2):
+  1. `POST /commands/select` — sensor va qiymat tekshiriladi (konvert B1), qisqa muddatli (30 s)
+     imzolangan `select_token` qaytadi; hech narsa yozilmaydi.
+  2. `POST /commands/execute` — token bilan; qiymat/sensor/foydalanuvchi tokenga bog'langan.
+     `requires_dual_approval` sensorlarda buyruq `pending_approval` — boshqa operator
+     `POST /commands/{id}/approve` qilmaguncha gateway ga bermaydi; muallif o'zini tasdiqlay olmaydi.
+  3. Gateway `POST /commands/claim` (X-Ingest-Key) bilan navbatni oladi (sent), SCADA ga yozadi,
+     `ack` (acked/failed) va yozgandan keyin o'qigan qiymatni `readback` ga yuboradi — server
+     kutilgan va haqiqiy qiymatni solishtiradi (`readback_tolerance`), farq bo'lsa `mismatch` +
+     bildirishnoma. Har qadam audit va jonli oqimda. Smena jurnali: dispetcher yozuvlari.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import math
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -65,11 +76,80 @@ class CommandOut(BaseModel):
     updated_at: datetime
     expires_at: datetime | None = None
     sent_at: datetime | None = None
+    approved_by_username: str | None = None
+    approved_at: datetime | None = None
+    readback_value: float | None = None
+    readback_at: datetime | None = None
 
 
 class CommandAck(BaseModel):
     status: Literal["sent", "acked", "failed"]
     result: str = Field("", max_length=400)
+
+
+class SelectOut(BaseModel):
+    select_token: str
+    sensor_id: int
+    value: float
+    expires_at: datetime
+    requires_approval: bool
+
+
+class ExecuteIn(BaseModel):
+    select_token: str
+    note: str = Field("", max_length=200)
+
+
+class ReadbackIn(BaseModel):
+    value: float
+    ts: datetime | None = None
+
+    @field_validator("value")
+    @classmethod
+    def _finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("qiymat chekli son bo'lishi kerak")
+        return v
+
+
+SELECT_TTL_S = 30
+
+
+def _sign(payload: bytes) -> str:
+    key = get_settings().ensure_secret_key().encode("utf-8")
+    return hmac.new(key, payload, hashlib.sha256).hexdigest()[:32]
+
+
+def make_select_token(user_id: int, project_id: int, sensor_id: int, value: float) -> tuple[str, datetime]:
+    """Imzolangan, holatsiz token: (user, project, sensor, value, exp) — 30 s."""
+    exp = utcnow() + timedelta(seconds=SELECT_TTL_S)
+    body = json.dumps(
+        {"u": user_id, "p": project_id, "s": sensor_id, "v": value, "e": int(exp.timestamp())},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    b = base64.urlsafe_b64encode(body).decode("ascii").rstrip("=")
+    return f"{b}.{_sign(body)}", exp
+
+
+def parse_select_token(token: str, user_id: int, project_id: int) -> dict:
+    """Tekshiradi: imzo, muddat, foydalanuvchi va loyiha mosligi. Xato → HTTPException 400/403."""
+    try:
+        b, sig = token.split(".", 1)
+        body = base64.urlsafe_b64decode(b + "=" * (-len(b) % 4))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "select_token noto'g'ri") from e
+    if not hmac.compare_digest(sig, _sign(body)):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "select_token imzosi noto'g'ri")
+    d = json.loads(body)
+    if d["u"] != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "select_token boshqa foydalanuvchiniki")
+    if d["p"] != project_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "select_token boshqa loyihaniki")
+    if int(utcnow().timestamp()) > d["e"]:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"select muddati ({SELECT_TTL_S} s) o'tdi — qayta tanlang"
+        )
+    return d
 
 
 def _out(c: Command) -> CommandOut:
@@ -88,6 +168,10 @@ def _out(c: Command) -> CommandOut:
         updated_at=_aware(c.updated_at),
         expires_at=_aware(c.expires_at),
         sent_at=_aware(c.sent_at),
+        approved_by_username=c.approver.username if c.approver is not None else None,
+        approved_at=_aware(c.approved_at),
+        readback_value=c.readback_value,
+        readback_at=_aware(c.readback_at),
     )
 
 
@@ -217,11 +301,8 @@ def list_commands(
     return [_out(c) for c in q.all()]
 
 
-@router.post("/projects/{project_id}/commands", response_model=CommandOut, status_code=201)
-def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser, db: DB):
-    """Buyruq yuborish (operator+). Sensor `writable` bo'lishi kerak; bitta sensorga bir vaqtda
-    faqat bitta bajarilmagan buyruq."""
-    s = db.get(Sensor, body.sensor_id)
+def _target_sensor(db, project: Project, sensor_id: int, value: float) -> Sensor:
+    s = db.get(Sensor, sensor_id)
     if s is None or s.project_id != project.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sensor topilmadi")
     if not s.writable:
@@ -230,14 +311,59 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         )
     if not s.enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sensor o'chirilgan")
-    check_envelope(db, s, body.value)
+    check_envelope(db, s, value)
+    return s
+
+
+@router.post("/projects/{project_id}/commands", status_code=410)
+def create_command_legacy(project: OperatorProject):
+    """Bir bosqichli buyruq olib tashlandi (B2): `POST .../commands/select` → `.../commands/execute`."""
+    raise HTTPException(
+        status.HTTP_410_GONE,
+        "Buyruq ikki bosqichli: /commands/select (token) → /commands/execute (select-before-operate)",
+    )
+
+
+@router.post("/projects/{project_id}/commands/select", response_model=SelectOut)
+def select_command(body: CommandIn, project: OperatorProject, user: CurrentUser, db: DB):
+    """1-bosqich: tanlash — sensor/qiymat tekshiriladi, 30 s li imzolangan token qaytadi, yozilmaydi."""
+    s = _target_sensor(db, project, body.sensor_id, body.value)
+    token, exp = make_select_token(user.id, project.id, s.id, body.value)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="command.select",
+        target_type="sensor",
+        target_id=s.id,
+        project_id=project.id,
+        detail={"sensor": s.key, "value": body.value},
+    )
+    db.commit()
+    return SelectOut(
+        select_token=token,
+        sensor_id=s.id,
+        value=body.value,
+        expires_at=exp,
+        requires_approval=bool(s.requires_dual_approval),
+    )
+
+
+@router.post("/projects/{project_id}/commands/execute", response_model=CommandOut, status_code=201)
+def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser, db: DB):
+    """2-bosqich: bajarish — faqat amaldagi select_token bilan (sensor va qiymat tokenda). Sensor
+    `requires_dual_approval` bo'lsa buyruq `pending_approval` — boshqa operator tasdiqlaydi."""
+    tok = parse_select_token(body.select_token, user.id, project.id)
+    s = _target_sensor(db, project, int(tok["s"]), float(tok["v"]))
+    value = float(tok["v"])
     for c in expire_pending(db, project.id):  # eskirgan pending sensorni band qilmasin
         _publish(c)
     open_ = (
         db.query(Command)
         .filter(
             Command.sensor_id == s.id,
-            Command.status.in_([CommandStatus.pending, CommandStatus.sent]),
+            Command.status.in_(
+                [CommandStatus.pending, CommandStatus.sent, CommandStatus.pending_approval]
+            ),
         )
         .first()
     )
@@ -246,13 +372,16 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
             status.HTTP_409_CONFLICT,
             f"Buyruq #{open_.id} hali bajarilmagan (kuting yoki bekor qiling)",
         )
+    needs_approval = bool(s.requires_dual_approval)
     c = Command(
         project_id=project.id,
         sensor_id=s.id,
-        value=body.value,
+        value=value,
         note=body.note,
         created_by=user.id,
-        expires_at=utcnow() + timedelta(seconds=s.command_ttl_s or 300),
+        status=CommandStatus.pending_approval if needs_approval else CommandStatus.pending,
+        # TTL tasdiqdan keyin boshlanadi (approve da qayta qo'yiladi)
+        expires_at=None if needs_approval else utcnow() + timedelta(seconds=s.command_ttl_s or 300),
     )
     db.add(c)
     try:
@@ -270,18 +399,62 @@ def create_command(body: CommandIn, project: OperatorProject, user: CurrentUser,
         target_type="command",
         target_id=c.id,
         project_id=project.id,
-        detail={"sensor": s.key, "value": body.value, "note": body.note},
+        detail={"sensor": s.key, "value": value, "note": body.note, "approval": needs_approval},
     )
-    notifications.push(
-        db,
-        [uid for uid in notifications.member_ids(db, project.id, Role.approver, exclude=user.id)],
-        "system",
-        f"Buyruq: {s.name} → {body.value:g} {s.unit}",
-        f"{user.username}: {body.note}",
-        f"/projects/{project.id}/dashboard",
-    )
+    if needs_approval:
+        # Tasdiqlashi mumkin bo'lganlar (operator+, muallifdan tashqari)
+        notifications.push(
+            db,
+            notifications.member_ids(db, project.id, Role.operator, exclude=user.id, at_least=True),
+            "system",
+            f"Tasdiq kutilmoqda: {s.name} → {value:g} {s.unit}",
+            f"{user.username}: {body.note} — ikkinchi kishi tasdig'i kerak",
+            f"/projects/{project.id}/dashboard",
+        )
+    else:
+        notifications.push(
+            db,
+            [uid for uid in notifications.member_ids(db, project.id, Role.approver, exclude=user.id)],
+            "system",
+            f"Buyruq: {s.name} → {value:g} {s.unit}",
+            f"{user.username}: {body.note}",
+            f"/projects/{project.id}/dashboard",
+        )
     db.commit()
     db.refresh(c)
+    _publish(c)
+    return _out(c)
+
+
+@router.post("/commands/{command_id}/approve", response_model=CommandOut)
+def approve_command(command_id: int, user: CurrentUser, db: DB):
+    """Ikki kishi tasdig'i: boshqa operator+ tasdiqlaydi; muallif o'zini tasdiqlay olmaydi.
+    Tasdiqdan keyin buyruq `pending` (TTL boshlanadi) va gateway ga beriladi."""
+    c = db.get(Command, command_id)
+    if c is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
+    if not has_role(get_project_role(db, c.project_id, user), Role.operator):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
+    if c.status != CommandStatus.pending_approval:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — tasdiq kutilmayapti")
+    if c.created_by == user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Muallif o'z buyrug'ini tasdiqlay olmaydi (ikki kishi qoidasi)"
+        )
+    now = utcnow()
+    c.status, c.updated_at = CommandStatus.pending, now
+    c.approved_by, c.approved_at = user.id, now
+    c.expires_at = now + timedelta(seconds=c.sensor.command_ttl_s or 300)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="command.approve",
+        target_type="command",
+        target_id=c.id,
+        project_id=c.project_id,
+        detail={"sensor": c.sensor.key, "value": c.value, "author": c.created_by},
+    )
+    db.commit()
     _publish(c)
     return _out(c)
 
@@ -293,11 +466,11 @@ def cancel_command(command_id: int, user: CurrentUser, db: DB):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
     if not has_role(get_project_role(db, c.project_id, user), Role.operator):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
-    if c.status != CommandStatus.pending:
+    if c.status not in (CommandStatus.pending, CommandStatus.pending_approval):
         # sent — gateway allaqachon olgan, PLC ga yozilishi mumkin: bekor qilish yolg'on xavfsizlik beradi;
         # javob kelmasa watchdog (command_sent_timeout_s) failed ga o'tkazadi
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "Faqat kutayotgan (pending) buyruq bekor qilinadi"
+            status.HTTP_409_CONFLICT, "Faqat kutayotgan (pending / tasdiq kutayotgan) buyruq bekor qilinadi"
         )
     c.status, c.updated_at = CommandStatus.cancelled, utcnow()
     audit.log(
@@ -325,9 +498,16 @@ def _gateway_project(db, project_id: int, x_ingest_key: str | None) -> Project:
     return project
 
 
-@router.get("/projects/{project_id}/commands/pending")
-def pending_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None, Header()] = None):
-    """Gateway uchun: kutayotgan buyruqlar (X-Ingest-Key). Olingach `sent` ga o'tadi."""
+@router.get("/projects/{project_id}/commands/pending", status_code=410)
+def pending_commands_legacy(project_id: int):
+    """Holatni o'zgartiradigan GET olib tashlandi (proksi qayta urinishi navbatni bo'shatardi) —
+    gateway `POST .../commands/claim` ishlatadi."""
+    raise HTTPException(status.HTTP_410_GONE, "POST /commands/claim ishlating")
+
+
+@router.post("/projects/{project_id}/commands/claim")
+def claim_commands(project_id: int, db: DB, x_ingest_key: Annotated[str | None, Header()] = None):
+    """Gateway uchun: kutayotgan buyruqlarni olish (X-Ingest-Key). Olingach `sent` ga o'tadi."""
     project = _gateway_project(db, project_id, x_ingest_key)
     expired = expire_pending(db, project.id)
     rows = (
@@ -391,6 +571,55 @@ def ack_command(
             "system",
             f"Buyruq bajarilmadi: {c.sensor.name} → {c.value:g}",
             body.result[:200],
+            f"/projects/{c.project_id}/dashboard",
+        )
+    db.commit()
+    _publish(c)
+    return _out(c)
+
+
+@router.post("/commands/{command_id}/readback", response_model=CommandOut)
+def readback_command(
+    command_id: int,
+    body: ReadbackIn,
+    db: DB,
+    x_ingest_key: Annotated[str | None, Header()] = None,
+):
+    """Gateway yozgandan keyin PLC dan o'qigan haqiqiy qiymat. Kutilgan bilan solishtiriladi
+    (`readback_tolerance`, nisbiy; ±1e-6 absolyut): mos → acked (readback bilan), farq → mismatch
+    + operator/tasdiqlovchilarga bildirishnoma (alarm ta'rifi C1 da)."""
+    c = db.get(Command, command_id)
+    if c is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
+    _gateway_project(db, c.project_id, x_ingest_key)
+    if c.status not in (CommandStatus.sent, CommandStatus.acked):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — readback kutilmaydi")
+    now = utcnow()
+    c.readback_value, c.readback_at, c.updated_at = body.value, now, now
+    tol = max(abs(c.value) * (c.sensor.readback_tolerance or 0.0), 1e-6)
+    ok = abs(body.value - c.value) <= tol
+    c.status = CommandStatus.acked if ok else CommandStatus.mismatch
+    if not ok:
+        c.result = f"readback {body.value:g} ≠ buyruq {c.value:g} (chegara ±{tol:g})"
+    audit.log(
+        db,
+        user_id=None,
+        action="command.readback" if ok else "command.mismatch",
+        target_type="command",
+        target_id=c.id,
+        project_id=c.project_id,
+        detail={"expected": c.value, "actual": body.value, "tolerance": tol},
+    )
+    if not ok:
+        notifications.push(
+            db,
+            sorted(
+                set(notifications.member_ids(db, c.project_id, Role.operator, at_least=True))
+                | {c.created_by}
+            ),
+            "alarm",
+            f"Buyruq mos kelmadi: {c.sensor.name}",
+            c.result,
             f"/projects/{c.project_id}/dashboard",
         )
     db.commit()

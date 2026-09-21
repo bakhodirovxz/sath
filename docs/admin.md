@@ -77,7 +77,11 @@ amallari (kvitlash, buyruqlar, jurnal, texnik xizmat qaydi), modelni o'zgartirma
 Buyruq xavfsizlik konverti (sensor sozlamalarida): `min_setpoint`/`max_setpoint` (diapazon, tashqarida 400),
 `max_rate_per_min` (oxirgi buyruq/o'lchovga nisbatan o'zgarish tezligi), `command_ttl_s` (gateway shu vaqt
 ichida olmasa buyruq `expired` — eskirgan setpoint bajarilmaydi, default 300 s), `requires_dual_approval`
-(B2 dan boshlab). Gateway olgan (`sent`) buyruq `GES_COMMAND_SENT_TIMEOUT_S` (120 s) ichida javob
+(ikkinchi operator `approve` qilmaguncha gateway ga bermaydi; muallif o'zini tasdiqlay olmaydi),
+`readback_tolerance` (gateway yozgandan keyin o'qigan qiymat farqi, nisbiy; oshsa `mismatch`).
+Buyruq ikki bosqichli (select-before-operate): `POST .../commands/select` → 30 s li token →
+`POST .../commands/execute`; bir bosqichli `POST .../commands` va gateway uchun `GET .../commands/pending`
+olib tashlangan (410) — gateway `POST .../commands/claim`. Gateway olgan (`sent`) buyruq `GES_COMMAND_SENT_TIMEOUT_S` (120 s) ichida javob
 qaytarmasa watchdog uni `failed` qiladi va sensor bo'shaydi; `sent` ni qo'lda bekor qilib bo'lmaydi
 (PLC ga yozilgan bo'lishi mumkin). Bitta sensorga bir vaqtda bitta ochiq buyruq — DB indeksi bilan.
 Kunlik hisobot: `GES_DAILY_REPORT_HOUR` (UTC soat, default 6; -1 — o'chirilgan) — muhandis/tasdiqlovchi/

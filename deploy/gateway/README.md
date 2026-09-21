@@ -19,10 +19,14 @@ Windows da doimiy ishlashi uchun Task Scheduler («At startup», «Run whether u
 ## Buyruqlar (supervisory control)
 
 Serverda `writable` belgilangan sensor (setpoint/rele) uchun dispetcher **Dispetcher paneli → Buyruq**
-yuboradi. Gateway har siklda `GET /api/projects/{id}/commands/pending` (X-Ingest-Key) dan navbatni oladi va
-teg konfiguratsiyasi bo'yicha yozadi: Modbus — `write_registers` (address/type/scale), OPC UA — `write_value`,
-sim — simulyator qiymati. Natija `POST /api/commands/{id}/ack` (`acked`/`failed` + matn) — dispetcher
-panelida va audit jurnalida ko'rinadi. O'chirish: konfiguratsiyada `"commands": false`.
+yuboradi (select-before-operate: tanlash → 30 s ichida bajarish; `requires_dual_approval` nuqtalarda ikkinchi
+operator tasdig'i). Gateway har siklda `POST /api/projects/{id}/commands/claim` (X-Ingest-Key) bilan navbatni
+oladi va teg konfiguratsiyasi bo'yicha yozadi: Modbus — `write_registers` (address/type/scale), OPC UA —
+`write_value`, sim — simulyator qiymati. Natija `POST /api/commands/{id}/ack` (`acked`/`failed` + matn), so'ng
+gateway tegni qayta o'qib `POST /api/commands/{id}/readback` ga yuboradi — server kutilgan qiymat bilan
+solishtiradi (`readback_tolerance`), farq bo'lsa buyruq `mismatch` va dispetcherlarga bildirishnoma.
+Buyruq TTL (`command_ttl_s`) ichida olinmasa `expired`; `sent` da javob kelmasa watchdog `failed` qiladi.
+O'chirish: konfiguratsiyada `"commands": false`.
 
 
 ## OPC UA teglarini avtomatik topish (browse)

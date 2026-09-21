@@ -23,12 +23,22 @@ def member_ids(
     role: Role | None = None,
     exclude: int | None = None,
     with_admins: bool = False,
+    at_least: bool = False,
 ) -> list[int]:
-    """Loyiha a'zolari (ixtiyoriy: faqat shu rol); with_admins — tizim adminlari ham."""
+    """Loyiha a'zolari (ixtiyoriy: faqat shu rol; at_least — shu rol va undan yuqori);
+    with_admins — tizim adminlari ham."""
+    from .auth.deps import has_role
+
     q = db.query(ProjectMember).filter_by(project_id=project_id)
-    if role is not None:
+    if role is not None and not at_least:
         q = q.filter_by(role=role)
-    ids = {m.user_id for m in q.all() if m.user.is_active and m.user_id != exclude}
+    ids = {
+        m.user_id
+        for m in q.all()
+        if m.user.is_active
+        and m.user_id != exclude
+        and (role is None or not at_least or has_role(m.role, role))
+    }
     if with_admins:
         ids |= {
             u.id

@@ -113,6 +113,22 @@ def ifc_file(tmp_path) -> Path:
     return make_ifc(tmp_path / "model.ifc")
 
 
+def send_command(client, headers, project_id: int, sensor_id: int, value, note: str = ""):
+    """Ikki bosqichli buyruq (select-before-operate). Select xato bersa o'sha javob qaytadi."""
+    r = client.post(
+        f"/api/projects/{project_id}/commands/select",
+        json={"sensor_id": sensor_id, "value": value, "note": note},
+        headers=headers,
+    )
+    if r.status_code != 200:
+        return r
+    return client.post(
+        f"/api/projects/{project_id}/commands/execute",
+        json={"select_token": r.json()["select_token"], "note": note},
+        headers=headers,
+    )
+
+
 def upload(client, headers, model_id, path: Path, message="", parent_id=None):
     data = {"message": message}
     if parent_id is not None:

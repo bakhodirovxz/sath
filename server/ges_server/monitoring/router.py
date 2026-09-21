@@ -70,6 +70,7 @@ class SensorIn(BaseModel):
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
     command_ttl_s: int = Field(300, ge=10, le=86400)
+    readback_tolerance: float = Field(0.01, ge=0, le=1)
 
 
 class SensorPatch(BaseModel):
@@ -93,6 +94,7 @@ class SensorPatch(BaseModel):
     max_rate_per_min: float | None = None
     requires_dual_approval: bool | None = None
     command_ttl_s: int | None = Field(None, ge=10, le=86400)
+    readback_tolerance: float | None = Field(None, ge=0, le=1)
     clear_alarms: bool = False  # low/high ni null qilish uchun
     clear_raw_range: bool = False  # min_raw/max_raw ni null qilish uchun
     clear_setpoint_range: bool = False  # min/max_setpoint, max_rate_per_min ni null qilish uchun
@@ -126,6 +128,7 @@ class SensorOut(BaseModel):
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
     command_ttl_s: int = 300
+    readback_tolerance: float = 0.01
 
     model_config = {"from_attributes": True}
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from conftest import make_user, upload
+from conftest import make_user, send_command, upload
 from ges_server.db import SessionLocal
 from ges_server.monitoring import twin
 from ges_server.orm import Project
@@ -101,51 +101,33 @@ def test_commands_gateway_flow(client, users, operator, admin):
         address={"register": 10},
     )
     ro = _sensor(client, users, "RES.H", "Sath", "level", "m")
-    # writable emas → 400; viewer → 403
+    # bir bosqichli eski endpoint yo'q (410); writable emas → 400; viewer → 403
     assert (
         client.post(
-            f"/api/projects/{pid}/commands",
-            json={"sensor_id": ro["id"], "value": 1},
-            headers=operator,
+            f"/api/projects/{pid}/commands", json={"sensor_id": sp["id"], "value": 1}, headers=operator
         ).status_code
-        == 400
+        == 410
     )
-    assert (
-        client.post(
-            f"/api/projects/{pid}/commands",
-            json={"sensor_id": sp["id"], "value": 50},
-            headers=users["viewer"],
-        ).status_code
-        == 403
-    )
-    r = client.post(
-        f"/api/projects/{pid}/commands",
-        json={"sensor_id": sp["id"], "value": 50, "note": "50 % ga"},
-        headers=operator,
-    )
+    assert send_command(client, operator, pid, ro["id"], 1).status_code == 400
+    assert send_command(client, users["viewer"], pid, sp["id"], 50).status_code == 403
+    r = send_command(client, operator, pid, sp["id"], 50, "50 % ga")
     assert r.status_code == 201, r.text
     c = r.json()
     assert c["status"] == "pending" and c["author_username"] == "operator"
     # ikkinchisi — 409 (bittasi bajarilmagan)
-    assert (
-        client.post(
-            f"/api/projects/{pid}/commands",
-            json={"sensor_id": sp["id"], "value": 60},
-            headers=operator,
-        ).status_code
-        == 409
-    )
-    # gateway: kalit bilan oladi → sent
+    assert send_command(client, operator, pid, sp["id"], 60).status_code == 409
+    # gateway: kalit bilan oladi (POST claim) → sent; eski GET — 410
     key = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()[
         "ingest_key"
     ]
-    assert client.get(f"/api/projects/{pid}/commands/pending").status_code == 401
-    pend = client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Ingest-Key": key}).json()
+    assert client.post(f"/api/projects/{pid}/commands/claim").status_code == 401
+    assert client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Ingest-Key": key}).status_code == 410
+    pend = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json()
     assert (
         len(pend) == 1 and pend[0]["key"] == "GATE1.SP" and pend[0]["address"] == {"register": 10}
     )
     assert (
-        client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Ingest-Key": key}).json()
+        client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key}).json()
         == []
     )
     assert (
@@ -164,10 +146,8 @@ def test_commands_gateway_flow(client, users, operator, admin):
     n = client.get("/api/notifications?unread=true", headers=users["approver"]).json()
     assert any("Buyruq" in x["title"] for x in n)
     # failed → muallifga bildirishnoma
-    c2 = client.post(
-        f"/api/projects/{pid}/commands", json={"sensor_id": sp["id"], "value": 20}, headers=operator
-    ).json()
-    client.get(f"/api/projects/{pid}/commands/pending", headers={"X-Ingest-Key": key})
+    c2 = send_command(client, operator, pid, sp["id"], 20).json()
+    client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Ingest-Key": key})
     client.post(
         f"/api/commands/{c2['id']}/ack",
         json={"status": "failed", "result": "timeout"},

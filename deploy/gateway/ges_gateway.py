@@ -183,8 +183,9 @@ class Commander:
 
     def __init__(self, cfg: dict, sources: list, source_cfgs: list[dict]):
         base = cfg["server"].rstrip("/")
-        self.pending_url = base + f"/api/projects/{cfg['project_id']}/commands/pending"
+        self.claim_url = base + f"/api/projects/{cfg['project_id']}/commands/claim"
         self.ack_url = base + "/api/commands/{id}/ack"
+        self.readback_url = base + "/api/commands/{id}/readback"
         self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
         self.tags: dict[str, tuple[object, dict]] = {}
         for src, scfg in zip(sources, source_cfgs, strict=False):
@@ -193,7 +194,7 @@ class Commander:
 
     def run_once(self) -> None:
         try:
-            cmds = requests.get(self.pending_url, headers=self.headers, timeout=10).json()
+            cmds = requests.post(self.claim_url, headers=self.headers, timeout=10).json()
         except (requests.RequestException, ValueError) as e:
             log.warning("buyruqlarni olib bo'lmadi: %s", e)
             return
@@ -224,6 +225,30 @@ class Commander:
                 )
             except requests.RequestException as e:
                 log.warning("buyruq #%s natijasi yuborilmadi: %s", c["id"], e)
+            if status == "acked":
+                self._readback(c, src_tag)
+
+    def _readback(self, c: dict, src_tag) -> None:
+        """Yozgandan keyin o'sha tegni qayta o'qib serverga yuboradi — server kutilgan qiymat bilan
+        solishtiradi (mismatch bo'lsa alarm/bildirishnoma). O'qib bo'lmasa — o'tkazib yuboriladi."""
+        try:
+            src, tag = src_tag
+            if isinstance(src, SimSource):
+                value = float(c["value"])  # simulyatorda o'rnatilgan qiymat
+            else:
+                rows = [r for r in src.read() if r.get("key") == c["key"]]
+                if not rows:
+                    log.warning("buyruq #%s readback: teg o'qilmadi", c["id"])
+                    return
+                value = float(rows[0]["value"])
+            requests.post(
+                self.readback_url.format(id=c["id"]),
+                json={"value": value, "ts": datetime.now(timezone.utc).isoformat()},
+                headers=self.headers,
+                timeout=10,
+            )
+        except Exception as e:  # noqa: BLE001 — readback ixtiyoriy, asosiy siklni to'xtatmasin
+            log.warning("buyruq #%s readback yuborilmadi: %s", c["id"], e)
 
 
 class Pusher:

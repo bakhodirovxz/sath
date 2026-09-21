@@ -256,6 +256,7 @@ export interface Sensor {
   max_rate_per_min?: number | null;
   requires_dual_approval?: boolean;
   command_ttl_s?: number;
+  readback_tolerance?: number;
   stale_after_s: number;
   enabled: boolean;
   last_value: number | null;
@@ -281,8 +282,9 @@ export interface SensorIn {
   priority?: "low" | "medium" | "high" | "critical";
   writable?: boolean;
 }
-export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired";
-export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null }
+export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch";
+export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
+export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
 export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean }
@@ -624,7 +626,10 @@ export const api = {
   twin: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin`),
   twinRun: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin/run`, { method: "POST" }),
   commands: (projectId: number, hours = 168) => request<Command[]>(`/api/projects/${projectId}/commands?hours=${hours}`),
-  sendCommand: (projectId: number, sensor_id: number, value: number, note = "") => request<Command>(`/api/projects/${projectId}/commands`, { method: "POST", body: json({ sensor_id, value, note }) }),
+  /** Select-before-operate: 1) select → 30 s li token, 2) execute token bilan */
+  selectCommand: (projectId: number, sensor_id: number, value: number, note = "") => request<SelectResult>(`/api/projects/${projectId}/commands/select`, { method: "POST", body: json({ sensor_id, value, note }) }),
+  executeCommand: (projectId: number, select_token: string, note = "") => request<Command>(`/api/projects/${projectId}/commands/execute`, { method: "POST", body: json({ select_token, note }) }),
+  approveCommand: (id: number) => request<Command>(`/api/commands/${id}/approve`, { method: "POST" }),
   cancelCommand: (id: number) => request<Command>(`/api/commands/${id}/cancel`, { method: "POST" }),
   journal: (projectId: number, hours = 168) => request<JournalEntry[]>(`/api/projects/${projectId}/journal?hours=${hours}`),
   addJournal: (projectId: number, text: string, kind: JournalEntry["kind"] = "note") => request<JournalEntry>(`/api/projects/${projectId}/journal`, { method: "POST", body: json({ text, kind }) }),

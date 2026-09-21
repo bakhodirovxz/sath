@@ -440,6 +440,8 @@ class Sensor(Base):
         Boolean, default=False, server_default="0"
     )
     command_ttl_s: Mapped[int] = mapped_column(Integer, default=300, server_default="300")
+    # Readback: gateway yozgandan keyin o'qigan qiymat buyruqdan shu nisbiy chegaradan ko'p farq qilsa mismatch
+    readback_tolerance: Mapped[float] = mapped_column(Float, default=0.01, server_default="0.01")
     last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # oxirgi qabul qilingan (bad bo'lmagan) qiymatning sifati — QUALITIES
@@ -494,6 +496,8 @@ class CommandStatus(str, enum.Enum):
     failed = "failed"  # gateway xatosi yoki watchdog (sent da javob kelmadi)
     cancelled = "cancelled"
     expired = "expired"  # gateway olmasdan TTL o'tdi
+    pending_approval = "pending_approval"  # ikki kishi tasdig'i kutilmoqda (B2)
+    mismatch = "mismatch"  # readback: PLC dagi qiymat buyruqqa mos kelmadi (B2)
 
 
 class Command(Base):
@@ -520,6 +524,11 @@ class Command(Base):
     # TTL: shu vaqtgacha gateway olmasa → expired (eskirgan setpoint bajarilmasin); sent_at — watchdog uchun
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # B2: ikki kishi tasdig'i va readback
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    readback_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    readback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[CommandStatus] = mapped_column(
         Enum(CommandStatus), default=CommandStatus.pending
     )
@@ -529,7 +538,8 @@ class Command(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     sensor: Mapped[Sensor] = relationship()
-    author: Mapped[User] = relationship()
+    author: Mapped[User] = relationship(foreign_keys=[created_by])
+    approver: Mapped[User | None] = relationship(foreign_keys=[approved_by])
 
 
 class JournalEntry(Base):
