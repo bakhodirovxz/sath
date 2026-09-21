@@ -29,7 +29,9 @@
     {
       "type": "opcua",
       "url": "opc.tcp://192.168.10.30:4840",
-      "tags": [{ "key": "AGG3.P", "node_id": "ns=2;s=Unit3.ActivePower" }]
+      "mode": "subscribe",
+      "publishing_interval_ms": 500,
+      "tags": [{ "key": "AGG3.P", "node_id": "ns=2;s=Unit3.ActivePower", "deadband": 0.1 }]
     }
   ]
 }

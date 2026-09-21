@@ -178,23 +178,91 @@ class ModbusSource(Source):
 
 
 class OpcUaSource(Source):
-    """OPC UA (sync klient). tags: [{key, node_id: "ns=2;i=1001"}]"""
+    """OPC UA (sync klient). tags: [{key, node_id: "ns=2;i=1001", deadband?: 0}]
+    mode: "poll" (default) — har siklda read_data_value; "subscribe" — MonitoredItems obunasi
+    (publishing_interval_ms, deadband — absolyut), o'zgarish poll davridan tez keladi, tarmoq yuki
+    kam; qayta ulanish: obuna tiklanadi, uzilish davrida quality=bad (read_safe orqali) (E3)."""
 
     def __init__(self, cfg: dict):
         super().__init__()
+        self.cfg = cfg
+        self.mode = cfg.get("mode", "poll")
+        self.publishing_ms = float(cfg.get("publishing_interval_ms", 500))
+        self.client = None
+        self.nodes: list[tuple[str, object]] = []
+        self.sub = None
+        self._latest: dict[str, object] = {}  # key → DataValue (obuna)
+        self._changed: set[str] = set()
+        self._lock = threading.Lock()
+        self._connect()
+
+    def _connect(self) -> None:
         from asyncua.sync import Client
 
+        cfg = self.cfg
         self.client = Client(cfg["url"])
         if cfg.get("username"):
             self.client.set_user(cfg["username"])
             self.client.set_password(cfg.get("password", ""))
         self.client.connect()
         self.nodes = [(tag["key"], self.client.get_node(tag["node_id"])) for tag in cfg["tags"]]
+        if self.mode == "subscribe":
+            self._subscribe()
+
+    def _subscribe(self) -> None:
+        from asyncua import ua
+
+        src = self
+
+        class Handler:
+            def datachange_notification(self, node, val, data):
+                key = next((k for k, n in src.nodes if n.nodeid == node.nodeid), None)
+                if key is None:
+                    return
+                dv = getattr(getattr(data, "monitored_item", None), "Value", None)
+                with src._lock:
+                    src._latest[key] = dv if dv is not None else val
+                    src._changed.add(key)
+
+        self.sub = self.client.create_subscription(self.publishing_ms, Handler())
+        plain, filtered = [], []
+        for tag, (_key, node) in zip(self.cfg["tags"], self.nodes, strict=False):
+            db = float(tag.get("deadband", 0) or 0)
+            (filtered if db > 0 else plain).append((node, db))
+        if plain:
+            self.sub.subscribe_data_change([n for n, _ in plain], sampling_interval=self.publishing_ms)
+        for node, db in filtered:
+            flt = ua.DataChangeFilter(
+                Trigger=ua.DataChangeTrigger.StatusValue,
+                DeadbandType=ua.DeadbandType.Absolute,
+                DeadbandValue=db,
+            )
+            req = ua.MonitoredItemCreateRequest(
+                ItemToMonitor=ua.ReadValueId(NodeId=node.nodeid, AttributeId=ua.AttributeIds.Value),
+                MonitoringMode=ua.MonitoringMode.Reporting,
+                RequestedParameters=ua.MonitoringParameters(
+                    ClientHandle=abs(hash(node.nodeid.to_string())) % 2_000_000_000,
+                    SamplingInterval=self.publishing_ms,
+                    Filter=flt,
+                    QueueSize=1,
+                    DiscardOldest=True,
+                ),
+            )
+            self.sub.create_monitored_items([req])
+        log.info("opcua obuna: %d teg, %.0f ms", len(self.nodes), self.publishing_ms)
+
+    def _reconnect(self) -> None:
+        log.warning("opcua: qayta ulanish %s", self.cfg["url"])
+        self.close()
+        self._latest.clear()
+        self._connect()
 
     def tag_keys(self) -> list[str]:
         return [k for k, _ in self.nodes]
 
     def read(self) -> list[dict]:
+        if self.mode == "subscribe":
+            return self._read_subscribed()
         out = []
         for key, node in self.nodes:
             try:
@@ -207,12 +275,46 @@ class OpcUaSource(Source):
                     out.append({"key": key, "value": 0.0, "quality": "bad", "src_ts": now_iso()})
         return out
 
+    def _read_subscribed(self) -> list[dict]:
+        # Aloqa tekshiruvi: sessiya o'lgan bo'lsa xato → read_safe bad yozadi, keyin qayta ulanamiz
+        try:
+            self.client.get_node("i=2258").read_value()  # Server_ServerStatus_CurrentTime
+        except Exception as e:
+            try:
+                self._reconnect()
+            except Exception as e2:  # noqa: BLE001
+                raise ConnectionError(f"opcua aloqa yo'q: {e2}") from e
+            raise ConnectionError(f"opcua aloqa uzildi, qayta ulandi: {e}") from e
+        with self._lock:
+            changed = [(k, self._latest[k]) for k in self._changed if k in self._latest]
+            self._changed.clear()
+        out = []
+        for key, dv in changed:
+            if hasattr(dv, "StatusCode"):
+                out.append(opcua_item(key, dv))
+            else:
+                try:
+                    out.append({"key": key, "value": float(dv), "quality": "good", "src_ts": now_iso()})
+                except (TypeError, ValueError):
+                    out.append({"key": key, "value": 0.0, "quality": "bad", "src_ts": now_iso()})
+        return out
+
     def write(self, tag: dict, value: float) -> None:
         node = self.client.get_node(tag["node_id"])
         node.write_value(float(value))
 
     def close(self) -> None:
-        self.client.disconnect()
+        try:
+            if self.sub is not None:
+                self.sub.delete()
+        except Exception:  # noqa: BLE001
+            pass
+        self.sub = None
+        try:
+            if self.client is not None:
+                self.client.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def opcua_quality(status_code) -> str:

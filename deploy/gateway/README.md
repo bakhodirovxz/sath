@@ -24,6 +24,9 @@ python ges_gateway.py config.json
 - Sifat va manba vaqti: OPC UA `read_data_value` — StatusCode → `quality` (good/uncertain/bad),
   SourceTimestamp → `src_ts`; Modbus — o'qish vaqti `src_ts`, o'qish xatosi → `quality=bad` (teg bo'yicha
   bir marta); aloqa uzilganda har teg uchun bitta `bad` yozuv, oxirgi qiymat takrorlanmaydi.
+- OPC UA `mode: "subscribe"` — MonitoredItems obunasi (`publishing_interval_ms`, teg bo'yicha absolyut
+  `deadband`): o'zgarish poll davridan tez keladi, o'zgarmasa hech narsa yuborilmaydi; sessiya uzilsa
+  `quality=bad` (bir marta) va obuna qayta tiklanadi. `mode: "poll"` (default) — har siklda o'qish.
 - Soat: server `Date` sarlavhasi bilan farq `clock_warn_s` (5 s) dan oshsa ogohlantirish — NTP ni tekshiring.
 - `sim` manbasi — sinov uchun (haqiqiy qurilma kerak emas).
 
