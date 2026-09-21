@@ -241,7 +241,6 @@ def run(p: dict) -> dict:
     hs_max, to_max, k_max = max(th), max(to_), max(ko)
     life_hours = p["life_hours"] or LIFE_HOURS[p["paper"]]
     aging_rel = v_sum / 24  # o'lchamsiz: kunlik o'rtacha nisbiy qarish tezligi
-    lol_days = aging_rel  # eski nom (ops_twin) — nominal umr kunlari, kuniga
     life_years_at_this_load = (
         life_hours / v_sum / 365 if v_sum > 0 else None
     )  # yiliga 365·v_sum nominal soat sarflanadi
