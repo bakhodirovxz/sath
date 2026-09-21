@@ -1294,7 +1294,7 @@ Fayllar: `sim/ges_sim/governor.py`
 Qabul mezoni: yuk tashlash testida `h`, `q`, `P_mech` fizik chegaralarda qoladi.
 Bog'liqlik: yo'q.
 
-### J6 — To'g'on yorilishi va pastki oqim ✅
+### J6 — To'g'on yorilishi va pastki oqim ✅ (`96f74da`)
 
 Muammo: `flood.py:369-395`, `:398` — yorilish gidrografi marshrutlash siklidan keyin quriladi va
 hech qachon teskari uzatilmaydi. Tekshirilgan: yorilish 595.79 Mm³ ni chiqaradi, Qp = 37 941 m³/s,
@@ -1317,7 +1317,7 @@ Fayllar: `sim/ges_sim/flood.py`
 Qabul mezoni: yorilishda ombor sathi tushadi (test); diapazondan tashqarida ogohlantirish.
 Bog'liqlik: yo'q.
 
-### J7 — Sizib o'tish modulini qayta ko'rib chiqish
+### J7 — Sizib o'tish modulini qayta ko'rib chiqish ✅
 
 Muammo (`sim/ges_sim/seepage.py`):
 - `:236` — `i_exit = (h_ld − h2)/ld` bu Dyupyui parabolasining 30 m dagi o'rtacha gorizontal

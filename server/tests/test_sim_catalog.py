@@ -291,7 +291,11 @@ def test_safety_check_runs_all_scenarios(client, users):
     assert sum(1 for row in d["rows"] if row["status"] == "skip") <= 2, [
         r for r in d["rows"] if r["status"] == "skip"
     ]
-    assert 0 <= d["score"] <= 100
+    # J1: hisoblanmagan mezon bo'lsa umumiy baho yo'q (score=None, overall=incomplete), aks holda konyunktiv
+    if d["counts"]["skip"]:
+        assert d["score"] is None and d["overall"] == "incomplete"
+    else:
+        assert 0 <= d["score"] <= 100 and d["overall"] in ("ok", "warn", "fail")
     # maket: tekshiruv toshqinida gerbdan oshadi (30 m suv tashlagich) — fail
     fc = next(row for row in d["rows"] if row["id"] == "flood_check")
     assert fc["status"] == "fail" and fc["job_id"]
