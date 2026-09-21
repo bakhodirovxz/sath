@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..config import get_settings
 from ..db import SessionLocal
-from ..orm import Project
+from ..orm import Project, SystemState
 from . import control, health, historian, keys, live, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
@@ -57,7 +57,7 @@ def send_daily_reports(day_start: datetime) -> int:
             rep = historian.build_report(db, p, "day", day_start - timedelta(days=1))
             if not emails or not any(r["n"] for r in rep["sensors"]):
                 continue
-            notify.send_async(emails, f"Kunlik hisobot — {p.name}", historian.report_text(rep))
+            notify.send_async(emails, f"Kunlik hisobot — {p.name}", historian.report_text(rep), group=f"report:{p.id}")
             sent += 1
     return sent
 
@@ -72,9 +72,39 @@ def tick_hourly() -> tuple[int, int]:
     return written, purged
 
 
+def state_get(key: str) -> str | None:
+    with SessionLocal() as db:
+        row = db.get(SystemState, key)
+        return row.value if row else None
+
+
+def state_set(key: str, value: str) -> None:
+    with SessionLocal() as db:
+        row = db.get(SystemState, key)
+        if row is None:
+            db.add(SystemState(key=key, value=value))
+        else:
+            row.value = value
+        db.commit()
+
+
+LAST_HOUR_KEY = "bg.last_hour"
+
+
+def load_last_hour() -> datetime | None:
+    """Oxirgi bajarilgan soat DB dan (restartdan keyin kunlik hisobot/kalit tekshiruvi takrorlanmasin)."""
+    v = state_get(LAST_HOUR_KEY)
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v)
+    except ValueError:
+        return None
+
+
 async def loop(stop: asyncio.Event) -> None:
     interval = max(5, get_settings().monitor_interval_s)
-    last_hour = None
+    last_hour = await asyncio.to_thread(load_last_hour)
     while not stop.is_set():
         try:
             await asyncio.to_thread(tick_stale)
@@ -98,6 +128,7 @@ async def loop(stop: asyncio.Event) -> None:
                     n = await asyncio.to_thread(send_daily_reports, hour.replace(hour=0))
                     log.info("kunlik hisobot: %d loyiha", n)
                 last_hour = hour
+                await asyncio.to_thread(state_set, LAST_HOUR_KEY, hour.isoformat())
         except Exception:  # noqa: BLE001 — fon sikl to'xtamasin
             log.exception("monitoring fon vazifasi xatosi")
         try:

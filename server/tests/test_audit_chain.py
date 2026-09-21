@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import time
 from datetime import datetime, timezone
 
 from ges_server import audit
@@ -79,7 +80,11 @@ def test_missing_events_are_logged(client, admin, users):
     token = users["viewer"]["Authorization"].split()[1]
     with client.websocket_connect(f"/api/projects/{pid}/live?token={token}") as ws:
         ws.receive_json()
-    rows = client.get("/api/audit", headers=admin, params={"limit": 2000}).json()
+    for _ in range(50):  # ws.disconnect audit yozuvi alohida oqimda (to_thread) — biroz kutish mumkin
+        rows = client.get("/api/audit", headers=admin, params={"limit": 2000}).json()
+        if any(a["action"] == "ws.disconnect" for a in rows):
+            break
+        time.sleep(0.05)
     by = {}
     for a in rows:
         by.setdefault(a["action"], []).append(a)

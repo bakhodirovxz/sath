@@ -388,7 +388,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/router.py`
 Qabul mezoni: ratsionalizatsiya qilinmagan alarmlar hisoboti mavjud.
 Bog'liqlik: C1.
 
-### C4 — Alarm toshqini aniqlash va EEMUA-191 KPI ✅
+### C4 — Alarm toshqini aniqlash va EEMUA-191 KPI ✅ (`46e10db`)
 
 Bajarildi: `monitoring/alarm_kpi.py` — yuk (soat/10 daq), cho'qqi 10 daq oyna, toshqin (> 10 / 10 daq) va
 toshqin vaqti ulushi, turg'un (> 24 soat), chattering (soatda 3+), ustuvorlik taqsimoti vs EEMUA maqsadi,
@@ -412,7 +412,11 @@ Fayllar: `server/ges_server/monitoring/historian.py`, `monitoring/router.py`
 Qabul mezoni: KPI endpoint EEMUA-191 mezonlariga nisbatan baho qaytaradi.
 Bog'liqlik: C1, D1.
 
-### C5 — Alarmga bog'liq nosozliklarni tuzatish
+### C5 — Alarmga bog'liq nosozliklarni tuzatish ✅
+
+Bajarildi: `mark_stale` so'rov yo'llaridan (WS, /alarms, /alarm-events, /dashboard) olib tashlandi — faqat
+fon vazifasi; `SystemState` jadvali (migratsiya 0013) — `bg.last_hour` DB da; `notify.py` — cheklangan
+navbat (500) + bitta ishchi oqim, `group` bo'yicha jamlangan email (alarm toshqini → bitta xabar), `dropped`.
 
 Muammo:
 - `monitoring/router.py:845` — har WebSocket ulanishida `live.mark_stale(db, project_id)`

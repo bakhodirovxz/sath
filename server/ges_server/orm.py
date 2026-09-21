@@ -830,3 +830,14 @@ class AuditLog(Base):
     # Hash zanjiri (audit.py): prev_hash — oldingi qatorning row_hash i ("" birinchisi uchun)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class SystemState(Base):
+    """Fon vazifalar holati (C5): restartdan keyin ham saqlanadi — masalan oxirgi soatlik/kunlik ish
+    vaqti (`bg.last_hour`), kunlik hisobot crash-loop da qayta yuborilmasin."""
+
+    __tablename__ = "system_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

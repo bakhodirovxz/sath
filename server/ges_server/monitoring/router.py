@@ -729,7 +729,6 @@ def export_csv(
 
 @router.get("/projects/{project_id}/alarms", response_model=list[SensorOut])
 def alarms(project: ViewerProject, db: DB):
-    live.mark_stale(db, project.id)
     return (
         db.query(Sensor)
         .filter(
@@ -813,7 +812,6 @@ def alarm_events(
 ):
     """Alarm jurnali: active=true — davom etayotgan yoki kvitlanmaganlar; aks holda tarix.
     Bostirilgan (shelved/OOS/shart) hodisalar faqat include_suppressed=true bilan (KPI/audit uchun)."""
-    live.mark_stale(db, project.id)
     q = db.query(AlarmEvent).filter(AlarmEvent.project_id == project.id)
     if not include_suppressed:
         q = q.filter(AlarmEvent.suppressed.is_(None))
@@ -1100,7 +1098,6 @@ class DashboardIn(BaseModel):
 def dashboard(project: ViewerProject, db: DB):
     """Dispetcher paneli: sensorlar holati, mimik sxema bog'lanishi, faol alarmlar, 24 soatlik
     energiya (quvvat sensorlaridan)."""
-    live.mark_stale(db, project.id)
     sensors = (
         db.query(Sensor).filter_by(project_id=project.id, enabled=True).order_by(Sensor.name).all()
     )
@@ -1256,7 +1253,7 @@ async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
         ):
             await ws.close(code=4401)
             return
-        live.mark_stale(db, project_id)
+        # stale tekshiruvi faqat fon vazifasida (C5): ulanish sikli alarm/email bo'roni bermasin
         snapshot = [
             live.sensor_message(s) for s in db.query(Sensor).filter_by(project_id=project_id).all()
         ]

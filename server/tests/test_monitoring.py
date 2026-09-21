@@ -230,6 +230,11 @@ def test_stale_detection(client, users, sensor):
         json=[{"key": "AGG1.P", "value": 10, "ts": old}],
         headers=users["engineer"],
     )
+    # stale faqat fon vazifasida aniqlanadi (C5) — so'rov yo'li alarm/email bermaydi
+    assert client.get(f"/api/projects/{pid}/alarms", headers=users["viewer"]).json() == []
+    from ges_server.monitoring import background
+
+    assert background.tick_stale() == 1
     alarms = client.get(f"/api/projects/{pid}/alarms", headers=users["viewer"]).json()
     assert [a["alarm"] for a in alarms] == ["stale"]
 

@@ -253,7 +253,7 @@ def announce(db: Session, project_id: int, events: list[tuple[AlarmEvent, Sensor
         title = f"{len(events)} ta alarm"
         body = "; ".join(lines[:10]) + (" …" if len(lines) > 10 else "")
     notifications.push(db, members, "alarm", title, body, link)
-    notify.send_async(emails, title, "\n".join(lines) + f"\n{base}{link}")
+    notify.send_async(emails, title, "\n".join(lines) + f"\n{base}{link}", group=f"alarm:{project_id}")
     db.commit()
 
 
