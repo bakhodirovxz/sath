@@ -3,12 +3,20 @@ yuklanishi.
 
 Transformator (IEC 60076-7, 8-band, differensial tenglamalar):
   Yuqori moy harorati:  τ_o·dθ_o/dt = [(1 + R·K²)/(1 + R)]^x · Δθ_or − (θ_o − θ_a)
-  Issiq nuqta gradienti: τ_w·dΔθ_h/dt = K^y·Δθ_hr − Δθ_h,   θ_h = θ_o + Δθ_h
+  Issiq nuqta gradienti — ikki shoxli model (IEC 60076-7:2018 §8.2.2, (10)–(12)):
+    Δθ_h = Δθ_h1 − Δθ_h2;  k22·τ_w·dΔθ_h1/dt = k21·K^y·Δθ_hr − Δθ_h1;
+    (τ_o/k22)·dΔθ_h2/dt = (k21 − 1)·K^y·Δθ_hr − Δθ_h2;   θ_h = θ_o + Δθ_h
+    (k21 > 1 yuk sakrashida issiq nuqtaning vaqtinchalik oshib ketishini beradi — 120/140 °C
+    chegaralari aynan shu cho'qqiga nisbatan tekshiriladi; bir shoxli soddalashtirish uni yo'qotadi)
   K — yuklanish (S/S_nom), R — yuklanish/bo'sh yurish isroflari nisbati (~6), x, y — sovutish rejimi darajalari
   (ONAN: x=0.8, y=1.3; ONAF: 0.8, 1.3; OF: 1.0, 1.3; OD: 1.0, 2.0), Δθ_or — nominal yuqori moy ko'tarilishi (55 K
   ONAN), Δθ_hr — nominal issiq nuqta gradienti (23 K), τ_o ≈ 150 min (ONAN), τ_w ≈ 7 min.
   Qarish tezligi (termik yaxshilangan qog'oz):  V = exp(15000/383 − 15000/(θ_h + 273)),  oddiy: V = 2^((θ_h − 98)/6)
-  Umr sarfi:  L = ∫V dt / L_nom (180 000 soat ≈ 20.5 yil, 110 °C da).
+  Umr sarfi:  ∫V dt — kuniga sarflangan nominal umr soatlari (loss_of_life_h); aging_relative = ∫V dt / 24
+  (o'lchamsiz o'rtacha nisbiy qarish). L_nom (life_hours): IEEE C57.91-2011 I-jadval — termik
+  yaxshilangan qog'oz 180 000 soat (110 °C da, 50 % mustahkamlik), oddiy kraft 65 000 soat (95 °C,
+  IEEE C57.91-1981); IEC 60076-7 umr soatini belgilamaydi (faqat nisbiy tezlik, 98/110 °C ga
+  normallashtirilgan) — ishlab chiqaruvchi qiymati bo'lsa life_hours maydoniga kiriting.
   Chegaralar (IEC 60076-7 4-jadval, normal siklik yuk): θ_h ≤ 120 °C, θ_o ≤ 105 °C, K ≤ 1.5; uzoq muddatli favqulodda ≤ 140 °C.
 Generator: S = P/cosφ, yuklanish S/S_nom, stator harorati ≈ θ_a + Δθ_nom·K² (I²R), reaktiv chegara.
 """
@@ -42,7 +50,7 @@ META = Meta(
     outputs=[
         {"key": "hot_spot_max_c", "label": "Maks. issiq nuqta harorati", "unit": "°C"},
         {"key": "top_oil_max_c", "label": "Maks. yuqori moy harorati", "unit": "°C"},
-        {"key": "loss_of_life_days", "label": "Umr sarfi (kuniga)", "unit": "kun"},
+        {"key": "loss_of_life_h", "label": "Umr sarfi (kuniga, nominal soat)", "unit": "soat"},
         {"key": "gen_load_pct", "label": "Generator yuklanishi", "unit": "%"},
     ],
 )
@@ -101,6 +109,16 @@ FIELDS = [
         default="upgraded",
         options=(("upgraded", "Termik yaxshilangan (110 °C)"), ("kraft", "Oddiy kraft (98 °C)")),
         group="Transformator",
+    ),
+    Field(
+        "life_hours",
+        "Nominal izolyatsiya umri L_nom",
+        "soat",
+        default=0,
+        min=0,
+        group="Transformator",
+        hint="0 — qog'oz bo'yicha: yaxshilangan 180 000 (IEEE C57.91-2011, 110 °C), kraft 65 000 (95 °C)",
+        advanced=True,
     ),
     Field(
         "load_profile_mw",
@@ -174,8 +192,11 @@ def aging_rate(theta_h: float, paper: str) -> float:
     return math.exp(15000 / 383 - 15000 / (theta_h + 273))
 
 
+LIFE_HOURS = {"upgraded": 180000.0, "kraft": 65000.0}  # IEEE C57.91-2011 I-jadval / C57.91-1981
+
+
 def run(p: dict) -> dict:
-    x, y, dor, dhr, tau_o, tau_w, k11, _k21, _k22 = COOLING[p["cooling"]]
+    x, y, dor, dhr, tau_o, tau_w, k11, k21, k22 = COOLING[p["cooling"]]
     dor = p["theta_or"] or dor
     dhr = p["theta_hr"] or dhr
     R = p["loss_ratio"]
@@ -189,8 +210,11 @@ def run(p: dict) -> dict:
     cosphi = p["cos_phi"]
     dt = 1.0  # daqiqa
     n_day = 24 * 60
-    theta_o = amb[0] + dor * 0.5
-    d_h = dhr * 0.5
+    # Boshlang'ich holat: birinchi soat yuki bilan statsionar (kunlar takrorlanib o'rnashadi)
+    K0 = (prof[0] / cosphi) / S if S > 0 else 0.0
+    theta_o = amb[0] + ((1 + R * K0**2) / (1 + R)) ** x * dor
+    d_h1 = k21 * K0**y * dhr
+    d_h2 = (k21 - 1) * K0**y * dhr
     ts, ko, th, to_, ks = [], [], [], [], []
     v_sum = 0.0
     for day in range(int(p["days"])):
@@ -199,11 +223,13 @@ def run(p: dict) -> dict:
             h = m // 60
             K = (prof[h] / cosphi) / S if S > 0 else 0.0
             ta = amb[h]
-            # IEC 60076-7 (8.2.2) — eksponensial yechim o'rniga to'g'ridan-to'g'ri integrallash (Δt = 1 min)
-            theta_o += dt / (k11 * tau_o) * (((1 + R * K**2) / (1 + R)) ** x * dor - (theta_o - ta))
-            # Issiq nuqta gradienti: ikki shoxli (k21, k22) modelning barqaror qismi K^y·Δθ_hr; τ_w bilan
-            d_h += dt / tau_w * (K**y * dhr - d_h)
-            theta_h = theta_o + d_h
+            # IEC 60076-7 §8.2.2 (10)–(12): har daqiqada K va θ_a doimiy — birinchi tartibli
+            # tenglamalar aniq eksponensial qadam bilan integrallanadi (Eyler xatosi yo'q)
+            o_target = ta + ((1 + R * K**2) / (1 + R)) ** x * dor
+            theta_o += (o_target - theta_o) * (1 - math.exp(-dt / (k11 * tau_o)))
+            d_h1 += (k21 * K**y * dhr - d_h1) * (1 - math.exp(-dt / (k22 * tau_w)))
+            d_h2 += ((k21 - 1) * K**y * dhr - d_h2) * (1 - math.exp(-dt / (tau_o / k22)))
+            theta_h = theta_o + d_h1 - d_h2
             if last:
                 v_sum += aging_rate(theta_h, p["paper"]) * dt / 60
                 if m % 15 == 0:
@@ -213,11 +239,12 @@ def run(p: dict) -> dict:
                     to_.append(round(theta_o, 1))
                     ks.append(round(prof[h], 2))
     hs_max, to_max, k_max = max(th), max(to_), max(ko)
-    life_hours = 180000 if p["paper"] == "upgraded" else 150000
-    lol_days = v_sum / 24  # umr sarfi kunlarda (24 soat nominal qarish = 1 "kun")
+    life_hours = p["life_hours"] or LIFE_HOURS[p["paper"]]
+    aging_rel = v_sum / 24  # o'lchamsiz: kunlik o'rtacha nisbiy qarish tezligi
+    lol_days = aging_rel  # eski nom (ops_twin) — nominal umr kunlari, kuniga
     life_years_at_this_load = (
-        life_hours / (v_sum / 1.0) / 365 if v_sum > 0 else None
-    )  # yiliga: 365·v_sum soat sarflanadi
+        life_hours / v_sum / 365 if v_sum > 0 else None
+    )  # yiliga 365·v_sum nominal soat sarflanadi
     problems = []
     if hs_max > 140:
         problems.append(
@@ -231,8 +258,8 @@ def run(p: dict) -> dict:
         problems.append(f"yuklanish K = {k_max:.2f} > 1.5")
     elif k_max > 1.0:
         problems.append(f"ortiqcha yuk K = {k_max:.2f} (qisqa muddat ruxsat, qarish tezlashadi)")
-    if lol_days > 2:
-        problems.append(f"qarish nominaldan {lol_days:.1f} marta tez")
+    if aging_rel > 2:
+        problems.append(f"qarish nominaldan {aging_rel:.1f} marta tez")
     gen = None
     if p["gen_rated_mva"] > 0:
         s_gen = max(prof) / cosphi
@@ -255,15 +282,16 @@ def run(p: dict) -> dict:
             "k_max": round(k_max, 3),
             "hot_spot_max_c": round(hs_max, 1),
             "top_oil_max_c": round(to_max, 1),
-            "aging_relative": round(lol_days, 3),
-            "loss_of_life_days": round(lol_days, 3),
+            "aging_relative": round(aging_rel, 3),
+            "loss_of_life_h": round(v_sum, 2),
+            "life_hours_nominal": life_hours,
             "life_years_at_this_load": round(life_years_at_this_load, 1)
             if life_years_at_this_load
             else None,
             "gen_load_pct": gen["load_pct"] if gen else None,
             "verdict": "; ".join(problems)
             if problems
-            else f"Normal: issiq nuqta {hs_max:.0f} °C, qarish {lol_days:.2f}× nominal",
+            else f"Normal: issiq nuqta {hs_max:.0f} °C, qarish {aging_rel:.2f}× nominal",
             "ok": not problems,
         },
     }

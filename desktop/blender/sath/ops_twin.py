@@ -32,7 +32,7 @@ TR_META = {
     "outputs": [
         {"key": "hot_spot_max_c", "label": "Issiq nuqta maks.", "unit": "°C"},
         {"key": "top_oil_max_c", "label": "Yuqori moy maks.", "unit": "°C"},
-        {"key": "loss_of_life_days", "label": "Umr sarfi", "unit": "kun"},
+        {"key": "loss_of_life_h", "label": "Umr sarfi (kuniga)", "unit": "soat"},
         {"key": "life_years_at_this_load", "label": "Shu yukda umr", "unit": "yil"},
     ]
 }
@@ -213,7 +213,7 @@ class SATH_OT_sim_transformer(_TwinSim):
     def animate(self, context, result, s):
         n = sim_anim.animate_transformer(context, result)
         sm = result.get("summary", {})
-        return f"{n} kadr: issiq nuqta maks {sm.get('hot_spot_max_c', 0):.0f} °C, umr sarfi {sm.get('loss_of_life_days', 0):.1f} kun"
+        return f"{n} kadr: issiq nuqta maks {sm.get('hot_spot_max_c', 0):.0f} °C, umr sarfi {sm.get('loss_of_life_h', 0):.1f} soat/kun"
 
 
 class SATH_OT_sim_seismic(_TwinSim):
