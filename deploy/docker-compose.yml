@@ -69,6 +69,32 @@ services:
       - ges_data:/data
     cpus: "${CFD_CPUS:-4}"
 
+  # Sinov stendi (E4): GES simulyatori Modbus/OPC UA server sifatida + unga ulangan gateway.
+  # docker compose --profile sim up -d ; stsenariy: SIM_SCENARIO (normal|unit_trip|flood|comms_loss|...)
+  # Gateway kalitlari: GES_GATEWAY_INGEST_KEY / GES_GATEWAY_COMMAND_KEY (.env) — Monitoring → Ulanish kalitlari
+  simulator:
+    build:
+      context: ..
+      dockerfile: deploy/simulator/Dockerfile
+    image: sath-simulator:latest
+    profiles: ["sim"]
+    restart: unless-stopped
+    command: ["python", "ges_simulator.py", "--scenario", "${SIM_SCENARIO:-normal}", "--modbus", "0.0.0.0:5020", "--opcua", "opc.tcp://0.0.0.0:4840/sath-sim/", "--speed", "${SIM_SPEED:-1}"]
+    ports: ["5020:5020", "4840:4840"]
+
+  sim-gateway:
+    image: sath-simulator:latest
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on: [simulator, ges]
+    environment:
+      GES_GATEWAY_SERVER: http://ges:8000
+      GES_GATEWAY_PROJECT_ID: "${SIM_PROJECT_ID:-1}"
+      GES_GATEWAY_INGEST_KEY: "${GES_GATEWAY_INGEST_KEY:-}"
+      GES_GATEWAY_COMMAND_KEY: "${GES_GATEWAY_COMMAND_KEY:-}"
+      GES_GATEWAY_COMMANDS: "${GES_GATEWAY_COMMANDS:-false}"
+    command: ["sh", "-c", "python ges_simulator.py --print-gateway-config --modbus simulator:5020 --opcua opc.tcp://simulator:4840/sath-sim/ > /tmp/gw.json && python ges_gateway.py /tmp/gw.json"]
+
 volumes:
   ges_data:
   pg_data:

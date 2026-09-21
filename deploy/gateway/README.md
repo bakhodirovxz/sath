@@ -4,7 +4,7 @@ SCADA tarmog'ida ishlaydigan kichik Python skript: Modbus TCP, OPC UA yoki CSV d
 Sath serverga HTTP orqali yuboradi. Serverga faqat HTTP kirish kifoya.
 
 ```
-pip install requests pymodbus asyncua
+pip install requests "pymodbus>=3.8,<3.10" asyncua   # pymodbus 3.10+ API o'zgargan (device_id, SimDevice)
 cp gateway_config.example.json config.json   # server manzili, project_id, ingest_key, teglar
 python ges_gateway.py config.json
 ```

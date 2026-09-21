@@ -551,7 +551,7 @@ Fayllar: `deploy/gateway/ges_gateway.py`
 Qabul mezoni: obuna rejimida qiymat o'zgarishi poll davridan tez keladi (simulyator testi).
 Bog'liqlik: E2.
 
-### E4 — GES simulyatori (sinov stendi)
+### E4 — GES simulyatori (sinov stendi) ✅
 
 Muammo: `ges_gateway.py` dagi `SimSource` — sinus + shovqin. U bilan alarm mantig'ini, toshqinni,
 sifat bayrog'ini, SOE ni yoki egizakni sinab bo'lmaydi.
