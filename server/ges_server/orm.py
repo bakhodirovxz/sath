@@ -463,6 +463,15 @@ class Sensor(Base):
     # alarm bostiriladi; natija `suppressed` da (ingest da baholanadi)
     suppress_condition: Mapped[str] = mapped_column(Text, default="", server_default="")
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Ratsionalizatsiya (ISA-18.2 §10, C3): sabab, harakatsizlik oqibati, tuzatuvchi harakat, javob vaqti,
+    # ustuvorlik asosi; kim/qachon tasdiqlagan. Chegara o'zgarsa qayta ko'rib chiqiladi (rationalized_at=None).
+    cause: Mapped[str] = mapped_column(Text, default="", server_default="")
+    consequence: Mapped[str] = mapped_column(Text, default="", server_default="")
+    corrective_action: Mapped[str] = mapped_column(Text, default="", server_default="")
+    response_time_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    priority_basis: Mapped[str] = mapped_column(Text, default="", server_default="")
+    rationalized_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    rationalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Fizik (o'lchov) diapazoni: tashqaridagi qiymat quality=bad bilan saqlanadi, holatga ta'sir qilmaydi
     min_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -488,6 +497,14 @@ class Sensor(Base):
     last_quality: Mapped[str] = mapped_column(String(16), default="good", server_default="good")
     alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState, length=16), default=AlarmState.stale)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    @property
+    def has_alarm_limits(self) -> bool:
+        """Sensor alarm ta'rifi bormi (ratsionalizatsiya talab qilinadi)."""
+        return any(
+            v is not None
+            for v in (self.low_alarm, self.high_alarm, self.ll_alarm, self.hh_alarm, self.roc_limit_per_min)
+        )
 
 
 class Reading(Base):

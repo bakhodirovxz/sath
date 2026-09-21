@@ -346,7 +346,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/live.py`, migratsiya
 Qabul mezoni: chegarada tebranayotgan signal bitta `AlarmEvent` yaratadi (test).
 Bog'liqlik: A1, A2.
 
-### C2 — Shelving, suppression, out-of-service ✅
+### C2 — Shelving, suppression, out-of-service ✅ (`a0436b1`)
 
 Bajarildi: `Sensor.alarm_mode` (normal|shelved|out_of_service, sabab/kim/qachongacha), `suppress_condition`
 (interlock ifodasi) → `suppressed`; `AlarmEvent.suppressed` + `alarm_state` (unack/acked/rtn_unack/normal);
@@ -368,7 +368,12 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/live.py`, `monitoring/router.py
 Qabul mezoni: shelved alarm muddat tugagach avtomatik qaytadi (test); har harakat auditda.
 Bog'liqlik: C1.
 
-### C3 — Ratsionalizatsiya maydonlari
+### C3 — Ratsionalizatsiya maydonlari ✅
+
+Bajarildi: `Sensor.cause/consequence/corrective_action/response_time_s/priority_basis`, `rationalized_by/at`
+(migratsiya 0012); `POST /sensors/{id}/rationalize` (muhandis+, barcha maydonlar majburiy, audit);
+chegara/ustuvorlik o'zgarsa tasdiq bekor; `GET /projects/{id}/alarms/rationalization` va
+`GET /admin/alarms/rationalization` (Admin sahifasida ro'yxat); alarm hodisasi matnlarni olib yuradi.
 
 Muammo: ISA-18.2 har alarmdan sabab, harakatsizlik oqibati, tuzatuvchi harakat, ruxsat etilgan
 javob vaqti va ustuvorlik asosini talab qiladi. Bu maydonlar umuman yo'q.

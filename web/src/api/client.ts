@@ -260,6 +260,13 @@ export interface Sensor {
   alarm_mode?: "normal" | "shelved" | "out_of_service";
   alarm_mode_until?: string | null;
   alarm_mode_reason?: string;
+  cause?: string;
+  consequence?: string;
+  corrective_action?: string;
+  response_time_s?: number | null;
+  priority_basis?: string;
+  rationalized_by?: number | null;
+  rationalized_at?: string | null;
   min_raw?: number | null;
   max_raw?: number | null;
   min_setpoint?: number | null;
@@ -299,6 +306,13 @@ export interface SensorIn {
   alarm_mode?: "normal" | "shelved" | "out_of_service";
   alarm_mode_until?: string | null;
   alarm_mode_reason?: string;
+  cause?: string;
+  consequence?: string;
+  corrective_action?: string;
+  response_time_s?: number | null;
+  priority_basis?: string;
+  rationalized_by?: number | null;
+  rationalized_at?: string | null;
   stale_after_s: number;
   enabled: boolean;
   priority?: "low" | "medium" | "high" | "critical";
@@ -343,7 +357,14 @@ export interface AlarmEvent {
   comment: string;
   suppressed?: string | null;
   alarm_state?: string;
+  cause?: string;
+  consequence?: string;
+  corrective_action?: string;
+  response_time_s?: number | null;
 }
+
+export interface RationalizationRow { id: number; project_id: number; key: string; name: string; priority: string; alarm_mode: string; missing: string[] }
+export interface RationalizationReport { total: number; rationalized: number; unrationalized: RationalizationRow[] }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
 export interface Dashboard {
   sensors: Sensor[];
@@ -643,6 +664,9 @@ export const api = {
   unshelveSensor: (id: number) => request<Sensor>(`/api/sensors/${id}/unshelve`, { method: "POST" }),
   sensorOutOfService: (id: number, reason: string) => request<Sensor>(`/api/sensors/${id}/out-of-service`, { method: "POST", body: json({ reason }) }),
   sensorInService: (id: number) => request<Sensor>(`/api/sensors/${id}/in-service`, { method: "POST" }),
+  rationalizeSensor: (id: number, body: { cause: string; consequence: string; corrective_action: string; response_time_s: number; priority_basis: string }) => request<Sensor>(`/api/sensors/${id}/rationalize`, { method: "POST", body: json(body) }),
+  rationalization: (projectId: number) => request<RationalizationReport>(`/api/projects/${projectId}/alarms/rationalization`),
+  adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),
   saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),

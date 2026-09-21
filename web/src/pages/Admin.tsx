@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AuditRow, type User } from "../api/client";
+import { api, type AuditRow, type RationalizationReport, type User } from "../api/client";
 import { fmtDate } from "../ui/format";
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
@@ -76,6 +76,7 @@ export default function Admin() {
           </tbody>
         </table>
         <p className="dim small">Loyihaga a'zo qo'shish va rol berish — loyiha sahifasida.</p>
+        <RationalizationSection />
         <AuditSection users={users} />
       </div>
       {creating && (
@@ -105,6 +106,40 @@ export default function Admin() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+
+/** ISA-18.2 §10: alarm ta'rifi bor, lekin ratsionalizatsiya qilinmagan sensorlar (barcha loyihalar). */
+function RationalizationSection() {
+  const [rep, setRep] = useState<RationalizationReport | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { api.adminRationalization().then(setRep).catch((e) => setError(e.message)); }, []);
+  return (
+    <>
+      <h1 style={{ marginTop: 28 }}>Alarm ratsionalizatsiyasi</h1>
+      {error && <p className="error">{error}</p>}
+      {rep && (
+        <>
+          <p className="muted small">Alarm ta'rifi bor sensorlar: {rep.total} · ratsionalizatsiya qilingan: {rep.rationalized} · qilinmagan: {rep.unrationalized.length} (ISA-18.2 §10: sabab, oqibat, tuzatuvchi harakat, javob vaqti, ustuvorlik asosi)</p>
+          {rep.unrationalized.length > 0 && (
+            <table className="grid small">
+              <thead><tr><th>Loyiha</th><th>Sensor</th><th>Ustuvorlik</th><th>Yetishmayotgan</th></tr></thead>
+              <tbody>
+                {rep.unrationalized.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.project_id}</td>
+                    <td>{r.name}<div className="dim mono">{r.key}</div></td>
+                    <td><span className={`badge ${r.priority === "critical" ? "rejected" : r.priority === "high" ? "high" : "open"}`}>{r.priority}</span></td>
+                    <td className="mono dim">{r.missing.join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </>
   );
 }
 

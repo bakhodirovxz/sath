@@ -65,6 +65,12 @@ class SensorIn(BaseModel):
     roc_limit_per_min: float | None = Field(None, gt=0)
     # Suppression-by-design (ISA-18.2): ifoda rost bo'lsa alarm bostiriladi (masalan `AGG1_RUN == 0`)
     suppress_condition: str = ""
+    # Ratsionalizatsiya (ISA-18.2 §10): matnlar; tasdiqlash — POST /sensors/{id}/rationalize
+    cause: str = Field("", max_length=2000)
+    consequence: str = Field("", max_length=2000)
+    corrective_action: str = Field("", max_length=2000)
+    response_time_s: int | None = Field(None, gt=0, le=7 * 86400)
+    priority_basis: str = Field("", max_length=2000)
     # fizik diapazon: tashqarida quality=bad
     min_raw: float | None = None
     max_raw: float | None = None
@@ -109,6 +115,11 @@ class SensorPatch(BaseModel):
     off_delay_s: int | None = Field(None, ge=0, le=86400)
     roc_limit_per_min: float | None = Field(None, gt=0)
     suppress_condition: str | None = None
+    cause: str | None = Field(None, max_length=2000)
+    consequence: str | None = Field(None, max_length=2000)
+    corrective_action: str | None = Field(None, max_length=2000)
+    response_time_s: int | None = Field(None, gt=0, le=7 * 86400)
+    priority_basis: str | None = Field(None, max_length=2000)
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int | None = None
@@ -166,6 +177,13 @@ class SensorOut(BaseModel):
     alarm_mode_by: int | None = None
     alarm_mode_reason: str = ""
     alarm_mode_since: datetime | None = None
+    cause: str = ""
+    consequence: str = ""
+    corrective_action: str = ""
+    response_time_s: int | None = None
+    priority_basis: str = ""
+    rationalized_by: int | None = None
+    rationalized_at: datetime | None = None
     min_raw: float | None = None
     max_raw: float | None = None
     stale_after_s: int
@@ -404,6 +422,12 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         s.alarm_pending = s.alarm_pending_since = None
     if "suppress_condition" in changes:
         live.evaluate_suppression(db, s.project_id, [s])
+    if s.rationalized_at is not None and (
+        body.clear_alarms
+        or body.clear_roc
+        or any(k in changes for k in ("low_alarm", "high_alarm", "ll_alarm", "hh_alarm", "roc_limit_per_min", "priority"))
+    ):
+        s.rationalized_at = s.rationalized_by = None  # chegara/ustuvorlik o'zgardi — qayta ratsionalizatsiya
     audit.log(
         db,
         user_id=user.id,
@@ -735,6 +759,10 @@ class AlarmEventOut(BaseModel):
     comment: str
     suppressed: str | None = None  # shelved | out_of_service | suppressed_by_design
     alarm_state: str = "unack"  # ISA-18.2: unack | acked | rtn_unack | normal | (bostirilgan rejim)
+    cause: str = ""
+    consequence: str = ""
+    corrective_action: str = ""
+    response_time_s: int | None = None
 
 
 class AckIn(BaseModel):
@@ -767,6 +795,10 @@ def _event_out(e: AlarmEvent) -> AlarmEventOut:
         comment=e.comment,
         suppressed=e.suppressed,
         alarm_state=e.alarm_state,
+        cause=e.sensor.cause or "",
+        consequence=e.sensor.consequence or "",
+        corrective_action=e.sensor.corrective_action or "",
+        response_time_s=e.sensor.response_time_s,
     )
 
 
@@ -833,6 +865,94 @@ def ack_all(project: OperatorProject, user: CurrentUser, db: DB):
     )
     db.commit()
     return {"acked": n}
+
+
+# ---------- Ratsionalizatsiya (ISA-18.2 §10, C3) ----------
+
+RATIONALIZATION_FIELDS = ("cause", "consequence", "corrective_action", "response_time_s", "priority_basis")
+
+
+class RationalizeIn(BaseModel):
+    cause: str = Field(min_length=3, max_length=2000)
+    consequence: str = Field(min_length=3, max_length=2000)
+    corrective_action: str = Field(min_length=3, max_length=2000)
+    response_time_s: int = Field(gt=0, le=7 * 86400)
+    priority_basis: str = Field(min_length=3, max_length=2000)
+
+
+def rationalization_missing(s: Sensor) -> list[str]:
+    """Alarm ta'rifi bor sensor uchun to'ldirilmagan ratsionalizatsiya maydonlari (bo'sh — to'liq)."""
+    missing = [f for f in RATIONALIZATION_FIELDS if not getattr(s, f)]
+    if s.rationalized_at is None:
+        missing.append("rationalized")
+    return missing
+
+
+@router.post("/sensors/{sensor_id}/rationalize", response_model=SensorOut)
+def rationalize_sensor(sensor_id: int, body: RationalizeIn, user: CurrentUser, db: DB):
+    """Ratsionalizatsiyani tasdiqlash (muhandis+): barcha maydonlar majburiy; kim/qachon yoziladi.
+    Keyin chegara yoki ustuvorlik o'zgarsa tasdiq bekor bo'ladi (qayta ko'rib chiqish)."""
+    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    for k, v in body.model_dump().items():
+        setattr(s, k, v)
+    s.rationalized_by, s.rationalized_at = user.id, utcnow()
+    audit.log(
+        db,
+        user_id=user.id,
+        action="alarm.rationalize",
+        target_type="sensor",
+        target_id=s.id,
+        project_id=s.project_id,
+        detail={"key": s.key, "priority": s.priority, "response_time_s": body.response_time_s},
+    )
+    db.commit()
+    return s
+
+
+class RationalizationRow(BaseModel):
+    id: int
+    project_id: int
+    key: str
+    name: str
+    priority: str
+    alarm_mode: str
+    missing: list[str]
+
+
+class RationalizationReport(BaseModel):
+    total: int  # alarm ta'rifi bor sensorlar
+    rationalized: int
+    unrationalized: list[RationalizationRow]
+
+
+def _rationalization_report(sensors: list[Sensor]) -> RationalizationReport:
+    with_limits = [s for s in sensors if s.enabled and s.has_alarm_limits]
+    rows = []
+    for s in with_limits:
+        miss = rationalization_missing(s)
+        if miss:
+            rows.append(
+                RationalizationRow(
+                    id=s.id, project_id=s.project_id, key=s.key, name=s.name,
+                    priority=s.priority or "medium", alarm_mode=s.alarm_mode or "normal", missing=miss,
+                )
+            )
+    rows.sort(key=lambda r: ({"critical": 0, "high": 1, "medium": 2, "low": 3}.get(r.priority, 9), r.key))
+    return RationalizationReport(total=len(with_limits), rationalized=len(with_limits) - len(rows), unrationalized=rows)
+
+
+@router.get("/projects/{project_id}/alarms/rationalization", response_model=RationalizationReport)
+def project_rationalization(project: ViewerProject, db: DB):
+    """Loyihada ratsionalizatsiya qilinmagan alarmlar (ISA-18.2 §10 hisoboti)."""
+    return _rationalization_report(db.query(Sensor).filter_by(project_id=project.id).all())
+
+
+@router.get("/admin/alarms/rationalization", response_model=RationalizationReport)
+def admin_rationalization(user: CurrentUser, db: DB):
+    """Barcha loyihalar bo'yicha ratsionalizatsiya qilinmagan alarmlar (admin)."""
+    if not user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Faqat admin")
+    return _rationalization_report(db.query(Sensor).all())
 
 
 # ---------- Alarm rejimi: shelving / out-of-service (ISA-18.2, C2) ----------
