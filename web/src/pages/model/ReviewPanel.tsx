@@ -101,7 +101,7 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
             <BRow label="Xavfsizlik">
               {crSafety ? (
                 <span className="row" style={{ gap: 6 }} title="Standart xavfsizlik ssenariylari shu versiya uchun">
-                  <span className="badge" style={{ background: crSafety.counts.fail ? "var(--danger)" : crSafety.counts.warn ? "var(--warn)" : "var(--ok)", color: "#fff" }}>{crSafety.score}/100</span>
+                  <span className="badge" style={{ background: crSafety.counts.fail ? "var(--danger)" : crSafety.counts.warn ? "var(--warn)" : "var(--ok)", color: "#fff" }}>{crSafety.score ?? "—"}/100</span>
                   <span className={`small ${crSafety.counts.fail ? "error" : "dim"}`}>{crSafety.counts.fail ? `${crSafety.counts.fail} mezon bajarilmadi: ${crSafety.fails.join("; ")}` : crSafety.counts.warn ? `${crSafety.counts.warn} ogohlantirish` : "hammasi bajarildi"}</span>
                 </span>
               ) : (
@@ -133,7 +133,7 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
                 {isApprover && !mine && (
                   <>
                     <button className="btn sm" disabled={busy} onClick={() => act(() => api.reviewCR(cr.id, "request_changes", comment[cr.id] ?? ""))}>O'zgartirish so'rash</button>
-                    <button className="btn sm primary" disabled={busy} onClick={() => { const s = crSafety; if (s && s.counts.fail && !confirm(`Xavfsizlik tekshiruvida ${s.counts.fail} ta mezon bajarilmagan (${s.score}/100):\n${s.fails.join("\n")}\n\nBaribir ma'qullaysizmi?`)) return; if (!s && !confirm("Bu versiya xavfsizlik tekshiruvidan o'tkazilmagan. Baribir ma'qullaysizmi?")) return; void act(() => api.reviewCR(cr.id, "approve", comment[cr.id] ?? "")); }}>Ma'qullash</button>
+                    <button className="btn sm primary" disabled={busy} onClick={() => { const s = crSafety; if (s && s.counts.fail && !confirm(`Xavfsizlik tekshiruvida ${s.counts.fail} ta mezon bajarilmagan (${s.score ?? "—"}/100):\n${s.fails.join("\n")}\n\nBaribir ma'qullaysizmi?`)) return; if (!s && !confirm("Bu versiya xavfsizlik tekshiruvidan o'tkazilmagan. Baribir ma'qullaysizmi?")) return; void act(() => api.reviewCR(cr.id, "approve", comment[cr.id] ?? "")); }}>Ma'qullash</button>
                   </>
                 )}
                 {(isApprover || mine) && <button className="btn sm danger" disabled={busy} onClick={() => confirm("So'rovni yopasizmi?") && act(() => api.rejectCR(cr.id))}>Yopish</button>}

@@ -150,10 +150,11 @@ FIELDS = [
         "cohesion_kpa",
         "Ilashish c",
         "kPa",
-        default=200,
+        default=0,
         min=0,
         group="Tag",
-        hint="Ishonchsiz bo'lsa 0",
+        hint="Faqat maydon/laboratoriya sinovi bilan (beton–qoya kontakt); sinovsiz 0. "
+        "c > 0 bo'lsa talab yuqoriroq (EM 1110-2-2200 4-1-jadval)",
     ),
     Field(
         "allow_stress_mpa",
@@ -198,13 +199,25 @@ FIELDS = [
     ),
     Field(
         "req_sliding",
-        "Talab: K_sirpanish",
+        "Talab: K_sirpanish (ilashish bilan)",
+        "",
+        default=2.0,
+        min=1,
+        step=0.1,
+        group="Mezon",
+        hint="USACE EM 1110-2-2200 4-1-jadval (shear-friction, c bilan): odatiy 2.0, "
+        "g'ayrioddiy 1.7, ekstremal 1.3; c = 0 bo'lsa e'tiborsiz",
+    ),
+    Field(
+        "req_sliding_friction",
+        "Talab: K_sirpanish (faqat ishqalanish)",
         "",
         default=1.5,
         min=1,
         step=0.1,
         group="Mezon",
-        hint="statik 1.5 (ilashishsiz) / 2.0 (ilashish bilan); zilzila 1.1",
+        hint="USACE EM 1110-2-2100 3-1-jadval (limit equilibrium, c = 0): odatiy 1.5, "
+        "g'ayrioddiy 1.3, ekstremal 1.1 — har doim tekshiriladi",
     ),
 ]
 
@@ -324,10 +337,22 @@ def run(p: dict) -> dict:
     B = r["B"]
     seismic = p["kh"] > 0
     problems = []
+    warnings: list[str] = []
     if r["fs_o"] < p["req_overturning"]:
         problems.append(f"ag'darilish zaxirasi {r['fs_o']:.2f} < {p['req_overturning']}")
-    if r["fs_s"] < p["req_sliding"]:
-        problems.append(f"sirpanish zaxirasi {r['fs_s']:.2f} < {p['req_sliding']}")
+    # Sirpanish: ikkala koeffitsient — ilashishli (c > 0 bo'lsa, yuqori talab) va faqat ishqalanish
+    # (har doim; ilashish sinovsiz ishonchsiz — EM 1110-2-2200 §4-5, EM 1110-2-2100 §3-3)
+    if p["cohesion_kpa"] > 0 and r["fs_s"] < p["req_sliding"]:
+        problems.append(f"sirpanish zaxirasi (c bilan) {r['fs_s']:.2f} < {p['req_sliding']}")
+    if r["fs_s_friction"] < p["req_sliding_friction"]:
+        problems.append(
+            f"sirpanish zaxirasi (faqat ishqalanish) {r['fs_s_friction']:.2f} < {p['req_sliding_friction']}"
+        )
+    if p["cohesion_kpa"] > 0:
+        warnings.append(
+            f"ilashish c = {p['cohesion_kpa']:g} kPa hisobga olindi — qiymat kontakt sinovi bilan "
+            "asoslangan bo'lishi shart (sinovsiz 0)"
+        )
     if r["s_heel"] < 0 and not seismic:
         problems.append("yuqori tovonda cho'zilish (natijaviy kuch o'rta uchdan tashqarida)")
     if r["x_r"] < 0 or r["x_r"] > B:
@@ -394,7 +419,10 @@ def run(p: dict) -> dict:
             "sigma_heel_mpa": round(r["s_heel"], 3),
             "kh": p["kh"],
             "kh_critical": kh_crit,
+            "req_sliding": p["req_sliding"],
+            "req_sliding_friction": p["req_sliding_friction"],
             "verdict": "; ".join(problems) if problems else "Barqaror — barcha mezonlar bajarildi",
             "ok": not problems,
+            "warnings": warnings,
         },
     }

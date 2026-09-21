@@ -46,22 +46,53 @@ def _flood_judge(min_freeboard: float):
 
 
 def _stab_judge(s: dict, p: Params) -> tuple[str, str]:
-    fo, fs = float(s.get("fs_overturning") or 0), float(s.get("fs_sliding") or 0)
-    ro, rs = float(p.get("req_overturning") or 1.5), float(p.get("req_sliding") or 1.5)
-    if fo < ro or fs < rs:
-        return "fail", f"K_ag'd {fo:.2f} (talab {ro}), K_sirp {fs:.2f} (talab {rs})"
+    """Ikkala sirpanish koeffitsienti tekshiriladi: ilashishli (c > 0 bo'lsa; USACE EM 1110-2-2200
+    4-1-jadval: 2.0/1.7/1.3) va faqat ishqalanish (har doim; EM 1110-2-2100 3-1-jadval: 1.5/1.3/1.1).
+    Ilashishsiz koeffitsient hal qiluvchi — ilashish sinovsiz ishonchsiz."""
+    fo = float(s.get("fs_overturning") or 0)
+    fs_c = float(s.get("fs_sliding") or 0)
+    fs_f = float(s.get("fs_sliding_friction_only") or 0)
+    ro = float(p.get("req_overturning") or 1.5)
+    rs_c = float(p.get("req_sliding") or 2.0)
+    rs_f = float(p.get("req_sliding_friction") or 1.5)
+    c = float(p.get("cohesion_kpa") or 0)
+    fails = []
+    if fo < ro:
+        fails.append(f"K_ag'd {fo:.2f} < {ro}")
+    if fs_f < rs_f:
+        fails.append(f"K_sirp (ishqalanish) {fs_f:.2f} < {rs_f} (EM 1110-2-2100)")
+    if c > 0 and fs_c < rs_c:
+        fails.append(f"K_sirp (c = {c:g} kPa) {fs_c:.2f} < {rs_c} (EM 1110-2-2200)")
+    if fails:
+        return "fail", "; ".join(fails)
     heel = s.get("sigma_heel_mpa")
     if heel is not None and float(heel) < 0:
         return "warn", f"yuqori tovonda cho'zilish {float(heel):.2f} MPa"
-    return "ok", f"K_ag'd {fo:.2f}, K_sirp {fs:.2f}"
+    return "ok", f"K_ag'd {fo:.2f}, K_sirp {fs_f:.2f} (ishqalanish){f', {fs_c:.2f} (c bilan)' if c > 0 else ''}"
 
 
 def _ok_judge(s: dict, _p: Params) -> tuple[str, str]:
     return ("ok" if s.get("ok") is not False else "fail"), str(s.get("verdict") or "")
 
 
-def _seismic_judge(s: dict, _p: Params) -> tuple[str, str]:
-    return "ok", f"PGA {s.get('pga_g')} g, k_h {s.get('kh')}"
+# EC8-1 §3.1.2(4): C/D/E gruntlarda va S_1/S_2 da maxsus tadqiqot; a_g ≥ 0.2g da ayniqsa
+_SOFT_GROUND = {"C", "D", "E", "S1", "S2"}
+
+
+def _seismic_judge(s: dict, _p: Params, ctx: dict | None = None) -> tuple[str, str]:
+    """Haqiqiy mezon: loyihaviy k_h to'g'onning kritik k_h (sirpanish K = 1.0) dan kichik bo'lishi
+    kerak (stab_seismic natijasidan); yumshoq grunt + kuchli PGA → maxsus tadqiqot ogohlantirishi."""
+    kh = float(s.get("kh") or 0)
+    pga = float(s.get("pga_g") or 0)
+    kh_crit = (ctx or {}).get("kh_critical")
+    msg = f"PGA {pga:g} g, k_h {kh:g}"
+    if kh_crit is not None and kh > float(kh_crit):
+        return "fail", f"{msg} > kritik k_h {float(kh_crit):.3f} (sirpanish K < 1.0)"
+    if str(s.get("ground", "")).upper() in _SOFT_GROUND and pga >= 0.2:
+        return "warn", f"{msg}; {s.get('ground')} grunt + PGA ≥ 0.2 g — maxsus tadqiqot (EC8-1 §3.1.2)"
+    if kh_crit is None:
+        return "warn", f"{msg}; kritik k_h hisoblanmadi (to'g'on barqarorligi ssenariysi yo'q)"
+    return "ok", f"{msg} (kritik {float(kh_crit):.3f})"
 
 
 SCENARIOS: list[Scenario] = [
@@ -150,40 +181,43 @@ SCENARIOS: list[Scenario] = [
             "headwater_m": c["npu"],
             "kh": 0.0,
             "req_overturning": 1.5,
-            "req_sliding": 1.5,
+            "req_sliding": 2.0,
+            "req_sliding_friction": 1.5,
         },
         _stab_judge,
-        ["fs_overturning", "fs_sliding", "sigma_toe_mpa"],
+        ["fs_overturning", "fs_sliding_friction_only", "fs_sliding", "sigma_toe_mpa"],
     ),
     Scenario(
         "stab_seismic",
         "To'g'on barqarorligi — zilzila, NPU",
         "dam_stability",
-        "Zilzila k_h bilan (talab ≥ 1.1)",
+        "Zilzila k_h bilan (ekstremal: ishqalanish ≥ 1.1, c bilan ≥ 1.3)",
         lambda p, c: {
             **p,
             "headwater_m": c["npu"],
             "kh": c.get("kh") or p.get("kh") or 0.1,
             "req_overturning": 1.1,
-            "req_sliding": 1.1,
+            "req_sliding": 1.3,
+            "req_sliding_friction": 1.1,
         },
         _stab_judge,
-        ["fs_overturning", "fs_sliding", "sigma_heel_mpa"],
+        ["fs_overturning", "fs_sliding_friction_only", "fs_sliding", "sigma_heel_mpa", "kh_critical"],
     ),
     Scenario(
         "stab_flood",
         "To'g'on barqarorligi — FPU (toshqin)",
         "dam_stability",
-        "Tekshiruv toshqini sathida (talab ≥ 1.3)",
+        "Tekshiruv toshqini sathida (g'ayrioddiy: ishqalanish ≥ 1.3, c bilan ≥ 1.7)",
         lambda p, c: {
             **p,
             "headwater_m": c["fpu"],
             "kh": 0.0,
             "req_overturning": 1.3,
-            "req_sliding": 1.3,
+            "req_sliding": 1.7,
+            "req_sliding_friction": 1.3,
         },
         _stab_judge,
-        ["fs_overturning", "fs_sliding"],
+        ["fs_overturning", "fs_sliding_friction_only", "fs_sliding"],
     ),
     Scenario(
         "seepage",
@@ -243,6 +277,7 @@ def run_all(
     """prefill(kind) → {site, model} qiymatlari; save(scenario, params, result) → job_id (ixtiyoriy)."""
     ctx = context(site)
     rows = []
+    seismic_row: dict | None = None
     for sc in SCENARIOS:
         if sc.kind not in catalog.REGISTRY:
             continue
@@ -263,6 +298,7 @@ def run_all(
                     "status": "skip",
                     "message": f"hisoblanmadi: {e}",
                     "metrics": {},
+                    "warnings": [],
                     "job_id": None,
                 }
             )
@@ -270,32 +306,56 @@ def run_all(
         s = result["summary"]
         if sc.id == "seismic":
             ctx["kh"] = s.get("kh")
-        status, msg = sc.judge(s, params)
+        if sc.id == "stab_seismic" and s.get("kh_critical") is not None:
+            ctx["kh_critical"] = s.get("kh_critical")
+        status, msg = ("", "") if sc.id == "seismic" else sc.judge(s, params)
         job_id = save(sc, params, result) if save else None
-        rows.append(
-            {
-                "id": sc.id,
-                "title": sc.title,
-                "kind": sc.kind,
-                "why": sc.why,
-                "status": status,
-                "message": msg,
-                "metrics": {k: s.get(k) for k in sc.metrics if k in s},
-                "job_id": job_id,
-            }
-        )
+        row = {
+            "id": sc.id,
+            "title": sc.title,
+            "kind": sc.kind,
+            "why": sc.why,
+            "status": status,
+            "message": msg,
+            "metrics": {k: s.get(k) for k in sc.metrics if k in s},
+            "warnings": list(s.get("warnings") or []),
+            "job_id": job_id,
+        }
+        if sc.id == "seismic":
+            seismic_row = row
+            row["_summary"] = s
+        rows.append(row)
+    if seismic_row is not None:
+        # seysmik mezon stab_seismic dagi kritik k_h ga bog'liq — ssenariylar tugagach baholanadi
+        s = seismic_row.pop("_summary")
+        seismic_row["status"], seismic_row["message"] = _seismic_judge(s, {}, ctx)
     n_ok = sum(1 for r in rows if r["status"] == "ok")
     n_fail = sum(1 for r in rows if r["status"] == "fail")
     n_warn = sum(1 for r in rows if r["status"] == "warn")
+    n_skip = sum(1 for r in rows if r["status"] == "skip")
     n_done = n_ok + n_fail + n_warn
-    score = round(100 * (n_ok + 0.5 * n_warn) / n_done) if n_done else 0
+    # Konyunktiv baho: bitta fail → fail; hisoblanmagan mezon bo'lsa umumiy baho berilmaydi
+    # (0–100 ball turli chegaraviy holatlar ustida noto'g'ri asbob; faqat to'liq holatda, ma'lumot uchun)
+    if n_skip:
+        overall = "incomplete"
+        score = None
+        verdict = f"{n_skip} ta mezon hisoblanmadi — umumiy baho yo'q" + (
+            f"; {n_fail} ta bajarilmadi" if n_fail else ""
+        )
+    elif n_fail:
+        overall, score = "fail", round(100 * (n_ok + 0.5 * n_warn) / n_done)
+        verdict = f"{n_fail} ta mezon bajarilmadi"
+    elif n_warn:
+        overall, score = "warn", round(100 * (n_ok + 0.5 * n_warn) / n_done)
+        verdict = f"{n_warn} ta ogohlantirish"
+    else:
+        overall, score, verdict = "ok", 100, "Xavfsiz — barcha mezonlar bajarildi"
     return {
         "rows": rows,
+        "overall": overall,
         "score": score,
-        "counts": {"ok": n_ok, "warn": n_warn, "fail": n_fail, "skip": len(rows) - n_done},
-        "verdict": "Xavfsiz — barcha mezonlar bajarildi"
-        if n_fail == 0 and n_warn == 0
-        else (f"{n_fail} ta mezon bajarilmadi" if n_fail else f"{n_warn} ta ogohlantirish"),
+        "counts": {"ok": n_ok, "warn": n_warn, "fail": n_fail, "skip": n_skip},
+        "verdict": verdict,
     }
 
 

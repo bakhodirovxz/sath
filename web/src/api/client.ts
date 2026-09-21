@@ -33,7 +33,7 @@ export interface Model {
   name: string;
   description: string;
   version_count: number;
-  safety?: { score: number; counts: { ok: number; warn: number; fail: number; skip: number }; verdict: string; version_id: number | null; at: string; fails: string[] } | null;
+  safety?: { score: number | null; overall?: string; counts: { ok: number; warn: number; fail: number; skip: number }; verdict: string; version_id: number | null; at: string; fails: string[] } | null;
   latest_version_id: number | null;
   published_version_id: number | null;
 }
@@ -134,8 +134,9 @@ export type SimStatus = "queued" | "running" | "done" | "failed";
 /** Simulyatsiya katalogi (server: ges_sim.catalog) */
 export interface SimField { key: string; label: string; unit: string; type: "number" | "int" | "bool" | "select" | "text" | "series"; default: unknown; min: number | null; max: number | null; step: number | null; options: [string, string][]; group: string; hint: string; live: string; model: string; advanced: boolean }
 export interface SimKind { id: string; title: string; description: string; group: string; icon: string; formulas: string[]; viz: Record<string, string | null>; outputs: { key: string; label: string; unit: string }[]; fields: SimField[]; custom_ui: boolean }
-export interface SafetyRow { id: string; title: string; kind: string; why: string; status: "ok" | "warn" | "fail" | "skip"; message: string; metrics: Record<string, unknown>; job_id: number | null }
-export interface SafetyCheck { rows: SafetyRow[]; score: number; counts: { ok: number; warn: number; fail: number; skip: number }; verdict: string; version_id: number | null }
+export interface SafetyRow { id: string; title: string; kind: string; why: string; status: "ok" | "warn" | "fail" | "skip"; message: string; metrics: Record<string, unknown>; warnings?: string[]; job_id: number | null }
+/** score — faqat barcha mezonlar hisoblanganda (ma'lumot uchun); overall konyunktiv: bitta fail → fail, skip → incomplete */
+export interface SafetyCheck { rows: SafetyRow[]; score: number | null; overall?: "ok" | "warn" | "fail" | "incomplete"; counts: { ok: number; warn: number; fail: number; skip: number }; verdict: string; version_id: number | null }
 export interface SimCatalog { kinds: SimKind[]; groups: Record<string, string>; site_fields: SimField[] }
 export type GenericParams = Record<string, unknown>;
 export interface ProneSpot { where: string; why: string; severity: string }

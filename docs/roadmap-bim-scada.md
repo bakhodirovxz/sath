@@ -1177,7 +1177,7 @@ Bog'liqlik: H2, I1.
 Bu bosqich shoshilinch, chunki hozirgi natijalar xavfsizlik qarorlariga ta'sir qiladi va
 ba'zilari noto'g'ri tomonga xato qiladi. Har vazifada tekshirilgan raqamlar keltirilgan.
 
-### J1 — Xavfsizlik bahosini tuzatish
+### J1 — Xavfsizlik bahosini tuzatish ✅
 
 Muammo (`server/ges_server/sim/safety.py`):
 - `_stab_judge` (`:48`) faqat `fs_sliding` ni o'qiydi, ya'ni ilashish (cohesion) bilan.
@@ -1377,7 +1377,7 @@ Fayllar: `sim/ges_sim/transformer.py`, `sim/tests/`
 Qabul mezoni: IEC ilova misoli bilan mos keladi (test).
 Bog'liqlik: yo'q.
 
-### J9 — Amal qilish diapazonlari va ogohlantirishlar ✅
+### J9 — Amal qilish diapazonlari va ogohlantirishlar ✅ (`fb4b3ff`)
 
 Muammo: regressiya va empirik usullar o'z ma'lumotlar to'plamidan tashqarida jimgina
 ekstrapolyatsiya qilinadi:

@@ -93,7 +93,7 @@ export default function ProjectPage() {
                   <td><b>{m.name}</b>{m.description && <div className="muted small">{m.description}</div>}</td>
                   <td>{m.version_count}</td>
                   <td>{m.published_version_id ? <span className="badge published">bor</span> : <span className="dim">yo'q</span>}</td>
-                  <td>{m.safety ? <span className="badge" title={`${m.safety.verdict}${m.safety.fails.length ? ": " + m.safety.fails.join("; ") : ""} · ${new Date(m.safety.at).toLocaleString("uz")}`} style={{ background: m.safety.counts.fail ? "var(--danger)" : m.safety.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{m.safety.score}/100</span> : <span className="dim small">tekshirilmagan</span>}</td>
+                  <td>{m.safety ? <span className="badge" title={`${m.safety.verdict}${m.safety.fails.length ? ": " + m.safety.fails.join("; ") : ""} · ${new Date(m.safety.at).toLocaleString("uz")}`} style={{ background: m.safety.counts.fail ? "var(--danger)" : m.safety.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{m.safety.score ?? "—"}/100</span> : <span className="dim small">tekshirilmagan</span>}</td>
                 </tr>
               ))}
             </tbody>
