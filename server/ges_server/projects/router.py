@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from .. import audit
-from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, require_project_role
+from ..auth import sessions
+from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
 from ..orm import Model, Project, ProjectMember, Role, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -185,8 +186,11 @@ def set_member(body: MemberSet, project: ApproverProject, user: CurrentUser, db:
         db.query(ProjectMember).filter_by(project_id=project.id, user_id=body.user_id).one_or_none()
     )
     if member is None:
-        member = ProjectMember(project_id=project.id, user_id=body.user_id)
+        member = ProjectMember(project_id=project.id, user_id=body.user_id, role=body.role)
         db.add(member)
+    elif not has_role(body.role, member.role) and not target.is_admin:
+        # L2: rol pasaytirildi — ochiq WS/tokenlar eski huquq bilan qolmasin (ko'tarilganda shart emas)
+        sessions.revoke_all(db, target.id, reason="role_change")
     member.role = body.role
     audit.log(
         db,
@@ -209,6 +213,7 @@ def remove_member(user_id: int, project: ApproverProject, user: CurrentUser, db:
     if member is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "A'zo topilmadi")
     db.delete(member)
+    sessions.revoke_all(db, user_id, reason="member_removed")
     audit.log(
         db,
         user_id=user.id,

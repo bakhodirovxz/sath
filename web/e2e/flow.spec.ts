@@ -29,7 +29,7 @@ test.describe.serial("Sath web oqimi", () => {
     const h = { Authorization: `Bearer ${tok}` };
     const p = await (await request.post(`${API}/api/projects`, { headers: h, data: { name: `E2E ${stamp}` } })).json();
     projectId = p.id;
-    const eng = await (await request.post(`${API}/api/users`, { headers: h, data: { ...engineerCreds, full_name: "E2E muhandis" } })).json();
+    const eng = await (await request.post(`${API}/api/users`, { headers: h, data: { ...engineerCreds, full_name: "E2E muhandis", must_change_password: false } })).json();
     await request.put(`${API}/api/projects/${projectId}/members`, { headers: h, data: { user_id: eng.id, role: "engineer" } });
     const m = await (await request.post(`${API}/api/projects/${projectId}/models`, { headers: h, data: { name: "Namuna" } })).json();
     modelId = m.id;
@@ -298,6 +298,30 @@ test.describe.serial("Sath web oqimi", () => {
     await page.getByPlaceholder("Kod").fill(totp(secret, 1));
     await page.getByRole("button", { name: "O'chirish" }).click();
     await expect(page.getByRole("status")).toContainText("MFA o'chirildi");
+  });
+
+  test("Sessiya (L2): majburiy parol almashtirish, sahifa qayta yuklanganda sessiya saqlanadi, chiqish", async ({ page, request }) => {
+    const tok = await token(request);
+    const creds = { username: `e2e_new_${stamp}`, password: "Fresh-pw-2026" };
+    const r = await request.post(`${API}/api/users`, { headers: { Authorization: `Bearer ${tok}` }, data: { ...creds, full_name: "E2E yangi", must_change_password: true } });
+    expect(r.status()).toBe(201);
+    await page.goto("/login");
+    await page.getByLabel(/login/i).fill(creds.username);
+    await page.getByLabel(/parol/i).fill(creds.password);
+    await page.getByRole("button", { name: /kirish/i }).click();
+    // Boshqa amallar yopiq — profil dialogi majburiy
+    await expect(page.getByTestId("must-change")).toBeVisible();
+    await page.getByLabel("Joriy parol").fill(creds.password);
+    await page.getByTestId("new-password").fill("Changed-pw-2026");
+    await page.getByRole("button", { name: "O'zgartirish" }).click();
+    await expect(page.getByRole("heading", { name: "Loyihalar" })).toBeVisible();
+    // Qayta yuklash: access token xotirada yo'q — HttpOnly cookie orqali tiklanadi
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Loyihalar" })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("ges_token"))).toBeNull();
+    await page.getByRole("button", { name: "Chiqish" }).click();
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /kirish/i })).toBeVisible();
   });
 
   /** TOTP (RFC 6238, SHA1, 30 s, 6 raqam) — serverdagi bilan bir xil; `offset` — qadam siljishi. */

@@ -54,17 +54,17 @@ def test_change_password(client, admin):
     bob = login(client, "bob", "pass1234")
     r = client.post(
         "/api/auth/change-password",
-        json={"old_password": "wrong", "new_password": "newpass"},
+        json={"old_password": "wrong", "new_password": "Newpass-2026"},
         headers=bob,
     )
     assert r.status_code == 400
     r = client.post(
         "/api/auth/change-password",
-        json={"old_password": "pass1234", "new_password": "newpass"},
+        json={"old_password": "pass1234", "new_password": "Newpass-2026"},
         headers=bob,
     )
-    assert r.status_code == 204
-    login(client, "bob", "newpass")
+    assert r.status_code == 200 and r.json()["access_token"]  # L2: yangi token juftligi
+    login(client, "bob", "Newpass-2026")
 
 
 def test_admin_cannot_demote_self(client, admin):

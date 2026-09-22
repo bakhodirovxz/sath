@@ -1,3 +1,5 @@
+from conftest import ws_ticket
+
 """A4: audit zanjiri — yaxlitlik tekshiruvi, rollback dan omon qolish, yetishmagan hodisalar, eksport."""
 
 import hashlib
@@ -76,9 +78,11 @@ def test_missing_events_are_logged(client, admin, users):
     sid = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]["id"]
     client.get(f"/api/sensors/{sid}/export.csv", headers=users["viewer"])
     client.get(f"/api/projects/{pid}/report", headers=users["viewer"])
-    client.post("/api/auth/change-password", json={"old_password": "pass1234", "new_password": "pass9999"}, headers=users["viewer"])
-    token = users["viewer"]["Authorization"].split()[1]
-    with client.websocket_connect(f"/api/projects/{pid}/live?token={token}") as ws:
+    r = client.post("/api/auth/change-password", json={"old_password": "pass1234", "new_password": "Kuzatuv-pw-9999"}, headers=users["viewer"])
+    assert r.status_code == 200, r.text
+    viewer = {"Authorization": f"Bearer {r.json()['access_token']}"}  # L2: parol o'zgargach eski token yaroqsiz
+    token = ws_ticket(client, viewer)
+    with client.websocket_connect(f"/api/projects/{pid}/live?ticket={token}") as ws:
         ws.receive_json()
     for _ in range(50):  # ws.disconnect audit yozuvi alohida oqimda (to_thread) — biroz kutish mumkin
         rows = client.get("/api/audit", headers=admin, params={"limit": 2000}).json()

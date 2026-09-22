@@ -22,7 +22,12 @@ class Settings(BaseSettings):
     app_name: str = "Sath"
     # Berilmasa data_dir/secret.key dan o'qiladi yoki yaratiladi (pastga qarang)
     secret_key: str = ""
-    access_token_minutes: int = 60 * 12
+    # L2: access token qisqa umrli, refresh token sessiya muddati (aylantiriladi); WS da qayta avtorizatsiya davri
+    access_token_minutes: int = 15
+    refresh_token_hours: float = 12
+    ws_reauth_s: int = 300
+    # Parol siyosati (NIST 800-63B): minimal uzunlik; bloklash ro'yxati va login tekshiruvi doimiy
+    password_min_length: int = 8
     database_url: str = "sqlite:///./data/ges.db"
     # Startda `alembic upgrade head` avtomatik; false bo'lsa sxema head da emasligi xato beradi
     auto_migrate: bool = True

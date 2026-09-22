@@ -42,8 +42,8 @@ export function applyLiveMessage(prev: Sensor[], m: LiveMessage): Sensor[] {
 }
 
 export interface LiveOptions {
-  /** Test/injeksiya: soket fabrikasi (default api.liveSocket) */
-  socket?: (projectId: number) => WebSocket;
+  /** Test/injeksiya: soket fabrikasi (default api.liveSocket — chipta olib, keyin soket) */
+  socket?: (projectId: number) => WebSocket | Promise<WebSocket>;
   /** Holat tekshiruv davri, ms */
   tickMs?: number;
 }
@@ -76,9 +76,9 @@ export function useLive(
       // Yarim ochiq soket: xabar OFFLINE chegarasidan uzoq kelmasa — yopib, qayta ulanamiz
       if (open && lastMsgAt != null && Date.now() - lastMsgAt >= OFFLINE_AFTER_MS) ws?.close();
     }, tickMs);
-    const connect = () => {
-      if (closed) return;
-      ws = (factory.current ?? api.liveSocket)(projectId);
+    const attach = (sock: WebSocket) => {
+      if (closed) { sock.close(); return; }
+      ws = sock;
       ws.onopen = () => { open = true; lastMsgAt = Date.now(); attempt = 0; update(); };
       ws.onmessage = (ev) => {
         lastMsgAt = Date.now();
@@ -94,6 +94,20 @@ export function useLive(
         timer = window.setTimeout(connect, backoffMs(attempt++));
       };
       ws.onerror = () => ws?.close();
+    };
+    const connect = () => {
+      if (closed) return;
+      let made: WebSocket | Promise<WebSocket>;
+      try {
+        made = (factory.current ?? api.liveSocket)(projectId);
+      } catch {
+        timer = window.setTimeout(connect, backoffMs(attempt++));
+        return;
+      }
+      if (made instanceof Promise) {
+        // Chipta olinmadi (tarmoq/401) — orqaga chekinib qayta urinamiz; sessiya tugagan bo'lsa request() o'zi chiqaradi
+        made.then(attach, () => { if (!closed) timer = window.setTimeout(connect, backoffMs(attempt++)); });
+      } else attach(made);
     };
     connect();
     return () => { closed = true; window.clearTimeout(timer); window.clearInterval(tick); ws?.close(); };

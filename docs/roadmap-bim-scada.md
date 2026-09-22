@@ -1882,7 +1882,7 @@ Bog'liqlik: yo'q. Eng arzon desktop tuzatishi — qolgan hammasini himoya qiladi
 
 ## L. Ishonchlilik, xavfsizlik, deploy
 
-### L1 — Tarmoq chegarasi va TLS ✅
+### L1 — Tarmoq chegarasi va TLS ✅ (`cffc554`)
 
 Muammo:
 - `deploy/docker-compose.yml:17` — `"${GES_PORT:-8000}:8000"` shartsiz e'lon qilinadi, ya'ni
@@ -1905,7 +1905,7 @@ Fayllar: `deploy/docker-compose.yml`, `deploy/Caddyfile`, `server/ges_server/mai
 Qabul mezoni: 20 ta noto'g'ri login urinishi bloklanadi (test).
 Bog'liqlik: yo'q.
 
-### L2 — Sessiya boshqaruvi
+### L2 — Sessiya boshqaruvi ✅
 
 Muammo (`auth/security.py:24-45`, `config.py:25`):
 - `access_token_minutes = 60*12` — 12 soatlik token, bekor qilish yo'q, refresh yo'q, logout

@@ -1,3 +1,5 @@
+from conftest import ws_ticket
+
 """F4: aloqa holati (stale) alarm holatidan ajratilgan — yuqori alarmdagi sensor aloqani yo'qotsa alarm yashirinmaydi;
 aloqa qaytsa stale hodisasi yopiladi; WebSocket xabarida stale/age_s; heartbeat ping."""
 
@@ -47,8 +49,8 @@ def test_ws_snapshot_has_stale_and_ping(client, users, monkeypatch):
     pid = users["project_id"]
     client.post(f"/api/projects/{pid}/sensors", json={"key": "AGG1.P", "name": "P", "kind": "power", "unit": "MW"}, headers=users["engineer"])
     monkeypatch.setattr(mon, "WS_PING_S", 0.2)
-    token = users["viewer"]["Authorization"].split()[1]
-    with client.websocket_connect(f"/api/projects/{pid}/live?token={token}") as ws:
+    token = ws_ticket(client, users["viewer"])
+    with client.websocket_connect(f"/api/projects/{pid}/live?ticket={token}") as ws:
         snap = ws.receive_json()
         assert snap["type"] == "snapshot" and snap["sensors"][0]["stale"] is True and "age_s" in snap["sensors"][0]
         ping = ws.receive_json()  # 0.2 s ichida heartbeat

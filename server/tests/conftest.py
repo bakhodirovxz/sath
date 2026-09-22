@@ -56,9 +56,17 @@ def admin(client):
     return login(client, "admin", "admin123")
 
 
+def ws_ticket(client: TestClient, headers: dict) -> str:
+    """WebSocket uchun 60 s li chipta (L2: sessiya tokeni URL ga tushmaydi)."""
+    r = client.post("/api/auth/ws-ticket", headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()["ticket"]
+
+
 def make_user(client, admin, username, password="pass1234", **kw) -> int:
+    """Test foydalanuvchisi; L2 majburiy parol almashtirish o'chiq (kerak bo'lsa must_change_password=True)."""
     r = client.post(
-        "/api/users", json={"username": username, "password": password, **kw}, headers=admin
+        "/api/users", json={"username": username, "password": password, "must_change_password": False, **kw}, headers=admin
     )
     assert r.status_code == 201, r.text
     return r.json()["id"]

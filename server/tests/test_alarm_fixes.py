@@ -1,3 +1,5 @@
+from conftest import ws_ticket
+
 """C5: WebSocket ulanishi alarm/email bermaydi; email navbati (cheklangan, jamlangan); fon holati DB da."""
 
 import queue
@@ -25,9 +27,9 @@ def test_50_ws_connections_send_no_email_and_no_stale_events(client, users, monk
         db.commit()
     calls = []
     monkeypatch.setattr(notify, "send_async", lambda *a, **k: calls.append(a))
-    token = users["viewer"]["Authorization"].split()[1]
+    token = ws_ticket(client, users["viewer"])
     for _ in range(50):
-        with client.websocket_connect(f"/api/projects/{pid}/live?token={token}") as ws:
+        with client.websocket_connect(f"/api/projects/{pid}/live?ticket={token}") as ws:
             snap = ws.receive_json()
             assert snap["type"] == "snapshot"
     assert calls == []

@@ -10,10 +10,9 @@ from fastapi import APIRouter, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
 from .. import audit
-from ..auth.deps import DB, AdminUser, CurrentUser
-from ..auth.security import create_access_token, decode_access_token
+from ..auth.deps import DB, AdminUser, CurrentUser, user_from_token
+from ..auth.security import create_access_token
 from ..config import get_settings
-from ..orm import User
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -85,7 +84,7 @@ def desktop_latest(_: CurrentUser):
 def desktop_download_token(user: CurrentUser):
     """Brauzer havolasi uchun qisqa muddatli (5 daqiqa), faqat yuklab olishga yaraydigan token —
     sessiya tokeni URL ga (log/tarixga) tushmasin."""
-    return {"token": create_access_token(user.id, minutes=5, scope="desktop-download")}
+    return {"token": create_access_token(user.id, minutes=5, scope="desktop-download", ver=user.token_version)}
 
 
 @router.get("/desktop/download/{name}")
@@ -96,13 +95,12 @@ def desktop_download(
     authorization: Annotated[str | None, Header()] = None,
 ):
     """Yuklab olish: Bearer sessiya tokeni yoki ?token=<download-token> (brauzer havolasi)."""
-    uid = None
+    user = None
     if token:
-        uid = decode_access_token(token, scope="desktop-download")
+        user = user_from_token(db, token, scope="desktop-download")
     elif authorization and authorization.lower().startswith("bearer "):
-        uid = decode_access_token(authorization[7:])
-    user = db.get(User, uid) if uid else None
-    if user is None or not user.is_active:
+        user = user_from_token(db, authorization[7:])
+    if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token kerak")
     m = _NAME.match(name)
     if not m:

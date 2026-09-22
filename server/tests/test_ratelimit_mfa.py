@@ -120,8 +120,8 @@ def test_mfa_flow(client, admin, settings, monkeypatch):
     clock = {"t": 1_800_000_000.0}
     monkeypatch.setattr(totp.time, "time", lambda: clock["t"])
     step = lambda: clock.__setitem__("t", clock["t"] + totp.STEP_S)  # noqa: E731
-    make_user(client, admin, "mfa", "pw-mfa-ok")
-    h = login(client, "mfa", "pw-mfa-ok")
+    make_user(client, admin, "mfa", "pw-secret-ok1")
+    h = login(client, "mfa", "pw-secret-ok1")
     assert client.post("/api/auth/mfa/enable", json={"code": "123456"}, headers=h).status_code == 400
     r = client.post("/api/auth/mfa/setup", headers=h)
     assert r.status_code == 200
@@ -132,14 +132,14 @@ def test_mfa_flow(client, admin, settings, monkeypatch):
     assert client.post("/api/auth/mfa/enable", json={"code": code}, headers=h).status_code == 204
     assert client.get("/api/auth/me", headers=h).json()["mfa_enabled"] is True
     # kodsiz login — 401 + X-MFA-Required; noto'g'ri kod — 401; ishlatilgan kod — 401 (takror); yangi kod — 200
-    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-mfa-ok"})
+    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-secret-ok1"})
     assert r.status_code == 401 and r.headers.get("X-MFA-Required") == "1"
-    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-mfa-ok", "otp": "000000"})
+    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-secret-ok1", "otp": "000000"})
     assert r.status_code == 401
-    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-mfa-ok", "otp": code})
+    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-secret-ok1", "otp": code})
     assert r.status_code == 401
     step()
-    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-mfa-ok", "otp": totp.totp(secret)})
+    r = client.post("/api/auth/login", data={"username": "mfa", "password": "pw-secret-ok1", "otp": totp.totp(secret)})
     assert r.status_code == 200, r.text
     h2 = {"Authorization": f"Bearer {r.json()['access_token']}"}
     # o'chirish — parol + kod
@@ -147,9 +147,9 @@ def test_mfa_flow(client, admin, settings, monkeypatch):
     code3 = totp.totp(secret)
     r = client.post("/api/auth/mfa/disable", json={"password": "wrong", "code": code3}, headers=h2)
     assert r.status_code == 400
-    r = client.post("/api/auth/mfa/disable", json={"password": "pw-mfa-ok", "code": code3}, headers=h2)
+    r = client.post("/api/auth/mfa/disable", json={"password": "pw-secret-ok1", "code": code3}, headers=h2)
     assert r.status_code == 204
-    assert client.post("/api/auth/login", data={"username": "mfa", "password": "pw-mfa-ok"}).status_code == 200
+    assert client.post("/api/auth/login", data={"username": "mfa", "password": "pw-secret-ok1"}).status_code == 200
 
 
 def test_admin_mfa_required(client, admin, settings):
@@ -167,11 +167,11 @@ def test_admin_mfa_required(client, admin, settings):
 
 def test_admin_mfa_reset(client, admin, settings):
     settings.rate_login_per_min = 0
-    uid = make_user(client, admin, "lost", "pw-lost-ok")
-    h = login(client, "lost", "pw-lost-ok")
+    uid = make_user(client, admin, "lost", "pw-secret-ok2")
+    h = login(client, "lost", "pw-secret-ok2")
     secret = client.post("/api/auth/mfa/setup", headers=h).json()["secret"]
     assert client.post("/api/auth/mfa/enable", json={"code": totp.totp(secret)}, headers=h).status_code == 204
-    assert client.post("/api/auth/login", data={"username": "lost", "password": "pw-lost-ok"}).status_code == 401
+    assert client.post("/api/auth/login", data={"username": "lost", "password": "pw-secret-ok2"}).status_code == 401
     r = client.patch(f"/api/users/{uid}", json={"mfa_reset": True}, headers=admin)
     assert r.status_code == 200 and r.json()["mfa_enabled"] is False
-    assert client.post("/api/auth/login", data={"username": "lost", "password": "pw-lost-ok"}).status_code == 200
+    assert client.post("/api/auth/login", data={"username": "lost", "password": "pw-secret-ok2"}).status_code == 200

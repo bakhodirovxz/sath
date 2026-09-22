@@ -81,6 +81,31 @@ class User(Base):
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # oxirgi qabul qilingan TOTP hisoblagichi — bir kodni ikki marta ishlatishni rad etish
     mfa_last_counter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # L2: token versiyasi — parol/rol o'zgarsa yoki hamma sessiya bekor qilinsa oshadi; JWT `ver` mos kelishi shart
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # L2: admin bergan/boshlang'ich parol — birinchi kirishda almashtirish shart (boshqa endpointlar 403)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserSession(Base):
+    """Kirish sessiyasi (L2): refresh token `jti` bilan; aylantirilganda eski `prev_jti` da qoladi
+    (takror ishlatilsa — o'g'irlangan token belgisi)."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    jti: Mapped[str] = mapped_column(String(48), unique=True)
+    prev_jti: Mapped[str | None] = mapped_column(String(48), nullable=True, index=True)
+    client: Mapped[str] = mapped_column(String(16), default="web")  # web | desktop | gateway
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(256), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoke_reason: Mapped[str] = mapped_column(String(32), default="")
 
 
 class Project(Base):

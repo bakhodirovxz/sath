@@ -54,9 +54,9 @@ describe("useLive hook", () => {
   let root: Root;
   let el: HTMLDivElement;
   const states: LiveState[] = [];
-  function Probe({ factory }: { factory: () => WebSocket }) {
+  function Probe({ factory }: { factory: () => WebSocket | Promise<WebSocket> }) {
     const [, setSensors] = useState<Sensor[]>([]);
-    const st = useLive(1, setSensors, undefined, { socket: factory as unknown as (pid: number) => WebSocket, tickMs: 500 });
+    const st = useLive(1, setSensors, undefined, { socket: factory as unknown as (pid: number) => WebSocket | Promise<WebSocket>, tickMs: 500 });
     states.push(st);
     return <span data-state={st}>{st}</span>;
   }
@@ -110,5 +110,18 @@ describe("useLive hook", () => {
     expect(FakeWS.instances.length).toBe(2); // 2 s kutadi
     act(() => { vi.advanceTimersByTime(1000); });
     expect(FakeWS.instances.length).toBe(3);
+  });
+
+  it("asinxron fabrika (chipta, L2): promise hal bo'lgach ulanadi; rad etilsa orqaga chekinib qayta uradi", async () => {
+    let fail = true;
+    const factory = () => (fail ? Promise.reject(new Error("401")) : Promise.resolve(new FakeWS() as unknown as WebSocket));
+    act(() => { root.render(<Probe factory={factory} />); });
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWS.instances.length).toBe(0);
+    fail = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); }); // 1-urinish kechikishi ≤ 1.5 s
+    expect(FakeWS.instances.length).toBe(1);
+    act(() => { FakeWS.instances[0].open(); FakeWS.instances[0].send({ type: "ping" }); });
+    expect(last()).toBe("LIVE");
   });
 });

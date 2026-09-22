@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api, getToken, setToken, setUnauthorizedHandler, type User } from "../api/client";
+import { api, refreshSession, setToken, setUnauthorizedHandler, type User } from "../api/client";
 
 interface AuthState {
   user: User | null;
@@ -16,7 +16,8 @@ export const useAuth = create<AuthState>((set) => ({
   ready: false,
   async init() {
     setUnauthorizedHandler(() => set({ user: null }));
-    if (!getToken()) return set({ ready: true });
+    // Sahifa yuklanganda: HttpOnly refresh cookie bo'lsa yangi access token (L2); bo'lmasa login sahifasi
+    if (!(await refreshSession())) return set({ ready: true });
     try {
       set({ user: await api.me(), ready: true });
     } catch {
@@ -32,6 +33,7 @@ export const useAuth = create<AuthState>((set) => ({
     set({ user: await api.me() });
   },
   logout() {
+    void api.logout().catch(() => undefined); // sessiya serverda bekor (refresh cookie o'chadi)
     setToken(null);
     set({ user: null });
   },

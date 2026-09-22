@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from ..auth import sessions
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Project, SystemState
@@ -72,6 +73,8 @@ def tick_hourly() -> tuple[int, int]:
         purged += soe.purge(db, settings.soe_retention_days)
         twin.rollup_units(db)  # agregat kunlik statistikasi (tugagan kunlar)
         health.tick_hourly(db)  # sog'liq indekslari (HEALTH.*)
+        sessions.purge_expired(db)  # tugagan/bekor qilingan sessiyalar (L2), 30 kundan keyin
+        db.commit()
     return written, purged
 
 

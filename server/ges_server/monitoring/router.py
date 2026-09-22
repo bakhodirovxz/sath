@@ -25,8 +25,14 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 from sqlalchemy import func
 
 from .. import audit, ratelimit
-from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
-from ..auth.security import decode_access_token
+from ..auth.deps import (
+    DB,
+    CurrentUser,
+    get_project_role,
+    has_role,
+    require_project_role,
+    user_from_token,
+)
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
@@ -573,8 +579,7 @@ def push_readings(
         ok = True
     auth_kind, actor_id = ("key", None) if ok else (None, None)
     if not ok and authorization and authorization.lower().startswith("bearer "):
-        uid = decode_access_token(authorization[7:])
-        user = db.get(User, uid) if uid else None
+        user = user_from_token(db, authorization[7:])
         ok = (
             user is not None
             and user.is_active
@@ -671,9 +676,8 @@ def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: s
         keys.verify(db, project, "ingest", x_ingest_key)
         return "key", None
     if authorization and authorization.lower().startswith("bearer "):
-        uid = decode_access_token(authorization[7:])
-        user = db.get(User, uid) if uid else None
-        if user is not None and user.is_active and has_role(get_project_role(db, project_id, user), Role.engineer):
+        user = user_from_token(db, authorization[7:])
+        if user is not None and has_role(get_project_role(db, project_id, user), Role.engineer):
             return "token", user.id
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
 
@@ -1435,17 +1439,20 @@ def report(
 # ---------- WebSocket ----------
 
 
+def _ws_authorized(db, project_id: int, uid: int) -> bool:
+    """WS qayta avtorizatsiya (L2): foydalanuvchi faol va loyihada hali ko'ruvchi+."""
+    user = db.get(User, uid)
+    return user is not None and user.is_active and has_role(get_project_role(db, project_id, user), Role.viewer)
+
+
 @router.websocket("/projects/{project_id}/live")
-async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
-    """Jonli o'lchovlar. ?token=<JWT>. Birinchi xabar — hozirgi holat (snapshot)."""
+async def live_ws(ws: WebSocket, project_id: int, ticket: str = Query("")):
+    """Jonli o'lchovlar. `?ticket=` — `POST /api/auth/ws-ticket` dan 60 s li chipta (sessiya tokeni URL ga
+    tushmaydi, L2). Birinchi xabar — hozirgi holat (snapshot). Har `ws_reauth_s` da foydalanuvchi/rol qayta
+    tekshiriladi — huquq yo'qolsa 4401 bilan yopiladi."""
     with SessionLocal() as db:
-        uid = decode_access_token(token)
-        user = db.get(User, uid) if uid else None
-        if (
-            user is None
-            or not user.is_active
-            or not has_role(get_project_role(db, project_id, user), Role.viewer)
-        ):
+        user = user_from_token(db, ticket, scope="ws")
+        if user is None or not has_role(get_project_role(db, project_id, user), Role.viewer):
             await ws.close(code=4401)
             return
         # stale tekshiruvi faqat fon vazifasida (C5): ulanish sikli alarm/email bo'roni bermasin
@@ -1466,11 +1473,19 @@ async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
     try:
         await ws.send_json({"type": "snapshot", "sensors": snapshot})
         # Heartbeat (F4): har WS_PING_S soniyada ping — klient xabar yoshi bo'yicha LIVE → STALE → OFFLINE ni aniqlaydi
+        reauth_at = asyncio.get_running_loop().time() + get_settings().ws_reauth_s
         while True:
             try:
                 await asyncio.wait_for(ws.receive_text(), timeout=WS_PING_S)  # ping/pong yoki mijoz xabari — e'tiborsiz
             except (TimeoutError, asyncio.TimeoutError):
                 await ws.send_json({"type": "ping", "ts": datetime.now(timezone.utc).isoformat()})
+            if asyncio.get_running_loop().time() >= reauth_at:
+                reauth_at = asyncio.get_running_loop().time() + get_settings().ws_reauth_s
+                with SessionLocal() as db:
+                    ok = await asyncio.to_thread(_ws_authorized, db, project_id, uid)
+                if not ok:
+                    await ws.close(code=4401)
+                    break
     except WebSocketDisconnect:
         pass
     finally:

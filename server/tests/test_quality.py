@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import ws_ticket
 from ges_server.db import SessionLocal
 from ges_server.monitoring import historian, twin
 from ges_server.orm import Reading, ReadingHourly, Sensor
@@ -116,8 +117,8 @@ def test_only_bad_hour_writes_no_aggregate(client, users, power):
 
 def test_websocket_snapshot_carries_quality(client, users, power):
     _push(client, users, [{"key": "AGG1.P", "value": 7, "quality": "manual"}])
-    token = users["viewer"]["Authorization"].split()[1]
-    with client.websocket_connect(f"/api/projects/{users['project_id']}/live?token={token}") as ws:
+    token = ws_ticket(client, users["viewer"])
+    with client.websocket_connect(f"/api/projects/{users['project_id']}/live?ticket={token}") as ws:
         snap = ws.receive_json()
         assert snap["type"] == "snapshot"
         assert [s["quality"] for s in snap["sensors"] if s["key"] == "AGG1.P"] == ["manual"]

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import ws_ticket
 
 
 @pytest.fixture
@@ -241,8 +242,8 @@ def test_stale_detection(client, users, sensor):
 
 def test_websocket_snapshot_and_live(client, users, sensor):
     pid = users["project_id"]
-    token = users["viewer"]["Authorization"].split(" ", 1)[1]
-    with client.websocket_connect(f"/api/projects/{pid}/live?token={token}") as ws:
+    token = ws_ticket(client, users["viewer"])
+    with client.websocket_connect(f"/api/projects/{pid}/live?ticket={token}") as ws:
         snap = ws.receive_json()
         assert snap["type"] == "snapshot" and snap["sensors"][0]["key"] == "AGG1.P"
         r = client.post(
@@ -260,7 +261,7 @@ def test_websocket_snapshot_and_live(client, users, sensor):
         )
     # noto'g'ri token → yopiladi
     with pytest.raises(Exception):  # noqa: B017 — WebSocketDisconnect yoki ulanish rad
-        with client.websocket_connect(f"/api/projects/{pid}/live?token=bad") as ws:
+        with client.websocket_connect(f"/api/projects/{pid}/live?ticket=bad") as ws:
             ws.receive_json()
 
 

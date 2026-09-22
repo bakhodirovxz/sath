@@ -154,6 +154,17 @@ Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` 
 
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.
 - `GES_SECRET_KEY` — o'zgartirilsa hamma sessiya tugaydi (avtomatik yaratilgani `data/secret.key`).
+- Sessiyalar (L2): access token 15 daqiqa (`GES_ACCESS_TOKEN_MINUTES`), refresh token 12 soat
+  (`GES_REFRESH_TOKEN_HOURS`) — brauzerda HttpOnly `sath_refresh` cookie (JS o'qimaydi), desktop/gateway
+  uchun javob tanasida; har ishlatilganda aylantiriladi, eski tokenning takrori hamma sessiyani bekor qiladi
+  (`auth.session_reuse`). Parol/rol o'zgarishi, a'zolikdan chiqarish, o'chirish — foydalanuvchining barcha
+  tokenlari darhol yaroqsiz (`token_version`). Profil → Sessiyalar: qurilmalar ro'yxati, yakunlash, «Barcha
+  qurilmalardan chiqish». WebSocket 60 s li chipta bilan ochiladi (sessiya tokeni URL/loglarga tushmaydi) va
+  har `GES_WS_REAUTH_S` da huquq qayta tekshiriladi. JWT `iss=sath`, `aud=sath-api`.
+- Parol siyosati (NIST 800-63B): kamida `GES_PASSWORD_MIN_LENGTH` (8; tavsiya 12) belgi, harf+raqam aralash,
+  keng tarqalgan parollar va login parol ichida bo'lishi rad etiladi. Admin bergan yoki boshlang'ich
+  (`initial-admin-password.txt`) parol birinchi kirishda majburiy almashtiriladi (`must_change_password`;
+  yaratishda «Birinchi kirishda parolni almashtirsin» belgisi — xizmat hisoblari uchun o'chiriladi).
 - Tezlik cheklovi (429, `Retry-After`): login — IP bo'yicha (`GES_RATE_LOGIN_PER_MIN`, 30), ingest —
   loyiha bo'yicha so'rovlar (`GES_RATE_INGEST_PER_MIN`, 600; gateway partiyalab yuborsin), buyruqlar va sim
   ishlari — foydalanuvchi bo'yicha (60 / 20). Hisoblar jarayon ichida (replika boshiga).

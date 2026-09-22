@@ -11,7 +11,7 @@ export default function Admin() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [resetFor, setResetFor] = useState<User | null>(null);
-  const [form, setForm] = useState({ username: "", password: "", full_name: "", email: "", is_admin: false });
+  const [form, setForm] = useState({ username: "", password: "", full_name: "", email: "", is_admin: false, must_change_password: true });
   const [newPassword, setNewPassword] = useState("");
 
   const load = () => api.users().then(setUsers).catch((e) => setError(e.message));
@@ -24,7 +24,7 @@ export default function Admin() {
     try {
       await api.createUser(form);
       setCreating(false);
-      setForm({ username: "", password: "", full_name: "", email: "", is_admin: false });
+      setForm({ username: "", password: "", full_name: "", email: "", is_admin: false, must_change_password: true });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Xatolik");
@@ -91,6 +91,7 @@ export default function Admin() {
             <label className="field"><span>Email (bildirishnomalar uchun, ixtiyoriy)</span><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
             <label className="field"><span>Parol (kamida 4 belgi)</span><input className="input" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={4} /></label>
             <label className="row"><input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} /> Administrator</label>
+            <label className="row"><input type="checkbox" checked={form.must_change_password} onChange={(e) => setForm({ ...form, must_change_password: e.target.checked })} /> Birinchi kirishda parolni almashtirsin</label>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setCreating(false)}>Bekor qilish</button>
               <button type="submit" className="btn primary">Yaratish</button>

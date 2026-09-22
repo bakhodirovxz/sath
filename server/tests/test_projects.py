@@ -67,7 +67,11 @@ def test_member_management(client, users):
     # o'chirish
     r = client.delete(f"/api/projects/{pid}/members/{outsider}", headers=users["approver"])
     assert r.status_code == 204
-    assert client.get(f"/api/projects/{pid}", headers=users["outsider"]).status_code == 403
+    # L2: a'zolikdan chiqarilgach barcha sessiyalar bekor — 401; qayta kirsa ham loyiha yopiq (403)
+    assert client.get(f"/api/projects/{pid}", headers=users["outsider"]).status_code == 401
+    from conftest import login
+
+    assert client.get(f"/api/projects/{pid}", headers=login(client, "outsider", "pass1234")).status_code == 403
 
 
 def test_delete_project_admin_only(client, users):

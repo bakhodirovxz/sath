@@ -62,6 +62,8 @@ def init_db() -> None:
                     full_name="Administrator",
                     password_hash=hash_password(password),
                     is_admin=True,
+                    # Muhitdan berilgan parol — ma'lum siyosat; fayldagi tasodifiy parol birinchi kirishda almashtiriladi
+                    must_change_password=not settings.admin_password,
                 )
             )
             db.commit()

@@ -16,7 +16,10 @@ export interface User {
   locked_until?: string | null;
   /** /auth/me: administrator uchun MFA majburiy, hali yoqilmagan (L1) */
   mfa_required?: boolean;
+  /** Admin bergan/boshlang'ich parol — almashtirilguncha boshqa amallar 403 (L2) */
+  must_change_password?: boolean;
 }
+export interface UserSession { id: number; client: string; ip: string; user_agent: string; created_at: string; last_used_at: string; expires_at: string; current: boolean }
 export interface Project {
   id: number;
   name: string;
@@ -437,22 +440,44 @@ export interface LiveMessage {
 }
 export interface LiveReading { sensor_id: number; key: string; value: number | null; ts: string | null; alarm: AlarmState; stale?: boolean; age_s?: number | null; quality?: Quality; element_guid: string | null; unit: string }
 
-const TOKEN_KEY = "ges_token";
+/** Access token faqat xotirada (L2): localStorage da emas — XSS o'qiy olmaydi; sahifa qayta yuklanganda
+ * HttpOnly refresh cookie orqali `POST /api/auth/refresh` bilan tiklanadi. */
+let accessToken: string | null = null;
+const LEGACY_TOKEN_KEY = "ges_token";
 
 export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return accessToken;
 }
 export function setToken(token: string | null) {
+  accessToken = token;
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_KEY); // eski versiyadan qolgan token tozalanadi
   } catch {
     /* private mode */
   }
+}
+
+export interface TokenOut { access_token: string; expires_in: number; refresh_token?: string; must_change_password?: boolean }
+
+/** Refresh (cookie bilan). Bir vaqtda bitta so'rov — parallel 401 lar bitta refresh ni kutadi. */
+let refreshing: Promise<boolean> | null = null;
+export function refreshSession(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const res = await fetch("/api/auth/refresh", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!res.ok) return false;
+        const t = (await res.json()) as TokenOut;
+        setToken(t.access_token);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshing = null;
+      }
+    })();
+  }
+  return refreshing;
 }
 
 export class ApiError extends Error {
@@ -471,7 +496,7 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -479,7 +504,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   const res = await fetch(path, { ...init, headers });
-  if (res.status === 401 && !res.headers.get("X-MFA-Required")) {
+  if (res.status === 401 && !res.headers.get("X-MFA-Required") && !path.startsWith("/api/auth/login")) {
+    // Access token muddati tugadi (15 daqiqa) — cookie bilan yangilab, so'rovni bir marta takrorlaymiz
+    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return request<T>(path, init, true);
     setToken(null);
     onUnauthorized?.();
   }
@@ -506,29 +533,40 @@ export type DesktopPackage = { version: string; kind: "installer" | "zip"; url: 
 export const api = {
   // auth
   async login(username: string, password: string, otp?: string) {
-    const form = new URLSearchParams({ username, password });
+    const form = new URLSearchParams({ username, password, client: "web" });
     if (otp) form.set("otp", otp);
-    const r = await request<{ access_token: string }>("/api/auth/login", {
+    const r = await request<TokenOut>("/api/auth/login", {
       method: "POST",
       body: form,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      credentials: "same-origin",
     });
     setToken(r.access_token);
     return r;
   },
+  logout: () => request<void>("/api/auth/logout", { method: "POST", credentials: "same-origin" }),
+  logoutAll: () => request<void>("/api/auth/logout-all", { method: "POST", credentials: "same-origin" }),
+  sessions: () => request<UserSession[]>("/api/auth/sessions"),
+  revokeSession: (id: number) => request<void>(`/api/auth/sessions/${id}`, { method: "DELETE" }),
+  wsTicket: () => request<{ ticket: string; expires_in: number }>("/api/auth/ws-ticket", { method: "POST" }),
   me: () => request<User>("/api/auth/me"),
-  changePassword: (old_password: string, new_password: string) =>
-    request<void>("/api/auth/change-password", {
+  async changePassword(old_password: string, new_password: string) {
+    // Parol o'zgarganda barcha sessiyalar bekor — javobdagi yangi token bilan davom etamiz (L2)
+    const t = await request<TokenOut>("/api/auth/change-password", {
       method: "POST",
       body: json({ old_password, new_password }),
-    }),
+      credentials: "same-origin",
+    });
+    setToken(t.access_token);
+    return t;
+  },
   // MFA (TOTP, L1)
   mfaSetup: () => request<{ secret: string; otpauth_url: string }>("/api/auth/mfa/setup", { method: "POST" }),
   mfaEnable: (code: string) => request<void>("/api/auth/mfa/enable", { method: "POST", body: json({ code }) }),
   mfaDisable: (password: string, code: string) => request<void>("/api/auth/mfa/disable", { method: "POST", body: json({ password, code }) }),
   // users (admin)
   users: () => request<User[]>("/api/users"),
-  createUser: (body: { username: string; password: string; full_name: string; email?: string; is_admin: boolean }) =>
+  createUser: (body: { username: string; password: string; full_name: string; email?: string; is_admin: boolean; must_change_password?: boolean }) =>
     request<User>("/api/users", { method: "POST", body: json(body) }),
   updateUser: (id: number, body: Partial<{ full_name: string; email: string; password: string; is_admin: boolean; is_active: boolean; mfa_reset: boolean; unlock: boolean }>) =>
     request<User>(`/api/users/${id}`, { method: "PATCH", body: json(body) }),
@@ -782,8 +820,10 @@ export const api = {
   pushReadings: (projectId: number, items: { key?: string; sensor_id?: number; value: number; ts?: string }[]) =>
     request<{ accepted: number; unknown: unknown[] }>(`/api/projects/${projectId}/readings`, { method: "POST", body: json(items) }),
   importReadings: (sensorId: number, file: File) => { const fd = new FormData(); fd.append("file", file); return request<{ accepted: number }>(`/api/sensors/${sensorId}/import`, { method: "POST", body: fd }); },
-  liveSocket(projectId: number): WebSocket {
+  /** Jonli oqim: avval 60 s li chipta (sessiya tokeni URL ga tushmaydi, L2), keyin soket. */
+  async liveSocket(projectId: number): Promise<WebSocket> {
+    const { ticket } = await api.wsTicket();
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    return new WebSocket(`${proto}://${location.host}/api/projects/${projectId}/live?token=${encodeURIComponent(getToken() ?? "")}`);
+    return new WebSocket(`${proto}://${location.host}/api/projects/${projectId}/live?ticket=${encodeURIComponent(ticket)}`);
   },
 };

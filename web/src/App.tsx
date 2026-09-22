@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./store/auth";
 import Login from "./pages/Login";
 import { DialogHost } from "./ui/dialogs";
+import ProfileDialog from "./ui/ProfileDialog";
 
 // Sahifa darajasida kod bo'linishi (F10): login ekrani Three.js/ThatOpen/web-ifc ni yuklamaydi
 const Projects = lazy(() => import("./pages/Projects"));
@@ -24,6 +25,8 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   const loc = useLocation();
   if (!ready) return <div className="page-body muted">Yuklanmoqda…</div>;
   if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
+  // L2: admin bergan/boshlang'ich parol — almashtirilguncha faqat profil
+  if (user.must_change_password) return <><div className="page-body muted">Parolni almashtiring…</div><ProfileDialog onClose={() => undefined} /></>;
   return children;
 }
 
