@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Sensor } from "../../api/client";
 import { fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
+import Mimic from "./Mimic";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
+import { loadScheme } from "./scheme";
 import ValueCard from "./ValueCard";
 import { AREAS, areaOf, pickKey, sortByAlarm, summarize, unitOf } from "./model";
 
@@ -19,10 +21,12 @@ export default function L1Overview() {
 
 function Body() {
   const { projectId: pid, sensors, dash, summary, events } = useOps();
+  const nav = useNavigate();
+  const scheme = useMemo(() => (dash ? loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3)) : null), [dash]);
   const enabled = useMemo(() => sensors.filter((s) => s.enabled), [sensors]);
   const key = useMemo(() => ({
     level: pickKey(enabled, [/^RES\.H/, /^RES\./, /UPSTREAM|YUQORI/], "level"),
-    inflow: pickKey(enabled, [/^RES\.QIN/, /INFLOW/, /QIN/], "flow"),
+    inflow: pickKey(enabled, [/^RES\.QIN/, /INFLOW/, /QIN/]),
     spill: pickKey(enabled, [/^RES\.QSPILL/, /SPILL/]),
     tail: pickKey(enabled, [/^TW\./, /TAIL|QUYI/]),
     grid: pickKey(enabled, [/^GRID\.F/, /\.F$/]),
@@ -52,6 +56,7 @@ function Body() {
         {key.grid && <div className="tile"><div className="tile-t">Chastota</div><div className="tile-v">{key.grid.last_value == null ? "—" : fmtValue(key.grid.last_value)} <span className="tile-u">{key.grid.unit}</span></div></div>}
       </div>
 
+      {scheme && <div className="panel l1-mimic"><Mimic scheme={scheme} sensors={sensors} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div>}
       <div className="l1-grid">
         <section className="panel">
           <div className="row"><b>Agregatlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>L2 Mashina zali →</Link></div>

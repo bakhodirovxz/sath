@@ -71,7 +71,8 @@ export function summarize(sensors: Sensor[]): AlarmSummary {
 /** Qiymat yoshi (soniya) — muzlagan qiymat xavfi uchun har doim ko'rsatiladi. */
 export function ageSeconds(ts: string | null | undefined, now = Date.now()): number | null {
   if (!ts) return null;
-  const t = Date.parse(ts);
+  // Offsetsiz ISO (eski server javobi) — UTC deb o'qiladi, lokal vaqt emas
+  const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? ts : ts + "Z");
   return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1000)) : null;
 }
 

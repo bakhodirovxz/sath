@@ -702,7 +702,7 @@ Qabul mezoni: rang qiymatlari faqat tokenlardan keladi (lint qoidasi yoki test);
 o'tadi.
 Bog'liqlik: C1.
 
-### F2 — Ekranlar ierarxiyasi (ISA-101 Level 1–4) ✅
+### F2 — Ekranlar ierarxiyasi (ISA-101 Level 1–4) ✅ (`2a31947`)
 
 Bajarildi: `web/src/pages/operator/` — `OperatorShell` (jonli sensorlar, alarm jamlanmasi shakl+son, L-navigatsiya,
 ota ekranga qaytish, tezkor tugmalar), `L1Overview` (KPI: faol alarmlar, chiqish quvvati, ombor sathi, kiruvchi/
@@ -734,7 +734,17 @@ Qabul mezoni: har darajadan boshqasiga o'tish yo'li bor; e2e testda Level 1 → 
 sinaladi.
 Bog'liqlik: F1.
 
-### F3 — Mimikani konfiguratsiyalanadigan qilish
+### F3 — Mimikani konfiguratsiyalanadigan qilish ✅
+
+Bajarildi: `web/src/pages/operator/scheme.ts` — sxema JSON (`{version, units, elements[{id,type,x,y,w,h,label,sensor_id,
+unit,extra}]}`), `defaultScheme(n)` 1–12 agregat (6+ ikki qator, zal kengligi moslashadi), `bindFromSlots` (eski slotlar),
+`validateScheme`, `setUnits`, `moveElement`; `operator/Mimic.tsx` — ma'lumotdan chizadi, surish (pointer), tanlash;
+elementlar: ombor, to'g'on, tashlama, quvur, agregat (RUN/uzgich extra), uzgich (ochiq/yopiq/noma'lum), shina,
+transformator, liniya, zatvor (ochilish grafikasi), ventil, quyi byef, qiymat; bog'lanmagan element yashirilmaydi —
+«ma'lumot yo'q» shtrix belgisi; `MimicEditor` (agregat soni, element qo'shish/o'chirish, sensor bog'lash, x/y).
+Server: `DashboardIn.scheme` (pydantic tekshiruv, sensor id lari, agregat soni) `project.dashboard.scheme` da;
+`SensorOut` datetimelar UTC offset bilan (brauzer eskirish hisobi to'g'ri). L1 da mimika (o'qish). Testlar: 1/2/3/6/12
+agregat (element soni, ustma-ust tushmaydi, viewBox), 2 va 6 agregat render (jsdom), server sxema testi.
 
 Muammo: `Mimic.tsx:10` — `POS` 12 ta qat'iy piksel koordinatasi, uchta generator qat'iy kodlangan
 (`:16-18`, `:57`). Ikki yoki olti agregatli stansiyani chizib bo'lmaydi. `:90` bog'lanmagan

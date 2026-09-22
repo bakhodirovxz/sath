@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../ui/Icon";
 import { ForecastPanel, HealthPanel, PartsPanel, WhatIfPanel, WorkOrdersPanel } from "./dashboard/HealthPanels";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type AlarmEvent, type Command, type Dashboard, type JournalEntry, type LiveMessage, type Project, type ReadingPoint, type Report, type Sensor, type Member } from "../api/client";
 import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from "./dashboard/TwinPanels";
 import { useLive } from "../hooks/useLive";
@@ -9,7 +9,9 @@ import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
 import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
-import Mimic from "./dashboard/Mimic";
+import Mimic from "./operator/Mimic";
+import MimicEditor from "./operator/MimicEditor";
+import { loadScheme, type Scheme } from "./operator/scheme";
 import { applyTheme, savedTheme } from "../ui/tokens";
 
 const RANGES: { label: string; hours: number }[] = [
@@ -53,6 +55,7 @@ function beep(critical: boolean) {
 /** Dispetcher paneli (SCADA HMI): mimik sxema, KPI, jonli qiymatlar, trendlar, alarm jurnali, hisobot,
  * raqamli egizak, aktivlar, boshqaruv buyruqlari, smena jurnali, vaqt mashinasi. */
 export default function DashboardPage() {
+  const nav = useNavigate();
   // Dispetcher sahifasi: default operator (ISA-101) temasi; foydalanuvchi tanlovi saqlanadi (F1)
   useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const pid = Number(useParams().projectId);
@@ -66,7 +69,8 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [mimic, setMimic] = useState<Record<string, number | null>>({});
-  const [slotDlg, setSlotDlg] = useState<string | null>(null);
+  const [scheme, setScheme] = useState<Scheme | null>(null);
+  const [selEl, setSelEl] = useState<string | null>(null);
   const [trend, setTrend] = useState<number[]>([]);
   const [hours, setHours] = useState(24);
   const [series, setSeries] = useState<Record<number, ReadingPoint[]>>({});
@@ -94,6 +98,7 @@ export default function DashboardPage() {
       setDash(d);
       setSensors(d.sensors);
       setMimic(d.mimic);
+      setScheme(loadScheme(d.scheme, d.mimic, Math.max(1, d.units.length || 3)));
       setEvents(ev);
       setTrend((t) => (t.length ? t : d.sensors.filter((s) => s.kind === "power" || s.kind === "level").slice(0, 3).map((s) => s.id)));
     } catch (e) {
@@ -157,7 +162,6 @@ export default function DashboardPage() {
     api.report(pid, period, date || undefined).then(setReport).catch((e) => setError(e.message));
   }, [pid, period, date]);
 
-  const labels = useMemo(() => Object.fromEntries((dash?.slots ?? []).map((s) => [s.slot, s.label])), [dash]);
   const activeAlarms = events.filter((e) => !e.ended_at).length;
   const unacked = events.filter((e) => !e.acked_at).length;
   const kinds = useMemo(() => {
@@ -168,7 +172,7 @@ export default function DashboardPage() {
 
   async function saveMimic() {
     try {
-      await api.saveDashboard(pid, { mimic, tiles: dash?.tiles ?? [] });
+      await api.saveDashboard(pid, { mimic, tiles: dash?.tiles ?? [], scheme });
       setEditing(false);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
@@ -211,7 +215,7 @@ export default function DashboardPage() {
         </label>
         <button className={`btn sm ${muted ? "" : "active"}`} title="Alarm ovozi (muhim/kritik)" onClick={() => setMuted(!muted)}><Icon name={muted ? "volume-x" : "volume"} /></button>
         {canEdit && !editing && <button className="btn sm" onClick={() => setEditing(true)}>Sxemani sozlash</button>}
-        {editing && <><button className="btn sm primary" onClick={saveMimic}>Saqlash</button><button className="btn sm" onClick={() => { setEditing(false); setMimic(dash.mimic); }}>Bekor</button></>}
+        {editing && <><button className="btn sm primary" onClick={saveMimic}>Saqlash</button><button className="btn sm" onClick={() => { setEditing(false); setMimic(dash.mimic); setScheme(loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3))); setSelEl(null); }}>Bekor</button></>}
       </TopBar>
       <div className="page-body dash">
         {error && <p className="error">{error}</p>}
@@ -232,8 +236,8 @@ export default function DashboardPage() {
 
         <div className="dash-main">
           <div className="dash-mimic">
-            <Mimic sensors={sensors} mimic={Object.fromEntries(Object.entries(mimic).filter(([, v]) => v) as [string, number][])} labels={labels} editing={editing} onSlotClick={editing ? setSlotDlg : undefined} />
-            {editing && <p className="muted small">Slotni bosib sensor tanlang. Bo'sh slotlar ko'rinmaydi.</p>}
+            {scheme && <Mimic scheme={scheme} sensors={sensors} editing={editing} selected={selEl} onSelect={setSelEl} onChange={setScheme} onOpen={(sid) => nav(`/projects/${pid}/ops/sensor/${sid}`)} />}
+            {editing && scheme && <MimicEditor scheme={scheme} sensors={sensors} selected={selEl} onSelect={setSelEl} onChange={setScheme} />}
           </div>
           <div className="dash-alarms">
             {dash.alarm_flood && <div className="verdict warn" style={{ marginBottom: 6 }}>Alarm toshqini: 10 daqiqada 10 dan ko'p alarm (EEMUA-191). <button className={`btn sm ${prioOnly ? "active" : ""}`} onClick={() => setPrioOnly((v) => !v)}>{prioOnly ? "Hammasini ko'rsatish" : "Faqat yuqori/kritik"}</button></div>}
@@ -318,19 +322,6 @@ export default function DashboardPage() {
         <p className="dim small">Sensorlarni qo'shish/bog'lash — model sahifasidagi <Link to={`/projects/${pid}`}>Monitoring</Link> panelida; SCADA ulanishi — <code>deploy/gateway</code>.</p>
       </div>
 
-      {slotDlg && (
-        <Dialog title={labels[slotDlg] ?? slotDlg} onClose={() => setSlotDlg(null)}>
-          <p className="muted small">Slotga bog'lanadigan sensor:</p>
-          <div className="list">
-            <button className="list-item" onClick={() => { setMimic({ ...mimic, [slotDlg]: null }); setSlotDlg(null); }}>— bo'sh —</button>
-            {sensors.map((s) => (
-              <button key={s.id} className={`list-item ${mimic[slotDlg] === s.id ? "active" : ""}`} onClick={() => { setMimic({ ...mimic, [slotDlg]: s.id }); setSlotDlg(null); }}>
-                {s.name} <span className="dim">{s.key} · {s.kind} {s.unit}</span>
-              </button>
-            ))}
-          </div>
-        </Dialog>
-      )}
     </div>
   );
 }

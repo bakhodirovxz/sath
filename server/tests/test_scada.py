@@ -281,3 +281,35 @@ def test_audit_view_permissions(client, users, admin, power):
     ).json()
     assert rows and all(r["action"].startswith("sensor.") for r in rows)
     assert client.get(f"/api/audit?project_id={pid}", headers=users["engineer"]).status_code == 403
+
+
+def test_dashboard_scheme_saved_and_validated(client, users, power):
+    """F3: mimika sxemasi (JSON) saqlanadi, sensor id lari va agregat soni tekshiriladi."""
+    pid = users["project_id"]
+    scheme = {
+        "version": 1,
+        "units": 2,
+        "elements": [
+            {"id": "unit1", "type": "unit", "x": 500, "y": 272, "unit": 1, "sensor_id": power["id"], "extra": {"run": None}},
+            {"id": "unit2", "type": "unit", "x": 580, "y": 272, "unit": 2},
+            {"id": "upstream_level", "type": "value", "x": 130, "y": 128, "label": "Sath"},
+        ],
+    }
+    r = client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": scheme}, headers=users["engineer"])
+    assert r.status_code == 200, r.text
+    d = client.get(f"/api/projects/{pid}/dashboard", headers=users["viewer"]).json()
+    assert d["scheme"]["units"] == 2 and [e["id"] for e in d["scheme"]["elements"]] == ["unit1", "unit2", "upstream_level"]
+    assert d["scheme"]["elements"][0]["sensor_id"] == power["id"]
+    # sxemasiz PUT eski sxemani saqlab qoladi
+    client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": []}, headers=users["engineer"])
+    assert client.get(f"/api/projects/{pid}/dashboard", headers=users["viewer"]).json()["scheme"]["units"] == 2
+    # yo'q sensor → 400; agregat soni mos emas → 400; takror id → 422; noma'lum tur → 422
+    bad = {**scheme, "elements": [{**scheme["elements"][0], "sensor_id": 99999}] + scheme["elements"][1:]}
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": bad}, headers=users["engineer"]).status_code == 400
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": {**scheme, "units": 3}}, headers=users["engineer"]).status_code == 400
+    dup = {**scheme, "elements": scheme["elements"] + [scheme["elements"][2]]}
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": dup}, headers=users["engineer"]).status_code == 422
+    odd = {**scheme, "elements": scheme["elements"] + [{"id": "x", "type": "rocket", "x": 1, "y": 1}]}
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": odd}, headers=users["engineer"]).status_code == 422
+    # viewer saqlay olmaydi
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": scheme}, headers=users["viewer"]).status_code == 403

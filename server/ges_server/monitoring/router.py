@@ -21,7 +21,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
 from sqlalchemy import func
 
 from .. import audit
@@ -211,6 +211,11 @@ class SensorOut(BaseModel):
     readback_tolerance: float = 0.01
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("last_ts", "alarm_mode_until", "alarm_mode_since", "rationalized_at", when_used="json")
+    def _tz(self, v: datetime | None) -> str | None:
+        """SQLite naive UTC ni offset bilan beradi — brauzer lokal vaqt deb o'qimasin (F4: yosh/eskirish to'g'ri)."""
+        return live._aware(v).isoformat() if v else None
 
 
 class ReadingIn(BaseModel):
@@ -1162,9 +1167,39 @@ def _auto_mimic(mimic: dict[str, int], sensors: list[Sensor]) -> None:
             take(cand, slot)
 
 
+class SchemeElementIn(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    type: Literal["reservoir", "dam", "spillway", "penstock", "unit", "breaker", "bus", "transformer", "line", "gate", "valve", "tailwater", "value"]
+    x: float = Field(ge=0, le=2000)
+    y: float = Field(ge=0, le=2000)
+    w: float | None = Field(None, ge=0, le=2000)
+    h: float | None = Field(None, ge=0, le=2000)
+    label: str | None = Field(None, max_length=64)
+    sensor_id: int | None = None
+    unit: int | None = Field(None, ge=1, le=12)
+    extra: dict[str, int | None] | None = None
+
+
+class SchemeIn(BaseModel):
+    """Mimika sxemasi (F3): elementlar, koordinatalar, sensor bog'lanishi; agregatlar soni."""
+
+    version: Literal[1] = 1
+    units: int = Field(ge=1, le=12)
+    elements: list[SchemeElementIn] = Field(max_length=200)
+
+    @field_validator("elements")
+    @classmethod
+    def _unique_ids(cls, v: list[SchemeElementIn]) -> list[SchemeElementIn]:
+        ids = [e.id for e in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("element id lari takror")
+        return v
+
+
 class DashboardIn(BaseModel):
     mimic: dict[str, int | None] = Field(default_factory=dict)
     tiles: list[int] = Field(default_factory=list)
+    scheme: SchemeIn | None = None
 
 
 @router.get("/projects/{project_id}/dashboard")
@@ -1216,6 +1251,7 @@ def dashboard(project: ViewerProject, db: DB):
         "mimic": mimic,
         "slots": [{"slot": s, "label": lb, "kind": k} for s, lb, k in MIMIC_SLOTS],
         "tiles": cfg.get("tiles") or [],
+        "scheme": cfg.get("scheme"),  # F3: konfiguratsiyalanadigan mimika (None → klient standart sxema)
         "active_alarms": active,
         "energy_24h_mwh": round(energy, 3) if has_power else None,
         "alarms_24h": historian.alarm_stats(db, project.id, since, now),
@@ -1230,9 +1266,23 @@ def save_dashboard(body: DashboardIn, project: EngineerProject, user: CurrentUse
     bad = [v for v in body.mimic.values() if v and v not in ids] + [
         t for t in body.tiles if t not in ids
     ]
+    if body.scheme is not None:
+        for e in body.scheme.elements:
+            if e.sensor_id and e.sensor_id not in ids:
+                bad.append(e.sensor_id)
+            for v in (e.extra or {}).values():
+                if v and v not in ids:
+                    bad.append(v)
+        if sum(1 for e in body.scheme.elements if e.type == "unit") != body.scheme.units:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sxemadagi agregat elementlari soni `units` ga mos emas")
     if bad:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Sensor loyihada yo'q: {bad}")
-    project.dashboard = {"mimic": {k: v for k, v in body.mimic.items() if v}, "tiles": body.tiles}
+    old = project.dashboard or {}
+    project.dashboard = {
+        "mimic": {k: v for k, v in body.mimic.items() if v},
+        "tiles": body.tiles,
+        "scheme": body.scheme.model_dump(exclude_none=True) if body.scheme is not None else old.get("scheme"),
+    }
     audit.log(
         db,
         user_id=user.id,

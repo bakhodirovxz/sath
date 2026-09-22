@@ -367,12 +367,15 @@ export interface SoeEvent { id: number; type?: "soe" | "alarm"; source: string; 
 export interface RationalizationRow { id: number; project_id: number; key: string; name: string; priority: string; alarm_mode: string; missing: string[] }
 export interface RationalizationReport { total: number; rationalized: number; unrationalized: RationalizationRow[] }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
+export interface SchemeElement { id: string; type: string; x: number; y: number; w?: number; h?: number; label?: string; sensor_id?: number | null; unit?: number; extra?: Record<string, number | null> }
+export interface Scheme { version: 1; units: number; elements: SchemeElement[] }
 export interface Dashboard {
   sensors: Sensor[];
   units: { sensor_id: number; name: string; running: boolean; power: number | null }[];
   mimic: Record<string, number>;
   slots: MimicSlot[];
   tiles: number[];
+  scheme?: Scheme | null;
   active_alarms: number;
   energy_24h_mwh: number | null;
   alarms_24h: { count: number; by_state: Record<string, number>; unacked: number };
@@ -683,7 +686,7 @@ export const api = {
   alarmKpi: (projectId: number, hours = 24) => request<AlarmKpi>(`/api/projects/${projectId}/alarms/kpi?hours=${hours}`),
   adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),
-  saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
+  saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[]; scheme?: Scheme | null }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),
   async downloadCsv(path: string, filename: string) {
     // Bearer bilan yuklab olish (URL da token yo'q): blob → <a download>
