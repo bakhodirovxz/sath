@@ -167,6 +167,42 @@ yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → usk
 `GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
 bosimli quvur, HAD suv olish, …).
 
+## Holat monitoringi (ISO 13374 / OSA-CBM)
+
+Sog'liq hisobi olti funksional blokka ajratilgan (`server/ges_server/monitoring/cm/`), har biri
+alohida modul va aniq interfeys bilan — shuning uchun uchinchi tomon tizimi istalgan darajadan
+ulanadi:
+
+| Blok | Modul | Vazifa |
+|---|---|---|
+| DA — ma'lumot yig'ish | `cm/da.py` | kanallar (tebranish, podshipnik harorati, val tebranishi, havo oralig'i, qisman razryad, moyda suv), soatlik qatorlar, spektr yozuvlari, mashina guruhi |
+| DM — qayta ishlash | `cm/dm.py` | chiziqli trend, baza va z-score, spektr cho'qqilari, 1×/2×/3× garmonikalar, podshipnik nuqson chastotalari |
+| SD — holat aniqlash | `cm/sd.py` | ISO 20816-5 zonalari, harorat/PD/havo oralig'i/moy chegaralari, anomaliya, tashqi holat |
+| HA — sog'liq bahosi | `cm/ha.py` | 0–100 indeks, kavitatsiya (Toma σ), FIK og'ishi, transformator issiq nuqtasi |
+| PA — prognoz | `cm/pa.py` | C/D zonasigacha kun, alarm chegarasigacha kun, RUL (eng qisqasi) |
+| AG — tavsiya | `cm/ag.py` | muammo/tavsiya matni, HEALTH.* sensorlari, avtomatik ish buyrug'i (ISO 14224 «holat monitoringi» aniqlash usuli bilan) |
+
+`monitoring/health.py` eski nomlarni saqlab qolgan yupqa moslik qatlami.
+
+**Mashina guruhi** (ISO 20816-5 zona chegaralari uchun) aktiv konfiguratsiyasidan, bo'lmasa ota
+aktivdan (H1 ierarxiyasi), bo'lmasa KKS tizimi kalitidan aniqlanadi (MAA turbina — 2 yoki 4,
+MKA generator — 4), aks holda 4.
+
+**Spektr saqlash** (`spectra` jadvali — vaqt qatori emas): `POST /api/projects/{id}/cm/spectra`
+(`kind`: spectrum | envelope | orbit | waveform, `values` + `f_min`/`f_max` yoki aniq `freqs`,
+`rpm`, `unit`, `source`). Yuborish huquqi: muhandis tokeni yoki `X-Ingest-Key` (CM gateway'i).
+`GET /api/cm/spectra/{id}` qiymatlar bilan birga DM xususiyatlarini qaytaradi. Podshipnik nuqson
+chastotalari aktiv konfiguratsiyasidagi geometriyadan hisoblanadi: `bearing: {n, d_mm, D_mm,
+alpha_deg}` (BPFO/BPFI/BSF/FTF — ISO 13373-3, Harris). Nuqson chastotasi envelope-spektr
+energiyasining 15 % idan oshsa «ogohlantirish», 30 % idan oshsa «alarm».
+
+**Tashqi tizim natijasi** (Bently Nevada, SKF IMx, Voith OnCare): `POST /api/projects/{id}/cm/results`
+— `block` SD | HA | PA, `state`, `health_score` (0–100), `rul_days`, `diagnosis`, `confidence`,
+`valid_hours` (muddatidan keyin natija hisobga olinmaydi). Yakuniy sog'liq indeksi ichki va tashqi
+bahoning **eng pastiga** tenglashtiriladi — tashqi tizim Sath ko'rmaydigan kanallarni ko'rishi mumkin.
+`GET /api/assets/{id}/cm` — aktiv bo'yicha butun zanjir natijasi (dispetcher paneli → Sog'liq →
+aktiv kartochkasidagi ⚡ tugmasi).
+
 ## Texnik xizmat (CMMS): rejalar, mehnat, qismlar, ruxsatnoma va LOTO
 
 **Profilaktik rejalar.** Dispetcher paneli → Ish buyruqlari → «Profilaktik xizmat rejalari»: davriylik

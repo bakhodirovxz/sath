@@ -960,6 +960,64 @@ class PartMovement(Base):
     author: Mapped[User] = relationship()
 
 
+class Spectrum(Base):
+    """Holat monitoringi signali (H3, ISO 13374 DA bloki natijasi): spektr, envelope-spektr, orbita yoki
+    to'lqin shakli. Vaqt qatori emas — alohida jadval: bitta o'lchov = chastota/amplituda massivi
+    (`values`), chastota o'qi `f_min`..`f_max` (`n_lines` ta nuqta) yoki `freqs` bilan aniq beriladi.
+    Manba: ichki gateway yoki tashqi tizim (Bently Nevada, SKF, Voith OnCare)."""
+
+    __tablename__ = "spectra"
+    __table_args__ = (Index("ix_spectra_asset_ts", "asset_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    asset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), nullable=True
+    )
+    sensor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sensors.id", ondelete="SET NULL"), nullable=True
+    )
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    kind: Mapped[str] = mapped_column(String(16), default="spectrum")  # spectrum|envelope|orbit|waveform
+    unit: Mapped[str] = mapped_column(String(16), default="mm/s")
+    rpm: Mapped[float | None] = mapped_column(Float, nullable=True)  # o'lchov paytidagi val tezligi
+    f_min: Mapped[float] = mapped_column(Float, default=0.0)  # Gs
+    f_max: Mapped[float] = mapped_column(Float, default=0.0)
+    n_lines: Mapped[int] = mapped_column(Integer, default=0)
+    values: Mapped[list] = mapped_column(JSON, default=list)  # amplitudalar
+    freqs: Mapped[list | None] = mapped_column(JSON, nullable=True)  # bir tekis bo'lmasa
+    source: Mapped[str] = mapped_column(String(64), default="")
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    asset: Mapped[Asset | None] = relationship()
+
+
+class CmResult(Base):
+    """Tashqi holat monitoringi tizimining natijasi (H3, ISO 13374 SD/HA/PA darajasi): holat belgisi,
+    sog'liq bahosi, tashxis. Sath sog'liq indeksiga qo'shiladi (`valid_hours` ichida amal qiladi)."""
+
+    __tablename__ = "cm_results"
+    __table_args__ = (Index("ix_cm_results_asset_ts", "asset_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"))
+    source: Mapped[str] = mapped_column(String(64))  # tizim nomi (Bently Nevada, SKF, OnCare, …)
+    block: Mapped[str] = mapped_column(String(4), default="HA")  # SD | HA | PA
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    state: Mapped[str] = mapped_column(String(16), default="unknown")  # normal|alert|alarm|unknown
+    health_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0–100
+    rul_days: Mapped[float | None] = mapped_column(Float, nullable=True)  # PA bloki
+    diagnosis: Mapped[str] = mapped_column(String(300), default="")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0–1
+    valid_hours: Mapped[float] = mapped_column(Float, default=24.0)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    asset: Mapped[Asset] = relationship()
+
+
 class UnitDayStats(Base):
     """Agregat (quvvat sensori) kunlik statistikasi: ish soatlari, ishga tushishlar, energiya."""
 

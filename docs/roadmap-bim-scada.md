@@ -1186,7 +1186,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/parts.py`, `monitoring/health.p
 Qabul mezoni: ierarxiya bo'yicha aktiv daraxti ko'rinadi; noto'g'ri KKS kodi rad etiladi (test).
 Bog'liqlik: A2. Bu aktiv registri o'sishidan oldin qilinishi kerak — keyinroq qimmat.
 
-### H2 — CMMS chuqurligi ✅
+### H2 — CMMS chuqurligi ✅ (`54cfcf3`)
 
 Muammo: `WorkOrder` (`orm.py:506`) yaxshi boshlanish, lekin yo'q: profilaktik xizmat rejalari
 (faqat bitta `Asset.maintenance_interval_hours` hisoblagichi), ish rejalari/vazifalar ro'yxati,
@@ -1208,7 +1208,7 @@ Qabul mezoni: profilaktik reja avtomatik ish buyrug'i yaratadi (test); LOTO faol
 boshqaruv buyrug'i rad etiladi (test).
 Bog'liqlik: B4, H1.
 
-### H3 — Holat monitoringi arxitekturasi (ISO 13374)
+### H3 — Holat monitoringi arxitekturasi (ISO 13374) ✅
 
 Muammo: `health.asset_health` — 190 qatorli bitta funksiya, unda ma'lumot yig'ish, holat
 aniqlash, sog'liq bahosi, prognoz va tavsiya birlashib ketgan. OSA-CBM ning oltita funksional

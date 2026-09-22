@@ -159,13 +159,34 @@ _CONFIG_KEYS = {
     "cos_phi",
     "ambient_c",
     "cooling",
+    # H3 — ISO 13374 qo'shimcha kanallari va chegaralari
+    "shaft_vibration_sensor_id",
+    "air_gap_sensor_id",
+    "pd_sensor_id",
+    "oil_water_sensor_id",
+    "shaft_limits",
+    "shaft_clearance_um",
+    "air_gap_min_mm",
+    "pd_warn",
+    "pd_alarm",
+    "oil_water_warn",
+    "oil_water_alarm",
+    "bearing",  # {n, d_mm, D_mm, alpha_deg} — nuqson chastotalari uchun geometriya
 }
+_SENSOR_CONFIG_KEYS = (
+    "vibration_sensor_id",
+    "bearing_temp_sensor_id",
+    "shaft_vibration_sensor_id",
+    "air_gap_sensor_id",
+    "pd_sensor_id",
+    "oil_water_sensor_id",
+)
 
 
 def _check_config(db, project_id: int, cfg: dict) -> dict:
     """Holat monitoringi sozlamalari: faqat ruxsat etilgan kalitlar, sensorlar shu loyihaniki."""
     out = {k: v for k, v in (cfg or {}).items() if k in _CONFIG_KEYS}
-    for k in ("vibration_sensor_id", "bearing_temp_sensor_id"):
+    for k in _SENSOR_CONFIG_KEYS:
         if out.get(k) not in (None, ""):
             s = db.get(Sensor, int(out[k]))
             if s is None or s.project_id != project_id:
@@ -175,6 +196,15 @@ def _check_config(db, project_id: int, cfg: dict) -> dict:
             out[k] = None
     if out.get("machine_group") not in (None, "") and int(out["machine_group"]) not in (1, 2, 3, 4):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "machine_group: 1–4")
+    bearing = out.get("bearing")
+    if bearing not in (None, "", {}):
+        if not isinstance(bearing, dict) or not all(
+            isinstance(bearing.get(k), (int, float)) and bearing.get(k, 0) > 0 for k in ("n", "d_mm", "D_mm")
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "bearing: {n, d_mm, D_mm} musbat sonlar (ixtiyoriy alpha_deg) — nuqson chastotalari uchun",
+            )
     return out
 
 

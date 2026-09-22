@@ -23,6 +23,7 @@ from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
 from .models.underlays import router as underlays_router
 from .monitoring import background, backplane, mqtt_bridge
+from .monitoring.cm_router import router as cm_router
 from .monitoring.control import router as control_router
 from .monitoring.parts import router as parts_router
 from .monitoring.router import router as monitoring_router
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(twin_router)
     app.include_router(workorders_router)
     app.include_router(parts_router)
+    app.include_router(cm_router)
     app.include_router(system_router)
     app.include_router(notifications_router)
     app.include_router(audit_router)

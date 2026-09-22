@@ -3,6 +3,7 @@ import { usePolling } from "../../hooks/usePolling";
 import { dialogs } from "../../ui/dialogs";
 import { api, type AssetHealth, type CmmsCodes, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
 import { PlansPanel, WorkOrderDetail } from "./CmmsPanels";
+import { CmBadge, CmDialog } from "./CmPanels";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import Icon from "../../ui/Icon";
 import Dialog from "../../ui/Dialog";
@@ -17,6 +18,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
   const [rep, setRep] = useState<HealthReport | null>(null);
   const [err, setErr] = useState("");
   const [cfgFor, setCfgFor] = useState<AssetHealth | null>(null);
+  const [cmFor, setCmFor] = useState<AssetHealth | null>(null);
   const load = useCallback(() => api.health(projectId).then(setRep).catch((e) => setErr(e.message)), [projectId]);
   usePolling(load, 30000, String(projectId));
   if (!rep) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
@@ -24,7 +26,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
     <div className="dash-block">
       <div className="row" style={{ alignItems: "center" }}>
         <b>Holat monitoringi</b>
-        <span className="muted small">sog'liq indeksi · tebranish (ISO 20816-5) · podshipnik harorati · FIK trendi · anomaliya · kavitatsiya (Toma σ)</span>
+        <span className="muted small">ISO 13374 (OSA-CBM): yig'ish → qayta ishlash → holat → sog'liq → prognoz → tavsiya; tebranish ISO 20816-5, kavitatsiya Toma σ</span>
         <span className="grow" />
         {rep.plant_score != null && <span className={`badge ${LEVEL_CLS[lvl(rep.plant_score)]}`}>Stansiya: {rep.plant_score} / 100</span>}
         {canEdit && <button className="btn sm" onClick={() => api.healthRun(projectId).then(setRep).catch((e) => setErr(e.message))}>Hozir hisoblash</button>}
@@ -38,7 +40,9 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
               <b>{a.name}</b>
               <span className={`badge ${LEVEL_CLS[a.level]}`}>{a.level}</span>
               <span className="grow" />
+              <CmBadge state={a.state} />
               <span className="health-score">{a.score}</span>
+              <button className="btn sm" title="ISO 13374 bloklari, spektrlar, tashqi tizim natijalari" data-testid={`cm-open-${a.asset_id}`} onClick={() => setCmFor(a)}><Icon name="activity" size={12} /></button>
               {(canOperate || canEdit) && a.problems.length > 0 && <button className="btn sm" title="Ish buyrug'i yaratish (muammolardan)" onClick={() => api.createWorkOrder(projectId, { title: `${a.name}: ${a.problems[0].slice(0, 120)}`, description: a.problems.join("; ") + (a.tips.length ? " | Tavsiya: " + a.tips.join("; ") : ""), asset_id: a.asset_id, priority: a.level === "kritik" ? "critical" : a.level === "yomon" ? "high" : "medium", source: "health" }).then(() => setErr("Ish buyrug'i yaratildi (Ish buyruqlari bo'limi)")).catch((e) => setErr(e.message))}><Icon name="wrench" size={12} /></button>}
               {canEdit && <button className="btn sm" title="Sensorlar va parametrlar" onClick={() => setCfgFor(a)}><Icon name="settings" size={12} /></button>}
             </div>
@@ -56,6 +60,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
         ))}
       </div>
       {cfgFor && <AssetConfigDialog asset={cfgFor} sensors={sensors} onClose={() => setCfgFor(null)} onSaved={() => { setCfgFor(null); void load(); }} />}
+      {cmFor && <CmDialog projectId={projectId} asset={cmFor} onClose={() => setCmFor(null)} />}
     </div>
   );
 }

@@ -413,6 +413,30 @@ test.describe.serial("Sath web oqimi", () => {
     await request.post(`${API}/api/work-orders/${wo.id}/loto`, { headers: h, data: { active: false } });
   });
 
+  test("Holat monitoringi (H3): ISO 13374 bloklari, spektr va tashqi tizim natijasi", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    const asset = await (await request.post(`${API}/api/projects/${projectId}/assets`, { headers: h, data: { name: `H3 agregat ${stamp}`, config: { rated_speed_rpm: 600, bearing: { n: 8, d_mm: 20, D_mm: 100 } } } })).json();
+    // envelope-spektr: 32 Gs da cho'qqi = BPFO (tashqi halqa nuqsoni)
+    const vals = Array.from({ length: 101 }, (_, i) => (i === 32 ? 0.9 : 0.02));
+    const sp = await request.post(`${API}/api/projects/${projectId}/cm/spectra`, { headers: h, data: { asset_id: asset.id, kind: "envelope", unit: "g", rpm: 600, f_min: 0, f_max: 100, values: vals, source: "e2e gateway" } });
+    expect(sp.status()).toBe(201);
+    // tashqi CM tizimi natijasi (HA bloki)
+    const ext = await request.post(`${API}/api/projects/${projectId}/cm/results`, { headers: h, data: { asset_id: asset.id, source: "Bently Nevada", block: "HA", state: "alert", health_score: 62, rul_days: 90, diagnosis: "Podshipnik nuqsoni rivojlanmoqda", confidence: 0.75 } });
+    expect(ext.status()).toBe(201);
+    await login(page);
+    await page.goto(`/projects/${projectId}/dashboard`);
+    await page.locator("button", { hasText: "Sog'liq" }).first().click();
+    await page.getByTestId(`cm-open-${asset.id}`).click();
+    await expect(page.getByTestId("cm-blocks")).toContainText("DA");
+    await expect(page.getByTestId("cm-blocks")).toContainText("prognoz");
+    await expect(page.getByTestId("cm-states")).toContainText("podshipnik nuqsoni");
+    await expect(page.getByTestId("cm-external")).toContainText("Bently Nevada");
+    await page.getByTestId(`spectrum-${(await sp.json()).id}`).click();
+    await expect(page.getByTestId("bearing-freqs")).toContainText("BPFO");
+    await expect(page.getByTestId("bearing-freqs")).toContainText("32");
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");
