@@ -51,6 +51,23 @@ Jarayon ichidagi ishchi: `GES_JOBS_CONCURRENCY` (2) ta ish bir vaqtda. CFD `GES_
 Takror so'rov (tarmoq uzilishi) uchun `idempotency_key` — mavjud ish qaytadi. Bir hostda bitta Sath jarayoni
 kutiladi (restart yarashtirishi hostname bo'yicha); ko'p replika — L8.
 
+## Yuklash chegaralari va parser sandboxi
+
+Barcha yuklashlar oqimda cheklanadi (xotiraga olgandan keyin emas): IFC/mesh `GES_MAX_UPLOAD_MB` (2048),
+CSV import va BCF `GES_SMALL_UPLOAD_MB` (50) — oshsa 413, qolgani o'qilmaydi; Content-Length chegaradan
+katta so'rov tanasi umuman o'qilmaydi. CSV/BCF parse va ingest thread hovuzida — WebSocket tarqatish
+bloklanmaydi. Tashqi konverterlar (dwg2dxf, ODA, `blender --python`, assimp, Node/web-ifc) `GES_SANDBOX`
+rejimida ishlaydi: Linux da `bwrap` (tarmoqsiz, PID ajratilgan, faqat ish papkasi yoziladi, `/data`
+ko'rinmaydi), u ishlamasa `rlimit` (xotira 4 GB, CPU vaqti, jarayonlar soni), doim vaqt chegarasi. Docker
+default seccomp profili bwrap ga yo'l bermaydi — konteynerda `rlimit` ishlaydi (sinalgan: xotira chegarasi
+MemoryError beradi, tarmoq ochiq). Qattiqroq izolyatsiya uchun `ges` servisiga
+`security_opt: [no-new-privileges:true, seccomp=unconfined]` bering — u holda `bwrap` yoqiladi (sinalgan:
+tarmoq yo'q, ildiz FS faqat o'qish, `/data` yashirin); tanlov: seccomp syscall filtri ↔ konverter nom
+maydoni izolyatsiyasi. Konteynerlar root siz (`sath`,
+uid 10001), `cap_drop: ALL`, `no-new-privileges`, `ges` faqat o'qiladigan ildiz FS (`/data`, `/tmp`
+yoziladi), `pids_limit`, `GES_MEM_LIMIT`. Eslatma: `docker` CFD rejimi (server o'zi `docker run` qiladi)
+konteyner ichida ishlamaydi — `worker` rejimini ishlating.
+
 ## Jonli oqim (WebSocket) va ko'p replika
 
 Har klientning o'z chegaralangan navbati (200 xabar) va yuboruvchisi bor: sekin/qotgan HMI boshqalarni
@@ -126,8 +143,8 @@ dispetcherlarning emailiga.
 
 Hammasi `data/` (Docker: `ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
 `sim/`, `cfd/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring).
-Zaxira: `deploy/backup.sh` → `backups/ges-YYYYmmdd-HHMM.tar.gz`. Tiklash: volume ga tar ni ochish.
-Yangi versiyaga o'tish: `git pull && docker compose up -d --build` — jadval ustunlari avtomatik qo'shiladi.
+Zaxira: `deploy/backup.sh` (tiklash — L6). Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
+sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
 
 ## Foydalanuvchilar va rollar
 

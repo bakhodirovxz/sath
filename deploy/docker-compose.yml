@@ -26,6 +26,16 @@ services:
       GES_RATE_TRUST_FORWARDED: ${GES_RATE_TRUST_FORWARDED:-false}
     volumes:
       - ges_data:/data
+    # Qattiqlashtirish (L5): imtiyozsiz, faqat o'qiladigan ildiz FS (/data va /tmp yoziladi), PID/xotira chegarasi
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # bwrap sandbox (konverterlar tarmoqsiz, alohida nom maydonida) Docker default seccomp bilan ishlamaydi
+    # (rlimit rejimiga tushadi). Qattiqroq izolyatsiya kerak bo'lsa: seccomp ni o'chirib bwrap ni yoqing:
+    # security_opt: [no-new-privileges:true, seccomp=unconfined]
+    read_only: true
+    tmpfs: ["/tmp:size=2g", "/home/sath:size=64m"]
+    pids_limit: 512
+    mem_limit: "${GES_MEM_LIMIT:-6g}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,6 +85,10 @@ services:
     volumes:
       - ges_data:/data
     cpus: "${CFD_CPUS:-4}"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 1024
+    mem_limit: "${CFD_MEM_LIMIT:-8g}"
 
   # Sinov stendi (E4): GES simulyatori Modbus/OPC UA server sifatida + unga ulangan gateway.
   # docker compose --profile sim up -d ; stsenariy: SIM_SCENARIO (normal|unit_trip|flood|comms_loss|...)

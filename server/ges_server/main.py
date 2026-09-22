@@ -32,6 +32,7 @@ from .sim.router import router as sim_router
 from .sim.router import run_job
 from .system.audit_router import router as audit_router
 from .system.router import router as system_router
+from .uploads import MaxBodyMiddleware
 
 log = logging.getLogger("ges_server")
 
@@ -100,6 +101,8 @@ async def lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
+    # L5: Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413 (multipart sarlavhalari uchun +1 MB)
+    app.add_middleware(MaxBodyMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024 + (1 << 20))
 
     app.include_router(auth_router)
     app.include_router(projects_router)

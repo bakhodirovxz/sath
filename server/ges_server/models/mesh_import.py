@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
+from .. import sandbox
 from .assimp_load import ASSIMP_EXTS
 from .cad_import import CAD_EXTS
 
@@ -108,9 +108,7 @@ def _convert_external(path: Path, tmp: Path) -> Path:
     if ext in VIA_DWG:
         out = tmp / (path.stem + ".dxf")
         if t["dwg2dxf"]:
-            r = subprocess.run(
-                [t["dwg2dxf"], "-y", "-o", str(out), str(path)], timeout=300, capture_output=True
-            )
+            r = sandbox.run([t["dwg2dxf"], "-y", "-o", str(out), str(path)], cwd=tmp, timeout_s=300, ro_paths=(path,))
             if not out.exists() or out.stat().st_size == 0:
                 raise ValueError(
                     "DWG ni o'qib bo'lmadi (dwg2dxf): "
@@ -123,10 +121,8 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             in_dir.mkdir()
             out_dir.mkdir()
             shutil.copy(path, in_dir / path.name)
-            subprocess.run(
-                [t["oda"], str(in_dir), str(out_dir), "ACAD2018", "DXF", "0", "1", path.name],
-                timeout=600,
-                capture_output=True,
+            sandbox.run(
+                [t["oda"], str(in_dir), str(out_dir), "ACAD2018", "DXF", "0", "1", path.name], cwd=tmp, timeout_s=600
             )
             res = out_dir / (path.stem + ".dxf")
             if not res.exists():
@@ -149,11 +145,10 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             "bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=True, export_yup=False)\n",
             encoding="utf-8",
         )
-        subprocess.run(
+        # Ishonchsiz .blend + --python: faqat sandbox ichida (tarmoqsiz, faqat tmp ga yozadi)
+        sandbox.run(
             [t["blender"], "-b", str(path), "--python", str(script), "--", str(out)],
-            check=True,
-            timeout=600,
-            capture_output=True,
+            cwd=tmp, timeout_s=600, check=True, ro_paths=(path,),
         )
         return out
     if ext in CAD_EXTS:
@@ -176,12 +171,7 @@ def _convert_external(path: Path, tmp: Path) -> Path:
                 "glTF/OBJ ga eksport qiling"
             )
         out = tmp / (path.stem + ".glb")
-        subprocess.run(
-            [t["assimp"], "export", str(path), str(out), "-tri"],
-            check=True,
-            timeout=600,
-            capture_output=True,
-        )
+        sandbox.run([t["assimp"], "export", str(path), str(out), "-tri"], cwd=tmp, timeout_s=600, check=True, ro_paths=(path,))
         return out
     return path
 

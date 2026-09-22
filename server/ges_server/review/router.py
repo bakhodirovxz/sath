@@ -13,8 +13,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
-from .. import audit, notifications, notify
+from .. import audit, notifications, notify, uploads
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
 from ..models import storage
@@ -573,9 +574,9 @@ def export_bcf(model_id: int, user: CurrentUser, db: DB, status_filter: IssueSta
 async def import_bcf(model_id: int, file: UploadFile, user: CurrentUser, db: DB):
     """BCF zip dan issue larni yuklash; bcf_guid bo'yicha mavjudlari yangilanadi."""
     model = get_model_checked(db, model_id, user, Role.engineer)
-    data = await file.read()
+    data = await uploads.read_limited(file, min(bcf.MAX_ZIP_BYTES, get_settings().small_upload_mb * 1024 * 1024))
     try:
-        topics = bcf.import_zip(data)
+        topics = await run_in_threadpool(bcf.import_zip, data)  # zip/xml parse — event loop bloklanmaydi (L5)
     except Exception as e:  # noqa: BLE001 — yaroqsiz zip/xml
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"BCF o'qilmadi: {e}") from e
     if not topics:

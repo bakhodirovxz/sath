@@ -9,5 +9,9 @@ WORKDIR /app
 COPY sim/ ./sim/
 COPY server/ ./server/
 RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir ./sim "./server[postgres]"
+# Root siz (L5): ges obrazi bilan bir xil uid — /data hajmi umumiy
+RUN useradd --system --uid 10001 --create-home --home-dir /home/sath sath \
+    && mkdir -p /data && chown -R sath:sath /data
+USER sath
 # OpenFOAM muhiti + worker
 CMD ["bash", "-c", "source /openfoam/bash.rc 2>/dev/null; exec /venv/bin/ges-worker"]

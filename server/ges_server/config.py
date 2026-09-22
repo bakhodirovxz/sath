@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Web build shu papkadan tarqatiladi (bo'sh bo'lsa faqat API)
     web_dist: Path | None = None
     max_upload_mb: int = 2048
+    # L5: kichik yuklashlar chegarasi (CSV import, BCF) MB; parser sandbox rejimi: auto | bwrap | rlimit | off
+    small_upload_mb: int = 50
+    sandbox: str = "auto"
     # CFD (OpenFOAM): docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
     # local — shu muhitda OpenFOAM bor; worker — alohida ges-worker konteyneri bajaradi; off — o'chiq
     cfd_mode: str = "docker"

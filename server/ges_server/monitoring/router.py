@@ -23,8 +23,9 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, field_serializer, field_validator
 from sqlalchemy import func
+from starlette.concurrency import run_in_threadpool
 
-from .. import audit, ratelimit
+from .. import audit, ratelimit, uploads
 from ..auth.deps import (
     DB,
     CurrentUser,
@@ -621,11 +622,7 @@ def push_readings(
     return out
 
 
-@router.post("/sensors/{sensor_id}/import")
-async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB):
-    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya; quality — QUALITIES."""
-    s = _get_sensor(db, sensor_id, user, Role.engineer)
-    text = (await file.read()).decode("utf-8-sig", errors="replace")
+def _parse_csv(text: str, sensor_id: int) -> list[dict]:
     items = []
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 2:
@@ -634,13 +631,26 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
             float(row[1])
         except ValueError:
             continue  # sarlavha
-        it = {"sensor_id": s.id, "ts": row[0].strip(), "value": row[1].strip()}
+        it = {"sensor_id": sensor_id, "ts": row[0].strip(), "value": row[1].strip()}
         if len(row) > 2 and row[2].strip():
             it["quality"] = row[2].strip().lower()
         items.append(it)
+    return items
+
+
+@router.post("/sensors/{sensor_id}/import")
+async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB):
+    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya; quality — QUALITIES.
+    Hajm chegarasi `small_upload_mb` (413, oqimda); parse va ingest thread hovuzida (event loop bloklanmaydi, L5)."""
+    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    raw = await uploads.read_limited(file, get_settings().small_upload_mb * 1024 * 1024)
+    text = raw.decode("utf-8-sig", errors="replace")
+    items = await run_in_threadpool(_parse_csv, text, s.id)
     if not items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
-    out = live.ingest(db, s.project_id, items, source="csv")
+    if len(items) > 200_000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir CSV da 200 000 tagacha qator — bo'lib yuklang")
+    out = await run_in_threadpool(live.ingest, db, s.project_id, items, "csv")
     audit.log(
         db,
         user_id=user.id,

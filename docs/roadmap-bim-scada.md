@@ -1956,7 +1956,7 @@ Fayllar: `server/ges_server/sim/router.py`, `sim/worker.py`, `models/router.py`,
 Qabul mezoni: restartdan keyin ishlar to'g'ri holatda; ikki ishchi bir ishni bajarmaydi (test).
 Bog'liqlik: yo'q.
 
-### L4 — WebSocket ni ko'p jarayonga tayyorlash ✅
+### L4 — WebSocket ni ko'p jarayonga tayyorlash ✅ (`0c5caf4`)
 
 Muammo (`monitoring/live.py:26-51`, `monitoring/router.py:830-855`):
 - `Hub` holati jarayon ichida. Ko'p ishchi yoki ko'p replikali deploy da jonli tasma, buyruq va
@@ -1978,7 +1978,7 @@ Fayllar: `server/ges_server/monitoring/live.py`, `monitoring/router.py`,
 Qabul mezoni: ikki replikali deployda jonli tasma ishlaydi (test).
 Bog'liqlik: D1.
 
-### L5 — Yuklash cheklovlari va parser sandbox
+### L5 — Yuklash cheklovlari va parser sandbox ✅
 
 Muammo:
 - `monitoring/router.py:392` (`import_csv`) — `await file.read()` hajm chegarasisiz, keyin

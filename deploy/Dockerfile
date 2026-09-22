@@ -25,7 +25,8 @@ ENV GES_DATABASE_URL=sqlite:////data/ges.db
 # nodejs — fragments konvertatsiya; assimp-utils — FBX/3DS/LWO import; libredwg — DWG → DXF;
 # WITH_BLENDER=1 — .blend fayllarni serverda ochish (obraz ~+400 MB)
 ARG WITH_BLENDER=0
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-utils \
+# bubblewrap — ishonchsiz CAD/IFC parserlari uchun sandbox (L5; foydalanuvchi nom maydoni yopiq bo'lsa rlimit rejimi)
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-utils bubblewrap \
     && (apt-get install -y --no-install-recommends libredwg-utils || apt-get install -y --no-install-recommends libredwg-tools || true) \
     && (if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender; fi) \
     && rm -rf /var/lib/apt/lists/*
@@ -35,6 +36,10 @@ COPY server/ ./server/
 RUN pip install --no-cache-dir ./sim "./server[postgres,mqtt,cad]"  # cad — STEP/IGES (OpenCASCADE)
 COPY --from=web /web/dist ./web/dist
 COPY --from=web /web/tools ./web/tools
+# Root siz (L5): sath foydalanuvchisi; /data hajmi shu egaga (named volume birinchi yaratilganda egalikni oladi)
+RUN useradd --system --uid 10001 --create-home --home-dir /home/sath sath \
+    && mkdir -p /data && chown -R sath:sath /data /app
+USER sath
 VOLUME ["/data"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1

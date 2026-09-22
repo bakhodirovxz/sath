@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import subprocess
 import threading
 from pathlib import Path
 
+from .. import sandbox
 from ..config import get_settings
 
 log = logging.getLogger("ges_server.fragments")
@@ -69,25 +69,20 @@ def _convert_locked(ifc: Path, sha: str, out: Path, timeout_s: int) -> Path | No
         return None
     tmp = out.with_suffix(".frag.part")
     try:
-        r = subprocess.run(
-            [node, str(tool), str(ifc), str(tmp)],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            cwd=tool.parent,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
+        # Sandbox (L5): ishonchsiz IFC web-ifc/Node da — tarmoqsiz, xotira/vaqt chegarasi, faqat derived papkaga yozadi
+        r = sandbox.run([node, str(tool), str(ifc), str(tmp)], cwd=out.parent, timeout_s=timeout_s, ro_paths=(ifc,))
+    except sandbox.SandboxError as e:
         log.warning("fragments konvertatsiya ishlamadi: %s", e)
+        tmp.unlink(missing_ok=True)
         return None
+    stdout, stderr = r.stdout.decode(errors="replace"), r.stderr.decode(errors="replace")
     if r.returncode != 0 or not tmp.exists():
-        log.warning(
-            "fragments konvertatsiya xato (%s): %s", r.returncode, (r.stderr or r.stdout)[-800:]
-        )
+        log.warning("fragments konvertatsiya xato (%s): %s", r.returncode, (stderr or stdout)[-800:])
         tmp.unlink(missing_ok=True)
         return None
     tmp.replace(out)
     try:
-        info = json.loads(r.stdout.strip().splitlines()[-1])
+        info = json.loads(stdout.strip().splitlines()[-1])
         log.info(
             "fragments: %s → %s bayt, %s ms",
             info.get("ifc_bytes"),

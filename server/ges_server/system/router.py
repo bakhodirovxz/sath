@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
-from .. import audit
+from .. import audit, uploads
 from ..auth.deps import DB, AdminUser, CurrentUser, user_from_token
 from ..auth.security import create_access_token
 from ..config import get_settings
@@ -119,11 +119,8 @@ async def desktop_upload(file: UploadFile, admin: AdminUser, db: DB):
     if not _NAME.match(name):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, NAME_HINT)
     dest = _desktop_dir() / name
-    size = 0
-    with open(dest, "wb") as fh:
-        while chunk := await file.read(1 << 20):
-            fh.write(chunk)
-            size += len(chunk)
+    # Oqimli hajm chegarasi (L5): max_upload_mb dan oshsa qisman fayl o'chiriladi, 413
+    size = await uploads.spool_limited(file, dest, get_settings().max_upload_mb * 1024 * 1024)
     audit.log(
         db,
         user_id=admin.id,
