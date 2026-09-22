@@ -3,7 +3,8 @@
 #   docker compose up -d --build
 # Brauzer: http://<server>:8000
 #
-# Default: SQLite (data/ papkada). Postgres kerak bo'lsa: docker compose --profile postgres up -d
+# Default: Postgres + TimescaleDB (historian uchun; D1). SQLite faqat ishlab chiqish/sinov uchun —
+#   .env da GES_DATABASE_URL=sqlite:////data/ges.db bersangiz postgres servisi kerak emas.
 # CFD (OpenFOAM) kerak bo'lsa: docker compose --profile cfd up -d  (ges servisida GES_CFD_MODE=worker)
 # HTTPS kerak bo'lsa: docker compose --profile https up -d  (Caddy: GES_DOMAIN uchun avtomatik sertifikat,
 #   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen>
@@ -17,6 +18,9 @@ services:
     ports:
       - "${GES_PORT:-8000}:8000"
     env_file: .env
+    environment:
+      # .env dagi GES_DATABASE_URL ustun; berilmasa — compose dagi Postgres
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
     volumes:
       - ges_data:/data
     depends_on:
@@ -25,8 +29,8 @@ services:
         required: false
 
   postgres:
-    image: postgres:16-alpine
-    profiles: ["postgres"]
+    # TimescaleDB (PG16): readings hypertable (7 kunlik bo'laklar) — migratsiya 0014 avtomatik
+    image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ges

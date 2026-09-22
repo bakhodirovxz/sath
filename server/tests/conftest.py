@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 _TMP = Path(tempfile.mkdtemp(prefix="ges_test_"))
-os.environ["GES_DATABASE_URL"] = f"sqlite:///{(_TMP / 'test.db').as_posix()}"
+# GES_TEST_DATABASE_URL=postgresql+psycopg://... bo'lsa butun to'plam Postgres da (CI `postgres` ishi, D1)
+os.environ["GES_DATABASE_URL"] = os.environ.get("GES_TEST_DATABASE_URL") or f"sqlite:///{(_TMP / 'test.db').as_posix()}"
 os.environ["GES_DATA_DIR"] = str(_TMP)
 os.environ["GES_SECRET_KEY"] = "test-secret-key-that-is-at-least-32-bytes-long"
 os.environ["GES_ADMIN_PASSWORD"] = "admin123"
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from ges_server.auth import security
 from ges_server.db import Base, engine, stamp_head
 from ges_server.main import app, init_db
+from ges_server.monitoring import live
 
 # Testlarda parol xeshlash tez bo'lsin (xavfsizlik testda muhim emas)
 security._hasher = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
@@ -31,6 +33,7 @@ def fresh_db():
     Base.metadata.create_all(engine)
     stamp_head()
     init_db()
+    live.invalidate_sensors()
     yield
 
 

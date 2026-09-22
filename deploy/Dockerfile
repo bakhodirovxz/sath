@@ -18,7 +18,9 @@ FROM python:3.12-slim
 ARG PIP_TRUSTED_HOST=""
 ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    GES_DATA_DIR=/data GES_DATABASE_URL=sqlite:////data/ges.db GES_WEB_DIST=/app/web/dist
+    GES_DATA_DIR=/data GES_WEB_DIST=/app/web/dist
+# GES_DATABASE_URL compose dan keladi (Postgres+TimescaleDB default); obraz yolg'iz ishga tushsa — SQLite /data da
+ENV GES_DATABASE_URL=sqlite:////data/ges.db
 # Node — fragments konvertatsiya uchun (web/tools/ifc2frag.mjs); bo'lmasa brauzer IFC ni o'zi ochadi
 # nodejs — fragments konvertatsiya; assimp-utils — FBX/3DS/LWO import; libredwg — DWG → DXF;
 # WITH_BLENDER=1 — .blend fayllarni serverda ochish (obraz ~+400 MB)

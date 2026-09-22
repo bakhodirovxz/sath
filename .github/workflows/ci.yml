@@ -16,6 +16,23 @@ jobs:
       - run: pytest -q sim/tests server/tests desktop/tests --junitxml=report.xml
         continue-on-error: true
       - run: python desktop/build/ci_annotate.py report.xml
+  postgres:
+    # Butun server to'plami Postgres + TimescaleDB da (D1): hypertable migratsiyasi, COPY ingest, yuk testi
+    runs-on: ubuntu-latest
+    services:
+      timescale:
+        image: timescale/timescaledb:latest-pg16
+        env: { POSTGRES_DB: ges, POSTGRES_USER: ges, POSTGRES_PASSWORD: ges }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ges" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e "./sim[dev]" -e "./server[dev,postgres]"
+      - run: pytest -q server/tests -x
+        env: { GES_TEST_DATABASE_URL: "postgresql+psycopg://ges:ges@localhost:5432/ges" }
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }

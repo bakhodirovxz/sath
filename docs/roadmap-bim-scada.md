@@ -412,7 +412,7 @@ Fayllar: `server/ges_server/monitoring/historian.py`, `monitoring/router.py`
 Qabul mezoni: KPI endpoint EEMUA-191 mezonlariga nisbatan baho qaytaradi.
 Bog'liqlik: C1, D1.
 
-### C5 — Alarmga bog'liq nosozliklarni tuzatish ✅
+### C5 — Alarmga bog'liq nosozliklarni tuzatish ✅ (`9dbf52f`)
 
 Bajarildi: `mark_stale` so'rov yo'llaridan (WS, /alarms, /alarm-events, /dashboard) olib tashlandi — faqat
 fon vazifasi; `SystemState` jadvali (migratsiya 0013) — `bg.last_hour` DB da; `notify.py` — cheklangan
@@ -441,7 +441,14 @@ Bog'liqlik: yo'q.
 
 ## D. Historian va masshtab
 
-### D1 — Postgres + TimescaleDB ni ishlab chiqarish defaulti qilish
+### D1 — Postgres + TimescaleDB ni ishlab chiqarish defaulti qilish ✅
+
+Bajarildi: compose defaulti `timescale/timescaledb:latest-pg16` (SQLite faqat `.env` da aniq berilsa);
+migratsiya 0014 — `readings` hypertable (7 kunlik bo'laklar, `sensor_id` 4 bo'lim, PK → `(id, ts, sensor_id)`
+unikal indeks; timescaledb yo'q bo'lsa oddiy jadval + ogohlantirish); ingest `COPY` (psycopg 3) / executemany;
+sensor indeksi keshi (TTL 30 s, noma'lum kalitda bir marta yangilash, PATCH/import/delete da invalidatsiya),
+faqat paketdagi sensorlar yuklanadi. Yuk testi: 10 000 qator < 1 s (PG) — lokal TimescaleDB (Docker Desktop):
+50 000 qator 3.0 s = 16.7k qator/s; SQLite 37k qator/s. CI: `postgres` ishi — butun to'plam TimescaleDB da.
 
 Muammo: `config.py:26` va `deploy/Dockerfile:21` — SQLite default. SCADA historian yozuv yuki
 ostida bitta yozuvchili DB. Hozirgi dizayn realistik 10 soniyada bir necha yuz teg ko'taradi;

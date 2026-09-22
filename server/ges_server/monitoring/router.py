@@ -254,6 +254,7 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
     )
     db.commit()
     mqtt_bridge.refresh()
+    live.invalidate_sensors()
     return sensor
 
 
@@ -389,6 +390,7 @@ def import_sensors(body: SensorImportIn, project: EngineerProject, user: Current
     )
     db.commit()
     mqtt_bridge.refresh()
+    live.invalidate_sensors()
     return {"created": created, "updated": updated, "bound": bound, "errors": errors[:50]}
 
 
@@ -439,6 +441,7 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     )
     db.commit()
     mqtt_bridge.refresh()
+    live.invalidate_sensors()
     return s
 
 

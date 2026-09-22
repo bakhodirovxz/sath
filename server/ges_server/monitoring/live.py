@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import WebSocket
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from .. import notifications, notify
@@ -272,6 +275,49 @@ def sensor_message(sensor: Sensor) -> dict:
     }
 
 
+SENSOR_CACHE_TTL_S = 30.0
+_sensor_cache: dict[int, tuple[float, dict[str, int], dict[int, bool]]] = {}  # project → (muddat, key→id, id→enabled)
+_sensor_cache_lock = threading.Lock()
+
+
+def invalidate_sensors(project_id: int | None = None) -> None:
+    """Sensor keshi (D1): sensor yaratilganda/o'zgarganda/o'chirilganda chaqiriladi (yo'qsa TTL 30 s)."""
+    with _sensor_cache_lock:
+        if project_id is None:
+            _sensor_cache.clear()
+        else:
+            _sensor_cache.pop(project_id, None)
+
+
+def _sensor_index(db: Session, project_id: int, force: bool = False) -> tuple[dict[str, int], dict[int, bool]]:
+    """Loyiha sensorlari indeksi (kalit → id, id → enabled), TTL bilan keshlangan — har partiyada butun
+    sensor jadvalini yuklamaslik uchun; faqat paketda kelgan sensorlar ORM orqali o'qiladi."""
+    now = time.monotonic()
+    with _sensor_cache_lock:
+        hit = _sensor_cache.get(project_id)
+        if hit and hit[0] > now and not force:
+            return hit[1], hit[2]
+    rows = db.query(Sensor.id, Sensor.key, Sensor.enabled).filter(Sensor.project_id == project_id).all()
+    by_key = {k: i for i, k, _ in rows}
+    enabled = {i: bool(e) for i, _, e in rows}
+    with _sensor_cache_lock:
+        _sensor_cache[project_id] = (now + SENSOR_CACHE_TTL_S, by_key, enabled)
+    return by_key, enabled
+
+
+def _bulk_insert_readings(db: Session, rows: list[dict]) -> None:
+    """Xom o'lchovlarni partiyalab yozadi: Postgres — COPY (psycopg 3), boshqalar — executemany INSERT."""
+    if not rows:
+        return
+    if db.bind.dialect.name == "postgresql":
+        raw = db.connection().connection.dbapi_connection
+        with raw.cursor() as cur, cur.copy("COPY readings (sensor_id, ts, value, quality, src_ts) FROM STDIN") as cp:
+            for r in rows:
+                cp.write_row((r["sensor_id"], r["ts"], r["value"], r["quality"], r["src_ts"]))
+        return
+    db.execute(insert(Reading), rows)
+
+
 def ingest(
     db: Session,
     project_id: int,
@@ -292,9 +338,26 @@ def ingest(
     Qaytaradi: {"accepted": n, "unknown": [key...], "bad": n, "rejected": [{"key", "reason"}]}
     """
     settings = get_settings()
-    sensors = {s.key: s for s in db.query(Sensor).filter_by(project_id=project_id).all()}
-    by_id = {s.id: s for s in sensors.values()}
-    accepted, bad, unknown, rejected, changed, events = 0, 0, [], [], [], []
+    # Sensor indeksi keshdan; paketda noma'lum kalit bo'lsa bir marta yangilanadi (yangi yaratilgan sensor)
+    by_key, enabled_map = _sensor_index(db, project_id)
+
+    def _resolve(it: dict) -> int | None:
+        if it.get("key") is not None:
+            return by_key.get(str(it["key"]))
+        sid = it.get("sensor_id")
+        return sid if sid in enabled_map else None
+
+    wanted = [_resolve(it) for it in items]
+    if any(w is None for w in wanted):  # noma'lum kalit — kesh eskirgan bo'lishi mumkin, bir marta yangilash
+        by_key, enabled_map = _sensor_index(db, project_id, force=True)
+        wanted = [_resolve(it) for it in items]
+    wanted = [w for w in wanted if w is not None]
+    loaded = db.query(Sensor).filter(Sensor.id.in_(set(wanted))).all() if wanted else []
+    by_id = {s.id: s for s in loaded}
+    sensors = {s.key: s for s in loaded}
+    accepted, bad, unknown, rejected, events = 0, 0, [], [], []
+    changed_map: dict[int, Sensor] = {}
+    rows: list[dict] = []
     prev: dict[int, tuple[float | None, datetime | None]] = {}  # ROC uchun paketdan oldingi qiymat
     now = datetime.now(timezone.utc)
     latest = now + timedelta(seconds=settings.ingest_future_s)
@@ -331,14 +394,8 @@ def ingest(
             sensor.max_raw is not None and value > sensor.max_raw
         ):
             quality = "bad"  # fizik diapazondan tashqarida — o'lchov yaroqsiz
-        db.add(
-            Reading(
-                sensor_id=sensor.id,
-                ts=ts,
-                value=value,
-                quality=quality,
-                src_ts=_parse_ts(it.get("src_ts")),
-            )
+        rows.append(
+            {"sensor_id": sensor.id, "ts": ts, "value": value, "quality": quality, "src_ts": _parse_ts(it.get("src_ts"))}
         )
         accepted += 1
         if quality == "bad":
@@ -350,8 +407,9 @@ def ingest(
             sensor.last_value = value
             sensor.last_ts = ts
             sensor.last_quality = quality
-            if sensor not in changed:
-                changed.append(sensor)
+            changed_map.setdefault(sensor.id, sensor)
+    changed = list(changed_map.values())
+    _bulk_insert_readings(db, rows)
     # Alarm holati — har sensor uchun paketdagi eng so'nggi qiymat bo'yicha bir marta
     # (tarixiy import/CSV da har nuqta uchun hodisa ochilib "alarm toshqini" bo'lmasin)
     if any(s.suppress_condition for s in changed):
