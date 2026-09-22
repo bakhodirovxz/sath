@@ -18,9 +18,11 @@ from ..config import get_settings
 
 log = logging.getLogger("ges_server.geometry")
 
-# Katta modellarda cheklov (xotira/vaqt): shundan ko'p element bo'lsa clash faqat AABB bilan
-CLASH_EXACT_MAX_ELEMENTS = 1500
+# Element juftligi uchun uchburchak juftlari chegarasi (xotira/vaqt): oshsa juftlik «possible» (aniq tekshirilmadi)
 CLASH_EXACT_MAX_TRIANGLE_PAIRS = 4_000_000
+# G5: keng bosqich (broad phase) — element AABB lari bir xil panjara (grid) indeksida; O(n²) o'rniga faqat
+# bir katakdagi juftliklar tekshiriladi, shuning uchun katta modellarda ham aniq (uchburchak) tekshiruv ishlaydi
+CLASH_GRID_TARGET_PER_CELL = 8
 
 
 @dataclass
@@ -31,6 +33,7 @@ class Mesh:
     storey: str
     verts: np.ndarray  # (n,3) metr, dunyo koordinatalari
     faces: np.ndarray  # (m,3)
+    group: str = ""  # G5: federatsiyada model nomi/identifikatori (bir modelning ichki juftliklarini ajratish uchun)
 
     @property
     def bbox(self) -> tuple[np.ndarray, np.ndarray]:
@@ -379,6 +382,52 @@ def _mesh_pair_intersects(
     return True, pts.mean(axis=0).round(3).tolist(), n
 
 
+def candidate_pairs(boxes: list[tuple[np.ndarray, np.ndarray]], tolerance: float = 0.0) -> np.ndarray:
+    """Keng bosqich (G5): AABB larni bir xil panjaraga (katak o'lchami — median box + tolerance) joylab,
+    bir katakda uchrashgan juftliklar (i<j) qaytariladi; kichik ro'yxatda to'g'ridan-to'g'ri O(n²)."""
+    n = len(boxes)
+    if n < 2:
+        return np.empty((0, 2), dtype=int)
+    lo = np.array([b[0] for b in boxes]) - tolerance
+    hi = np.array([b[1] for b in boxes]) + tolerance
+    if n <= 64:
+        ii, jj = np.triu_indices(n, 1)
+        ok = (lo[ii] <= hi[jj]).all(axis=1) & (lo[jj] <= hi[ii]).all(axis=1)
+        return np.stack([ii[ok], jj[ok]], axis=1)
+    size = np.maximum(np.median(hi - lo, axis=0), 1e-3) * 2
+    origin = lo.min(axis=0)
+    cells_lo = np.floor((lo - origin) / size).astype(np.int64)
+    cells_hi = np.floor((hi - origin) / size).astype(np.int64)
+    # katta elementlar ko'p katakni egallaydi — chegara: element boshiga 4096 katak (aks holda 1 katakli "katta" qatlam)
+    span = np.prod(cells_hi - cells_lo + 1, axis=1)
+    big = span > 4096
+    buckets: dict[tuple, list[int]] = {}
+    for i in np.nonzero(~big)[0]:
+        for x in range(cells_lo[i, 0], cells_hi[i, 0] + 1):
+            for y in range(cells_lo[i, 1], cells_hi[i, 1] + 1):
+                for z in range(cells_lo[i, 2], cells_hi[i, 2] + 1):
+                    buckets.setdefault((x, y, z), []).append(int(i))
+    pairs: set[tuple[int, int]] = set()
+    for idx in buckets.values():
+        if len(idx) < 2:
+            continue
+        arr = np.array(idx)
+        ii, jj = np.triu_indices(len(arr), 1)
+        a, b = arr[ii], arr[jj]
+        ok = (lo[a] <= hi[b]).all(axis=1) & (lo[b] <= hi[a]).all(axis=1)
+        for p, q in zip(a[ok], b[ok], strict=True):
+            pairs.add((int(min(p, q)), int(max(p, q))))
+    bigs = np.nonzero(big)[0]
+    for i in bigs:  # katta elementlar hamma bilan bbox bo'yicha
+        ok = (lo[i] <= hi).all(axis=1) & (lo <= hi[i]).all(axis=1)
+        for j in np.nonzero(ok)[0]:
+            if j != i:
+                pairs.add((int(min(i, j)), int(max(i, j))))
+    if not pairs:
+        return np.empty((0, 2), dtype=int)
+    return np.array(sorted(pairs), dtype=int)
+
+
 def compute_clashes(
     path: Path,
     tolerance: float = 0.0,
@@ -388,8 +437,19 @@ def compute_clashes(
     """To'qnashuvlar: AABB (tolerance bilan) → uchburchak kesishuvi. Natija: hard (sirtlar
     kesishadi — haqiqiy to'qnashuv), possible (bbox lar kirib boradi, sirt kesishuvi topilmadi —
     ichma-ich yoki juda katta juftlik), touch (faqat tegib turadi — odatda normal)."""
-    meshes = load_meshes(path)
-    exact = len(meshes) <= CLASH_EXACT_MAX_ELEMENTS
+    return clashes_of(load_meshes(path), tolerance, types_a, types_b)
+
+
+def clashes_of(
+    meshes: list[Mesh],
+    tolerance: float = 0.0,
+    types_a: list[str] | None = None,
+    types_b: list[str] | None = None,
+    cross_groups_only: bool = False,
+) -> dict:
+    """Mesh ro'yxati ustida (bitta model yoki federatsiya, G5). `cross_groups_only` — faqat turli
+    modellar (group) orasidagi juftliklar. Keng bosqich panjara indeksi bilan — element soni cheklanmaydi."""
+    exact = True
     boxes = [m.bbox for m in meshes]
 
     def wanted(a: Mesh, b: Mesh) -> bool:
@@ -406,38 +466,38 @@ def compute_clashes(
 
     clashes = []
     checked = 0
-    for i in range(len(meshes)):
-        a = meshes[i]
+    for i, j in candidate_pairs(boxes, tolerance):
+        a, b = meshes[i], meshes[j]
+        if cross_groups_only and a.group == b.group:
+            continue
+        if not wanted(a, b):
+            continue
         alo, ahi = boxes[i]
-        for j in range(i + 1, len(meshes)):
-            b = meshes[j]
-            if not wanted(a, b):
-                continue
-            blo, bhi = boxes[j]
-            if (alo > bhi + tolerance).any() or (blo > ahi + tolerance).any():
-                continue
-            checked += 1
-            lo, hi = np.maximum(alo, blo) - tolerance, np.minimum(ahi, bhi) + tolerance
-            overlap = np.clip(hi - lo, 0, None)
-            # touch — bbox lar faqat tegib turadi (kirib borish yo'q); possible — kirib boradi,
-            # lekin sirt kesishuvi topilmadi (ichma-ich yoki aniq tekshirilmadi)
-            kind = "touch" if (overlap <= 1e-6).any() else "possible"
-            point, n = ((lo + hi) / 2).round(3).tolist(), 0
-            if exact and kind != "touch":
-                hit, pt, n = _mesh_pair_intersects(a, b, lo, hi)
-                if hit:
-                    kind, point = "hard", pt
-            clashes.append(
-                {
-                    "kind": kind,
-                    "a": {"guid": a.guid, "type": a.ifc_type, "name": a.name},
-                    "b": {"guid": b.guid, "type": b.ifc_type, "name": b.name},
-                    "point": point,
-                    "overlap_m": overlap.round(3).tolist(),
-                    "overlap_volume_m3": round(float(np.prod(overlap)), 4),
-                    "triangle_hits": max(n, 0),
-                }
-            )
+        blo, bhi = boxes[j]
+        checked += 1
+        lo, hi = np.maximum(alo, blo) - tolerance, np.minimum(ahi, bhi) + tolerance
+        overlap = np.clip(hi - lo, 0, None)
+        # touch — bbox lar faqat tegib turadi (kirib borish yo'q); possible — kirib boradi,
+        # lekin sirt kesishuvi topilmadi (ichma-ich yoki aniq tekshirilmadi)
+        kind = "touch" if (overlap <= 1e-6).any() else "possible"
+        point, n = ((lo + hi) / 2).round(3).tolist(), 0
+        if kind != "touch":
+            hit, pt, n = _mesh_pair_intersects(a, b, lo, hi)
+            if hit:
+                kind, point = "hard", pt
+            elif n < 0:
+                exact = False  # kamida bitta juftlik chegaradan katta — aniq tekshirilmadi
+        clashes.append(
+            {
+                "kind": kind,
+                "a": {"guid": a.guid, "type": a.ifc_type, "name": a.name, **({"model": a.group} if a.group else {})},
+                "b": {"guid": b.guid, "type": b.ifc_type, "name": b.name, **({"model": b.group} if b.group else {})},
+                "point": point,
+                "overlap_m": overlap.round(3).tolist(),
+                "overlap_volume_m3": round(float(np.prod(overlap)), 4),
+                "triangle_hits": max(n, 0),
+            }
+        )
     order = {"hard": 0, "possible": 1, "touch": 2}
     clashes.sort(key=lambda c: (order[c["kind"]], -c["overlap_volume_m3"]))
     return {
@@ -450,6 +510,14 @@ def compute_clashes(
         "touch": sum(1 for c in clashes if c["kind"] == "touch"),
         "clashes": clashes,
     }
+
+
+def transformed(meshes: list[Mesh], dx: float, dy: float, dz: float, rot_deg: float, group: str) -> list[Mesh]:
+    """G5 federatsiya: mesh larni Z o'qi atrofida burib va siljitib nusxalaydi (guruh belgisi bilan)."""
+    th = np.radians(rot_deg)
+    R = np.array([[np.cos(th), -np.sin(th), 0.0], [np.sin(th), np.cos(th), 0.0], [0.0, 0.0, 1.0]])
+    off = np.array([dx, dy, dz], dtype=float)
+    return [Mesh(m.guid, m.ifc_type, m.name, m.storey, (m.verts @ R.T) + off, m.faces, group) for m in meshes]
 
 
 def cached(sha: str, kind: str, compute) -> dict:

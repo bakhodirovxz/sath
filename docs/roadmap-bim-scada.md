@@ -1108,7 +1108,7 @@ Fayllar: `server/ges_server/orm.py`, `models/drafts.py`, `models/dem.py`, `model
 Qabul mezoni: model ichidagi nuqta global koordinatada to'g'ri chiqadi (ma'lum nuqta bilan test).
 Bog'liqlik: G2 (IDS talabi sifatida kiritiladi).
 
-### G4 — ISO 19650 to'liqroq muvofiqlik ✅
+### G4 — ISO 19650 to'liqroq muvofiqlik ✅ (`4df8221`)
 
 Muammo: to'rtta holat (`VersionState`) to'g'ri xaritalanган, tasdiqlash oqimi va audit haqiqiy.
 Lekin yo'q: yaroqlilik kodlari (S0–S7, A1–AN, B1–BN, CR, PR), reviziya kodlari (P01/C01),
@@ -1126,7 +1126,7 @@ Fayllar: `server/ges_server/orm.py`, `models/router.py`, `review/router.py`,
 Qabul mezoni: noto'g'ri yaroqlilik kodi bilan holat o'tishi rad etiladi (test).
 Bog'liqlik: A2.
 
-### G5 — Klassifikatsiya va model federatsiyasi
+### G5 — Klassifikatsiya va model federatsiyasi ✅
 
 Muammo: `IfcClassification` yo'q; faqat uy qurilishi `kind` satri va `Pset_GES_*`.
 Modellar mustaqil; bir necha bo'lim modelini bitta koordinata fazosida birlashtiradigan

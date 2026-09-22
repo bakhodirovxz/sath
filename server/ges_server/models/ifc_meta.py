@@ -19,7 +19,7 @@ def extract(path: Path) -> dict:
         {"guid": s.GlobalId, "name": s.Name or "", "elevation": getattr(s, "Elevation", None)}
         for s in f.by_type("IfcBuildingStorey")
     ]
-    from . import georef
+    from . import classification, georef
 
     return {
         "schema": f.schema,
@@ -28,4 +28,5 @@ def extract(path: Path) -> dict:
         "type_counts": dict(type_counts.most_common(50)),
         "storeys": storeys,
         "georef": georef.read(f),  # G3: IfcMapConversion (epsg, origin, burilish) + IfcSite lat/lon yoki None
+        "classification": classification.summary(f),  # G5: klassifikatorlar va kodlar bo'yicha soni
     }

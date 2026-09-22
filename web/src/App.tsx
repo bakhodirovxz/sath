@@ -12,6 +12,7 @@ const ModelPage = lazy(() => import("./pages/ModelPage"));
 const Admin = lazy(() => import("./pages/Admin"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SitePage = lazy(() => import("./pages/SitePage"));
+const FederationPage = lazy(() => import("./pages/FederationPage"));
 const L1Overview = lazy(() => import("./pages/operator/L1Overview"));
 const L2Area = lazy(() => import("./pages/operator/L2Area"));
 const L3Faceplate = lazy(() => import("./pages/operator/L3Faceplate"));
@@ -56,6 +57,7 @@ export default function App() {
       <Route path="/projects/:projectId/ops/diag" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/diag/:sensorId" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
       <Route path="/models/:modelId" element={<RequireAuth><ModelPage /></RequireAuth>} />
+      <Route path="/federations/:fedId" element={<RequireAuth><FederationPage /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -137,6 +137,17 @@ fayl ogohlantiradi, «majburiy» bo'lsa yuklash rad etiladi. Hujjatlar: EIR, BEP
 loyiha sahifasida (muhandis yuklaydi, tasdiqlovchi o'chiradi). Eski versiyalar migratsiyada holatdan
 kod oladi (wip S0, shared S3, published A1).
 
+## Klassifikatsiya va federatsiya
+
+Klassifikatorlar: **SATH-KSI** (mahalliy GES inshoot/uskuna sinflari: GTS.01 to'g'on … USK.03 transformator)
+va **Uniclass 2015** (Ss_/Pr_/En_ kodlari). Webdan yaratilgan/import qilingan har element GES turi bo'yicha
+`IfcClassificationReference` oladi; mavjud modelni Model → Versiyalar → «Klassifikatsiya» yangi versiyaga
+klassifikatsiyalaydi (`POST /api/versions/{id}/classify`). Versiya tafsilotida kodlar bo'yicha soni.
+Federatsiya (loyiha sahifasi): bir necha model bitta koordinata fazosida — a'zo bo'yicha siljish (m) va
+burilish; «3D + to'qnashuvlar» birlashtirilgan IFC ni ko'rsatadi va faqat modellar orasidagi to'qnashuvlarni
+ro'yxatlaydi (`GET /api/federations/{id}/clashes`, kesh). To'qnashuv tekshiruvi endi keng bosqich panjara
+indeksi bilan — element soni cheklanmaydi (ilgari 1500 dan keyin faqat bbox).
+
 ## Georeferensiya (CRS)
 
 Loyiha sahifasida tasdiqlovchi EPSG (WGS 84/UTM 41N `32641`, 42N `32642`; Pulkovo 1942/Gauss-Krüger 11–12

@@ -26,6 +26,8 @@ import ifcopenshell.api.unit
 import ifcopenshell.util.representation
 import numpy as np
 
+from . import classification
+
 # Web "kind" → IFC klassi (desktop GES obyektlari bilan bir xil)
 IFC_CLASS = {
     "dam": "IfcWall",
@@ -209,6 +211,14 @@ def add_object(f: ifcopenshell.file, body, container, obj: dict, orig: dict | No
             pset=pset,
             properties={k: _pset_value(f, v) for k, v in props.items() if v not in (None, "")},
         )
+    # G5: klassifikatsiya — obj["classification"] {system, code, name} yoki GES turidan avtomatik (SATH-KSI)
+    cls = obj.get("classification")
+    if isinstance(cls, dict) and cls.get("code"):
+        classification.assign(f, el, str(cls["code"]), str(cls.get("name") or ""), str(cls.get("system") or classification.DEFAULT_SYSTEM))
+    else:
+        cc = classification.code_for(obj.get("kind"))
+        if cc is not None:
+            classification.assign(f, el, cc[0], cc[1])
     # Umumiy: qoralama manbasi va turi
     pset = ifcopenshell.api.pset.add_pset(f, product=el, name="Pset_GES_Object")
     ifcopenshell.api.pset.edit_pset(

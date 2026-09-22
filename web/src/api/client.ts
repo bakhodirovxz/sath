@@ -78,6 +78,8 @@ export interface Version {
     /** G3: IfcMapConversion + IfcSite lat/lon (yo'q — null) */
     georef?: Georef | null;
     warnings?: string[];
+    /** G5: klassifikatorlar va kodlar bo'yicha element soni */
+    classification?: { systems: Record<string, { source: string | null; edition: string | null }>; classified: number; by_code: Record<string, number> };
   };
   created_at: string;
   /** G2: IDS natijasi — pass | fail | error | null (navbatda) */
@@ -444,8 +446,11 @@ export interface Notification { id: number; kind: "review" | "issue" | "alarm" |
 export interface AuditRow { id: number; user_id: number | null; username: string | null; action: string; target_type: string; target_id: number | null; project_id: number | null; detail: Record<string, unknown>; created_at: string }
 export interface QtoElement { guid: string; type: string; name: string; storey: string; material: string; volume_m3: number; area_m2: number; footprint_m2: number; length_m: number; width_m: number; height_m: number; bbox: [number[], number[]]; ifc_quantities: Record<string, number> }
 export interface Qto { element_count: number; total_volume_m3: number; by_type: Record<string, { count: number; volume_m3: number; area_m2: number }>; by_storey: Record<string, { count: number; volume_m3: number; area_m2: number }>; elements: QtoElement[] }
-export interface Clash { kind: "hard" | "possible" | "touch"; a: { guid: string; type: string; name: string }; b: { guid: string; type: string; name: string }; point: number[]; overlap_m: number[]; overlap_volume_m3: number; triangle_hits: number }
-export interface ClashReport { element_count: number; pairs_checked: number; exact: boolean; tolerance: number; hard: number; possible: number; touch: number; clashes: Clash[] }
+export interface Clash { kind: "hard" | "possible" | "touch"; a: { model?: string; guid: string; type: string; name: string }; b: { model?: string; guid: string; type: string; name: string }; point: number[]; overlap_m: number[]; overlap_volume_m3: number; triangle_hits: number }
+export interface ClashReport { element_count: number; pairs_checked: number; exact: boolean; tolerance: number; hard: number; possible: number; touch: number; clashes: Clash[]; cross_only?: boolean }
+export interface FedMember { model_id: number; model_name?: string; version_id?: number | null; version_number?: number; dx: number; dy: number; dz: number; rot_deg: number; error?: string }
+export interface Federation { id: number; project_id: number; name: string; description: string; members: FedMember[]; created_by: number; created_at: string; updated_at: string }
+export interface ClassificationSystem { title: string; source: string; edition: string; kinds: Record<string, [string, string]> }
 export interface LiveMessage {
   type: "snapshot" | "reading" | "alarm" | "command" | "journal" | "ping";
   sensors?: LiveReading[];
@@ -602,6 +607,19 @@ export const api = {
     request<Project>("/api/projects", { method: "POST", body: json(body) }),
   updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean; epsg_code: number; origin_e: number; origin_n: number; origin_h: number; crs_rotation_deg: number; naming_template: string; naming_required: boolean }>) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: json(body) }),
+  classificationSystems: () => request<Record<string, ClassificationSystem>>("/api/classification/systems"),
+  classifyVersion: (versionId: number, system: string, overwrite = false) => request<Version>(`/api/versions/${versionId}/classify`, { method: "POST", body: json({ system, overwrite }) }),
+  federations: (projectId: number) => request<Federation[]>(`/api/projects/${projectId}/federations`),
+  federation: (id: number) => request<Federation>(`/api/federations/${id}`),
+  createFederation: (projectId: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/projects/${projectId}/federations`, { method: "POST", body: json(body) }),
+  updateFederation: (id: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/federations/${id}`, { method: "PUT", body: json(body) }),
+  deleteFederation: (id: number) => request<void>(`/api/federations/${id}`, { method: "DELETE" }),
+  federationClashes: (id: number, tolerance = 0, crossOnly = true) => request<ClashReport>(`/api/federations/${id}/clashes?tolerance=${tolerance}&cross_only=${crossOnly}`),
+  async federationIfc(id: number): Promise<Uint8Array> {
+    const res = await fetch(`/api/federations/${id}/ifc`, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
+    if (!res.ok) throw new ApiError(res.status, "Federatsiya IFC yuklab bo'lmadi");
+    return new Uint8Array(await res.arrayBuffer());
+  },
   documents: (projectId: number) => request<ProjectDocument[]>(`/api/projects/${projectId}/documents`),
   uploadDocument: (projectId: number, file: File, kind: DocKind, title: string) => {
     const fd = new FormData();

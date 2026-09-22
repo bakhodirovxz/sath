@@ -307,6 +307,26 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".dock-body")).toContainText(/S0|A1|S3/);
   });
 
+  test("Federatsiya (G5): ikki model, siljish, 3D + modellar orasidagi to'qnashuv", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    const m2 = await (await request.post(`${API}/api/projects/${projectId}/models`, { headers: h, data: { name: "Zal" } })).json();
+    const up = await request.post(`${API}/api/models/${m2.id}/versions`, { headers: h, multipart: { message: "zal v1", file: { name: "zal.ifc", mimeType: "application/octet-stream", buffer: readFileSync(SAMPLE) } } });
+    expect(up.status()).toBe(201);
+    await login(page);
+    await page.goto(`/projects/${projectId}`);
+    await page.getByTestId("fed-name").fill("Stansiya");
+    await page.getByTestId("fed-add").selectOption({ label: "Namuna" });
+    await page.getByTestId("fed-add").selectOption({ label: "Zal" });
+    await page.getByTestId("federations").locator("input[title=dx]").nth(1).fill("5");
+    await page.getByTestId("fed-create").click();
+    await expect(page.getByTestId("federations")).toContainText("Stansiya");
+    await page.getByTestId("fed-open").first().click();
+    await expect(page.getByTestId("fed-panel")).toContainText("To'qnashuv", { timeout: 60_000 });
+    await expect(page.locator(".ws-status .msg")).toContainText("Yuklandi", { timeout: 90_000 });
+    await expect(page.getByTestId("fed-panel").locator(".tile-v").first()).not.toHaveText("0");
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

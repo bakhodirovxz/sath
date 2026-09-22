@@ -155,6 +155,22 @@ class Project(Base):
     )
 
 
+class Federation(Base):
+    """Model federatsiyasi (G5): loyihaning bir necha model versiyasi bitta koordinata fazosida —
+    members: [{model_id, version_id|null, dx, dy, dz, rot_deg}] (lokal metr; CRS loyihaniki)."""
+
+    __tablename__ = "federations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text, default="")
+    members: Mapped[list] = mapped_column(JSON, default=list)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class ProjectDocument(Base):
     """ISO 19650 hujjatlari (G4): EIR, BEP, TIDP/MIDP va boshqalar — loyihaga biriktirilgan fayllar."""
 

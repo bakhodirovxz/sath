@@ -17,9 +17,9 @@ from ..auth.deps import (
     require_project_role,
 )
 from ..config import get_settings
-from ..orm import Model, Project, Role, Version, VersionState
+from ..orm import Federation, Model, Project, Role, Version, VersionState
+from . import classification, derived, federation, ifc_meta, iso19650, storage
 from . import crs as crs_mod
-from . import derived, ifc_meta, iso19650, storage
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -563,3 +563,182 @@ def version_clashes(
     if kind:
         data = {**data, "clashes": [c for c in data["clashes"] if c["kind"] == kind]}
     return data
+
+
+# --------------------------------------------------------------------------- G5: klassifikatsiya
+
+
+@router.get("/classification/systems")
+def classification_systems(_: CurrentUser):
+    """Mavjud klassifikatorlar va GES turi → kod xaritasi (Uniclass 2015, SATH-KSI)."""
+    return {k: {"title": v["title"], "source": v["source"], "edition": v["edition"], "kinds": v["kinds"]} for k, v in classification.SYSTEMS.items()}
+
+
+class ClassifyIn(BaseModel):
+    system: str = classification.DEFAULT_SYSTEM
+    overwrite: bool = False
+    message: str = ""
+
+
+@router.post("/versions/{version_id}/classify", response_model=VersionOut, status_code=201)
+def classify_version(version_id: int, body: ClassifyIn, user: CurrentUser, db: DB):
+    """Oxirgi versiyani GES turi bo'yicha klassifikatsiyalab (IfcClassificationReference) yangi versiya yozadi."""
+    import tempfile
+    from pathlib import Path as _P
+
+    import ifcopenshell
+
+    src_v = get_version_checked(db, version_id, user, Role.engineer)
+    model = src_v.model
+    if model.versions[-1].id != src_v.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Faqat oxirgi versiya klassifikatsiyalanadi")
+    if body.system not in classification.SYSTEMS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Klassifikator: {', '.join(classification.SYSTEMS)}")
+    try:
+        f = ifcopenshell.open(str(storage.resolve(src_v.file_sha256)))
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
+    info = classification.classify_file(f, body.system, body.overwrite)
+    settings = get_settings()
+    with tempfile.TemporaryDirectory(prefix="ges-cls-") as tmp:
+        out = _P(tmp) / "cls.ifc"
+        f.write(str(out))
+        with open(out, "rb") as fh:
+            sha, size = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
+    meta = ifc_meta.extract(storage.resolve(sha))
+    number = db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar() + 1
+    v = Version(
+        model_id=model.id, number=number, parent_id=src_v.id, author_id=user.id,
+        message=body.message or f"Klassifikatsiya ({body.system}): {info['assigned']} element",
+        file_sha256=sha, file_name=src_v.file_name, file_size=size, meta=meta,
+        suitability_code="S0", revision_code=iso19650.next_revision([x.revision_code for x in model.versions], "P"),
+    )
+    db.add(v)
+    db.flush()
+    audit.log(db, user_id=user.id, action="version.classify", target_type="version", target_id=v.id, project_id=model.project_id, detail=info)
+    db.commit()
+    db.refresh(v)
+    derived.enqueue_for(db, sha)
+    return version_out(v)
+
+
+# --------------------------------------------------------------------------- G5: federatsiya
+
+
+class FedMember(BaseModel):
+    model_id: int
+    version_id: int | None = None  # None — oxirgi published (yo'q bo'lsa oxirgi)
+    dx: float = 0.0
+    dy: float = 0.0
+    dz: float = 0.0
+    rot_deg: float = Field(default=0.0, ge=-360, le=360)
+
+
+class FederationIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str = ""
+    members: list[FedMember] = Field(min_length=1, max_length=50)
+
+
+class FederationOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    description: str
+    members: list[dict]
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+def _fed_out(db, fed: Federation) -> FederationOut:
+    try:
+        members = federation.resolve_members(db, fed.members)
+    except ValueError as e:
+        members = [{**m, "error": str(e)} for m in fed.members]
+    return FederationOut(id=fed.id, project_id=fed.project_id, name=fed.name, description=fed.description, members=members, created_by=fed.created_by, created_at=fed.created_at, updated_at=fed.updated_at)
+
+
+def _get_fed(db, fed_id: int, user, role: Role) -> Federation:
+    fed = db.get(Federation, fed_id)
+    if fed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Federatsiya topilmadi")
+    check_project_role(db, fed.project_id, user, role)
+    return fed
+
+
+def _check_members(db, project: Project, members: list[FedMember]) -> list[dict]:
+    raw = [m.model_dump() for m in members]
+    for m in raw:
+        model = db.get(Model, m["model_id"])
+        if model is None or model.project_id != project.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Model {m['model_id']} shu loyihaniki emas")
+    try:
+        federation.resolve_members(db, raw)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    return raw
+
+
+@router.get("/projects/{project_id}/federations", response_model=list[FederationOut])
+def list_federations(project: ViewerProject, db: DB):
+    return [_fed_out(db, f) for f in db.query(Federation).filter_by(project_id=project.id).order_by(Federation.id).all()]
+
+
+@router.post("/projects/{project_id}/federations", response_model=FederationOut, status_code=201)
+def create_federation(body: FederationIn, project: EngineerProject, user: CurrentUser, db: DB):
+    fed = Federation(project_id=project.id, name=body.name, description=body.description, members=_check_members(db, project, body.members), created_by=user.id)
+    db.add(fed)
+    db.flush()
+    audit.log(db, user_id=user.id, action="federation.create", target_type="federation", target_id=fed.id, project_id=project.id, detail={"name": fed.name, "members": len(fed.members)})
+    db.commit()
+    db.refresh(fed)
+    return _fed_out(db, fed)
+
+
+@router.put("/federations/{fed_id}", response_model=FederationOut)
+def update_federation(fed_id: int, body: FederationIn, user: CurrentUser, db: DB):
+    fed = _get_fed(db, fed_id, user, Role.engineer)
+    fed.name, fed.description = body.name, body.description
+    fed.members = _check_members(db, db.get(Project, fed.project_id), body.members)
+    audit.log(db, user_id=user.id, action="federation.update", target_type="federation", target_id=fed.id, project_id=fed.project_id, detail={"members": len(fed.members)})
+    db.commit()
+    db.refresh(fed)
+    return _fed_out(db, fed)
+
+
+@router.delete("/federations/{fed_id}", status_code=204)
+def delete_federation(fed_id: int, user: CurrentUser, db: DB):
+    fed = _get_fed(db, fed_id, user, Role.engineer)
+    db.delete(fed)
+    audit.log(db, user_id=user.id, action="federation.delete", target_type="federation", target_id=fed_id, project_id=fed.project_id)
+    db.commit()
+
+
+@router.get("/federations/{fed_id}", response_model=FederationOut)
+def get_federation(fed_id: int, user: CurrentUser, db: DB):
+    return _fed_out(db, _get_fed(db, fed_id, user, Role.viewer))
+
+
+@router.get("/federations/{fed_id}/clashes")
+def federation_clashes(fed_id: int, user: CurrentUser, db: DB, tolerance: float = 0.0, cross_only: bool = True):
+    """Federatsiya ustida to'qnashuvlar (G5): a'zolar siljitilgan holda, default faqat modellar orasida; kesh."""
+    fed = _get_fed(db, fed_id, user, Role.viewer)
+    try:
+        resolved = federation.resolve_members(db, fed.members)
+        return federation.cached_clashes(resolved, tolerance, cross_only)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+
+
+@router.get("/federations/{fed_id}/ifc")
+def federation_ifc(fed_id: int, user: CurrentUser, db: DB):
+    """Birlashtirilgan IFC (ko'rish uchun): birinchi a'zo asos, qolganlari siljitilib nusxalangan."""
+    fed = _get_fed(db, fed_id, user, Role.viewer)
+    try:
+        path = federation.merged_ifc(federation.resolve_members(db, fed.members))
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    return FileResponse(path, filename=f"federation_{fed.id}.ifc", media_type="application/octet-stream")

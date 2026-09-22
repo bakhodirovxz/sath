@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, type DocKind, type Member, type Model, type Project, type ProjectDocument, type Role, type User } from "../api/client";
+import { api, type DocKind, type FedMember, type Federation, type Member, type Model, type Project, type ProjectDocument, type Role, type User } from "../api/client";
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
@@ -104,6 +104,7 @@ export default function ProjectPage() {
         <CrsSettings project={project} canManage={canManage} onSaved={load} onError={setError} />
         <NamingSettings project={project} canManage={canManage} onSaved={load} onError={setError} />
         <DocumentsSection projectId={pid} canEdit={project?.my_role === "engineer" || project?.my_role === "approver"} canDelete={canManage} onError={setError} />
+        <FederationsSection projectId={pid} models={models} canEdit={project?.my_role === "engineer" || project?.my_role === "approver"} onError={setError} />
         {canManage && (
           <p className="small">
             <label className="row" style={{ gap: 6 }}>
@@ -296,6 +297,59 @@ function DocumentsSection({ projectId, canEdit, canDelete, onError }: { projectI
           </label>
         </div>
       )}
+    </div>
+  );
+}
+
+/** G5: federatsiyalar — bir necha model bitta koordinata fazosida; a'zo siljishi/burilishi; to'qnashuvlar sahifada. */
+function FederationsSection({ projectId, models, canEdit, onError }: { projectId: number; models: Model[]; canEdit: boolean; onError: (m: string) => void }) {
+  const nav = useNavigate();
+  const [feds, setFeds] = useState<Federation[]>([]);
+  const [name, setName] = useState("");
+  const [members, setMembers] = useState<FedMember[]>([]);
+  const load = useCallback(() => api.federations(projectId).then(setFeds).catch((e) => onError(e.message)), [projectId, onError]);
+  useEffect(() => { void load(); }, [load]);
+  const addMember = (mid: number) => { if (mid && !members.some((m) => m.model_id === mid)) setMembers([...members, { model_id: mid, dx: 0, dy: 0, dz: 0, rot_deg: 0 }]); };
+  return (
+    <div className="panel" style={{ margin: "8px 0" }} data-testid="federations">
+      <div className="row"><b>Federatsiya (modellarni birlashtirish, to'qnashuv)</b><span className="grow" /><span className="dim small">{feds.length} ta</span></div>
+      {feds.length > 0 && (
+        <table className="grid small" style={{ marginTop: 6 }}>
+          <thead><tr><th>Nomi</th><th>A'zolar</th><th /></tr></thead>
+          <tbody>
+            {feds.map((f) => (
+              <tr key={f.id}>
+                <td>{f.name}</td>
+                <td className="small">{f.members.map((m) => `${m.model_name ?? m.model_id} v${m.version_number ?? "?"}${m.dx || m.dy || m.dz ? ` (+${m.dx},${m.dy},${m.dz})` : ""}`).join(" · ")}</td>
+                <td className="row" style={{ gap: 4 }}>
+                  <button className="btn sm primary" onClick={() => nav(`/federations/${f.id}`)} data-testid="fed-open">3D + to'qnashuvlar</button>
+                  {canEdit && <button className="btn sm" onClick={() => api.deleteFederation(f.id).then(load).catch((e) => onError(e.message))}>O'chirish</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {canEdit && models.length > 1 && (
+        <form className="row" style={{ gap: 6, marginTop: 6, flexWrap: "wrap" }} onSubmit={(e) => { e.preventDefault(); api.createFederation(projectId, { name, description: "", members }).then(() => { setName(""); setMembers([]); void load(); }).catch((err) => onError(err.message)); }}>
+          <input className="input" placeholder="Federatsiya nomi" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 200 }} data-testid="fed-name" />
+          <select className="select" style={{ width: "auto" }} value="" onChange={(e) => addMember(Number(e.target.value))} data-testid="fed-add">
+            <option value="">+ model qo'shish…</option>
+            {models.filter((m) => !members.some((x) => x.model_id === m.id)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          {members.map((m, i) => (
+            <span key={m.model_id} className="row" style={{ gap: 4 }}>
+              <b className="small">{models.find((x) => x.id === m.model_id)?.name}</b>
+              {(["dx", "dy", "dz", "rot_deg"] as const).map((k) => (
+                <input key={k} className="input" type="number" step="0.1" title={k} value={m[k]} style={{ width: 70 }} onChange={(e) => setMembers(members.map((x, j) => (j === i ? { ...x, [k]: Number(e.target.value) } : x)))} />
+              ))}
+              <button type="button" className="btn sm" onClick={() => setMembers(members.filter((_, j) => j !== i))}>×</button>
+            </span>
+          ))}
+          <button className="btn primary" type="submit" disabled={!name || members.length < 1} data-testid="fed-create">Yaratish</button>
+        </form>
+      )}
+      <p className="dim small" style={{ margin: "4px 0 0" }}>Versiya berilmasa oxirgi published (yo'q bo'lsa oxirgi) versiya. Siljish metr (loyiha lokal koordinatalari), burilish Z atrofida. Klassifikatsiya: Model → Versiyalar → «Klassifikatsiya».</p>
     </div>
   );
 }
