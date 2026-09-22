@@ -3,14 +3,26 @@ import type { ItemProperties, SelectedItem, Viewer } from "../../viewer/Viewer";
 import { ifcLabel } from "../../ui/format";
 import Icon from "../../ui/Icon";
 import { BPanel, BRow } from "../../ui/BlenderUI";
+import { api, type CrsConvert, type Project } from "../../api/client";
 
 /** Properties editor (Blender): yopiladigan panellar («Element», «O'lchamlar», «Atributlar», har Pset alohida),
  *  qatorlar label (40%) / maydon (60%). Panel holati localStorage da. */
 
-export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, onDelete }: { viewer: Viewer | null; selection: SelectedItem[]; canEdit?: boolean; onEdit?: (localId: number) => void; onDelete?: (localId: number) => void }) {
+export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, onDelete, project }: { viewer: Viewer | null; selection: SelectedItem[]; canEdit?: boolean; onEdit?: (localId: number) => void; onDelete?: (localId: number) => void; project?: Project | null }) {
   const [props, setProps] = useState<ItemProperties | null>(null);
   const [dims, setDims] = useState<{ size: [number, number, number]; center: [number, number, number] } | null>(null);
+  const [geo, setGeo] = useState<CrsConvert | null>(null);
   const first = selection[0];
+  // G3: element markazi → global (E, N, H) va lat/lon — loyiha CRS bo'yicha
+  const crsEpsg = project?.crs?.epsg;
+  const projectId = project?.id;
+  const cx = dims?.center[0], cy = dims?.center[1], cz = dims?.center[2];
+  useEffect(() => {
+    if (!crsEpsg || !projectId || cx == null || cy == null) return setGeo(null);
+    let live = true;
+    api.crsConvert(projectId, { x: cx, y: cy, z: cz ?? 0 }).then((g) => live && setGeo(g)).catch(() => setGeo(null));
+    return () => { live = false; };
+  }, [crsEpsg, projectId, cx, cy, cz]);
 
   const localId = first?.localId;
   useEffect(() => {
@@ -42,6 +54,8 @@ export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, on
           <BRow label="Y" value={`${dims.size[1].toFixed(2)} m`} mono />
           <BRow label="Z" value={`${dims.size[2].toFixed(2)} m`} mono />
           <BRow label="Markaz (IFC)" value={dims.center.map((v) => v.toFixed(2)).join(", ") + " m"} mono />
+          {geo?.global && <BRow label={`Global (EPSG:${geo.global.epsg})`} value={`E ${geo.global.e.toFixed(2)}  N ${geo.global.n.toFixed(2)}  H ${geo.global.h.toFixed(2)}`} mono />}
+          {geo?.latlon && <BRow label="Lat / Lon" value={`${geo.latlon.lat.toFixed(6)}, ${geo.latlon.lon.toFixed(6)}`} mono />}
         </BPanel>
       )}
       {props && props.attributes.length > 0 && (

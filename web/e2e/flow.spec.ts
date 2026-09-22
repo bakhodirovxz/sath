@@ -271,6 +271,28 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".dash-block")).toContainText("Nima bo'lsa");
   });
 
+  test("Georeferensiya (G3): loyiha CRS, taklif, versiyani georeferensiyalash, global koordinata", async ({ page, request }) => {
+    await login(page);
+    await page.goto(`/projects/${projectId}`);
+    await page.getByTestId("crs-settings").getByRole("button", { name: "Sozlash" }).click();
+    await page.getByTestId("crs-epsg").selectOption("32642");
+    await page.getByRole("button", { name: "Taklif" }).click();
+    await expect(page.getByTestId("crs-settings").locator("input[type=number]").nth(0)).not.toHaveValue("500000");
+    await page.getByTestId("crs-save").click();
+    await expect(page.getByTestId("crs-settings")).toContainText("EPSG:32642");
+    // API: lokal (0,0) → lat/lon ≈ taklif nuqtasi (41.62, 69.98)
+    const tok = await token(request);
+    const conv = await (await request.get(`${API}/api/projects/${projectId}/crs/convert?x=0&y=0`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+    expect(Math.abs(conv.latlon.lat - 41.62)).toBeLessThan(1e-4);
+    // model: oxirgi versiyada IfcMapConversion yo'q → «Georeferensiyalash» → yangi versiya
+    await page.goto(`/models/${modelId}?v=${versionId}&tab=versions`);
+    await expect(page.locator(".ws-status .msg")).toContainText("Yuklandi", { timeout: 90_000 });
+    const list = page.locator(".dock-body");
+    await list.locator(".blist-row").first().click(); // ro'yxat yangisi birinchi — Georeferensiyalash tugmasi oxirgi versiyada
+    await page.getByTestId("georef-btn").click();
+    await expect(list).toContainText("EPSG:32642", { timeout: 30_000 });
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

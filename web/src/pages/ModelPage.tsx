@@ -740,7 +740,7 @@ export default function ModelPage() {
               {model && project && tab === "mon" && <MonitoringPanel projectId={project.id} modelId={model.id} role={role} viewer={ready ? viewer.current : null} selection={selection} />}
               {model && tab === "checks" && <ChecksPanel current={current} viewer={ready ? viewer.current : null} onCreateIssue={() => { setTab("issues"); setIssueTrigger((n) => n + 1); }} />}
               {tab === "props" && draftSel && viewer.current && <DraftProps draft={draftSel} dm={viewer.current.drafts} canEdit={canEdit} onDelete={(uid) => void deleteDraft(uid)} onDuplicate={duplicateDraft} />}
-              {tab === "props" && !draftSel && <PropertiesPanel viewer={viewer.current} selection={selection} canEdit={canEdit} onEdit={(id) => void editElement(id)} onDelete={(id) => void deleteElement(id)} />}
+              {tab === "props" && !draftSel && <PropertiesPanel viewer={viewer.current} selection={selection} canEdit={canEdit} onEdit={(id) => void editElement(id)} onDelete={(id) => void deleteElement(id)} project={project} />}
               {tab === "layers" && (<><LayersPanel viewer={viewer.current} modelKey={loadedKey} />{model && <ViewsPanel modelId={model.id} viewer={ready ? viewer.current : null} refresh={viewsRefresh} />}</>)}
             </div>
           </div>

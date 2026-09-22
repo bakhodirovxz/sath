@@ -1069,7 +1069,7 @@ Fayllar: `server/ges_server/models/drafts.py`, `models/ifc_meta.py`,
 Qabul mezoni: IFC4.3 model yuklanadi, tur xaritalash testi o'tadi, noto'g'ri sinf nomi xato beradi.
 Bog'liqlik: yo'q. Bu sezilarli ish — alohida loyiha sifatida rejalashtirilsin.
 
-### G2 — IDS validatsiya ✅
+### G2 — IDS validatsiya ✅ (`2ce7b57`)
 
 Muammo: model tekshiruvi spetsifikatsiyasi yo'q. "Soddalashtirilgan ISO 19650" da'vosi
 tekshirilmaydigan.
@@ -1087,7 +1087,7 @@ Fayllar: yangi `docs/ids/`, `server/ges_server/models/` da validator, `review/ro
 Qabul mezoni: majburiy maydonsiz model IDS tekshiruvidan o'tmaydi (test).
 Bog'liqlik: yo'q. Eng arzon va eng ishonchli BIM yutug'i.
 
-### G3 — Georeferensiya
+### G3 — Georeferensiya ✅
 
 Muammo: `IfcMapConversion`, `IfcProjectedCRS`, EPSG — kod bazasida umuman yo'q.
 `models/dem.py` lat/lon markazdan AWS relief plitalarini oladi va lokal mesh quradi, lekin

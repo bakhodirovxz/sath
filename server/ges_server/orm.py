@@ -117,6 +117,12 @@ class Project(Base):
     location: Mapped[str] = mapped_column(String(256), default="")
     # G2: IDS tekshiruvi yiqilgan versiya tasdiqlanmaydi/merge qilinmaydi (default: faqat ogohlantirish)
     ids_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # G3: georeferensiya — EPSG (UTM 326xx/327xx, Pulkovo GK 284xx), lokal (0,0,0) ning global joyi, X o'qi burilishi
+    epsg_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    origin_e: Mapped[float | None] = mapped_column(Float, nullable=True)
+    origin_n: Mapped[float | None] = mapped_column(Float, nullable=True)
+    origin_h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    crs_rotation_deg: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
     # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi) — faqat POST /readings
     ingest_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ingest_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

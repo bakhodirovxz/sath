@@ -19,10 +19,13 @@ def extract(path: Path) -> dict:
         {"guid": s.GlobalId, "name": s.Name or "", "elevation": getattr(s, "Elevation", None)}
         for s in f.by_type("IfcBuildingStorey")
     ]
+    from . import georef
+
     return {
         "schema": f.schema,
         "project_name": projects[0].Name if projects else None,
         "element_count": len(products),
         "type_counts": dict(type_counts.most_common(50)),
         "storeys": storeys,
+        "georef": georef.read(f),  # G3: IfcMapConversion (epsg, origin, burilish) + IfcSite lat/lon yoki None
     }

@@ -265,6 +265,7 @@ def build(
     out: Path,
     remove_names: list[str] | None = None,
     remove_guids: list[str] | None = None,
+    crs=None,
 ) -> dict:
     """src (mavjud versiya IFC) nusxasiga obyektlarni qo'shib `out` ga yozadi. src None — yangi fayl.
     remove_names — shu nomli elementlar avval olib tashlanadi (masalan parametrik relyefni DEM bilan almashtirish);
@@ -298,8 +299,13 @@ def build(
     for obj, orig in zip(objects, origs, strict=True):
         el = add_object(f, body, container, obj, orig)
         guids.append(el.GlobalId)
+    georef_info = None
+    if crs is not None:
+        from . import georef
+
+        georef_info = georef.apply(f, crs)  # G3: IfcMapConversion + IfcSite Ref* loyiha CRS dan
     f.write(str(out))
-    return {"guids": guids, "count": len(guids), "schema": f.schema, "removed": removed}
+    return {"guids": guids, "count": len(guids), "schema": f.schema, "removed": removed, "georef": georef_info}
 
 
 def build_to_temp(

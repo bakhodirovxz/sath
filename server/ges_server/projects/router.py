@@ -7,6 +7,7 @@ from sqlalchemy import func
 from .. import audit
 from ..auth import sessions
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
+from ..models import crs as crs_mod
 from ..orm import Model, Project, ProjectMember, Role, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -23,6 +24,12 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     location: str | None = None
     ids_required: bool | None = None  # G2: IDS yiqilgan versiya tasdiqlanmaydi
+    # G3: georeferensiya (hammasi birga beriladi; epsg_code=0 — o'chirish)
+    epsg_code: int | None = None
+    origin_e: float | None = None
+    origin_n: float | None = None
+    origin_h: float | None = None
+    crs_rotation_deg: float | None = Field(default=None, ge=-360, le=360)
 
 
 class ProjectOut(BaseModel):
@@ -33,6 +40,7 @@ class ProjectOut(BaseModel):
     my_role: Role | None = None
     model_count: int = 0
     ids_required: bool = False
+    crs: dict | None = None  # G3: {epsg, name, origin_e, origin_n, origin_h, rotation_deg}
 
     model_config = {"from_attributes": True}
 
@@ -62,6 +70,7 @@ def _out(db, project: Project, user: User, role: Role | None = None, model_count
         my_role=role if model_count is not None else get_project_role(db, project.id, user),
         model_count=model_count if model_count is not None else len(project.models),
         ids_required=bool(project.ids_required),
+        crs=(c.as_dict() if (c := crs_mod.from_project(project)) else None),
     )
 
 
@@ -129,8 +138,17 @@ def get_project(project: ViewerProject, user: CurrentUser, db: DB):
 
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(body: ProjectUpdate, project: ApproverProject, user: CurrentUser, db: DB):
+    if body.epsg_code is not None:
+        if body.epsg_code == 0:
+            project.epsg_code = project.origin_e = project.origin_n = project.origin_h = None
+        else:
+            try:
+                crs_mod.from_epsg(body.epsg_code)
+            except ValueError as e:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     for k, v in body.model_dump(exclude_none=True).items():
-        setattr(project, k, v)
+        if k != "epsg_code" or v != 0:
+            setattr(project, k, v)
     audit.log(
         db,
         user_id=user.id,
@@ -227,3 +245,52 @@ def remove_member(user_id: int, project: ApproverProject, user: CurrentUser, db:
         detail={"user_id": user_id},
     )
     db.commit()
+
+
+class CrsConvertOut(BaseModel):
+    local: dict | None = None
+    global_: dict | None = Field(default=None, alias="global")
+    latlon: dict | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/{project_id}/crs/convert", response_model=CrsConvertOut, response_model_by_alias=True)
+def crs_convert(
+    project: ViewerProject,
+    x: float | None = None,
+    y: float | None = None,
+    z: float | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+):
+    """G3: lokal (x,y,z) → global (E,N,H) + lat/lon; yoki lat/lon → lokal. CRS sozlanmagan — 409."""
+    c = crs_mod.from_project(project)
+    if c is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Loyihada georeferensiya (EPSG) sozlanmagan")
+    out = CrsConvertOut()
+    if x is not None and y is not None:
+        e, n, h = c.to_global(x, y, z or 0.0)
+        la, lo = c.to_latlon(x, y)
+        out.local = {"x": x, "y": y, "z": z or 0.0}
+        out.global_ = {"e": round(e, 3), "n": round(n, 3), "h": round(h, 3), "epsg": c.epsg}
+        out.latlon = {"lat": round(la, 7), "lon": round(lo, 7)}
+    elif lat is not None and lon is not None:
+        lx, ly = c.from_latlon(lat, lon)
+        out.local = {"x": round(lx, 3), "y": round(ly, 3), "z": 0.0}
+        out.latlon = {"lat": lat, "lon": lon}
+        e, n, h = c.to_global(lx, ly)
+        out.global_ = {"e": round(e, 3), "n": round(n, 3), "h": round(h, 3), "epsg": c.epsg}
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "x,y (,z) yoki lat,lon bering")
+    return out
+
+
+@router.get("/{project_id}/crs/suggest")
+def crs_suggest(project: ViewerProject, lat: float, lon: float, family: str = "utm"):
+    """G3: nuqta uchun EPSG zonasi (utm — WGS 84/UTM, gk — Pulkovo 1942/Gauss-Krüger) va origin (E,N)."""
+    code = crs_mod.suggest_epsg(lat, lon, family)
+    p = crs_mod.from_epsg(code)
+    la, lo = crs_mod.wgs84_to_datum(lat, lon, p.datum)
+    e, n = crs_mod.tm_forward(la, lo, p)
+    return {"epsg": code, "name": p.name, "origin_e": round(e, 3), "origin_n": round(n, 3)}

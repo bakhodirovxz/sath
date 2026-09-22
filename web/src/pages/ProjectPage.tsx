@@ -101,6 +101,7 @@ export default function ProjectPage() {
           </table>
         )}
 
+        <CrsSettings project={project} canManage={canManage} onSaved={load} onError={setError} />
         {canManage && (
           <p className="small">
             <label className="row" style={{ gap: 6 }}>
@@ -175,5 +176,51 @@ function TwinButton({ pid, onDone, onError }: { pid: number; onDone: (modelId: n
       <option value="">{busy ? "Yaratilmoqda…" : "Tayyor egizak…"}</option>
       {presets.map((p) => <option key={p.id} value={p.id} title={p.description}>{p.title}</option>)}
     </select>
+  );
+}
+
+/** G3: loyiha georeferensiyasi — EPSG (UTM 41N/42N, Pulkovo GK 11/12), lokal (0,0,0) ning global E/N/H, burilish. */
+function CrsSettings({ project, canManage, onSaved, onError }: { project: Project | null; canManage: boolean; onSaved: () => void; onError: (m: string) => void }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ epsg_code: 32642, origin_e: 500000, origin_n: 4570000, origin_h: 0, crs_rotation_deg: 0 });
+  const [ll, setLl] = useState({ lat: "41.62", lon: "69.98" });
+  useEffect(() => { if (project?.crs) setF({ epsg_code: project.crs.epsg, origin_e: project.crs.origin_e, origin_n: project.crs.origin_n, origin_h: project.crs.origin_h, crs_rotation_deg: project.crs.rotation_deg }); }, [project]);
+  if (!project) return null;
+  const c = project.crs;
+  return (
+    <div className="panel" style={{ margin: "8px 0" }} data-testid="crs-settings">
+      <div className="row">
+        <b>Georeferensiya</b>
+        <span className="grow" />
+        {c ? <span className="small">EPSG:{c.epsg} <span className="dim">{c.name}</span> · E {c.origin_e.toFixed(2)} N {c.origin_n.toFixed(2)} H {c.origin_h.toFixed(1)}{c.rotation_deg ? ` · burilish ${c.rotation_deg}°` : ""}</span> : <span className="muted small">sozlanmagan — modellar faqat lokal koordinatada (DEM, GIS, geodeziya bilan solishtirish ishonchsiz)</span>}
+        {canManage && <button className="btn sm" onClick={() => setEdit(!edit)}>{edit ? "Yopish" : "Sozlash"}</button>}
+      </div>
+      {edit && (
+        <form className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); api.updateProject(project.id, f).then(() => { setEdit(false); onSaved(); }).catch((err) => onError(err.message)); }}>
+          <label className="field"><span>EPSG</span>
+            <select className="select" value={f.epsg_code} onChange={(e) => setF({ ...f, epsg_code: Number(e.target.value) })} data-testid="crs-epsg">
+              <option value={32641}>32641 — WGS 84 / UTM 41N</option>
+              <option value={32642}>32642 — WGS 84 / UTM 42N</option>
+              <option value={28411}>28411 — Pulkovo 1942 / GK 11</option>
+              <option value={28412}>28412 — Pulkovo 1942 / GK 12</option>
+              {![32641, 32642, 28411, 28412].includes(f.epsg_code) && <option value={f.epsg_code}>{f.epsg_code}</option>}
+            </select>
+          </label>
+          <label className="field"><span>Origin E, m</span><input className="input" type="number" step="0.01" value={f.origin_e} onChange={(e) => setF({ ...f, origin_e: Number(e.target.value) })} /></label>
+          <label className="field"><span>Origin N, m</span><input className="input" type="number" step="0.01" value={f.origin_n} onChange={(e) => setF({ ...f, origin_n: Number(e.target.value) })} /></label>
+          <label className="field"><span>Origin H, m</span><input className="input" type="number" step="0.1" value={f.origin_h} onChange={(e) => setF({ ...f, origin_h: Number(e.target.value) })} /></label>
+          <label className="field"><span>X o'qi burilishi, ° (sharqdan)</span><input className="input" type="number" step="0.01" value={f.crs_rotation_deg} onChange={(e) => setF({ ...f, crs_rotation_deg: Number(e.target.value) })} /></label>
+          <div className="row" style={{ gap: 6, alignItems: "flex-end" }}>
+            <label className="field"><span>Lat</span><input className="input" style={{ width: 100 }} value={ll.lat} onChange={(e) => setLl({ ...ll, lat: e.target.value })} /></label>
+            <label className="field"><span>Lon</span><input className="input" style={{ width: 100 }} value={ll.lon} onChange={(e) => setLl({ ...ll, lon: e.target.value })} /></label>
+            <button type="button" className="btn sm" title="Lat/Lon dan zona va origin E/N ni taklif qilish" onClick={() => api.crsSuggest(project.id, Number(ll.lat), Number(ll.lon), f.epsg_code >= 28400 && f.epsg_code < 28500 ? "gk" : "utm").then((s) => setF({ ...f, epsg_code: s.epsg, origin_e: s.origin_e, origin_n: s.origin_n })).catch((err) => onError(err.message))}>Taklif</button>
+          </div>
+          <div className="actions" style={{ width: "100%" }}>
+            {c && <button type="button" className="btn sm danger" onClick={() => api.updateProject(project.id, { epsg_code: 0 }).then(() => { setEdit(false); onSaved(); }).catch((err) => onError(err.message))}>O'chirish</button>}
+            <button className="btn primary" type="submit" data-testid="crs-save">Saqlash</button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }

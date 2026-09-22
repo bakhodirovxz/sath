@@ -126,6 +126,18 @@ tanlanadi, «Qayta tekshirish»). Loyiha sahifasida tasdiqlovchi «IDS majburiy�
 tasdiqlanmaydi va merge qilinmaydi (409, sabab bilan); o'chiq bo'lsa faqat ogohlantirish. Talablarni
 o'zgartirish: IDS faylini tahrirlang (`GES_IDS_FILE` bilan boshqa fayl) — sxema/kalitlar bir joyda.
 
+## Georeferensiya (CRS)
+
+Loyiha sahifasida tasdiqlovchi EPSG (WGS 84/UTM 41N `32641`, 42N `32642`; Pulkovo 1942/Gauss-Krüger 11–12
+`28411`/`28412`), lokal (0,0,0) ning global E/N/H joyi va X o'qi burilishini beradi («Taklif» — lat/lon dan
+zona va origin). Shundan keyin webdan yaratilgan/ import qilingan har versiya `IfcProjectedCRS` +
+`IfcMapConversion` va `IfcSite RefLatitude/RefLongitude` bilan yoziladi; yuklangan faylda ular bo'lmasa
+versiya ogohlantiradi va «Georeferensiyalash» tugmasi mavjud modelga qo'shadi. Elementni tanlaganda
+xususiyatlar panelida global E/N/H va lat/lon; DEM import loyiha CRS bo'yicha joylashadi (markaz lat/lon →
+lokal x,y, balandlik global − origin H). API: `GET /api/projects/{id}/crs/convert?x&y&z` yoki `?lat&lon`.
+Proyeksiya kutubxonasiz (Krüger qatorlari, zona ichida < 1 mm); Pulkovo ↔ WGS 84 Helmert (EPSG::15865,
+~1–3 m) — geodeziya bilan solishtirishda hisobga oling. IDS SATH-02 talabi georeferensiyani tekshiradi.
+
 ## Rollar
 
 Loyiha ichida: ko'ruvchi < **dispetcher (operator)** < muhandis < tasdiqlovchi. Dispetcher — SCADA

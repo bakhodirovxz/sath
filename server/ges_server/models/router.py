@@ -18,6 +18,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..orm import Model, Project, Role, Version, VersionState
+from . import crs as crs_mod
 from . import derived, ifc_meta, storage
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -224,6 +225,9 @@ def upload_version(
         meta = ifc_meta.extract(storage.resolve(sha))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    if crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
+        # G3: loyihada CRS bor, faylda IfcMapConversion yo'q — ogohlantirish (POST /models/{id}/georeference qo'shadi)
+        meta["warnings"] = [*meta.get("warnings", []), "Georeferensiya yo'q: IfcMapConversion topilmadi — loyiha CRS bilan mos kelmasligi mumkin"]
 
     if parent_id is not None:
         parent = db.get(Version, parent_id)

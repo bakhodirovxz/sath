@@ -16,6 +16,7 @@ from ..auth.deps import DB, CurrentUser
 from ..config import get_settings
 from ..orm import DraftObject, Role, Version, utcnow
 from . import assimp_load, cad_import, derived, drafts, ifc_meta, mesh_import, storage
+from . import crs as crs_mod
 from .router import get_model_checked, version_out
 
 router = APIRouter(prefix="/api", tags=["drafts"])
@@ -338,7 +339,7 @@ def import_mesh_version(
         try:
             objects = mesh_import.load_objects(tp, unit, y_up, merge, extrude_m=extrude_m)
             out = Path(tmp) / "import.ifc"
-            info = drafts.build(src, objects, out)
+            info = drafts.build(src, objects, out, crs=crs_mod.from_project(model.project))
         except (ValueError, OSError) as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Faylni o'qib bo'lmadi: {e}") from e
         except Exception as e:  # noqa: BLE001 — trimesh/parsers turli xato beradi
@@ -460,7 +461,7 @@ def import_image_version(
                 invert=invert,
             )
             out = Path(tmp) / "import.ifc"
-            info = drafts.build(src, objects, out)
+            info = drafts.build(src, objects, out, crs=crs_mod.from_project(model.project))
         except (ValueError, OSError) as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Rasmni o'qib bo'lmadi: {e}") from e
         except Exception as e:  # noqa: BLE001
@@ -497,6 +498,8 @@ class DemIn(BaseModel):
     replace_names: list[str] = Field(default_factory=lambda: ["Relyef (vodiy)", "Relyef (DEM)"])
     onto_current: bool = True
     message: str = ""
+    # G3: loyiha CRS bo'yicha joylashtirish (markaz lat/lon → lokal x,y, burilish CRS dan, balandlik global)
+    use_crs: bool = True
 
 
 @router.post("/models/{model_id}/versions/import-dem", status_code=201)
@@ -516,13 +519,17 @@ def import_dem_version(
             src = storage.resolve(base.file_sha256)
         except FileNotFoundError:
             raise HTTPException(status.HTTP_410_GONE, "Asos versiya fayli topilmadi") from None
+    pcrs = crs_mod.from_project(model.project)
+    rotation = body.rotation_deg
+    if pcrs is not None and body.use_crs and not body.rotation_deg:
+        rotation = pcrs.rotation_deg  # panjara X o'qi — loyiha lokal X o'qi
     try:
         obj, info = dem.terrain_object(
             body.lat,
             body.lon,
             body.width_m,
             body.height_m,
-            body.rotation_deg,
+            rotation,
             body.zoom,
             body.nx,
             body.name,
@@ -533,10 +540,18 @@ def import_dem_version(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Relyef plitkalari olinmadi: {e}") from e
     if body.z_offset_m:
         obj["transform"]["z"] += body.z_offset_m
+    if pcrs is not None and body.use_crs:
+        # G3: relyef markazi lokal koordinatalarda loyiha CRS bo'yicha (lat/lon → E,N → lokal); balandlik global
+        lx, ly = pcrs.from_latlon(body.lat, body.lon)
+        obj["transform"]["x"] += lx
+        obj["transform"]["y"] += ly
+        obj["transform"]["z"] -= pcrs.origin_h
+        obj["psets"]["Pset_GES_Site"]["EPSG"] = pcrs.epsg
+        info["local_center"] = [round(lx, 2), round(ly, 2)]
     with tempfile.TemporaryDirectory(prefix="ges-dem-") as tmp:
         out = Path(tmp) / "dem.ifc"
         try:
-            built = drafts.build(src, [obj], out, remove_names=body.replace_names if src else None)
+            built = drafts.build(src, [obj], out, remove_names=body.replace_names if src else None, crs=pcrs)
         except (ValueError, OSError) as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"IFC yozilmadi: {e}") from e
         with open(out, "rb") as fh:
@@ -621,3 +636,37 @@ def import_formats(_: CurrentUser):
         "blender": {"formats": sorted(mesh_import.VIA_BLENDER), "available": bool(t["blender"])},
         "unsupported": [".max (3ds Max dan FBX/glTF/OBJ ga eksport qiling)"],
     }
+
+
+class GeorefIn(BaseModel):
+    message: str = ""
+
+
+@router.post("/models/{model_id}/georeference")
+def add_georeference(model_id: int, body: GeorefIn, user: CurrentUser, db: DB):
+    """G3: joriy (oxirgi) versiyaga loyiha CRS dan IfcMapConversion/IfcProjectedCRS va IfcSite Ref* qo'shib
+    yangi versiya yozadi (mavjud modellarni georeferensiyalash)."""
+    model = get_model_checked(db, model_id, user, Role.engineer)
+    pcrs = crs_mod.from_project(model.project)
+    if pcrs is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Loyihada georeferensiya (EPSG, origin) sozlanmagan")
+    base = model.versions[-1] if model.versions else None
+    if base is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Modelda versiya yo'q")
+    try:
+        src = storage.resolve(base.file_sha256)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Asos versiya fayli topilmadi") from None
+    settings = get_settings()
+    with tempfile.TemporaryDirectory(prefix="ges-georef-") as tmp:
+        out = Path(tmp) / "georef.ifc"
+        try:
+            built = drafts.build(src, [], out, crs=pcrs)
+        except (ValueError, OSError) as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"IFC yozilmadi: {e}") from e
+        with open(out, "rb") as fh:
+            sha, fsize = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
+    return _version_from_import(
+        db, user, model, base, sha, fsize, base.file_name, body.message or f"Georeferensiya: EPSG:{pcrs.epsg}, origin E={pcrs.origin_e:.2f} N={pcrs.origin_n:.2f}",
+        built, [], {"georef": built.get("georef")},
+    )

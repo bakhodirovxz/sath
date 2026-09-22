@@ -29,7 +29,12 @@ export interface Project {
   model_count: number;
   /** G2: IDS tekshiruvi yiqilgan versiya tasdiqlanmaydi */
   ids_required?: boolean;
+  /** G3: georeferensiya — EPSG, lokal (0,0,0) ning global joyi, X o'qi burilishi */
+  crs?: ProjectCrs | null;
 }
+export interface ProjectCrs { epsg: number; name: string; origin_e: number; origin_n: number; origin_h: number; rotation_deg: number; scale: number }
+export interface Georef { epsg?: number | null; name?: string; datum?: string | null; origin_e?: number; origin_n?: number; origin_h?: number; rotation_deg?: number; scale?: number; supported?: boolean; site_lat?: number; site_lon?: number }
+export interface CrsConvert { local: { x: number; y: number; z: number } | null; global: { e: number; n: number; h: number; epsg: number } | null; latlon: { lat: number; lon: number } | null }
 export interface Member {
   user_id: number;
   username: string;
@@ -65,6 +70,9 @@ export interface Version {
     element_count?: number;
     type_counts?: Record<string, number>;
     storeys?: { guid: string; name: string; elevation: number | null }[];
+    /** G3: IfcMapConversion + IfcSite lat/lon (yo'q — null) */
+    georef?: Georef | null;
+    warnings?: string[];
   };
   created_at: string;
   /** G2: IDS natijasi — pass | fail | error | null (navbatda) */
@@ -583,8 +591,13 @@ export const api = {
   project: (id: number) => request<Project>(`/api/projects/${id}`),
   createProject: (body: { name: string; description: string; location: string }) =>
     request<Project>("/api/projects", { method: "POST", body: json(body) }),
-  updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean }>) =>
+  updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean; epsg_code: number; origin_e: number; origin_n: number; origin_h: number; crs_rotation_deg: number }>) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: json(body) }),
+  crsConvert: (projectId: number, q: { x: number; y: number; z?: number } | { lat: number; lon: number }) =>
+    request<CrsConvert>(`/api/projects/${projectId}/crs/convert?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString()}`),
+  crsSuggest: (projectId: number, lat: number, lon: number, family: "utm" | "gk" = "utm") =>
+    request<{ epsg: number; name: string; origin_e: number; origin_n: number }>(`/api/projects/${projectId}/crs/suggest?lat=${lat}&lon=${lon}&family=${family}`),
+  georeference: (modelId: number, message = "") => request<Version>(`/api/models/${modelId}/georeference`, { method: "POST", body: json({ message }) }),
   members: (projectId: number) => request<Member[]>(`/api/projects/${projectId}/members`),
   setMember: (projectId: number, user_id: number, role: Role) =>
     request<Member>(`/api/projects/${projectId}/members`, { method: "PUT", body: json({ user_id, role }) }),
