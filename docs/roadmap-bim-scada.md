@@ -1087,7 +1087,7 @@ Fayllar: yangi `docs/ids/`, `server/ges_server/models/` da validator, `review/ro
 Qabul mezoni: majburiy maydonsiz model IDS tekshiruvidan o'tmaydi (test).
 Bog'liqlik: yo'q. Eng arzon va eng ishonchli BIM yutug'i.
 
-### G3 — Georeferensiya ✅
+### G3 — Georeferensiya ✅ (`1a9506f`)
 
 Muammo: `IfcMapConversion`, `IfcProjectedCRS`, EPSG — kod bazasida umuman yo'q.
 `models/dem.py` lat/lon markazdan AWS relief plitalarini oladi va lokal mesh quradi, lekin
@@ -1108,7 +1108,7 @@ Fayllar: `server/ges_server/orm.py`, `models/drafts.py`, `models/dem.py`, `model
 Qabul mezoni: model ichidagi nuqta global koordinatada to'g'ri chiqadi (ma'lum nuqta bilan test).
 Bog'liqlik: G2 (IDS talabi sifatida kiritiladi).
 
-### G4 — ISO 19650 to'liqroq muvofiqlik
+### G4 — ISO 19650 to'liqroq muvofiqlik ✅
 
 Muammo: to'rtta holat (`VersionState`) to'g'ri xaritalanган, tasdiqlash oqimi va audit haqiqiy.
 Lekin yo'q: yaroqlilik kodlari (S0–S7, A1–AN, B1–BN, CR, PR), reviziya kodlari (P01/C01),

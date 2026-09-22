@@ -117,6 +117,10 @@ class Project(Base):
     location: Mapped[str] = mapped_column(String(256), default="")
     # G2: IDS tekshiruvi yiqilgan versiya tasdiqlanmaydi/merge qilinmaydi (default: faqat ogohlantirish)
     ids_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # G4 (ISO 19650): konteyner nomlash shabloni ({project}-{originator}-{volume}-{level}-{type}-{role}-{number});
+    # naming_required — mos kelmasa yuklash rad etiladi (aks holda ogohlantirish)
+    naming_template: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    naming_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # G3: georeferensiya — EPSG (UTM 326xx/327xx, Pulkovo GK 284xx), lokal (0,0,0) ning global joyi, X o'qi burilishi
     epsg_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     origin_e: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -149,6 +153,25 @@ class Project(Base):
     models: Mapped[list[Model]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+
+
+class ProjectDocument(Base):
+    """ISO 19650 hujjatlari (G4): EIR, BEP, TIDP/MIDP va boshqalar — loyihaga biriktirilgan fayllar."""
+
+    __tablename__ = "project_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="other")  # eir | bep | tidp | midp | other
+    title: Mapped[str] = mapped_column(String(256))
+    file_name: Mapped[str] = mapped_column(String(256))
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    file_size: Mapped[int] = mapped_column(Integer)
+    ext: Mapped[str] = mapped_column(String(16), default="")
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    uploader: Mapped[User] = relationship()
 
 
 class ProjectMember(Base):
@@ -205,6 +228,9 @@ class Version(Base):
     # G2: IDS tekshiruvi — pass | fail | error | None (hali tekshirilmagan); to'liq natija (talablar, yiqilgan elementlar)
     ids_status: Mapped[str | None] = mapped_column(String(8), nullable=True)
     ids_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # G4 (ISO 19650): yaroqlilik kodi (S0–S7, A1–An, B1–Bn, CR, PR) va reviziya (P01…/C01…) — `tag` dan ajratilgan
+    suitability_code: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    revision_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
 
     model: Mapped[Model] = relationship(back_populates="versions")
     author: Mapped[User] = relationship()

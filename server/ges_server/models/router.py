@@ -19,7 +19,7 @@ from ..auth.deps import (
 from ..config import get_settings
 from ..orm import Model, Project, Role, Version, VersionState
 from . import crs as crs_mod
-from . import derived, ifc_meta, storage
+from . import derived, ifc_meta, iso19650, storage
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -61,6 +61,9 @@ class VersionOut(BaseModel):
     meta: dict
     created_at: datetime
     ids_status: str | None = None  # G2: pass | fail | error | None
+    suitability_code: str | None = None  # G4: S0–S7 / A1–An / B1–Bn / CR / PR
+    revision_code: str | None = None  # G4: P01… / C01…
+    suitability_label: str = ""
 
     model_config = {"from_attributes": True}
 
@@ -113,6 +116,9 @@ def version_out(v: Version) -> VersionOut:
         state=v.state,
         meta=v.meta,
         ids_status=v.ids_status,
+        suitability_code=v.suitability_code,
+        revision_code=v.revision_code,
+        suitability_label=iso19650.label(v.suitability_code),
         created_at=v.created_at,
     )
 
@@ -214,6 +220,10 @@ def upload_version(
     model = get_model_checked(db, model_id, user, Role.engineer)
     if not (file.filename or "").lower().endswith(".ifc"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Faqat .ifc fayl qabul qilinadi")
+    # G4: konteyner nomlash qoidasi (ISO 19650-2 §5.1.6 — loyiha shabloni)
+    naming_warning = iso19650.check_name(file.filename or "", model.project.naming_template or "")
+    if naming_warning and model.project.naming_required:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, naming_warning)
 
     settings = get_settings()
     try:
@@ -225,6 +235,8 @@ def upload_version(
         meta = ifc_meta.extract(storage.resolve(sha))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    if naming_warning:
+        meta["warnings"] = [*meta.get("warnings", []), naming_warning]
     if crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
         # G3: loyihada CRS bor, faylda IfcMapConversion yo'q — ogohlantirish (POST /models/{id}/georeference qo'shadi)
         meta["warnings"] = [*meta.get("warnings", []), "Georeferensiya yo'q: IfcMapConversion topilmadi — loyiha CRS bilan mos kelmasligi mumkin"]
@@ -252,6 +264,8 @@ def upload_version(
                 message=message,
                 file_sha256=sha,
                 file_name=file.filename,
+                suitability_code="S0",
+                revision_code=iso19650.next_revision([x.revision_code for x in model.versions], "P"),
                 file_size=size,
                 meta=meta,
             )
@@ -343,6 +357,9 @@ def get_version(version_id: int, user: CurrentUser, db: DB):
 class VersionPatch(BaseModel):
     message: str | None = None
     tag: str | None = Field(None, max_length=64)
+    # G4 (ISO 19650): tasdiqlovchi; holat bilan mos bo'lishi shart (S0 — wip, S1–S7 — shared, A/B/CR/PR — published)
+    suitability_code: str | None = Field(None, max_length=4)
+    revision_code: str | None = Field(None, max_length=6)
 
 
 @router.patch("/versions/{version_id}", response_model=VersionOut)
@@ -361,6 +378,22 @@ def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: D
         if not approver:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Yorliqni tasdiqlovchi qo'yadi")
         v.tag = body.tag.strip()
+    if body.suitability_code is not None or body.revision_code is not None:
+        if not approver:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "ISO 19650 kodlarini tasdiqlovchi qo'yadi")
+        try:
+            if body.suitability_code is not None:
+                code = iso19650.normalize(body.suitability_code)
+                if code:
+                    iso19650.check_suitability(code, v.state)
+                v.suitability_code = code
+            if body.revision_code is not None:
+                rev = iso19650.normalize(body.revision_code)
+                if rev:
+                    iso19650.check_revision(rev, v.state)
+                v.revision_code = rev
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
     audit.log(
         db,
         user_id=user.id,

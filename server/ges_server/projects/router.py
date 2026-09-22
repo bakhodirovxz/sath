@@ -1,6 +1,9 @@
+from datetime import datetime
 from typing import Annotated
+from typing import Annotated as _Ann
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
@@ -8,7 +11,7 @@ from .. import audit
 from ..auth import sessions
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
 from ..models import crs as crs_mod
-from ..orm import Model, Project, ProjectMember, Role, User
+from ..orm import Model, Project, ProjectDocument, ProjectMember, Role, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -24,6 +27,9 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
     location: str | None = None
     ids_required: bool | None = None  # G2: IDS yiqilgan versiya tasdiqlanmaydi
+    # G4: konteyner nomlash shabloni va majburiyligi
+    naming_template: str | None = Field(default=None, max_length=128)
+    naming_required: bool | None = None
     # G3: georeferensiya (hammasi birga beriladi; epsg_code=0 — o'chirish)
     epsg_code: int | None = None
     origin_e: float | None = None
@@ -40,6 +46,8 @@ class ProjectOut(BaseModel):
     my_role: Role | None = None
     model_count: int = 0
     ids_required: bool = False
+    naming_template: str = ""
+    naming_required: bool = False
     crs: dict | None = None  # G3: {epsg, name, origin_e, origin_n, origin_h, rotation_deg}
 
     model_config = {"from_attributes": True}
@@ -70,6 +78,8 @@ def _out(db, project: Project, user: User, role: Role | None = None, model_count
         my_role=role if model_count is not None else get_project_role(db, project.id, user),
         model_count=model_count if model_count is not None else len(project.models),
         ids_required=bool(project.ids_required),
+        naming_template=project.naming_template or "",
+        naming_required=bool(project.naming_required),
         crs=(c.as_dict() if (c := crs_mod.from_project(project)) else None),
     )
 
@@ -294,3 +304,91 @@ def crs_suggest(project: ViewerProject, lat: float, lon: float, family: str = "u
     la, lo = crs_mod.wgs84_to_datum(lat, lon, p.datum)
     e, n = crs_mod.tm_forward(la, lo, p)
     return {"epsg": code, "name": p.name, "origin_e": round(e, 3), "origin_n": round(n, 3)}
+
+
+# --------------------------------------------------------------------------- G4: ISO 19650 hujjatlari (EIR, BEP, TIDP/MIDP)
+
+DOC_KINDS = ("eir", "bep", "tidp", "midp", "other")
+DOC_EXTS = (".pdf", ".docx", ".xlsx", ".doc", ".xls", ".txt", ".md", ".csv", ".ids", ".zip")
+EngineerProject = Depends(require_project_role(Role.engineer))
+
+
+class DocumentOut(BaseModel):
+    id: int
+    project_id: int
+    kind: str
+    title: str
+    file_name: str
+    file_size: int
+    uploaded_by: int
+    uploader_username: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+def _doc_out(d: ProjectDocument) -> DocumentOut:
+    return DocumentOut(id=d.id, project_id=d.project_id, kind=d.kind, title=d.title, file_name=d.file_name, file_size=d.file_size, uploaded_by=d.uploaded_by, uploader_username=d.uploader.username, created_at=d.created_at)
+
+
+@router.get("/{project_id}/documents", response_model=list[DocumentOut])
+def list_documents(project: ViewerProject, db: DB):
+    return [_doc_out(d) for d in db.query(ProjectDocument).filter_by(project_id=project.id).order_by(ProjectDocument.kind, ProjectDocument.id).all()]
+
+
+@router.post("/{project_id}/documents", response_model=DocumentOut, status_code=201)
+def upload_document(
+    project_id: int,
+    file: UploadFile,
+    user: CurrentUser,
+    db: DB,
+    kind: _Ann[str, Form()] = "other",
+    title: _Ann[str, Form()] = "",
+    project: Project = EngineerProject,
+):
+    """EIR/BEP/TIDP/MIDP hujjati (muhandis+). Fayl content-addressed saqlanadi (`files/`, kengaytma bilan)."""
+    from ..models import storage
+
+    if kind not in DOC_KINDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"kind: {', '.join(DOC_KINDS)}")
+    name = file.filename or "hujjat"
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if ext not in DOC_EXTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ruxsat etilgan kengaytmalar: {', '.join(DOC_EXTS)}")
+    from ..config import get_settings
+
+    try:
+        sha, size = storage.store(file.file, ext=ext, max_bytes=get_settings().small_upload_mb * 1024 * 1024)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+    d = ProjectDocument(project_id=project.id, kind=kind, title=title.strip() or name, file_name=name, file_sha256=sha, file_size=size, ext=ext, uploaded_by=user.id)
+    db.add(d)
+    db.flush()
+    audit.log(db, user_id=user.id, action="project.document.upload", target_type="project", target_id=project.id, project_id=project.id, detail={"kind": kind, "title": d.title, "size": size})
+    db.commit()
+    db.refresh(d)
+    return _doc_out(d)
+
+
+@router.get("/{project_id}/documents/{doc_id}/file")
+def download_document(doc_id: int, project: ViewerProject, db: DB):
+    from ..models import storage
+
+    d = db.get(ProjectDocument, doc_id)
+    if d is None or d.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hujjat topilmadi")
+    try:
+        path = storage.resolve(d.file_sha256, ext=d.ext)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
+    return FileResponse(path, filename=d.file_name)
+
+
+@router.delete("/{project_id}/documents/{doc_id}", status_code=204)
+def delete_document(doc_id: int, project: ApproverProject, user: CurrentUser, db: DB):
+    d = db.get(ProjectDocument, doc_id)
+    if d is None or d.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hujjat topilmadi")
+    db.delete(d)
+    audit.log(db, user_id=user.id, action="project.document.delete", target_type="project", target_id=project.id, project_id=project.id, detail={"doc_id": doc_id, "title": d.title})
+    db.commit()

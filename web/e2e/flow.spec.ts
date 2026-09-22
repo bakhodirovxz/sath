@@ -293,6 +293,20 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(list).toContainText("EPSG:32642", { timeout: 30_000 });
   });
 
+  test("ISO 19650 (G4): nomlash qoidasi, EIR hujjati, yaroqlilik kodi", async ({ page }) => {
+    await login(page);
+    await page.goto(`/projects/${projectId}`);
+    await page.getByTestId("naming-template").fill("{project}-{originator}-{type}-{number}");
+    await page.getByTestId("naming-settings").getByRole("button", { name: "Saqlash" }).click();
+    await expect(page.getByTestId("naming-settings")).toContainText("Konteyner nomlash");
+    await page.getByTestId("doc-file").setInputFiles({ name: "EIR.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e") });
+    await expect(page.getByTestId("documents")).toContainText("EIR.pdf");
+    // versiyada ISO 19650 kodi: wip → S0 (avto), tasdiqlovchi A1 qo'ysa — rad (holatga mos emas)
+    await page.goto(`/models/${modelId}?v=${versionId}&tab=versions`);
+    await expect(page.locator(".ws-status .msg")).toContainText("Yuklandi", { timeout: 90_000 });
+    await expect(page.locator(".dock-body")).toContainText(/S0|A1|S3/);
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

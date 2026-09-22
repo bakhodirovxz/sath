@@ -31,7 +31,12 @@ export interface Project {
   ids_required?: boolean;
   /** G3: georeferensiya — EPSG, lokal (0,0,0) ning global joyi, X o'qi burilishi */
   crs?: ProjectCrs | null;
+  /** G4 (ISO 19650): konteyner nomlash shabloni va majburiyligi */
+  naming_template?: string;
+  naming_required?: boolean;
 }
+export type DocKind = "eir" | "bep" | "tidp" | "midp" | "other";
+export interface ProjectDocument { id: number; project_id: number; kind: DocKind; title: string; file_name: string; file_size: number; uploaded_by: number; uploader_username: string; created_at: string }
 export interface ProjectCrs { epsg: number; name: string; origin_e: number; origin_n: number; origin_h: number; rotation_deg: number; scale: number }
 export interface Georef { epsg?: number | null; name?: string; datum?: string | null; origin_e?: number; origin_n?: number; origin_h?: number; rotation_deg?: number; scale?: number; supported?: boolean; site_lat?: number; site_lon?: number }
 export interface CrsConvert { local: { x: number; y: number; z: number } | null; global: { e: number; n: number; h: number; epsg: number } | null; latlon: { lat: number; lon: number } | null }
@@ -77,6 +82,10 @@ export interface Version {
   created_at: string;
   /** G2: IDS natijasi — pass | fail | error | null (navbatda) */
   ids_status?: "pass" | "fail" | "error" | null;
+  /** G4 (ISO 19650): yaroqlilik (S0–S7/A/B/CR/PR) va reviziya (P01…/C01…) */
+  suitability_code?: string | null;
+  revision_code?: string | null;
+  suitability_label?: string;
 }
 export interface IdsFailed { guid: string | null; class: string | null; name: string | null; reason: string | null }
 export interface IdsRequirement { description: string; status: boolean; failed: IdsFailed[]; failed_total: number }
@@ -591,8 +600,15 @@ export const api = {
   project: (id: number) => request<Project>(`/api/projects/${id}`),
   createProject: (body: { name: string; description: string; location: string }) =>
     request<Project>("/api/projects", { method: "POST", body: json(body) }),
-  updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean; epsg_code: number; origin_e: number; origin_n: number; origin_h: number; crs_rotation_deg: number }>) =>
+  updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean; epsg_code: number; origin_e: number; origin_n: number; origin_h: number; crs_rotation_deg: number; naming_template: string; naming_required: boolean }>) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: json(body) }),
+  documents: (projectId: number) => request<ProjectDocument[]>(`/api/projects/${projectId}/documents`),
+  uploadDocument: (projectId: number, file: File, kind: DocKind, title: string) => {
+    const fd = new FormData();
+    fd.append("file", file); fd.append("kind", kind); fd.append("title", title);
+    return request<ProjectDocument>(`/api/projects/${projectId}/documents`, { method: "POST", body: fd });
+  },
+  deleteDocument: (projectId: number, id: number) => request<void>(`/api/projects/${projectId}/documents/${id}`, { method: "DELETE" }),
   crsConvert: (projectId: number, q: { x: number; y: number; z?: number } | { lat: number; lon: number }) =>
     request<CrsConvert>(`/api/projects/${projectId}/crs/convert?${new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString()}`),
   crsSuggest: (projectId: number, lat: number, lon: number, family: "utm" | "gk" = "utm") =>
@@ -662,7 +678,7 @@ export const api = {
   createTwin: (projectId: number, preset: string, name = "") => request<{ model_id: number; model_name: string; version_id: number; elements: number; photo_underlay_id: number | null }>(`/api/projects/${projectId}/twin`, { method: "POST", body: json({ preset, name }) }),
   importDem: (modelId: number, body: { lat: number; lon: number; width_m: number; height_m: number; rotation_deg: number; zoom: number; nx: number; z_offset_m: number; message?: string; onto_current?: boolean }) => request<Version & { imported: number; dem: Record<string, unknown> }>(`/api/models/${modelId}/versions/import-dem`, { method: "POST", body: json(body) }),
   versionFileUrl: (id: number) => `/api/versions/${id}/file`,
-  updateVersion: (id: number, body: { message?: string; tag?: string }) => request<Version>(`/api/versions/${id}`, { method: "PATCH", body: json(body) }),
+  updateVersion: (id: number, body: { message?: string; tag?: string; suitability_code?: string; revision_code?: string }) => request<Version>(`/api/versions/${id}`, { method: "PATCH", body: json(body) }),
   restoreVersion: (id: number) => request<Version>(`/api/versions/${id}/restore`, { method: "POST" }),
   /** Server tomonida tayyorlangan fragments (.frag); yo'q bo'lsa null — IFC yuklanadi */
   async versionFragments(id: number): Promise<Uint8Array | null> {

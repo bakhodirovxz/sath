@@ -126,6 +126,17 @@ tanlanadi, «Qayta tekshirish»). Loyiha sahifasida tasdiqlovchi «IDS majburiy�
 tasdiqlanmaydi va merge qilinmaydi (409, sabab bilan); o'chiq bo'lsa faqat ogohlantirish. Talablarni
 o'zgartirish: IDS faylini tahrirlang (`GES_IDS_FILE` bilan boshqa fayl) — sxema/kalitlar bir joyda.
 
+## ISO 19650: yaroqlilik va reviziya kodlari, nomlash, EIR/BEP
+
+Har versiya ISO 19650 (UK NA / PAS 1192 lineage) yaroqlilik kodi bilan: yuklash → **S0** (WIP), tasdiqqa
+yuborish → **S3** (shared; tasdiqlovchi S1–S7 ni o'zgartira oladi), merge → **A1** (published; A1–An, B1–Bn,
+CR, PR), rad → S0. Reviziya: yuklashda P01, P02…; merge da C01, C02… (avtomatik; tasdiqlovchi qo'lda
+o'zgartirishi mumkin, holatga mos bo'lmagan kod rad etiladi). Loyihada konteyner nomlash shabloni
+(`{project}-{originator}-{volume}-{level}-{type}-{role}-{number}`, maydonlar [A-Z0-9]+) — mos kelmagan
+fayl ogohlantiradi, «majburiy» bo'lsa yuklash rad etiladi. Hujjatlar: EIR, BEP, TIDP/MIDP (pdf/docx/xlsx…)
+loyiha sahifasida (muhandis yuklaydi, tasdiqlovchi o'chiradi). Eski versiyalar migratsiyada holatdan
+kod oladi (wip S0, shared S3, published A1).
+
 ## Georeferensiya (CRS)
 
 Loyiha sahifasida tasdiqlovchi EPSG (WGS 84/UTM 41N `32641`, 42N `32642`; Pulkovo 1942/Gauss-Krüger 11–12

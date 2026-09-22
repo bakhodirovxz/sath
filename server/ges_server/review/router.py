@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, notifications, notify, uploads
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
-from ..models import storage
+from ..models import iso19650, storage
 from ..models.router import VersionOut, get_model_checked, get_version_checked, version_out
 from ..orm import (
     ChangeRequest,
@@ -287,6 +287,7 @@ def create_cr(model_id: int, body: CRCreate, user: CurrentUser, db: DB):
             f"Versiya holati '{version.state.value}', faqat wip yuboriladi",
         )
     version.state = VersionState.shared
+    version.suitability_code = iso19650.DEFAULT[VersionState.shared] if iso19650.family(version.suitability_code or "S0") == "S0" else version.suitability_code
     cr = ChangeRequest(
         model_id=model.id,
         version_id=version.id,
@@ -422,7 +423,9 @@ def set_cr_version(cr_id: int, body: CRSetVersion, user: CurrentUser, db: DB):
     if new_version.state != VersionState.wip:
         raise HTTPException(status.HTTP_409_CONFLICT, "Yangi versiya wip holatida bo'lishi kerak")
     cr.version.state = VersionState.wip
+    cr.version.suitability_code = "S0"
     new_version.state = VersionState.shared
+    new_version.suitability_code = "S3"
     cr.version_id = new_version.id
     cr.status = CRStatus.open
     audit.log(
@@ -450,6 +453,10 @@ def merge_cr(cr_id: int, user: CurrentUser, db: DB):
         if v.state == VersionState.published:
             v.state = VersionState.archived
     cr.version.state = VersionState.published
+    # G4: published → avtorizatsiya kodi (A1 default) va shartnomaviy reviziya C{n}
+    if iso19650.family(cr.version.suitability_code or "") not in ("A", "B", "CR", "PR"):
+        cr.version.suitability_code = "A1"
+    cr.version.revision_code = iso19650.next_revision([x.revision_code for x in cr.version.model.versions], "C")
     cr.status = CRStatus.merged
     cr.closed_at = utcnow()
     audit.log(
@@ -487,6 +494,7 @@ def reject_cr(cr_id: int, user: CurrentUser, db: DB):
     if cr.status in (CRStatus.merged, CRStatus.rejected):
         raise HTTPException(status.HTTP_409_CONFLICT, "CR allaqachon yopilgan")
     cr.version.state = VersionState.wip
+    cr.version.suitability_code = "S0"
     cr.status = CRStatus.rejected
     cr.closed_at = utcnow()
     audit.log(
