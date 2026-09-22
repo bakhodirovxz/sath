@@ -1126,7 +1126,7 @@ Fayllar: `server/ges_server/orm.py`, `models/router.py`, `review/router.py`,
 Qabul mezoni: noto'g'ri yaroqlilik kodi bilan holat o'tishi rad etiladi (test).
 Bog'liqlik: A2.
 
-### G5 — Klassifikatsiya va model federatsiyasi ✅
+### G5 — Klassifikatsiya va model federatsiyasi ✅ (`608e5a8`)
 
 Muammo: `IfcClassification` yo'q; faqat uy qurilishi `kind` satri va `Pset_GES_*`.
 Modellar mustaqil; bir necha bo'lim modelini bitta koordinata fazosida birlashtiradigan
@@ -1145,7 +1145,7 @@ Fayllar: `server/ges_server/orm.py`, `models/`, `web/src/viewer/Viewer.ts`,
 Qabul mezoni: ikki modeldagi to'qnashuv aniqlanadi (test).
 Bog'liqlik: G3.
 
-### G6 — Aktiv topshiruvi (COBie yoki unga o'xshash)
+### G6 — Aktiv topshiruvi (COBie yoki unga o'xshash) ✅
 
 Muammo: model dan ekspluatatsiyaga aktiv ma'lumotini topshirish yo'li yo'q. Aktivlar (`Asset`)
 qo'lda yaratiladi va `element_guid` bilan bog'lanadi.

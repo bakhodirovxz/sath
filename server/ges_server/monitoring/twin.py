@@ -525,6 +525,8 @@ def asset_status(db: Session, project: Project) -> list[dict]:
                 "hours_to_maintenance": round(remaining, 1) if remaining is not None else None,
                 "status": status,
                 "notes": a.notes,
+                # G6: IFC dan olingan pasport ma'lumotlari (ishlab chiqaruvchi, model, seriya, kafolat, klassifikatsiya)
+                "config": {k: v for k, v in (a.config or {}).items() if k in ("kind", "manufacturer", "model", "serial", "warranty_end", "classification", "installed")},
             }
         )
     return out

@@ -911,6 +911,25 @@ class Asset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AssetDocument(Base):
+    """Aktiv hujjatlari (G6): qo'llanma, pasport, zavod sinov protokoli, ishga tushirish akti."""
+
+    __tablename__ = "asset_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="other")  # manual | passport | test | commissioning | other
+    title: Mapped[str] = mapped_column(String(256))
+    file_name: Mapped[str] = mapped_column(String(256))
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    file_size: Mapped[int] = mapped_column(Integer)
+    ext: Mapped[str] = mapped_column(String(16), default="")
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    uploader: Mapped[User] = relationship()
+
+
 class ReadingAgg(Base):
     """Oraliq qatlamlar (D2): 1 daqiqa (`1m`) va 10 daqiqa (`10m`) agregatlari — raw o'chirilgach ham
     avariyadan keyingi tahlil uchun; har qatlamning o'z saqlash muddati (config)."""

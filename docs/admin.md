@@ -137,6 +137,18 @@ fayl ogohlantiradi, «majburiy» bo'lsa yuklash rad etiladi. Hujjatlar: EIR, BEP
 loyiha sahifasida (muhandis yuklaydi, tasdiqlovchi o'chiradi). Eski versiyalar migratsiyada holatdan
 kod oladi (wip S0, shared S3, published A1).
 
+## Aktiv topshiruvi (COBie ga o'xshash)
+
+Model versiyasidan aktiv registri: `GET /api/versions/{id}/assets/register` (JSON) yoki `?format=csv` —
+COBie 2.4 soddalashtirilgan CSV varaqlari (Facility, Floor, Type, Component, Attribute) zip da: tur,
+joylashuv (qavat), ishlab chiqaruvchi/model (`Pset_ManufacturerTypeInformation` yoki `Pset_GES_*`
+Ishlab_chiqaruvchi/Model), seriya (`Pset_ManufacturerOccurrence.SerialNumber` / Seriya), kafolat
+(`Pset_Warranty` / Kafolat_oy), texnik xizmat davri (TX_davri_soat), klassifikatsiya kodi. Dispetcher
+paneli → Aktivlar → «IFC dan aktivlar…» turbina/generator/transformator/zatvor/nasos elementlarini `Asset`
+yozuvlariga bog'laydi (element GUID bo'yicha yangilanadi, pasport ma'lumotlari `config` da). Har aktivga
+hujjat: qo'llanma, pasport, zavod sinov protokoli, ishga tushirish akti (operator yuklaydi, muhandis
+o'chiradi).
+
 ## Klassifikatsiya va federatsiya
 
 Klassifikatorlar: **SATH-KSI** (mahalliy GES inshoot/uskuna sinflari: GTS.01 to'g'on … USK.03 transformator)

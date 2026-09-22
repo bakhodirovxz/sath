@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "../../hooks/usePolling";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
-import { api, type AssetState, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState } from "../../api/client";
+import { api, type AssetDocKind, type AssetDocument, type AssetState, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState, type Version } from "../../api/client";
 import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
 import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
@@ -166,6 +166,14 @@ export function JournalPanel({ projectId, canWrite, live }: { projectId: number;
 export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGuid }: { projectId: number; sensors: Sensor[]; canEdit: boolean; canMaint: boolean; onSelectGuid?: (g: string) => void }) {
   const [items, setItems] = useState<AssetState[]>([]);
   const [adding, setAdding] = useState(false);
+  const [docsFor, setDocsFor] = useState<AssetState | null>(null);
+  const [models, setModels] = useState<{ id: number; name: string; versions: Version[] }[]>([]);
+  const [syncMsg, setSyncMsg] = useState("");
+  // G6: IFC dan aktiv registri — loyiha modellari va oxirgi versiyalari
+  useEffect(() => {
+    if (!canEdit) return;
+    api.models(projectId).then(async (ms) => setModels(await Promise.all(ms.map(async (m) => ({ id: m.id, name: m.name, versions: await api.versions(m.id) }))))).catch(() => setModels([]));
+  }, [projectId, canEdit]);
   const [form, setForm] = useState({ name: "", power_sensor_id: "", maintenance_interval_hours: "8000", base_run_hours: "0" });
   const [err, setErr] = useState("");
   const load = useCallback(() => api.assets(projectId).then(setItems).catch((e) => setErr(e.message)), [projectId]);
@@ -175,7 +183,16 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
   const lbl = { ok: "normal", due: "xizmat yaqin", overdue: "muddati o'tgan" };
   return (
     <div className="dash-block">
-      <div className="row"><b>Aktivlar (agregatlar)</b><span className="muted small">ish soatlari, ishga tushishlar, texnik xizmat</span><span className="grow" />{canEdit && <button className="btn sm" onClick={() => setAdding(true)}>+ Aktiv</button>}</div>
+      <div className="row"><b>Aktivlar (agregatlar)</b><span className="muted small">ish soatlari, ishga tushishlar, texnik xizmat</span><span className="grow" />
+        {canEdit && models.some((m) => m.versions.length) && (
+          <select className="select" style={{ width: "auto" }} value="" data-testid="assets-from-ifc" title="IFC dan aktiv registri (COBie): turbina, generator, transformator — pasport ma'lumotlari bilan" onChange={(e) => { const vid = Number(e.target.value); if (!vid) return; setSyncMsg(""); api.assetsFromIfc(projectId, vid).then((r) => { setSyncMsg(`IFC dan: ${r.created} yangi, ${r.updated} yangilandi (${r.components} komponent)`); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }}>
+            <option value="">IFC dan aktivlar…</option>
+            {models.filter((m) => m.versions.length).map((m) => <option key={m.id} value={m.versions[0]?.id}>{m.name} v{m.versions[0]?.number}</option>)}
+          </select>
+        )}
+        {canEdit && models.some((m) => m.versions.length) && <button className="btn sm" title="COBie ga o'xshash CSV varaqlari (Facility, Floor, Type, Component, Attribute) — topshirish uchun" onClick={() => { const v = models.find((m) => m.versions.length)?.versions[0]; if (v) api.downloadCsv(`/api/versions/${v.id}/assets/register?format=csv`, `cobie_v${v.number}.zip`).catch((er) => setErr(er.message)); }}>COBie CSV</button>}
+        {canEdit && <button className="btn sm" onClick={() => setAdding(true)}>+ Aktiv</button>}</div>
+      {syncMsg && <p className="small verdict ok" data-testid="assets-sync-msg">{syncMsg}</p>}
       {err && <p className="error small">{err}</p>}
       {items.length === 0 ? <p className="muted">Aktivlar yo'q — quvvat sensori bilan agregat qo'shing.</p> : (
         <table className="grid small">
@@ -183,7 +200,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
           <tbody>
             {items.map((a) => (
               <tr key={a.id}>
-                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}</td>
+                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
                 <td>{a.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                 <td className="mono">{a.run_hours_total.toFixed(0)} s</td>
                 <td className="mono">{a.starts_total}</td>
@@ -192,12 +209,13 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
                   <span className={`badge ${cls[a.status]}`}>{lbl[a.status]}</span>
                   {a.hours_to_maintenance != null && <div className="dim small">{a.hours_to_maintenance >= 0 ? `${a.hours_to_maintenance.toFixed(0)} soat qoldi` : `${(-a.hours_to_maintenance).toFixed(0)} soat kechikdi`}{a.last_maintenance_at && ` · oxirgi ${fmtDate(a.last_maintenance_at)}`}</div>}
                 </td>
-                <td>{canMaint && <button className="btn sm" onClick={() => void dialogs.prompt("Texnik xizmat bajarildi", "", { text: `${a.name}: izoh (nima qilindi)`, ok: "Yozish" }).then((n) => { if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); })}>Xizmat bajarildi</button>}</td>
+                <td><button className="btn sm" title="Hujjatlar: qo'llanma, pasport, sinov protokoli, ishga tushirish akti" onClick={() => setDocsFor(a)}>Hujjatlar</button> {canMaint && <button className="btn sm" onClick={() => void dialogs.prompt("Texnik xizmat bajarildi", "", { text: `${a.name}: izoh (nima qilindi)`, ok: "Yozish" }).then((n) => { if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); })}>Xizmat bajarildi</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {docsFor && <AssetDocsDialog asset={docsFor} canEdit={canMaint} canDelete={canEdit} onClose={() => setDocsFor(null)} />}
       {adding && (
         <Dialog title="Yangi aktiv" onClose={() => setAdding(false)}>
           <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></label>
@@ -254,5 +272,52 @@ export function SoePanel({ projectId }: { projectId: number }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+const ASSET_DOC_KINDS: { id: AssetDocKind; title: string }[] = [
+  { id: "manual", title: "Qo'llanma" },
+  { id: "passport", title: "Pasport" },
+  { id: "test", title: "Zavod sinov protokoli" },
+  { id: "commissioning", title: "Ishga tushirish akti" },
+  { id: "other", title: "Boshqa" },
+];
+
+/** G6: aktiv hujjatlari — yuklash (operator+), yuklab olish, o'chirish (muhandis). */
+function AssetDocsDialog({ asset, canEdit, canDelete, onClose }: { asset: AssetState; canEdit: boolean; canDelete: boolean; onClose: () => void }) {
+  const [docs, setDocs] = useState<AssetDocument[]>([]);
+  const [kind, setKind] = useState<AssetDocKind>("passport");
+  const [title, setTitle] = useState("");
+  const [err, setErr] = useState("");
+  const load = useCallback(() => api.assetDocuments(asset.id).then(setDocs).catch((e) => setErr(e.message)), [asset.id]);
+  useEffect(() => { void load(); }, [load]);
+  return (
+    <Dialog title={`${asset.name} — hujjatlar`} onClose={onClose}>
+      {asset.config && (asset.config.manufacturer || asset.config.serial) && <p className="small muted">{asset.config.manufacturer} {asset.config.model} {asset.config.serial ? `· SN ${asset.config.serial}` : ""} {asset.config.warranty_end ? `· kafolat ${asset.config.warranty_end}` : ""}</p>}
+      {err && <p className="error small">{err}</p>}
+      {docs.length === 0 ? <p className="muted">Hujjat yo'q</p> : (
+        <table className="grid small">
+          <thead><tr><th>Tur</th><th>Nomi</th><th>Fayl</th><th /></tr></thead>
+          <tbody>
+            {docs.map((d) => (
+              <tr key={d.id}>
+                <td>{ASSET_DOC_KINDS.find((k) => k.id === d.kind)?.title ?? d.kind}</td>
+                <td>{d.title}</td>
+                <td><button className="btn sm" onClick={() => api.downloadCsv(`/api/assets/${asset.id}/documents/${d.id}/file`, d.file_name).catch((e) => setErr(e.message))}>{d.file_name}</button></td>
+                <td>{canDelete && <button className="btn sm" onClick={() => api.deleteAssetDocument(asset.id, d.id).then(load).catch((e) => setErr(e.message))}>O'chirish</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {canEdit && (
+        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          <select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as AssetDocKind)}>{ASSET_DOC_KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}</select>
+          <input className="input" placeholder="Sarlavha" value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: 200 }} />
+          <label className="btn sm">Fayl tanlash<input type="file" style={{ display: "none" }} accept=".pdf,.docx,.xlsx,.doc,.xls,.txt,.md,.csv,.zip,.png,.jpg,.jpeg" data-testid="asset-doc-file" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.uploadAssetDocument(asset.id, f, kind, title).then(() => { setTitle(""); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>
+        </div>
+      )}
+      <div className="actions"><button className="btn" onClick={onClose}>Yopish</button></div>
+    </Dialog>
   );
 }

@@ -327,6 +327,18 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.getByTestId("fed-panel").locator(".tile-v").first()).not.toHaveText("0");
   });
 
+  test("Aktiv topshiruvi (G6): IFC dan aktivlar, hujjat biriktirish", async ({ page }) => {
+    await login(page);
+    await page.goto(`/projects/${projectId}/dashboard`);
+    await page.locator("button", { hasText: "Aktivlar" }).click();
+    await page.getByTestId("assets-from-ifc").selectOption({ index: 1 });
+    await expect(page.getByTestId("assets-sync-msg")).toContainText("IFC dan", { timeout: 30_000 });
+    await expect(page.locator(".dash-block")).toContainText("Turbina 1");
+    await page.locator(".dash-block tr", { hasText: "Turbina 1" }).getByRole("button", { name: "Hujjatlar" }).click();
+    await page.getByTestId("asset-doc-file").setInputFiles({ name: "pasport.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 pasport") });
+    await expect(page.locator(".dialog")).toContainText("pasport.pdf");
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

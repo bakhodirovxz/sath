@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
-from ..orm import Asset, Project, Role, Sensor, utcnow
+from ..orm import Asset, AssetDocument, Project, Role, Sensor, utcnow
 from . import health, twin
 
 router = APIRouter(prefix="/api", tags=["twin"])
@@ -266,4 +266,120 @@ def delete_asset(asset_id: int, user: CurrentUser, db: DB):
     if not has_role(get_project_role(db, a.project_id, user), Role.approver):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Tasdiqlovchi huquqi kerak")
     db.delete(a)
+    db.commit()
+
+
+# --------------------------------------------------------------------------- G6: IFC dan aktivlar, aktiv hujjatlari
+
+
+class AssetsFromIfcIn(BaseModel):
+    version_id: int
+
+
+@router.post("/projects/{project_id}/assets/from-ifc")
+def assets_from_ifc(body: AssetsFromIfcIn, project: EngineerProject, user: CurrentUser, db: DB):
+    """IFC versiyasidan aktiv registri → `Asset` yozuvlari (element_guid bo'yicha yangilanadi/yaratiladi):
+    turbina, generator, transformator, zatvor, nasos; ishlab chiqaruvchi/model/seriya/kafolat config da."""
+    from ..models import cobie, storage
+    from ..orm import Version
+
+    v = db.get(Version, body.version_id)
+    if v is None or v.model.project_id != project.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Versiya shu loyihaniki emas")
+    try:
+        reg = cobie.register_from_path(storage.resolve(v.file_sha256))
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
+    res = cobie.sync_assets(db, project.id, reg)
+    audit.log(db, user_id=user.id, action="asset.sync_ifc", target_type="project", target_id=project.id, project_id=project.id, detail={"version_id": v.id, **res})
+    db.commit()
+    return {**res, "components": reg["counts"]["components"], "assets": twin.asset_status(db, project)}
+
+
+ASSET_DOC_KINDS = ("manual", "passport", "test", "commissioning", "other")
+ASSET_DOC_EXTS = (".pdf", ".docx", ".xlsx", ".doc", ".xls", ".txt", ".md", ".csv", ".zip", ".png", ".jpg", ".jpeg")
+
+
+class AssetDocOut(BaseModel):
+    id: int
+    asset_id: int
+    kind: str
+    title: str
+    file_name: str
+    file_size: int
+    uploader_username: str
+    created_at: datetime
+
+
+def _asset_checked(db, asset_id: int, user, role: Role) -> Asset:
+    from ..auth.deps import get_project_role, has_role
+
+    a = db.get(Asset, asset_id)
+    if a is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aktiv topilmadi")
+    if not has_role(get_project_role(db, a.project_id, user), role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Bu loyihada ruxsat yo'q")
+    return a
+
+
+def _adoc_out(d: AssetDocument) -> AssetDocOut:
+    return AssetDocOut(id=d.id, asset_id=d.asset_id, kind=d.kind, title=d.title, file_name=d.file_name, file_size=d.file_size, uploader_username=d.uploader.username, created_at=d.created_at)
+
+
+@router.get("/assets/{asset_id}/documents", response_model=list[AssetDocOut])
+def asset_documents(asset_id: int, user: CurrentUser, db: DB):
+    _asset_checked(db, asset_id, user, Role.viewer)
+    return [_adoc_out(d) for d in db.query(AssetDocument).filter_by(asset_id=asset_id).order_by(AssetDocument.id).all()]
+
+
+@router.post("/assets/{asset_id}/documents", response_model=AssetDocOut, status_code=201)
+def asset_document_upload(asset_id: int, file: UploadFile, user: CurrentUser, db: DB, kind: Annotated[str, Form()] = "other", title: Annotated[str, Form()] = ""):
+    """Aktivga hujjat (operator+): qo'llanma, pasport, zavod sinov protokoli, ishga tushirish akti."""
+    from ..config import get_settings
+    from ..models import storage
+
+    a = _asset_checked(db, asset_id, user, Role.operator)
+    if kind not in ASSET_DOC_KINDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"kind: {', '.join(ASSET_DOC_KINDS)}")
+    name = file.filename or "hujjat"
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if ext not in ASSET_DOC_EXTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ruxsat etilgan: {', '.join(ASSET_DOC_EXTS)}")
+    try:
+        sha, size = storage.store(file.file, ext=ext, max_bytes=get_settings().small_upload_mb * 1024 * 1024)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+    d = AssetDocument(asset_id=a.id, kind=kind, title=title.strip() or name, file_name=name, file_sha256=sha, file_size=size, ext=ext, uploaded_by=user.id)
+    db.add(d)
+    db.flush()
+    audit.log(db, user_id=user.id, action="asset.document.upload", target_type="asset", target_id=a.id, project_id=a.project_id, detail={"kind": kind, "title": d.title})
+    db.commit()
+    db.refresh(d)
+    return _adoc_out(d)
+
+
+@router.get("/assets/{asset_id}/documents/{doc_id}/file")
+def asset_document_file(asset_id: int, doc_id: int, user: CurrentUser, db: DB):
+    from fastapi.responses import FileResponse
+
+    from ..models import storage
+
+    _asset_checked(db, asset_id, user, Role.viewer)
+    d = db.get(AssetDocument, doc_id)
+    if d is None or d.asset_id != asset_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hujjat topilmadi")
+    try:
+        return FileResponse(storage.resolve(d.file_sha256, ext=d.ext), filename=d.file_name)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl topilmadi") from None
+
+
+@router.delete("/assets/{asset_id}/documents/{doc_id}", status_code=204)
+def asset_document_delete(asset_id: int, doc_id: int, user: CurrentUser, db: DB):
+    a = _asset_checked(db, asset_id, user, Role.engineer)
+    d = db.get(AssetDocument, doc_id)
+    if d is None or d.asset_id != asset_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Hujjat topilmadi")
+    db.delete(d)
+    audit.log(db, user_id=user.id, action="asset.document.delete", target_type="asset", target_id=a.id, project_id=a.project_id, detail={"doc_id": doc_id})
     db.commit()

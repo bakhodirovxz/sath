@@ -18,7 +18,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..orm import Federation, Model, Project, Role, Version, VersionState
-from . import classification, derived, federation, ifc_meta, iso19650, storage
+from . import classification, cobie, derived, federation, ifc_meta, iso19650, storage
 from . import crs as crs_mod
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -742,3 +742,24 @@ def federation_ifc(fed_id: int, user: CurrentUser, db: DB):
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
     return FileResponse(path, filename=f"federation_{fed.id}.ifc", media_type="application/octet-stream")
+
+
+# --------------------------------------------------------------------------- G6: aktiv registri (COBie ga o'xshash)
+
+
+@router.get("/versions/{version_id}/assets/register")
+def version_asset_register(version_id: int, user: CurrentUser, db: DB, format: str = "json"):
+    """IFC dan aktiv registri: Facility/Floor/Type/Component/Attribute (COBie 2.4 soddalashtirilgan);
+    `format=csv` — CSV varaqlari zip (qurilishdan ekspluatatsiyaga topshirish)."""
+    from fastapi.responses import Response
+
+    v = get_version_checked(db, version_id, user, Role.viewer)
+    try:
+        reg = cobie.register_from_path(storage.resolve(v.file_sha256))
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
+    if format == "csv":
+        audit.log(db, user_id=user.id, action="export.cobie", target_type="version", target_id=v.id, project_id=v.model.project_id, detail=reg["counts"])
+        db.commit()
+        return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="cobie_{v.model.name}_v{v.number}.zip"'})
+    return reg

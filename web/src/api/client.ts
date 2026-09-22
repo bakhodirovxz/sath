@@ -374,7 +374,10 @@ export interface WorkOrderKpi { open: number; in_progress: number; overdue: numb
 export interface FloodForecast { status: string; live: Record<string, number>; site_filled: boolean; rain: Record<string, unknown>; summary: Record<string, number | boolean | string | null>; series: Record<string, number[]>; recommendation: { action: string; text: string; safe_level_m?: number | null; lower_by_m?: number | null; hours_to_overtop?: number | null } | null }
 export interface SparePart { id: number; project_id: number; name: string; code: string; unit: string; qty: number; min_qty: number; location: string; unit_cost: number; asset_id: number | null; asset_name: string | null; notes: string; low: boolean; updated_at: string }
 export interface PartMovement { id: number; part_id: number; part_name: string; work_order_id: number | null; qty: number; note: string; author_username: string; created_at: string }
-export interface AssetState { id: number; name: string; element_guid: string | null; power_sensor_id: number | null; running: boolean; run_hours_total: number; starts_total: number; run_hours_30d: number; energy_30d_mwh: number; availability_30d: number; maintenance_interval_hours: number | null; last_maintenance_at: string | null; hours_since_maintenance: number; hours_to_maintenance: number | null; status: "ok" | "due" | "overdue"; notes: string }
+export interface AssetState { id: number; name: string; element_guid: string | null; power_sensor_id: number | null; running: boolean; run_hours_total: number; starts_total: number; run_hours_30d: number; energy_30d_mwh: number; availability_30d: number; maintenance_interval_hours: number | null; last_maintenance_at: string | null; hours_since_maintenance: number; hours_to_maintenance: number | null; status: "ok" | "due" | "overdue"; notes: string; config?: { kind?: string; manufacturer?: string; model?: string; serial?: string; warranty_end?: string; classification?: string; installed?: string } }
+export type AssetDocKind = "manual" | "passport" | "test" | "commissioning" | "other";
+export interface AssetDocument { id: number; asset_id: number; kind: AssetDocKind; title: string; file_name: string; file_size: number; uploader_username: string; created_at: string }
+export interface AssetRegister { facility: Record<string, unknown>; floors: Record<string, unknown>[]; types: Record<string, unknown>[]; components: { Name: string; TypeName: string; Floor: string; SerialNumber: string; ExtIdentifier: string; ExtObject: string; Category: string; Kind: string }[]; counts: { types: number; components: number; attributes: number } }
 export interface Snapshot { at: string; sensors: LiveReading[] }
 export interface ReadingPoint { ts: string; v: number; min: number; max: number }
 export interface AlarmEvent {
@@ -863,6 +866,15 @@ export const api = {
   twinDispatch: (projectId: number, targetMw?: number) => request<DispatchResult>(`/api/projects/${projectId}/twin/dispatch${targetMw != null ? `?target_mw=${targetMw}` : ""}`),
   assetMaintenance: (id: number, note: string) => request<AssetState>(`/api/assets/${id}/maintenance?note=${encodeURIComponent(note)}`, { method: "POST" }),
   deleteAsset: (id: number) => request<void>(`/api/assets/${id}`, { method: "DELETE" }),
+  assetRegister: (versionId: number) => request<AssetRegister>(`/api/versions/${versionId}/assets/register`),
+  assetsFromIfc: (projectId: number, versionId: number) => request<{ created: number; updated: number; components: number; assets: AssetState[] }>(`/api/projects/${projectId}/assets/from-ifc`, { method: "POST", body: json({ version_id: versionId }) }),
+  assetDocuments: (assetId: number) => request<AssetDocument[]>(`/api/assets/${assetId}/documents`),
+  uploadAssetDocument: (assetId: number, file: File, kind: AssetDocKind, title: string) => {
+    const fd = new FormData();
+    fd.append("file", file); fd.append("kind", kind); fd.append("title", title);
+    return request<AssetDocument>(`/api/assets/${assetId}/documents`, { method: "POST", body: fd });
+  },
+  deleteAssetDocument: (assetId: number, id: number) => request<void>(`/api/assets/${assetId}/documents/${id}`, { method: "DELETE" }),
   snapshot: (projectId: number, at: string) => request<Snapshot>(`/api/projects/${projectId}/snapshot?at=${encodeURIComponent(at)}`),
   notifications: (unread = false, limit = 50) => request<Notification[]>(`/api/notifications?unread=${unread}&limit=${limit}`),
   notificationCount: () => request<{ unread: number }>("/api/notifications/count"),
