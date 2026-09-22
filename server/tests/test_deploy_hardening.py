@@ -58,3 +58,11 @@ def test_dem_channel_can_be_disabled_or_mirrored(monkeypatch, tmp_path):
     with pytest.raises(OSError):
         dem._tile(12, 3, 4)
     assert seen["url"] == "http://127.0.0.1:9/kozgu/12/3/4.png"
+
+
+def test_ha_compose_override_and_caddy():
+    ha = (DEPLOY / "docker-compose.ha.yml").read_text(encoding="utf-8")
+    assert "GES_ROLE: api" in ha and "GES_ROLE: worker" in ha and "replicas: 2" in ha and "/api/ready" in ha
+    caddy = (DEPLOY / "Caddyfile.ha").read_text(encoding="utf-8")
+    assert "dynamic a" in caddy and "health_uri /api/ready" in caddy
+    assert "/api/ready" in (DEPLOY / "Dockerfile").read_text(encoding="utf-8")

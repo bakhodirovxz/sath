@@ -2026,7 +2026,7 @@ Fayllar: `deploy/backup.sh`, yangi `deploy/restore.sh`, `docs/admin.md`
 Qabul mezoni: tiklash protsedurasi hujjatlashtirilgan va sinalgan.
 Bog'liqlik: yo'q.
 
-### L7 — IEC 62443 zonalari va hujjatlashtirish ✅
+### L7 — IEC 62443 zonalari va hujjatlashtirish ✅ (`f9a0655`)
 
 Muammo: amaldagi topologiya aslida mantiqiy — gateway SCADA tarmog'ida turadi va Sath ga
 chiquvchi HTTPS qiladi, bu to'g'ri L3→L3.5 kanali. Lekin bu tasodifiy, hujjatlashtirilmagan;
@@ -2047,7 +2047,7 @@ Fayllar: yangi `docs/security-zones.md`, `deploy/README.md`, `docs/admin.md`
 Qabul mezoni: hujjat mavjud va deploy uni aks ettiradi.
 Bog'liqlik: L1.
 
-### L8 — Yuqori ishonchlilik
+### L8 — Yuqori ishonchlilik ✅
 
 Muammo: bitta `ges` xizmati, SQLite default, fon sikli jarayon ichida
 (`monitoring/background.py:61`), `Hub` jarayon xotirasida. Ikki replikani load balancer ortida

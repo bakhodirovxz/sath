@@ -146,6 +146,18 @@ Hammasi `data/` (Docker: `ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC
 Zaxira va tiklash — quyidagi bo'lim. Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
 sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
 
+## Yuqori ishonchlilik (ko'p replika)
+
+Kichik deploy: bitta `ges` (`GES_ROLE=all`). Uzluksizlik kerak bo'lsa `deploy/docker-compose.ha.yml`:
+`ges` 2+ replika (`GES_ROLE=api`, Caddy `Caddyfile.ha` — Docker DNS orqali taqsimlash, `/api/ready`
+bo'yicha nosoz replikani chetlash), `ges-worker` bitta nusxa (fon sikli, ish navbati, MQTT; Postgres
+advisory lock — ikkinchi nusxa tasodifan ishga tushsa ham davriy ishlar takrorlanmaydi), jonli oqim
+replikalar orasida LISTEN/NOTIFY, sessiya/chipta DB da (yopishqoq sessiya shart emas). Bitta replika
+o'chirilganda xizmat uzilmaydi (ochiq WebSocket lar qayta ulanadi — klient eksponensial kechikish bilan).
+Endpointlar: `GET /api/health` — tiriklik; `GET /api/ready` — tayyorlik (DB, sxema head, backplane,
+worker rolida ish navbati) — 503 bo'lsa trafik berilmaydi. Postgres oqimli replika va qo'lda failover
+(RTO ≈ 5 daqiqa) — `deploy/pg-replica/README.md`.
+
 ## Zaxira va tiklash (RTO/RPO)
 
 | | Qiymat | Izoh |

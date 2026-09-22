@@ -42,5 +42,5 @@ RUN useradd --system --uid 10001 --create-home --home-dir /home/sath sath \
 USER sath
 VOLUME ["/data"]
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')" || exit 1
 CMD ["uvicorn", "ges_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

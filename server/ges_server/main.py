@@ -8,7 +8,12 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, audit, jobs  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
+from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
+    __version__,
+    audit,
+    ha,
+    jobs,
+)
 from .auth.router import router as auth_router
 from .auth.security import hash_password
 from .config import get_settings, write_private
@@ -74,25 +79,32 @@ def init_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    mqtt_bridge.start_if_configured(get_settings())
     stop = asyncio.Event()
-    task = asyncio.create_task(background.loop(stop))  # stale sensorlar, historian
-    jobs.runner = jobs.Runner(run_job)  # ish navbati ishchisi (L3): sim va hosilaviy artefaktlar
-    jobs_task = asyncio.create_task(jobs.runner.run(stop))
+    tasks: list[asyncio.Task] = []
+    log.info("rol: %s (L8)", ha.role())
+    if ha.runs_background():
+        mqtt_bridge.start_if_configured(get_settings())
+        tasks.append(asyncio.create_task(background.loop(stop)))  # stale sensorlar, historian (yetakchi qulfi bilan)
+        jobs.runner = jobs.Runner(run_job)  # ish navbati ishchisi (L3): sim va hosilaviy artefaktlar
+        tasks.append(asyncio.create_task(jobs.runner.run(stop)))
     from .monitoring import live
 
     live.hub.loop = asyncio.get_running_loop()
     live.hub.backplane = backplane.from_settings()  # L4: ko'p replika — Postgres LISTEN/NOTIFY
     if live.hub.backplane is not None:
         await live.hub.backplane.start(live.hub.deliver)
+        listening = getattr(live.hub.backplane, "listening", None)
+        if listening is not None and not await asyncio.to_thread(listening.wait, 10):
+            log.warning("backplane 10 s da ulanmadi — /api/ready 503 beradi, fon urinishlar davom etadi")
     yield
     if live.hub.backplane is not None:
         await live.hub.backplane.stop()
         live.hub.backplane = None
     stop.set()
-    jobs.runner.kick()
-    await task
-    await jobs_task
+    if jobs.runner is not None:
+        jobs.runner.kick()
+    for t in tasks:
+        await t
     jobs.runner = None
     if mqtt_bridge.bridge is not None:
         mqtt_bridge.bridge.stop()
@@ -131,8 +143,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", tags=["system"])
     def health():
-        # web: shu serverdan tarqatiladimi (desktop «Webda ochish» shunga qarab manzil tanlaydi)
-        return {"status": "ok", "version": __version__, "web": web_served}
+        # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»)
+        return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role()}
+
+    @app.get("/api/ready", tags=["system"])
+    def ready():
+        """Tayyorlik (readiness, L8): DB, sxema head, backplane, ish navbati ishchisi — 503 bo'lsa load
+        balancer bu replikaga trafik yubormaydi (Caddy `health_uri /api/ready`)."""
+        ok, checks = ha.readiness()
+        if not ok:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, {"status": "not-ready", **checks})
+        return {"status": "ready", "version": __version__, **checks}
 
     if web_served:
         app.mount("/assets", StaticFiles(directory=web_dist / "assets"), name="assets")

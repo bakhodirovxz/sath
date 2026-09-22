@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # Ish navbati (L3): jarayon ichidagi ishchi — bir vaqtda ishlar soni, navbat tekshiruv davri (s)
     jobs_concurrency: int = 2
     jobs_poll_s: float = 2.0
+    # L8: rol — all (HTTP + fon, default) | api (faqat HTTP/WS, ko'p replika) | worker (fon sikli, ish navbati,
+    # MQTT; bitta nusxa — yetakchi qulfi bilan himoyalangan)
+    role: str = "all"
     cfd_timeout_s: int = 3 * 3600
     # Ixtiyoriy SMTP: smtp://user:pass@host:587?from=ges@company.uz  (smtps:// — SSL)
     smtp_url: str | None = None

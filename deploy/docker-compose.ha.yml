@@ -1,0 +1,73 @@
+# Yuqori ishonchlilik (L8) — asosiy compose ustiga qo'shimcha:
+#   docker compose -f docker-compose.yml -f docker-compose.ha.yml --profile https up -d --scale ges=2
+# - `ges` — faqat HTTP/WS (GES_ROLE=api), 2+ replika, host portsiz; Caddy Docker DNS orqali hammasiga
+#   taqsimlaydi va /api/ready bo'yicha nosozini chetlab o'tadi (bitta replika o'chsa xizmat uzilmaydi).
+# - `ges-worker` — fon vazifalari (stale/historian/hisobot/MQTT) + ish navbati, bitta nusxa; yetakchi qulfi
+#   (Postgres advisory lock) tasodifan ikkinchi nusxa ishga tushsa ham takrorlashdan saqlaydi.
+# - Jonli oqim replikalar orasida Postgres LISTEN/NOTIFY (GES_LIVE_BACKPLANE=auto), sessiya/chipta DB da —
+#   load balancer da yopishqoq sessiya shart emas. Tezlik cheklovi replika boshiga.
+# - Postgres: bitta primary + oqimli replika (postgres-replica, docs/admin.md «Yuqori ishonchlilik»);
+#   failover qo'lda (promote + GES_DATABASE_URL) — RTO ≈ 5 daqiqa.
+services:
+  ges:
+    ports: !reset []
+    environment:
+      GES_ROLE: api
+      GES_RATE_TRUST_FORWARDED: "true"
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  ges-worker:
+    image: sath:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      GES_ROLE: worker
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+    volumes:
+      - ges_data:/data
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=2g", "/home/sath:size=64m"]
+    pids_limit: 512
+    mem_limit: "${GES_WORKER_MEM_LIMIT:-6g}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    volumes:
+      - ./Caddyfile.ha:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Oqimli replika (ixtiyoriy): birinchi startda pg_basebackup, keyin standby. Primary da replikatsiya
+  # foydalanuvchisi kerak — deploy/pg-replica/README.md
+  postgres-replica:
+    image: timescale/timescaledb:latest-pg16
+    profiles: ["pg-replica"]
+    restart: unless-stopped
+    environment:
+      PRIMARY_HOST: postgres
+      REPL_USER: repl
+      REPL_PASSWORD: ${PG_REPL_PASSWORD:-repl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+      - ./pg-replica/entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
+    depends_on: [postgres]
+
+volumes:
+  pg_replica_data:

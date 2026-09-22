@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from .. import ha
 from ..auth import sessions
 from ..config import get_settings
 from ..db import SessionLocal
@@ -109,10 +110,23 @@ def load_last_hour() -> datetime | None:
 
 
 async def loop(stop: asyncio.Event) -> None:
+    """Davriy fon sikli — faqat yetakchi nusxada (L8: ko'p nusxa ishga tushsa ham stale/historian/hisobot
+    ishlari takrorlanmaydi); qulf olinmasa har intervalda qayta uriniladi."""
     interval = max(5, get_settings().monitor_interval_s)
     last_hour = await asyncio.to_thread(load_last_hour)
+    was_leader = False
     while not stop.is_set():
         try:
+            if not await asyncio.to_thread(ha.leader.acquire) or not await asyncio.to_thread(ha.leader.held):
+                if was_leader:
+                    log.warning("fon sikli: yetakchi qulfi yo'qoldi — boshqa nusxa davom etadi")
+                    was_leader = False
+                await _sleep(stop, interval)
+                continue
+            if not was_leader:
+                log.info("fon sikli: bu nusxa yetakchi (%s)", "postgres advisory lock" if ha.leader.is_pg else "fayl qulfi")
+                was_leader = True
+                last_hour = await asyncio.to_thread(load_last_hour)  # boshqa nusxa bajargan bo'lishi mumkin
             await asyncio.to_thread(tick_stale)
             await asyncio.to_thread(tick_commands)
             await asyncio.to_thread(twin.tick_all)  # raqamli egizak: kutilgan quvvat/og'ish
@@ -137,7 +151,12 @@ async def loop(stop: asyncio.Event) -> None:
                 await asyncio.to_thread(state_set, LAST_HOUR_KEY, hour.isoformat())
         except Exception:  # noqa: BLE001 — fon sikl to'xtamasin
             log.exception("monitoring fon vazifasi xatosi")
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=interval)
-        except (TimeoutError, asyncio.TimeoutError):  # 3.10 da alohida sinf
-            pass
+        await _sleep(stop, interval)
+    await asyncio.to_thread(ha.leader.release)
+
+
+async def _sleep(stop: asyncio.Event, seconds: float) -> None:
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+    except (TimeoutError, asyncio.TimeoutError):  # 3.10 da alohida sinf
+        pass
