@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { dialogs } from "../../ui/dialogs";
 import { api, type Underlay } from "../../api/client";
 import type { Draft, DraftManager, GizmoMode } from "../../viewer/drafts";
 import { DRAFT_KINDS, DRAFT_KIND_BY_ID, type DraftKind } from "../../viewer/draftKinds";
@@ -42,9 +43,9 @@ export function DraftProps({ draft, dm, canEdit, onDelete, onDuplicate }: { draf
         <GizmoBtn m="scale" cur={mode} icon="scale" title="Masshtab (S)" onClick={() => dm.setMode("scale")} />
         <span className="grow" />
         <button className="btn sm" title="Kamerani moslash" onClick={() => dm.fit(draft.uid)}><Icon name="maximize" size={12} /></button>
-        {canEdit && <button className="btn sm" title="Yerga o'tqazish — obyekt tubi relyef/inshoot yuzasiga (balandlik xaritasi bo'yicha, Blender shrinkwrap kabi)" onClick={() => { if (!dm.snapToGround(draft.uid)) alert("Balandlik xaritasi hali yuklanmagan"); }}><Icon name="arrow-down" size={12} /> Yerga</button>}
+        {canEdit && <button className="btn sm" title="Yerga o'tqazish — obyekt tubi relyef/inshoot yuzasiga (balandlik xaritasi bo'yicha, Blender shrinkwrap kabi)" onClick={() => { if (!dm.snapToGround(draft.uid)) void dialogs.alert("Yerga o'tqazib bo'lmadi", "Balandlik xaritasi hali yuklanmagan"); }}><Icon name="arrow-down" size={12} /> Yerga</button>}
         {canEdit && <button className="btn sm" title="Nusxa (Shift+D)" onClick={() => onDuplicate(draft.uid)}><Icon name="copy" size={12} /></button>}
-        {canEdit && <button className="btn sm" title="Massiv — n ta nusxa qadam bilan (masalan 4 agregat 20 m oralig'ida)" onClick={() => { const a = prompt("Massiv: soni, qadam (m), o'q (x/y)", "4, 20, x"); if (!a) return; const [n, st, ax] = a.split(/[,\s]+/); const cnt = Number(n), step = Number(st); if (!(cnt >= 2) || !Number.isFinite(step)) { alert("Masalan: 4, 20, x"); return; } dm.arrayCopies(draft.uid, cnt, step, (ax ?? "x").toLowerCase() === "y" ? "y" : "x"); }}><Icon name="grid" size={12} /> Massiv</button>}
+        {canEdit && <button className="btn sm" title="Massiv — n ta nusxa qadam bilan (masalan 4 agregat 20 m oralig'ida)" onClick={() => void dialogs.prompt("Massiv", "4, 20, x", { text: "soni, qadam (m), o'q (x/y)" }).then((a) => { if (!a) return; const [n, st, ax] = a.split(/[,\s]+/); const cnt = Number(n), step = Number(st); if (!(cnt >= 2) || !Number.isFinite(step)) { void dialogs.alert("Massiv", "Masalan: 4, 20, x"); return; } dm.arrayCopies(draft.uid, cnt, step, (ax ?? "x").toLowerCase() === "y" ? "y" : "x"); })}><Icon name="grid" size={12} /> Massiv</button>}
         {canEdit && <button className="btn sm" title="O'chirish (X)" onClick={() => onDelete(draft.uid)}><Icon name="trash" size={12} /></button>}
       </div>
       {kind.params.length > 0 && <h3>O'lchamlar</h3>}
@@ -109,7 +110,7 @@ export function DraftList({ drafts, selected, dm, canEdit, onCommit, onDelete, b
     <div className="draft-list">
       <div className="row small" style={{ padding: "2px 6px", alignItems: "center" }}>
         <b className="muted">Qoralama ({drafts.length})</b><span className="grow" />
-        {canEdit && drafts.some((d) => d.kind !== "deleted") && <button className="btn sm" title="Barcha qoralamalarni yerga o'tqazish (relyef/DEM almashganda)" onClick={() => { const n = dm.snapAllToGround(); if (!n) alert("Balandlik xaritasi hali yuklanmagan"); }}><Icon name="arrow-down" size={12} /></button>}
+        {canEdit && drafts.some((d) => d.kind !== "deleted") && <button className="btn sm" title="Barcha qoralamalarni yerga o'tqazish (relyef/DEM almashganda)" onClick={() => { const n = dm.snapAllToGround(); if (!n) void dialogs.alert("Yerga o'tqazib bo'lmadi", "Balandlik xaritasi hali yuklanmagan"); }}><Icon name="arrow-down" size={12} /></button>}
         {canEdit && <button className="btn sm primary" disabled={busy} title="Barcha qoralamalarni IFC ga qo'shib yangi versiya yaratish (commit)" onClick={onCommit}><Icon name="git-branch" size={12} /> IFC ga qo'shish</button>}
       </div>
       {drafts.map((d) => {
@@ -147,7 +148,7 @@ export function UnderlayPanel({ modelId, list, canEdit, onChange, centerIfc }: {
     try { const saved = await api.updateUnderlay(u.id, body); onChange(list.map((x) => (x.id === u.id ? saved : x))); } catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); }
   }
   async function remove(u: Underlay) {
-    if (!confirm(`«${u.name}» rasm asosini o'chirish?`)) return;
+    if (!(await dialogs.confirm("Rasm asosini o'chirish", { text: u.name, danger: true, ok: "O'chirish" }))) return;
     try { await api.deleteUnderlay(u.id); onChange(list.filter((x) => x.id !== u.id)); } catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); }
   }
   const N = ({ u, k, step = 1, label }: { u: Underlay; k: "x" | "y" | "z" | "width_m" | "rotation_deg"; step?: number; label: string }) => (

@@ -1,4 +1,6 @@
 import Icon from "../../ui/Icon";
+import { dialogs } from "../../ui/dialogs";
+import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
@@ -52,13 +54,13 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   const [gwKeys, setGwKeys] = useState<GatewayKey[] | null>(null);
   const loadKeys = () => Promise.all([api.projectKey(projectId, "ingest"), api.projectKey(projectId, "command")]).then(setGwKeys).catch((e) => setError(e.message));
   const [manual, setManual] = useState("");
-  const [cmdVal, setCmdVal] = useState("0"); // boshqaruv buyrug'i qiymati
+  const [cmdTarget, setCmdTarget] = useState<Sensor | null>(null); // boshqaruv buyrug'i (F8: ControlBlock dialogda)
   // 3D da element tanlansa — unga bog'langan sensor ochiladi (BIM → SCADA)
   useEffect(() => {
     const g = selection[0]?.guid;
     if (!g) return;
     const s = sensors.find((x) => x.element_guid === g);
-    if (s) { setSelected(s.id); setCmdVal(String(s.last_value ?? 0)); }
+    if (s) setSelected(s.id);
   }, [selection, sensors]);
   const [topic, setTopic] = useState("");
   const canEdit = role === "engineer" || role === "approver";
@@ -257,7 +259,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${ALARM_LABEL[s.alarm]}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${ALARM_LABEL[s.alarm]} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
                 {canEdit && <button className="btn sm" onClick={() => bindToSelection(s)} title="Tanlangan elementga bog'lash">Tanlanganga bog'lash</button>}
                 {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
-                {role === "approver" && <button className="btn sm danger" onClick={() => confirm(`${s.name} sensorini o'chirasizmi? Tarix ham o'chadi.`) && api.deleteSensor(s.id).then(load)}>O'chirish</button>}
+                {role === "approver" && <button className="btn sm danger" onClick={() => void dialogs.confirm("Sensorni o'chirish", { text: `${s.name} (${s.key}) — tarix ham o'chadi.`, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) void api.deleteSensor(s.id).then(load); })}>O'chirish</button>}
               </div>
               {history.length > 1 ? (
                 <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
@@ -266,22 +268,15 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
               {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
                 <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
-                  {s.kind === "position" ? (
-                    <input type="range" min={0} max={100} step={1} className="grow" value={Number(cmdVal) || 0} onChange={(e) => setCmdVal(e.target.value)} aria-label="Ochilish" />
-                  ) : s.kind === "status" ? (
-                    <select className="select sm" value={cmdVal} onChange={(e) => setCmdVal(e.target.value)}><option value="1">Ishga tushirish (1)</option><option value="0">To'xtatish (0)</option></select>
-                  ) : (
-                    <input className="input" style={{ width: 110 }} placeholder="Qiymat" value={cmdVal} onChange={(e) => setCmdVal(e.target.value)} />
-                  )}
-                  <span className="mono small">{s.kind === "position" ? `${Number(cmdVal) || 0} %` : ""}</span>
-                  <button className="btn sm primary" onClick={() => { const v = Number(cmdVal); if (!Number.isFinite(v)) return; api.selectCommand(projectId, s.id, v, `3D dan: ${s.name}`).then((sel) => { if (!confirm(`Select-before-operate — tanlandi:\n${s.name} → ${v} ${s.unit}${sel.requires_approval ? "\n(ikkinchi operator tasdig'i talab qilinadi)" : ""}\n\n30 s ichida bajarilsinmi? Buyruq gateway orqali SCADA ga yuboriladi va audit jurnaliga yoziladi.`)) return; return api.executeCommand(projectId, sel.select_token, `3D dan: ${s.name}`).then((c) => setError(`Buyruq #${c.id} ${c.status === "pending_approval" ? "tasdiq kutmoqda" : "yuborildi"} (${s.name} → ${v}${s.unit})`)); }).catch((err) => setError(err instanceof Error ? err.message : "Buyruq yuborilmadi")); }}>Buyruq yuborish</button>
+                  <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
+                  <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
               {canEdit && (
                 <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }}>
                   <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
-                  <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); alert(`${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
+                  <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
                 </div>
               )}
             </div>
@@ -349,6 +344,11 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
               <button type="submit" className="btn primary">Saqlash</button>
             </div>
           </form>
+        </Dialog>
+      )}
+      {cmdTarget && (
+        <Dialog title={`Buyruq: ${cmdTarget.name}`} onClose={() => setCmdTarget(null)}>
+          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={role === "operator" || canEdit} canOverride={role === "approver"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
         </Dialog>
       )}
     </div>

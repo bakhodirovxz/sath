@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { dialogs } from "../../ui/dialogs";
 import { api, type ChangeRequest, type Model, type Role, type SafetyCheck, type Version } from "../../api/client";
 import { useAuth } from "../../store/auth";
 import { fmtDate, label } from "../../ui/format";
@@ -133,10 +134,10 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
                 {isApprover && !mine && (
                   <>
                     <button className="btn sm" disabled={busy} onClick={() => act(() => api.reviewCR(cr.id, "request_changes", comment[cr.id] ?? ""))}>O'zgartirish so'rash</button>
-                    <button className="btn sm primary" disabled={busy} onClick={() => { const s = crSafety; if (s && s.counts.fail && !confirm(`Xavfsizlik tekshiruvida ${s.counts.fail} ta mezon bajarilmagan (${s.score ?? "—"}/100):\n${s.fails.join("\n")}\n\nBaribir ma'qullaysizmi?`)) return; if (!s && !confirm("Bu versiya xavfsizlik tekshiruvidan o'tkazilmagan. Baribir ma'qullaysizmi?")) return; void act(() => api.reviewCR(cr.id, "approve", comment[cr.id] ?? "")); }}>Ma'qullash</button>
+                    <button className="btn sm primary" disabled={busy} onClick={() => void (async () => { const s = crSafety; if (s && s.counts.fail && !(await dialogs.confirm("Xavfsizlik tekshiruvi", { text: `${s.counts.fail} ta mezon bajarilmagan (${s.score ?? "—"}/100):\n${s.fails.join("\n")}\n\nBaribir ma'qullaysizmi?`, danger: true, ok: "Ma'qullash" }))) return; if (!s && !(await dialogs.confirm("Xavfsizlik tekshiruvi yo'q", { text: "Bu versiya xavfsizlik tekshiruvidan o'tkazilmagan. Baribir ma'qullaysizmi?", danger: true, ok: "Ma'qullash" }))) return; void act(() => api.reviewCR(cr.id, "approve", comment[cr.id] ?? "")); })()}>Ma'qullash</button>
                   </>
                 )}
-                {(isApprover || mine) && <button className="btn sm danger" disabled={busy} onClick={() => confirm("So'rovni yopasizmi?") && act(() => api.rejectCR(cr.id))}>Yopish</button>}
+                {(isApprover || mine) && <button className="btn sm danger" disabled={busy} onClick={() => void dialogs.confirm("So'rovni yopish", { text: cr.title, danger: true, ok: "Yopish" }).then((ok) => { if (ok) void act(() => api.rejectCR(cr.id)); })}>Yopish</button>}
               </BOps>
               {cr.status === "changes_requested" && mine && wipVersions.length > 0 && (
                 <BRow label="Yangi versiya">

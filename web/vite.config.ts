@@ -8,5 +8,5 @@ export default defineConfig({
     proxy: { "/api": { target: "http://localhost:8000", ws: true } },
   },
   build: { chunkSizeWarningLimit: 4000 },
-  test: { environment: "jsdom", exclude: ["e2e/**", "node_modules/**", "dist/**"] },
+  test: { environment: "jsdom", setupFiles: ["src/test-setup.ts"], exclude: ["e2e/**", "node_modules/**", "dist/**"] },
 });

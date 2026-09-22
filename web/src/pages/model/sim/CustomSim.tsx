@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { dialogs } from "../../../ui/dialogs";
 import { api, type CustomTemplate, type GenericParams, type GenericResult, type SimJob, type SimTemplate, type Version } from "../../../api/client";
 import Icon from "../../../ui/Icon";
 import LineChart, { CHART_COLORS } from "../../../ui/LineChart";
@@ -80,7 +81,7 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } finally { setBusy(false); }
   }
   async function remove() {
-    if (!sel || !confirm("Shablon o'chirilsinmi?")) return;
+    if (!sel || !(await dialogs.confirm("Shablon o'chirilsinmi?", { danger: true, ok: "O'chirish" }))) return;
     try { await api.deleteTemplate(sel); setSel(null); await loadTemplates(); } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
   }
 

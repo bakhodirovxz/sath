@@ -857,7 +857,7 @@ Fayllar: yangi `web/src/ui/annunciator.ts`, `web/src/pages/operator/*`
 Qabul mezoni: 20 ta ketma-ket alarmda ovoz ishlashda davom etadi (test).
 Bog'liqlik: F1.
 
-### F7 — Trend server ✅
+### F7 — Trend server ✅ (`7c30dc0`)
 
 Bajarildi: `web/src/ui/Trend.tsx` + `trendMath.ts` — har birlik uchun alohida Y o'qi (chap + o'ng o'qlar) yoki
 normallashtirilgan rejim (0…100 %); zoom (g'ildirak, kursor atrofida), pan (surish), kursor A (bosish) va B
@@ -890,7 +890,18 @@ Fayllar: `web/src/ui/LineChart.tsx` → yangi `web/src/ui/Trend.tsx`,
 Qabul mezoni: turli birlikdagi 5 seriya o'qilarli ko'rinadi; 10 000 nuqtada interfeys qotmaydi.
 Bog'liqlik: D2, D4, F1.
 
-### F8 — Boshqaruv interfeysi
+### F8 — Boshqaruv interfeysi ✅
+
+Bajarildi: `operator/ControlBlock.tsx` (faceplate ichida, CommandsPanel va MonitoringPanel dialoglarida ham) — joriy
+qiymat, ruxsat etilgan diapazon (B1 min/max, tezlik), klient validatsiyasi (`validateSetpoint`: chekli son, diapazon,
+tezlik ogohlantirishi; server ham rad etadi — test), sabab maydoni (majburiy), blokirovkalar (B4) natijasi oldindan
+(`current_ok`, qaysi shart bajarilmayapti), select → execute (B2) qolgan vaqt taymeri, tasdiqlovchi chetlab o'tishi,
+ikkinchi kishi tasdig'i kutish holati, buyruq holati kuzatuvi pending → sent → acked → readback ✓ / mismatch ✗
+(WS `command` xabari `useOps().liveCommand`). `ui/dialogs.tsx` — Promise asosidagi `dialogs.confirm/prompt/alert`
++ `DialogHost`; ilovadagi barcha 24 `confirm()/prompt()/alert()` chaqiruvi almashtirildi (Dashboard, Health,
+Twin, Draft, Issues, Monitoring, Review, CustomSim, Versions, ModelPage). Testlar: `control.test.tsx` (validatsiya,
+ControlBlock render, dialog host navbati), e2e faceplate boshqaruvi (500 % rad, 55 % select → execute → navbatda),
+e2e 3D commit/review Dialog orqali.
 
 Muammo: `TwinPanels.tsx:124` va `MonitoringPanel.tsx:272` — `confirm()` bilan tasdiqlash.
 Kiritish `type="number" step="any"` (`TwinPanels.tsx:122`), sensordan min/max olinmaydi —

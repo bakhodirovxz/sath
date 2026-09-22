@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dialogs } from "../ui/dialogs";
 import Icon from "../ui/Icon";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, getToken, type ChangeRequest, type Diff, type Issue, type Member, type Model, type Project, type Underlay, type Version } from "../api/client";
@@ -384,14 +385,14 @@ export default function ModelPage() {
     const p = await vw.getProperties(localId);
     if (!p?.guid) { setError("Element GUID topilmadi"); return; }
     if (vw.drafts.list().some((d) => d.sourceGuid === p.guid)) { setLog("Bu element allaqachon qoralamada"); return; }
-    if (!skipConfirm && !confirm(`«${p.name || p.category}» elementini o'chirish? (yangi versiyada olib tashlanadi; «Qoralama» ro'yxatidan qaytarish mumkin)`)) return;
+    if (!skipConfirm && !(await dialogs.confirm("Elementni o'chirish", { text: `«${p.name || p.category}» yangi versiyada olib tashlanadi; «Qoralama» ro'yxatidan qaytarish mumkin`, danger: true, ok: "O'chirish" }))) return;
     await vw.drafts.markDeleted(localId, { guid: p.guid, name: p.name, category: p.category });
     setLog(`«${p.name || p.category}» o'chirishga belgilandi — «IFC ga qo'shish» bilan yangi versiya`);
   };
   const duplicateDraft = (uid: string) => viewer.current?.drafts.duplicate(uid);
   const commitDrafts = async () => {
     if (!model || !viewer.current) return;
-    const msg = prompt("Versiya izohi (commit):", `Web 3D: ${drafts.length} ta element qo'shildi`);
+    const msg = await dialogs.prompt("Versiya izohi (commit)", `Web 3D: ${drafts.length} ta element qo'shildi`);
     if (msg === null) return;
     setDraftBusy(true);
     try {
@@ -457,7 +458,7 @@ export default function ModelPage() {
       if (!vw.drafts.selected && vw.selection.length >= 1) {
         const ids = [...vw.selection];
         if (k === "Tab") { e.preventDefault(); void (async () => { for (const id of ids) await editElement(id); })(); return; }
-        if (k === "x" || k === "X" || k === "Delete") { e.preventDefault(); if (ids.length > 1 && !confirm(`${ids.length} ta elementni o'chirish?`)) return; void (async () => { for (const id of ids) await deleteElement(id, ids.length > 1); })(); return; }
+        if (k === "x" || k === "X" || k === "Delete") { e.preventDefault(); void (async () => { if (ids.length > 1 && !(await dialogs.confirm(`${ids.length} ta elementni o'chirish?`, { danger: true, ok: "O'chirish" }))) return; for (const id of ids) await deleteElement(id, ids.length > 1); })(); return; }
       }
       const views: Record<string, [ViewName, ViewName]> = { Numpad1: ["front", "back"], Numpad3: ["right", "left"], Numpad7: ["top", "bottom"], "1": ["front", "back"], "3": ["right", "left"], "7": ["top", "bottom"] };
       const vk = views[e.code] ?? views[k];
@@ -478,7 +479,7 @@ export default function ModelPage() {
       else if ((k === "c" || k === "C") && e.shiftKey) { void vw.fitAll(); }
       else if (k === "t" || k === "T") { setToolsOpen((v) => !v); }
       else if (k === "Escape") { vw.escape(); used = false; }
-      else if (k === "F2") { cmd("VSAVE", prompt("Ko'rinish nomi:") ?? ""); }
+      else if (k === "F2") { void dialogs.prompt("Ko'rinish nomi").then((n) => cmd("VSAVE", n ?? "")); }
       else if (k === "F12") { render(); }
       else if (k === "?" || (k === "/" && e.shiftKey)) { setHelp((h) => !h); }
       else if (k === "b" || k === "B") { void vw.sectionBox(); }
@@ -498,7 +499,7 @@ export default function ModelPage() {
       { label: "Loyihaga qaytish", onClick: () => nav(project ? `/projects/${project.id}` : "/") },
       { label: "Versiyalar", hint: "yon panel", onClick: () => { setTab("versions"); setDockOpen(true); } },
       { label: "IFC ni yuklab olish", disabled: !current, onClick: () => current && api.downloadCsv(api.versionFileUrl(current.id), `${model?.name ?? "model"}_v${current.number}.ifc`).catch((e) => setError(e.message)) },
-      { label: "Ko'rinishni saqlash…", hint: "F2", onClick: () => cmd("VSAVE", prompt("Ko'rinish nomi:") ?? "") },
+      { label: "Ko'rinishni saqlash…", hint: "F2", onClick: () => void dialogs.prompt("Ko'rinish nomi").then((n) => cmd("VSAVE", n ?? "")) },
       { sep: true, label: "" },
       { label: "Dispetcher paneli (SCADA)", onClick: () => project && nav(`/projects/${project.id}/dashboard`) },
       { label: "Chiqish", onClick: () => { logout(); nav("/login"); } },
@@ -508,7 +509,7 @@ export default function ModelPage() {
       { label: "Qaytarish", hint: "Ctrl+Shift+Z", disabled: !viewer.current?.drafts?.canRedo, onClick: () => { const m = viewer.current?.drafts.redo(); if (m) setLog(m); } },
       { sep: true, label: "" },
       { label: selection.length > 1 ? `${selection.length} ta elementni tahrirlash` : "Elementni tahrirlash (surish/burish/masshtab)", hint: "Tab", disabled: !canEdit || selection.length === 0, onClick: () => void (async () => { for (const s of [...selection]) await editElement(s.localId); })() },
-      { label: selection.length > 1 ? `${selection.length} ta elementni o'chirish` : "Elementni o'chirish", hint: "X", disabled: !canEdit || selection.length === 0, onClick: () => void (async () => { const ids = [...selection]; if (ids.length > 1 && !confirm(`${ids.length} ta elementni o'chirish?`)) return; for (const s of ids) await deleteElement(s.localId, ids.length > 1); })() },
+      { label: selection.length > 1 ? `${selection.length} ta elementni o'chirish` : "Elementni o'chirish", hint: "X", disabled: !canEdit || selection.length === 0, onClick: () => void (async () => { const ids = [...selection]; if (ids.length > 1 && !(await dialogs.confirm(`${ids.length} ta elementni o'chirish?`, { danger: true, ok: "O'chirish" }))) return; for (const s of ids) await deleteElement(s.localId, ids.length > 1); })() },
       { sep: true, label: "" },
       { label: "Tanlashni bekor qilish", hint: "Esc", onClick: () => viewer.current?.escape() },
       { label: "Yashirish", hint: "H", onClick: () => viewer.current?.hideSelected() },
@@ -553,8 +554,8 @@ export default function ModelPage() {
       { label: outlinerOpen ? "Outlinerni yig'ish" : "Outliner", onClick: () => setOutlinerOpen(!outlinerOpen) },
     ] },
     { title: "Tanlash", items: [
-      { label: "Nomi bo'yicha qidirish…", hint: "FIND", onClick: () => { const q = prompt("Qidiruv (nom):"); if (q) cmd("FIND", ...q.split(" ")); } },
-      { label: "GUID bo'yicha…", hint: "SELECT", onClick: () => { const q = prompt("GUID:"); if (q) cmd("SELECT", q); } },
+      { label: "Nomi bo'yicha qidirish…", hint: "FIND", onClick: () => void dialogs.prompt("Qidiruv (nom)").then((q) => { if (q) cmd("FIND", ...q.split(" ")); }) },
+      { label: "GUID bo'yicha…", hint: "SELECT", onClick: () => void dialogs.prompt("GUID").then((q) => { if (q) cmd("SELECT", q); }) },
       { label: "Kategoriya bo'yicha (qatlamlar)", onClick: () => { setTab("layers"); setDockOpen(true); } },
       { label: "Outliner", onClick: () => { setOutlinerOpen(true); setDockOpen(true); } },
     ] },

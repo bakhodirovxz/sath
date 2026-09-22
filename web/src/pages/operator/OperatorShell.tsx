@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, type AlarmEvent, type Dashboard, type LiveMessage, type Project, type Sensor } from "../../api/client";
+import { api, type AlarmEvent, type Command, type Dashboard, type LiveMessage, type Project, type Sensor } from "../../api/client";
 import { useLive, type LiveState } from "../../hooks/useLive";
 import TopBar from "../../ui/TopBar";
 import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
@@ -19,6 +19,8 @@ export interface OpsContext {
   live: LiveState;
   summary: AlarmSummary;
   events: AlarmEvent[];
+  /** Oxirgi jonli buyruq yangilanishi (WS) — boshqaruv bloki holat kuzatuvi uchun */
+  liveCommand: Command | null;
   reload: () => Promise<void>;
   error: string;
 }
@@ -44,6 +46,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [events, setEvents] = useState<AlarmEvent[]>([]);
+  const [liveCommand, setLiveCommand] = useState<Command | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const reload = useCallback(async () => {
@@ -64,11 +67,12 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
       else if (!prevIds.current.has(e.id)) annunciator.alarm(e.id, (e.priority ?? "medium") as "low" | "medium" | "high" | "critical");
       prevIds.current.add(e.id);
     }
+    if (m.type === "command" && m.command) setLiveCommand(m.command);
   }, []);
   const prevIds = useRef(new Set<number>());
   const live = useLive(pid, setSensors, onMessage);
   const summary = useMemo(() => summarize(sensors), [sensors]);
-  const ctx: OpsContext = { projectId: pid, project, sensors, dash, live, summary, events, reload, error };
+  const ctx: OpsContext = { projectId: pid, project, sensors, dash, live, summary, events, liveCommand, reload, error };
   const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2] : null;
   return (
     <Ctx.Provider value={ctx}>

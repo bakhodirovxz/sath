@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { dialogs } from "../../ui/dialogs";
 import { api, type AssetHealth, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import Icon from "../../ui/Icon";
@@ -234,7 +235,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { p
                 {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm primary" onClick={() => { setClosing(w); setCloseForm({ resolution: "", downtime_hours: "0", cost: "0" }); }}>Yopish</button>}
                 {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm" title="Bekor qilish" onClick={() => setStatus(w, "cancelled")}><Icon name="x" size={12} /></button>}
                 {canOperate && w.status !== "open" && w.status !== "in_progress" && <button className="btn sm" title="Qayta ochish" onClick={() => setStatus(w, "open")}><Icon name="refresh" size={12} /></button>}
-                {canEdit && <button className="btn sm" title="O'chirish" onClick={() => { if (confirm("O'chirilsinmi?")) api.deleteWorkOrder(w.id).then(load).catch((er) => setErr(er.message)); }}><Icon name="trash" size={12} /></button>}
+                {canEdit && <button className="btn sm" title="O'chirish" onClick={() => void dialogs.confirm("Ish buyrug'i o'chirilsinmi?", { text: w.title, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) api.deleteWorkOrder(w.id).then(load).catch((er) => setErr(er.message)); })}><Icon name="trash" size={12} /></button>}
               </td>
             </tr>
           ))}</tbody>
@@ -351,7 +352,7 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
                 {canOperate && <button className="btn sm" title="Sarf (−)" onClick={() => { setMoving({ part: p, dir: -1 }); setMv({ qty: "1", work_order_id: "", note: "" }); }}><Icon name="minus" size={12} /></button>}
                 {canEdit && <button className="btn sm" title="Kirim (+)" onClick={() => { setMoving({ part: p, dir: 1 }); setMv({ qty: "1", work_order_id: "", note: "" }); }}><Icon name="plus" size={12} /></button>}
                 <button className="btn sm" title="Harakatlar tarixi" onClick={() => api.partMovements(p.id).then((rows) => setHist({ part: p, rows })).catch((e) => setErr(e.message))}><Icon name="history" size={12} /></button>
-                {canEdit && <button className="btn sm" title="O'chirish" onClick={() => { if (confirm("O'chirilsinmi?")) api.deletePart(p.id).then(load).catch((e) => setErr(e.message)); }}><Icon name="trash" size={12} /></button>}
+                {canEdit && <button className="btn sm" title="O'chirish" onClick={() => void dialogs.confirm("Ehtiyot qism o'chirilsinmi?", { text: p.name, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) api.deletePart(p.id).then(load).catch((e) => setErr(e.message)); })}><Icon name="trash" size={12} /></button>}
               </td>
             </tr>
           ))}</tbody>

@@ -7,6 +7,7 @@ import { fmtDate, fmtValue } from "../../ui/format";
 import { alarmStyle, qualityStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import ValueCard from "./ValueCard";
+import ControlBlock from "./ControlBlock";
 import { AREAS, ageSeconds, areaOf, fmtAge, sortByAlarm, unitOf } from "./model";
 
 /** Level 3 — faceplate: bitta sensor (yoki agregat) uchun joriy qiymat, chegaralar (LL/L/H/HH), sifat, yosh,
@@ -41,7 +42,7 @@ function UnitBody({ unit }: { unit: number }) {
 }
 
 function SensorBody({ sensorId }: { sensorId: number }) {
-  const { projectId: pid, sensors, reload, project } = useOps();
+  const { projectId: pid, sensors, reload, project, liveCommand } = useOps();
   const s = sensors.find((x) => x.id === sensorId);
   const [pts, setPts] = useState<ReadingPoint[]>([]);
   const [hours, setHours] = useState(6);
@@ -97,10 +98,10 @@ function SensorBody({ sensorId }: { sensorId: number }) {
             {canOperate && s.alarm_mode === "shelved" && <button className="btn sm" onClick={() => run(() => api.unshelveSensor(s.id))} disabled={busy}>Shelve dan qaytarish</button>}
             {canEngineer && s.alarm_mode !== "out_of_service" && <button className="btn sm" onClick={() => setDlg("oos")}>Xizmatdan chiqarish</button>}
             {canEngineer && s.alarm_mode === "out_of_service" && <button className="btn sm" onClick={() => run(() => api.sensorInService(s.id))} disabled={busy}>Xizmatga qaytarish</button>}
-            {s.writable && <Link className="btn sm primary" to={`/projects/${pid}/dashboard`}>Boshqaruv (select → execute)</Link>}
           </div>
           {err && <p className="error">{err}</p>}
         </section>
+        {s.writable && <ControlBlock projectId={pid} sensor={s} canCommand={!!canOperate} canOverride={project?.my_role === "approver"} liveCommand={liveCommand} onCommand={() => void reload()} />}
         <section className="panel">
           <div className="row"><b>Trend</b><span className="grow" />{[1, 6, 24, 168].map((h) => <button key={h} className={`btn sm ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>{h < 24 ? `${h} s` : `${h / 24} k`}</button>)}</div>
           {pts.length ? <Trend series={[{ id: s.id, name: s.name, unit: s.unit, points: pts.map((p) => ({ t: Date.parse(p.ts), v: p.v, min: p.min, max: p.max })) }]} height={200} refLines={refLines} /> : <p className="muted">Ma'lumot yo'q</p>}

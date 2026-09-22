@@ -68,8 +68,8 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator(".ws-tabs button", { hasText: "Tasdiqlash" }).click();
     const panel = page.locator(".dock-body");
     await expect(panel).toContainText(`E2E so'rov ${stamp}`);
-    page.on("dialog", (d) => d.accept()); // xavfsizlik tekshiruvi ogohlantirishi (versiya tekshirilmagan)
     await panel.getByRole("button", { name: /ma'qullash/i }).first().click();
+    await page.getByTestId("dlg-confirm").click(); // xavfsizlik tekshiruvi ogohlantirishi — Dialog (F8: confirm() emas)
     await expect(panel).toContainText(/ma'qullangan/i);
     await panel.getByRole("button", { name: /tasdiqlash \(published\)/i }).first().click();
     await expect(panel).toContainText(/tasdiqlangan/i);
@@ -157,9 +157,27 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".l4")).toContainText("Jonli oqim");
     await page.locator(".ops-nav button", { hasText: "L1 Umumiy" }).click();
     await expect(page.locator(".ops-nav .ops-level")).toHaveText("L1");
+    // F8: faceplate boshqaruv bloki — diapazondan tashqari qiymat klientda rad, select → execute
+    await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "GATE1.SP", name: "Zatvor 1 SP", kind: "position", unit: "%", writable: true, min_setpoint: 0, max_setpoint: 100 } });
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "GATE1.SP", value: 40 }] });
+    await page.goto(`/projects/${projectId}/ops`);
+    await page.locator("[data-testid=area-card]", { hasText: "Gidrotexnik" }).click();
+    await page.locator("[data-testid=vcard][data-key='GATE1.SP']").click();
+    const ctl = page.getByTestId("control-block");
+    await expect(ctl).toContainText("0 … 100 %");
+    await ctl.getByTestId("ctl-value").fill("500");
+    await ctl.getByTestId("ctl-note").fill("e2e sinov");
+    await expect(ctl.getByTestId("ctl-invalid")).toContainText("maksimum 100");
+    await expect(ctl.getByTestId("ctl-select")).toBeDisabled();
+    await ctl.getByTestId("ctl-value").fill("55");
+    await ctl.getByTestId("ctl-select").click();
+    await expect(ctl.getByTestId("ctl-selected")).toContainText("55");
+    await ctl.getByTestId("ctl-execute").click();
+    await expect(ctl.getByTestId("ctl-status")).toContainText("navbatda");
+    await page.getByTestId("nav-alarms").click();
+    await expect(page).toHaveURL(/\/ops\/alarms$/);
     // Alarm sahifasi (F5): filtr, hammasini kvitlash — tasdiqlash dialogi, faqat filtrlangan to'plam
     await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "RES.H", value: 906 }] }); // yangi kvitlanmagan alarm (H > 905)
-    await page.getByTestId("nav-alarms").click();
     await expect(page.getByTestId("alarm-table")).toBeVisible();
     await page.getByTestId("alarm-search").fill("RES.H");
     await expect(page.locator("[data-testid=alarm-row]")).toHaveCount(1);
@@ -211,8 +229,9 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator(".draft-props input").first().fill("E2E transformator");
     await expect(page.locator(".draft-list:not(.underlay-list)")).toContainText("E2E transformator");
     // Commit → yangi versiya
-    page.once("dialog", (d) => d.accept("e2e: web 3D element"));
     await page.locator(".draft-list:not(.underlay-list) button", { hasText: "IFC ga qo'shish" }).click();
+    await page.getByTestId("dlg-prompt").fill("e2e: web 3D element"); // Dialog (F8: prompt() emas)
+    await page.getByTestId("dlg-confirm").click();
     await expect(page.locator(".ws-status .msg")).toContainText("Namuna v2", { timeout: 90_000 });
     await expect(page.locator(".ws-status")).toContainText("Elementlar: 21");
     await expect(page.locator(".draft-list:not(.underlay-list)")).toHaveCount(0);

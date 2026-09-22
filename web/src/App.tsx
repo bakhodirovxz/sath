@@ -14,6 +14,7 @@ import L3Faceplate from "./pages/operator/L3Faceplate";
 import L4Diagnostics from "./pages/operator/L4Diagnostics";
 import AlarmsPage from "./pages/operator/AlarmsPage";
 import Trends from "./pages/operator/Trends";
+import { DialogHost } from "./ui/dialogs";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, ready } = useAuth();
@@ -29,6 +30,8 @@ export default function App() {
     void init();
   }, [init]);
   return (
+    <>
+    <DialogHost />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><Projects /></RequireAuth>} />
@@ -48,5 +51,6 @@ export default function App() {
       <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

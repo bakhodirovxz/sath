@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { dialogs } from "../../ui/dialogs";
 import Icon from "../../ui/Icon";
 import { api, type Diff, type Model, type Version } from "../../api/client";
 import { fmtDate, fmtSize, ifcLabel, label } from "../../ui/format";
@@ -93,8 +94,8 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
             {current?.id !== selected.id && <button className="btn sm primary" onClick={() => onOpen(selected)}><Icon name="eye" size={12} /> Ochish</button>}
             <button className="btn sm" onClick={() => void download(selected)} title="IFC faylini yuklab olish"><Icon name="download" size={12} /> IFC</button>
             <button className="btn sm" title="Blender / 3ds Max uchun (glTF, nom va GUID saqlanadi)" onClick={() => api.downloadCsv(`/api/versions/${selected.id}/export?fmt=glb`, `${model.name}_v${selected.number}.glb`).catch((er) => setError(er.message))}><Icon name="download" size={12} /> glb</button>
-            {canEdit && versions[0]?.id !== selected.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => confirm(`v${selected.number} ni qayta tiklab, yangi versiya yaratilsinmi?`) && api.restoreVersion(selected.id).then(onUploaded).catch((e) => alert(e.message))}><Icon name="history" size={12} /> Qayta tiklash</button>}
-            {canEdit && <button className="btn sm" title="Izoh / yorliq" onClick={() => { const message = prompt("Izoh:", selected.message); if (message == null) return; const tag = prompt("Yorliq (bo'sh — yo'q; faqat tasdiqlovchi):", selected.tag ?? ""); api.updateVersion(selected.id, { message, ...(tag != null && tag !== (selected.tag ?? "") ? { tag } : {}) }).then(() => onUploaded(selected)).catch((e) => alert(e.message)); }}><Icon name="tag" size={12} /> Izoh/yorliq</button>}
+            {canEdit && versions[0]?.id !== selected.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => void dialogs.confirm("Versiyani qayta tiklash", { text: `v${selected.number} dan yangi (oxirgi) versiya yaratiladi`, ok: "Qayta tiklash" }).then((ok) => { if (ok) api.restoreVersion(selected.id).then(onUploaded).catch((e) => dialogs.alert("Xato", e.message)); })}><Icon name="history" size={12} /> Qayta tiklash</button>}
+            {canEdit && <button className="btn sm" title="Izoh / yorliq" onClick={() => void (async () => { const message = await dialogs.prompt("Izoh", selected.message); if (message == null) return; const tag = await dialogs.prompt("Yorliq", selected.tag ?? "", { text: "bo'sh — yo'q; faqat tasdiqlovchi" }); api.updateVersion(selected.id, { message, ...(tag != null && tag !== (selected.tag ?? "") ? { tag } : {}) }).then(() => onUploaded(selected)).catch((e) => dialogs.alert("Xato", e.message)); })()}><Icon name="tag" size={12} /> Izoh/yorliq</button>}
           </BOps>
           <BOps>
             {selected.parent_id && !diff && <button className="btn sm" onClick={() => onDiff(selected)} title="Ota versiya bilan farq — 3D da rang (yashil/sariq)"><Icon name="git-branch" size={12} /> Ota bilan farq</button>}

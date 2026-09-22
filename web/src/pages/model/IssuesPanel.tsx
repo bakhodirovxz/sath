@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { dialogs } from "../../ui/dialogs";
 import Icon from "../../ui/Icon";
 import { api, type Issue, type IssueStatus, type Member, type Role, type Version, type Viewpoint } from "../../api/client";
 import { useAuth } from "../../store/auth";
@@ -118,7 +119,7 @@ export default function IssuesPanel(p: Props) {
         />
         <BOps>
           <button className="btn sm" title="BCF 2.1 — Revit/ArchiCAD/BIMcollab/Solibri uchun" onClick={async () => { try { const b = await api.bcfExport(p.modelId); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "issues.bcfzip"; a.click(); URL.revokeObjectURL(u); } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } }}><Icon name="download" size={12} /> BCF eksport</button>
-          {(p.role === "engineer" || p.role === "approver") && <label className="btn sm"><Icon name="upload" size={12} /> BCF import<input type="file" accept=".bcfzip,.bcf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.bcfImport(p.modelId, f).then((r) => { alert(`BCF: ${r.created} yangi, ${r.updated} yangilandi`); p.onChanged(); }).catch((err) => setError(err.message)); e.target.value = ""; }} /></label>}
+          {(p.role === "engineer" || p.role === "approver") && <label className="btn sm"><Icon name="upload" size={12} /> BCF import<input type="file" accept=".bcfzip,.bcf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.bcfImport(p.modelId, f).then((r) => { void dialogs.alert("BCF import", `${r.created} yangi, ${r.updated} yangilandi`); p.onChanged(); }).catch((err) => setError(err.message)); e.target.value = ""; }} /></label>}
         </BOps>
       </BPanel>
       {detail && (

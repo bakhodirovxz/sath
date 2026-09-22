@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
-import { api, type AssetState, type Command, type JournalEntry, type SelectResult, type Sensor, type SoeEvent, type TwinState } from "../../api/client";
+import { api, type AssetState, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState } from "../../api/client";
+import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
 import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
+import { dialogs } from "../../ui/dialogs";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
-const CMD_LABEL: Record<Command["status"], string> = { pending: "kutmoqda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi", pending_approval: "tasdiq kutilmoqda", mismatch: "MOS EMAS (readback)" };
-const CMD_CLASS: Record<Command["status"], string> = { pending: "shared", sent: "open", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived", pending_approval: "shared", mismatch: "rejected" };
 
 /** Raqamli egizak: jonli o'lchov ↔ model bo'yicha kutilgan quvvat, og'ish, FIK. */
 export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: boolean }) {
@@ -77,44 +77,18 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
 export function CommandsPanel({ projectId, sensors, canCommand, live, canOverride = false }: { projectId: number; sensors: Sensor[]; canCommand: boolean; live: Command | null; canOverride?: boolean }) {
   const [cmds, setCmds] = useState<Command[]>([]);
   const [target, setTarget] = useState<Sensor | null>(null);
-  const [value, setValue] = useState("");
-  const [note, setNote] = useState("");
   const [err, setErr] = useState("");
-  // Select-before-operate: 1) tanlash → 30 s li token, 2) bajarish token bilan
-  const [sel, setSel] = useState<SelectResult | null>(null);
-  const [left, setLeft] = useState(0);
-  const [ovReason, setOvReason] = useState("");
   useEffect(() => { api.commands(projectId).then(setCmds).catch((e) => setErr(e.message)); }, [projectId]);
   useEffect(() => { if (live) setCmds((prev) => [live, ...prev.filter((c) => c.id !== live.id)]); }, [live]);
-  useEffect(() => {
-    if (!sel) return;
-    const tick = () => { const s = Math.max(0, Math.round((new Date(sel.expires_at).getTime() - Date.now()) / 1000)); setLeft(s); if (s <= 0) setSel(null); };
-    tick();
-    const id = window.setInterval(tick, 500);
-    return () => window.clearInterval(id);
-  }, [sel]);
   const writable = sensors.filter((s) => s.writable);
-  function closeDialog() { setTarget(null); setValue(""); setNote(""); setSel(null); }
-  async function select(override?: { reason: string }) {
-    if (!target) return;
-    try { setSel(await api.selectCommand(projectId, target.id, Number(value), note, override)); setErr(""); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); }
-  }
-  async function execute() {
-    if (!sel) return;
-    try {
-      const c = await api.executeCommand(projectId, sel.select_token, note);
-      setCmds((p) => [c, ...p.filter((x) => x.id !== c.id)]);
-      closeDialog(); setErr("");
-    } catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); setSel(null); }
-  }
+  function closeDialog() { setTarget(null); }
   function approve(id: number) {
     api.approveCommand(id).then((u) => setCmds((p) => p.map((x) => (x.id === u.id ? u : x)))).catch((e) => setErr(e instanceof Error ? e.message : "Xatolik"));
   }
   return (
     <div className="dash-block">
       <div className="row wrap"><b>Boshqaruv (buyruqlar)</b><span className="muted small">setpoint / rele → gateway → SCADA; har buyruq auditda</span><span className="grow" />
-        {canCommand && writable.map((s) => <button key={s.id} className="btn sm primary" onClick={() => { setTarget(s); setValue(s.last_value == null ? "" : String(s.last_value)); }}>{s.name} →</button>)}
+        {canCommand && writable.map((s) => <button key={s.id} className="btn sm primary" onClick={() => setTarget(s)}>{s.name} →</button>)}
         {canCommand && writable.length === 0 && <span className="dim small">Boshqaruv nuqtasi yo'q — sensor sozlamasida «Yozish mumkin»</span>}
       </div>
       {err && <p className="error small">{err}</p>}
@@ -141,19 +115,7 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
       )}
       {target && (
         <Dialog title={`Buyruq: ${target.name}`} onClose={closeDialog}>
-          <p className="muted small">{target.key} · joriy qiymat {target.last_value == null ? "—" : `${fmtValue(target.last_value)} ${target.unit}`}. Buyruq gateway orqali SCADA ga yoziladi va audit jurnaliga tushadi.</p>
-          <label className="field"><span>Yangi qiymat, {target.unit}{target.min_setpoint != null || target.max_setpoint != null ? ` (ruxsat: ${target.min_setpoint ?? "−∞"} … ${target.max_setpoint ?? "+∞"})` : ""}</span><input className="input" type="number" step="any" min={target.min_setpoint ?? undefined} max={target.max_setpoint ?? undefined} value={value} onChange={(e) => setValue(e.target.value)} autoFocus /></label>
-          {value !== "" && ((target.min_setpoint != null && Number(value) < target.min_setpoint) || (target.max_setpoint != null && Number(value) > target.max_setpoint)) && <div className="error small">Qiymat ruxsat etilgan diapazondan tashqarida — server rad etadi</div>}
-          <label className="field"><span>Izoh (sabab)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          {sel && <p className="small" style={{ color: "var(--warn)" }}>Tanlandi: {target.name} → {fmtValue(sel.value)} {target.unit}. Bajarish uchun {left} s qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}{sel.override ? " · BLOKIROVKA CHETLAB O'TILDI" : ""}.</p>}
-          {sel?.interlocks && sel.interlocks.length > 0 && <ul className="small" style={{ margin: "4px 0", paddingLeft: 16 }}>{sel.interlocks.map((il) => <li key={il.interlock_id} style={{ color: il.ok ? "var(--ok)" : "var(--danger)" }}>{il.ok ? "✓" : "✗"} {il.name}{il.message ? ` — ${il.message}` : ""}</li>)}</ul>}
-          {err && err.startsWith("Blokirovka") && canOverride && !sel && <div className="row" style={{ gap: 6 }}><input className="input" placeholder="Chetlab o'tish sababi (majburiy)" value={ovReason} onChange={(e) => setOvReason(e.target.value)} /><button className="btn sm danger" disabled={ovReason.trim().length < 5} onClick={() => void select({ reason: ovReason })}>Chetlab o'tish (tasdiqlovchi)</button></div>}
-          <div className="actions">
-            <button className="btn" onClick={closeDialog}>Bekor</button>
-            {!sel
-              ? <button className="btn" disabled={value === "" || !Number.isFinite(Number(value)) || (target.min_setpoint != null && Number(value) < target.min_setpoint) || (target.max_setpoint != null && Number(value) > target.max_setpoint)} onClick={() => void select()}>1. Tanlash</button>
-              : <button className="btn primary" onClick={() => void execute()}>2. Bajarish ({left} s)</button>}
-          </div>
+          <ControlBlock projectId={projectId} sensor={target} canCommand={canCommand} canOverride={canOverride} liveCommand={live} onCommand={(c) => { setCmds((p) => [c, ...p.filter((x) => x.id !== c.id)]); closeDialog(); }} />
         </Dialog>
       )}
     </div>
@@ -229,7 +191,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
                   <span className={`badge ${cls[a.status]}`}>{lbl[a.status]}</span>
                   {a.hours_to_maintenance != null && <div className="dim small">{a.hours_to_maintenance >= 0 ? `${a.hours_to_maintenance.toFixed(0)} soat qoldi` : `${(-a.hours_to_maintenance).toFixed(0)} soat kechikdi`}{a.last_maintenance_at && ` · oxirgi ${fmtDate(a.last_maintenance_at)}`}</div>}
                 </td>
-                <td>{canMaint && <button className="btn sm" onClick={() => { const n = prompt("Texnik xizmat izohi:", ""); if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); }}>Xizmat bajarildi</button>}</td>
+                <td>{canMaint && <button className="btn sm" onClick={() => void dialogs.prompt("Texnik xizmat bajarildi", "", { text: `${a.name}: izoh (nima qilindi)`, ok: "Yozish" }).then((n) => { if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); })}>Xizmat bajarildi</button>}</td>
               </tr>
             ))}
           </tbody>
