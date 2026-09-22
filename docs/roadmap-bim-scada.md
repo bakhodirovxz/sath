@@ -948,7 +948,7 @@ Fayllar: `server/ges_server/monitoring/router.py`, yangi `web/src/pages/operator
 Qabul mezoni: topshirish yakunlanmasa ogohlantiriladi; imzolar auditda.
 Bog'liqlik: C2, D3, F2.
 
-### F10 — Front-end sifat infratuzilmasi ✅
+### F10 — Front-end sifat infratuzilmasi ✅ (`5c6d1c2`)
 
 Bajarildi: ESLint 9 (flat config: `@eslint/js`, `typescript-eslint`, `eslint-plugin-react-hooks`), `npm run lint`
 CI da (web ishi); barcha 40 `eslint-disable` olib tashlandi — muammolar tuzatildi: `load` funksiyalari `useCallback`,
@@ -988,7 +988,15 @@ Fayllar: `web/package.json`, `web/eslint.config.js`, `web/tsconfig.json`, `web/v
 Qabul mezoni: lint CI da o'tadi, bostirish qolmaydi; login sahifasi to'plami 500 KB dan kichik.
 Bog'liqlik: yo'q.
 
-### F11 — 3D viewer nosozliklari
+### F11 — 3D viewer nosozliklari ✅
+
+Bajarildi: `viewer/listeners.ts` — `DomListeners` reestri (`on()`, `timeout()`, `dispose()`); `Viewer.ts` dagi barcha
+10 ta `window/container/canvas` listeneri reestr orqali, `dispose()` hammasini (va hover taymerini) olib tashlaydi;
+`clearModel` jonli bog'lanish obyektlarini `dropLive` bilan (geometry/material dispose) bo'shatadi; `colorByGuids`
+tanlov qatlamini (`select`) saqlab qayta tiklaydi; `MonitoringPanel.view` `useMemo` — 3D effektlar har WebSocket
+xabarida emas, faqat o'zgarishda. Test: 20 sikl (reestr + 4 listener + taymer → dispose) dan keyin window
+listenerlari soni 0 (doimiy), Viewer.ts da to'g'ridan-to'g'ri `addEventListener` yo'qligi (WebGL jsdom da yo'q —
+reestr testi + manba tekshiruvi); 3D e2e o'tdi.
 
 Muammo:
 - `Viewer.ts:206,207,234,242` — `keydown`, `keyup`, `pointermove`, `pointerup` anonim

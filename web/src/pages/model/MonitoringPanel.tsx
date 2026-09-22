@@ -3,7 +3,7 @@ import { useLatest } from "../../hooks/useLatest";
 import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
@@ -97,14 +97,15 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   }, [replay.on, replay.hours, sensorIdsKey, latestSensors]);
   const replayTime = replay.on ? Date.now() - replay.hours * 3600e3 * (1 - replay.t) : null;
   /** Ko'rsatiladigan sensorlar: jonli yoki tarixdagi vaqt bo'yicha (oxirgi o'qish ≤ t; alarm chegaralar bo'yicha) */
-  const view: Sensor[] = replayTime == null ? sensors : sensors.map((s) => {
+  // useMemo (F11): har renderda yangi massiv bo'lmasin — 3D effektlar (rang, yorliq, suv) faqat o'zgarishda ishlaydi
+  const view: Sensor[] = useMemo(() => replayTime == null ? sensors : sensors.map((s) => {
     const pts = replay.data[s.id] ?? [];
     let v: ReadingPoint | null = null;
     for (const pt of pts) { if (new Date(pt.ts).getTime() <= replayTime) v = pt; else break; }
     if (!v) return { ...s, last_value: null, last_ts: null, alarm: "ok" as AlarmState, stale: true };
     const alarm: AlarmState = s.hh_alarm != null && v.v > s.hh_alarm ? "highhigh" : s.high_alarm != null && v.v > s.high_alarm ? "high" : s.ll_alarm != null && v.v < s.ll_alarm ? "lowlow" : s.low_alarm != null && v.v < s.low_alarm ? "low" : "ok";
     return { ...s, last_value: v.v, last_ts: v.ts, alarm };
-  });
+  }), [sensors, replayTime, replay.data]);
 
   // Raqamli egizak 3D da: yuqori byef sathi sensori (dispetcher sxemasi bog'lanishi) → suv tekisligi
   const [waterOn, setWaterOn] = useState(true);

@@ -1,5 +1,6 @@
 // ThatOpen (Three.js) ustidagi 3D viewer o'rami. React dan mustaqil — bitta Viewer, bitta canvas.
 import * as THREE from "three";
+import { DomListeners } from "./listeners";
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
 import * as FRAGS from "@thatopen/fragments";
@@ -60,6 +61,8 @@ export class Viewer {
   clipper!: OBC.Clipper;
   measure!: OBF.LengthMeasurement;
   model: FRAGS.FragmentsModel | null = null;
+  /** DOM listenerlari reestri (F11): dispose() da hammasi olib tashlanadi */
+  readonly dom = new DomListeners();
   tool: Tool = "select";
   drafts!: DraftManager; // web da yaratilgan qoralama elementlar (Blender "Add")
   private grid!: OBC.SimpleGrid;
@@ -203,15 +206,15 @@ export class Viewer {
         c.mouseButtons.middle = down ? CameraControls.ACTION.ROTATE : CameraControls.ACTION.TRUCK;
       }
     };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKey);
-    this.container.addEventListener("contextmenu", (e) => e.preventDefault());
-    this.container.addEventListener("click", () => {
+    this.dom.on(window, "keydown", onKey);
+    this.dom.on(window, "keyup", onKey);
+    this.dom.on(this.container, "contextmenu", (e) => e.preventDefault());
+    this.dom.on(this.container, "click", () => {
       if (this.tool === "section") void this.clipper.create(this.world);
     });
     this.setupBoxSelect();
     // Ikki marta bosish — orbit markazi shu nuqtaga (Blender «orbit around selection», AutoCAD «orbit center»)
-    this.container.addEventListener("dblclick", async (e) => {
+    this.dom.on(this.container, "dblclick", async (e) => {
       if (this.tool !== "select" || !this.drafts) return;
       const p = await this.drafts.pickPoint(e.clientX, e.clientY);
       if (p) { await this.setOrbitTarget(p); this.status("Aylantirish markazi ko'chirildi"); }
@@ -227,11 +230,11 @@ export class Viewer {
     Object.assign(rectEl.style, { position: "absolute", pointerEvents: "none", border: "1px dashed #f5a623", background: "rgba(245,166,35,0.10)", display: "none", zIndex: "5" } as CSSStyleDeclaration);
     this.container.style.position = this.container.style.position || "relative";
     this.container.appendChild(rectEl);
-    dom.addEventListener("pointerdown", (e) => {
+    this.dom.on(dom, "pointerdown", (e) => {
       if (e.button !== 0 || this.tool !== "select" || this.drafts?.placing || this.drafts?.selected) return;
       this.boxSel = { x0: e.clientX, y0: e.clientY, el: rectEl };
     });
-    window.addEventListener("pointermove", (e) => {
+    this.dom.on(window, "pointermove", (e) => {
       const b = this.boxSel;
       if (!b) return;
       const dx = e.clientX - b.x0, dy = e.clientY - b.y0;
@@ -239,7 +242,7 @@ export class Viewer {
       const r = this.container.getBoundingClientRect();
       Object.assign(b.el.style, { display: "block", left: `${Math.min(b.x0, e.clientX) - r.left}px`, top: `${Math.min(b.y0, e.clientY) - r.top}px`, width: `${Math.abs(dx)}px`, height: `${Math.abs(dy)}px`, borderStyle: dx < 0 ? "dashed" : "solid", background: dx < 0 ? "rgba(61,168,100,0.10)" : "rgba(245,166,35,0.10)", borderColor: dx < 0 ? "#3aa864" : "#f5a623" });
     });
-    window.addEventListener("pointerup", async (e) => {
+    this.dom.on(window, "pointerup", async (e) => {
       const b = this.boxSel;
       if (!b) return;
       this.boxSel = null;
@@ -555,9 +558,9 @@ export class Viewer {
   }
   private setupHover() {
     const dom = this.world.renderer!.three.domElement;
-    dom.addEventListener("pointermove", (e) => {
+    this.dom.on(dom, "pointermove", (e) => {
       if (this.hoverTimer != null || !this.model || this.hoverListeners.length === 0) return;
-      this.hoverTimer = window.setTimeout(async () => {
+      this.hoverTimer = this.dom.timeout(async () => {
         this.hoverTimer = null;
         const rect = dom.getBoundingClientRect();
         const mouse = new THREE.Vector2(e.clientX - rect.left, e.clientY - rect.top);
@@ -568,7 +571,7 @@ export class Viewer {
         } catch { /* raycast xatosi — tooltip yo'q */ }
       }, 80);
     });
-    dom.addEventListener("pointerleave", () => this.hoverListeners.forEach((l) => l(null)));
+    this.dom.on(dom, "pointerleave", () => this.hoverListeners.forEach((l) => l(null)));
   }
 
   /** Kamera o'zgarganda (gizmo, statistika uchun). Qaytaradi: obunani bekor qilish. */
@@ -1529,6 +1532,7 @@ export class Viewer {
   /** GUID → rang (simulyatsiya holati, monitoring). Bo'sh map — ranglarni tozalash. */
   async colorByGuids(colors: Record<string, string>) {
     if (!this.model || !this.alive()) return;
+    const keepSel = this.selection; // resetHighlight tanlov qatlamini ham tozalaydi — qayta tiklaymiz (F11)
     await this.model.resetHighlight();
     const byColor = new Map<string, string[]>();
     for (const [g, c] of Object.entries(colors)) byColor.set(c, [...(byColor.get(c) ?? []), g]);
@@ -1536,12 +1540,13 @@ export class Viewer {
       const ids = (await this.model.getLocalIdsByGuids(guids)).filter((x): x is number => x != null);
       if (ids.length) await this.model.highlight(ids, { color: new THREE.Color(c), opacity: 1, transparent: false, renderedFaces: FRAGS.RenderedFaces.TWO });
     }
+    if (keepSel.length) await this.highlighter.highlightByID("select", { [this.model.modelId]: new Set(keepSel) }, true, false);
     await this.fragments.core.update(true);
   }
 
   async clearModel() {
     this.stopLiveAnim();
-    for (const [g, b] of this.live) { this.live.delete(g); if (this.alive()) this.world.scene.three.remove(b.obj); }
+    for (const [g, b] of [...this.live]) await this.dropLive(g, b); // geometriya/material ham bo'shatiladi (F11)
     void this.setLabels(false);
     void this.setValueLabels(null);
     void this.showSection(null, null);
@@ -1873,6 +1878,8 @@ export class Viewer {
     this.resizeObserver?.disconnect();
     if (this.disposed) return;
     this.disposed = true;
+    this.dom.dispose(); // window/container/canvas listenerlari va taymerlar (F11: `this` ushlab qolinmaydi)
+    if (this.hoverTimer != null) { window.clearTimeout(this.hoverTimer); this.hoverTimer = null; }
     this.drafts?.dispose();
     this.components.dispose();
   }
