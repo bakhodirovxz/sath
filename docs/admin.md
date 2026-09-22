@@ -143,8 +143,39 @@ dispetcherlarning emailiga.
 
 Hammasi `data/` (Docker: `ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
 `sim/`, `cfd/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring).
-Zaxira: `deploy/backup.sh` (tiklash — L6). Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
+Zaxira va tiklash — quyidagi bo'lim. Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
 sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
+
+## Zaxira va tiklash (RTO/RPO)
+
+| | Qiymat | Izoh |
+|---|---|---|
+| **RPO** (yo'qotilishi mumkin bo'lgan davr) | ≤ 24 soat (kunlik jadval), ≤ 1 soat (soatlik) | `backup.cron.example`; o'lchov oqimi muhim bo'lsa soatlik + gateway spool (E) |
+| **RTO** (tiklash vaqti) | ≈ 15–30 daqiqa | `restore.sh` + `docker compose up -d`; katta IFC arxivida (10+ GB) fayl nusxasi vaqti qo'shiladi |
+| Saqlash | 30 kun mahalliy (`BACKUP_KEEP_DAYS`) + tashqi nusxa | NAS (`BACKUP_COPY_DIR`) yoki `rclone` (`BACKUP_RCLONE_REMOTE`) |
+
+`deploy/backup.sh`: Postgres `pg_dump -Fc` (yoki SQLite `.backup` — izchil nusxa) + `files/` (IFC/mesh,
+content-addressed) + manifest (`alembic` versiyasi, sha256) → `backups/sath-YYYYmmdd-HHMM.tar.gz.enc`
+(AES-256-CBC, PBKDF2 200k, `BACKUP_PASSPHRASE_FILE`). `secret.key` arxivga **kirmaydi** — uni parol
+menejerida alohida saqlang (yo'qolsa ma'lumot saqlanadi, sessiyalar tugaydi, audit eksport imzolari
+tekshirilmaydi). `derived/` (fragments, QTO keshi) default kirmaydi — qayta hisoblanadi
+(`BACKUP_WITH_DERIVED=1` bilan kiradi). `sim/`, `cfd/` natijalari kirmaydi.
+
+Tiklash protsedurasi (yangi serverda ham):
+1. `git clone` + `deploy/.env` (eski `GES_SECRET_KEY` yoki `secret.key` ni parol menejeridan qaytaring);
+   `docker compose up -d postgres` (SQLite bo'lsa shart emas).
+2. `BACKUP_PASSPHRASE_FILE=... ./restore.sh backups/sath-....tar.gz.enc` — sha256 va ichki manifest
+   tekshiriladi, `ges` to'xtatiladi, DB `ges_restore` ga tiklanib almashtiriladi (eski DB `ges_old_<vaqt>`
+   nomi bilan qoladi), fayllar volume ga ochiladi.
+3. `docker compose up -d` → `GET /api/health`, admin bilan `GET /api/audit/verify` (`ok: true`),
+   loyihalar/modellar ko'rinadi, historian grafigi oxirgi zaxira vaqtigacha.
+4. Gateway spool (E) mavjud bo'lsa yetkazilmagan o'lchovlar o'zi keladi; qolgan oyna — RPO.
+
+Tiklashni davriy sinash: `./restore.sh --test <arxiv>` — vaqtinchalik TimescaleDB konteynerida
+`pg_restore`, jadval/qator sanog'i va Alembic versiyasi chiqariladi, keyin konteyner o'chiriladi
+(ishlab chiqarishga tegmaydi). `backup.cron.example` da haftalik sinov qatori bor; natija
+`/var/log/sath-restore-test.log` da `TIKLASH SINOVI: OK` bo'lishi shart. Sinalgan: 2026-09-22
+(SQLite va Postgres arxivlari, `--test` va to'liq tiklash — L6).
 
 ## Foydalanuvchilar va rollar
 

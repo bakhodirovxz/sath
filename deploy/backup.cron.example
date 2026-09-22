@@ -1,0 +1,12 @@
+# Sath zaxira jadvali (L6) — /etc/cron.d/sath-backup ga nusxalang (root). RPO = zaxira davri.
+# Kunlik 03:00 — RPO ≤ 24 soat; soatlik (ikkinchi qator) — RPO ≤ 1 soat (o'lchovlar ko'p bo'lsa tavsiya).
+# Parol fayli: /root/.sath-backup-pass (chmod 0600); tashqi nusxa: BACKUP_COPY_DIR (NAS) yoki BACKUP_RCLONE_REMOTE.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+BACKUP_PASSPHRASE_FILE=/root/.sath-backup-pass
+BACKUP_COPY_DIR=/mnt/nas/sath-backups
+BACKUP_KEEP_DAYS=30
+0 3 * * *  root  cd /opt/sath/deploy && ./backup.sh >> /var/log/sath-backup.log 2>&1
+# 0 * * * *  root  cd /opt/sath/deploy && ./backup.sh >> /var/log/sath-backup.log 2>&1
+# Haftalik tiklash sinovi (yakshanba 04:00): vaqtinchalik konteynerda pg_restore, jadval/qator sanog'i
+0 4 * * 0  root  cd /opt/sath/deploy && ./restore.sh --test "$(ls -t backups/sath-*.tar.gz.enc | head -1)" >> /var/log/sath-restore-test.log 2>&1

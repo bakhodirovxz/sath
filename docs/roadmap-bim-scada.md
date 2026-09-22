@@ -1978,7 +1978,7 @@ Fayllar: `server/ges_server/monitoring/live.py`, `monitoring/router.py`,
 Qabul mezoni: ikki replikali deployda jonli tasma ishlaydi (test).
 Bog'liqlik: D1.
 
-### L5 — Yuklash cheklovlari va parser sandbox ✅
+### L5 — Yuklash cheklovlari va parser sandbox ✅ (`ee0a03c`)
 
 Muammo:
 - `monitoring/router.py:392` (`import_csv`) — `await file.read()` hajm chegarasisiz, keyin
@@ -2010,7 +2010,7 @@ Fayllar: `server/ges_server/monitoring/router.py`, `review/router.py`, `system/r
 Qabul mezoni: hajmi oshgan yuklash 413 beradi va xotirani bosmaydi (test).
 Bog'liqlik: yo'q.
 
-### L6 — Zaxira, tiklash, RTO/RPO
+### L6 — Zaxira, tiklash, RTO/RPO ✅
 
 Muammo: `deploy/backup.sh` Docker hajmini so'rovga ko'ra tar qiladi. Jadval yo'q, shifrlash yo'q,
 tashqi nusxa yo'q, tiklash tekshiruvi yo'q. Arxivda DB bilan birga `secret.key` ham ochiq
