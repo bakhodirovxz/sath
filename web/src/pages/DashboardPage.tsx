@@ -208,7 +208,7 @@ export default function DashboardPage() {
   return (
     <div className="page">
       <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
-        {historyAt ? <span className="badge high"><Icon name="history" size={12} /> TARIX REJIMI</span> : <span className={`badge ${live === "jonli" ? "published" : "rejected"}`}><Icon name={live === "jonli" ? "wifi" : "wifi-off"} size={12} /> {live}</span>}
+        {historyAt ? <span className="badge high"><Icon name="history" size={12} /> TARIX REJIMI</span> : <span className={`badge live-${live.toLowerCase()} ${live === "LIVE" ? "published" : live === "STALE" ? "shared" : "rejected"}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan"><Icon name={live === "OFFLINE" ? "wifi-off" : "wifi"} size={12} /> {live}</span>}
         <label className="row small" title="Vaqt mashinasi: tanlangan vaqtdagi holatni ko'rish (sxema, qiymatlar)">
           <input className="input" style={{ width: 190, padding: "2px 6px" }} type="datetime-local" value={historyAt ? toLocalInput(historyAt) : ""} onChange={(e) => setHistoryAt(e.target.value ? new Date(e.target.value).toISOString() : null)} />
           {historyAt && <button className="btn sm primary" onClick={() => setHistoryAt(null)}>Jonli</button>}
@@ -229,9 +229,9 @@ export default function DashboardPage() {
         <div className="tiles dash-kpi">
           <div className={`tile ${activeAlarms ? "tile-alarm" : ""}`}><div className="tile-t">Faol alarmlar</div><div className="tile-v">{activeAlarms} <span className="tile-u">{unacked ? `(${unacked} kvitlanmagan)` : ""}</span></div></div>
           <div className="tile"><div className="tile-t">Energiya, 24 soat</div><div className="tile-v">{dash.energy_24h_mwh == null ? "—" : fmtValue(dash.energy_24h_mwh)} <span className="tile-u">MWh</span></div></div>
-          <div className="tile"><div className="tile-t">Umumiy quvvat</div><div className="tile-v">{fmtValue((kinds.power ?? []).reduce((a, s) => a + (s.alarm !== "stale" && s.last_value != null ? s.last_value : 0), 0))} <span className="tile-u">{kinds.power?.[0]?.unit ?? "MW"}</span></div></div>
+          <div className="tile"><div className="tile-t">Umumiy quvvat</div><div className="tile-v">{fmtValue((kinds.power ?? []).reduce((a, s) => a + (!s.stale && s.last_value != null ? s.last_value : 0), 0))} <span className="tile-u">{kinds.power?.[0]?.unit ?? "MW"}</span></div></div>
           <div className="tile"><div className="tile-t">Agregatlar</div><div className="tile-v">{dash.units.filter((u) => u.running).length}/{dash.units.length} <span className="tile-u">ishlayapti</span></div></div>
-          <div className="tile"><div className="tile-t">Sensorlar</div><div className="tile-v">{sensors.length} <span className="tile-u">{sensors.filter((s) => s.alarm === "stale").length} aloqasiz · {dash.live_clients} kuzatuvchi</span></div></div>
+          <div className="tile"><div className="tile-t">Sensorlar</div><div className="tile-v">{sensors.length} <span className="tile-u">{sensors.filter((s) => s.stale).length} aloqasiz · {dash.live_clients} kuzatuvchi</span></div></div>
         </div>
 
         <div className="dash-main">

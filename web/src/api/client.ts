@@ -281,6 +281,8 @@ export interface Sensor {
   last_ts: string | null;
   last_quality?: Quality;
   alarm: AlarmState;
+  /** Aloqa yo'q / eskirgan (F4: alarm holatidan alohida) */
+  stale?: boolean;
   priority: "low" | "medium" | "high" | "critical";
   writable: boolean;
 }
@@ -401,7 +403,7 @@ export interface Qto { element_count: number; total_volume_m3: number; by_type: 
 export interface Clash { kind: "hard" | "possible" | "touch"; a: { guid: string; type: string; name: string }; b: { guid: string; type: string; name: string }; point: number[]; overlap_m: number[]; overlap_volume_m3: number; triangle_hits: number }
 export interface ClashReport { element_count: number; pairs_checked: number; exact: boolean; tolerance: number; hard: number; possible: number; touch: number; clashes: Clash[] }
 export interface LiveMessage {
-  type: "snapshot" | "reading" | "alarm" | "command" | "journal";
+  type: "snapshot" | "reading" | "alarm" | "command" | "journal" | "ping";
   sensors?: LiveReading[];
   event?: { id: number; sensor_id: number; sensor_name: string; state: AlarmState; value: number | null; started_at: string; ended_at: string | null; acked_by: number | null; priority?: string };
   command?: Command;
@@ -411,11 +413,13 @@ export interface LiveMessage {
   value?: number | null;
   ts?: string | null;
   alarm?: AlarmState;
+  stale?: boolean;
+  age_s?: number | null;
   quality?: Quality;
   element_guid?: string | null;
   unit?: string;
 }
-export interface LiveReading { sensor_id: number; key: string; value: number | null; ts: string | null; alarm: AlarmState; quality?: Quality; element_guid: string | null; unit: string }
+export interface LiveReading { sensor_id: number; key: string; value: number | null; ts: string | null; alarm: AlarmState; stale?: boolean; age_s?: number | null; quality?: Quality; element_guid: string | null; unit: string }
 
 const TOKEN_KEY = "ges_token";
 

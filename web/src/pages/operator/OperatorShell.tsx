@@ -67,7 +67,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
     <Ctx.Provider value={ctx}>
       <div className="page ops" data-level={level}>
         <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
-          <span className={`live-dot ${live}`} title={`Jonli oqim: ${live}`}>● {live}</span>
+          <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
         </TopBar>
         <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
           <span className="ops-level">L{level}</span>

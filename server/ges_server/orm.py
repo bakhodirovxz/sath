@@ -407,7 +407,7 @@ class AlarmState(str, enum.Enum):
     ok = "ok"
     low = "low"  # L
     high = "high"  # H
-    stale = "stale"  # ma'lumot kelmayapti
+    stale = "stale"  # ma'lumot kelmayapti — faqat AlarmEvent da (Sensor.stale bayrog'i alohida, F4)
     lowlow = "lowlow"  # LL
     highhigh = "highhigh"  # HH
     roc = "roc"  # rate-of-change: |dv/dt| > roc_limit_per_min
@@ -502,7 +502,10 @@ class Sensor(Base):
     last_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # oxirgi qabul qilingan (bad bo'lmagan) qiymatning sifati — QUALITIES
     last_quality: Mapped[str] = mapped_column(String(16), default="good", server_default="good")
-    alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState, length=16), default=AlarmState.stale)
+    # Jarayon alarm holati (F4: aloqa holatidan ajratilgan — aloqa uzilsa ham faol alarm yashirinmaydi)
+    alarm: Mapped[AlarmState] = mapped_column(Enum(AlarmState, length=16), default=AlarmState.ok)
+    # Aloqa yo'q / eskirgan: stale_after_s dan beri ma'lumot kelmagan (fon tekshiruvi); yangi sensor — stale
+    stale: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     @property

@@ -6,6 +6,7 @@ import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
 import { fmtDate, isAlarm } from "../../ui/format";
+import { useLive } from "../../hooks/useLive";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
 
 interface Props {
@@ -42,7 +43,6 @@ const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
 export default function MonitoringPanel({ projectId, modelId, role, viewer, selection }: Props) {
   const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [live, setLive] = useState<"ulanmoqda" | "jonli" | "uzildi">("ulanmoqda");
   const [selected, setSelected] = useState<number | null>(null);
   const [hours, setHours] = useState(24);
   const [history, setHistory] = useState<ReadingPoint[]>([]);
@@ -61,35 +61,18 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     if (s) { setSelected(s.id); setCmdVal(String(s.last_value ?? 0)); }
   }, [selection, sensors]);
   const [topic, setTopic] = useState("");
-  const wsRef = useRef<WebSocket | null>(null);
   const canEdit = role === "engineer" || role === "approver";
 
   const load = useCallback(() => api.sensors(projectId, modelId).then(setSensors).catch((e) => setError(e.message)), [projectId, modelId]);
   useEffect(() => { void load(); }, [load]);
 
-  // Jonli oqim — uzilsa 3 s dan keyin qayta ulanadi
-  useEffect(() => {
-    let closed = false;
-    let timer: number | undefined;
-    const connect = () => {
-      const ws = api.liveSocket(projectId);
-      wsRef.current = ws;
-      ws.onopen = () => setLive("jonli");
-      ws.onmessage = (ev) => {
-        const m = JSON.parse(ev.data) as LiveMessage;
-        if (m.type === "snapshot" && m.sensors) {
-          setSensors((prev) => prev.map((s) => { const u = m.sensors!.find((x) => x.sensor_id === s.id); return u ? { ...s, last_value: u.value, last_ts: u.ts, alarm: u.alarm, last_quality: u.quality ?? s.last_quality } : s; }));
-        } else if (m.type === "reading" && m.sensor_id != null) {
-          setSensors((prev) => prev.map((s) => (s.id === m.sensor_id ? { ...s, last_value: m.value ?? null, last_ts: m.ts ?? null, alarm: m.alarm ?? s.alarm, last_quality: m.quality ?? s.last_quality } : s)));
-          if (m.sensor_id === selected && m.ts && m.value != null) setHistory((h) => [...h, { ts: m.ts!, v: m.value!, min: m.value!, max: m.value! }].slice(-2000));
-        }
-      };
-      ws.onclose = () => { setLive("uzildi"); if (!closed) timer = window.setTimeout(connect, 3000); };
-      ws.onerror = () => ws.close();
-    };
-    connect();
-    return () => { closed = true; window.clearTimeout(timer); wsRef.current?.close(); };
-  }, [projectId, selected]);
+  // Jonli oqim — umumiy hook (F4: heartbeat, LIVE/STALE/OFFLINE, eksponensial qayta ulanish)
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const onLive = useCallback((m: LiveMessage) => {
+    if (m.type === "reading" && m.sensor_id === selectedRef.current && m.ts && m.value != null) setHistory((h) => [...h, { ts: m.ts!, v: m.value!, min: m.value!, max: m.value! }].slice(-2000));
+  }, []);
+  const live = useLive(projectId, setSensors, onLive);
 
   // Tarix
   useEffect(() => {
@@ -113,7 +96,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     const pts = replay.data[s.id] ?? [];
     let v: ReadingPoint | null = null;
     for (const pt of pts) { if (new Date(pt.ts).getTime() <= replayTime) v = pt; else break; }
-    if (!v) return { ...s, last_value: null, last_ts: null, alarm: "stale" as AlarmState };
+    if (!v) return { ...s, last_value: null, last_ts: null, alarm: "ok" as AlarmState, stale: true };
     const alarm: AlarmState = s.hh_alarm != null && v.v > s.hh_alarm ? "highhigh" : s.high_alarm != null && v.v > s.high_alarm ? "high" : s.ll_alarm != null && v.v < s.ll_alarm ? "lowlow" : s.low_alarm != null && v.v < s.low_alarm ? "low" : "ok";
     return { ...s, last_value: v.v, last_ts: v.ts, alarm };
   });
@@ -125,7 +108,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   useEffect(() => {
     if (!viewer) return;
     const s = view.find((x) => x.id === upstreamId);
-    viewer.setWaterLevel(waterOn && s && s.last_value != null && s.alarm !== "stale" ? s.last_value : null, { upstreamOnly: true });
+    viewer.setWaterLevel(waterOn && s && s.last_value != null && !s.stale ? s.last_value : null, { upstreamOnly: true });
   }, [viewer, view, upstreamId, waterOn]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { viewer?.setWaterLevel(null); }, [viewer]);
 
@@ -161,7 +144,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   useEffect(() => {
     if (!viewer) return;
     if (!animOn) { void viewer.setLiveBindings(null); return; }
-    const items = view.filter((s) => s.element_guid && s.enabled && (s.kind === "position" || s.kind === "status" || s.kind === "power" || s.kind === "flow") && s.alarm !== "stale")
+    const items = view.filter((s) => s.element_guid && s.enabled && (s.kind === "position" || s.kind === "status" || s.kind === "power" || s.kind === "flow") && !s.stale)
       .map((s) => ({ guid: s.element_guid!, kind: s.kind, value: s.last_value }));
     void viewer.setLiveBindings(items);
   }, [view, viewer, animOn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -198,7 +181,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
 
   return (
     <div className="mon">
-      <BPanel id="mon-view" title="Jonli holat" right={<span className={`badge ${live === "jonli" ? "published" : live === "uzildi" ? "rejected" : ""}`}>{live}</span>}>
+      <BPanel id="mon-view" title="Jonli holat" right={<span className={`badge live-${live.toLowerCase()} ${live === "LIVE" ? "published" : live === "STALE" ? "shared" : "rejected"}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan">{live}</span>}>
         <BRow label="Sensorlar" value={`${sensors.length} sensor · ${alarms.length} alarm`} />
         {upstreamId != null && <BRow label="Suv sathi 3D"><input type="checkbox" checked={waterOn} onChange={(e) => setWaterOn(e.target.checked)} title="Raqamli egizak: yuqori byef sathi sensoridan 3D da suv tekisligi" /></BRow>}
         <BRow label="Sog'liq rangi"><input type="checkbox" checked={healthOn} onChange={(e) => setHealthOn(e.target.checked)} title="Aktivlar sog'liq indeksi bo'yicha 3D da bo'yash (yashil / sariq / qizil)" /></BRow>
@@ -258,7 +241,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
             <b>{s.name}</b>
             <span className="grow" />
             <span className="mono">{s.last_value != null ? `${fmtVal(s.last_value)} ${s.unit}` : "—"}</span>
-            <span className={`badge ${s.alarm === "ok" ? "published" : s.alarm === "stale" ? "archived" : "rejected"}`}>{ALARM_LABEL[s.alarm]}</span>
+            <span className={`badge ${s.stale ? "archived" : s.alarm === "ok" ? "published" : "rejected"}`}>{ALARM_LABEL[s.alarm]}</span>
           </div>
           <div className="meta">
             <span className="mono">{s.key}</span> · {KINDS.find((k) => k.id === s.kind)?.title}

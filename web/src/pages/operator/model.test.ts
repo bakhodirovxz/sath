@@ -31,16 +31,17 @@ describe("operator model (F2)", () => {
       mk({ id: 1, alarm: "high", priority: "critical", key: "A" }),
       mk({ id: 2, alarm: "low", priority: "low", key: "B" }),
       mk({ id: 3, alarm: "highhigh", priority: "high", key: "C", alarm_mode: "shelved" }),
-      mk({ id: 4, alarm: "stale", priority: "critical", key: "D" }),
+      mk({ id: 4, alarm: "ok", stale: true, priority: "critical", key: "D" }),
+      mk({ id: 7, alarm: "high", stale: true, priority: "medium", key: "G" }), // aloqa yo'q, lekin faol alarm yashirinmaydi (F4)
       mk({ id: 5, alarm: "ok", key: "E" }),
       mk({ id: 6, alarm: "high", priority: "high", key: "F", enabled: false }),
     ];
     const sm = summarize(ss);
-    expect(sm.total).toBe(2);
-    expect(sm.byPriority).toEqual({ critical: 1, high: 0, medium: 0, low: 1 });
-    expect(sm.stale).toBe(1);
+    expect(sm.total).toBe(3);
+    expect(sm.byPriority).toEqual({ critical: 1, high: 0, medium: 1, low: 1 });
+    expect(sm.stale).toBe(2);
     expect(sm.worst?.key).toBe("A");
-    expect(sortByAlarm(ss).map((s) => s.key)).toEqual(["A", "C", "B", "D", "E", "F"]);
+    expect(sortByAlarm(ss).map((s) => s.key)).toEqual(["A", "C", "G", "B", "D", "E", "F"]);
   });
   it("yosh va format", () => {
     const now = Date.parse("2026-09-22T10:00:00Z");

@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from ..orm import AlarmState, Asset, Project, ReadingHourly, Sensor
+from ..orm import Asset, Project, ReadingHourly, Sensor
 from . import live, twin
 
 VIB_ZONES = {  # guruh → (A/B, B/C, C/D)
@@ -101,7 +101,7 @@ def _sensor_block(db: Session, s: Sensor | None) -> dict | None:
         "name": s.name,
         "unit": s.unit,
         "value": v,
-        "stale": s.alarm == AlarmState.stale,
+        "stale": bool(s.stale),
         "slope_per_day": round(tr[0], 5) if tr else None,
         "baseline_mean": round(tr[1], 4) if tr else None,
         "baseline_std": round(tr[2], 4) if tr else None,

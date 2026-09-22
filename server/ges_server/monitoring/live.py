@@ -121,9 +121,7 @@ def settle(
         sensor.alarm_pending = None
         sensor.alarm_pending_since = None
         return None
-    if sensor.alarm == AlarmState.stale:
-        delay = 0
-    elif target == AlarmState.ok:
+    if target == AlarmState.ok:
         delay = int(sensor.off_delay_s or 0)
     else:
         delay = int(sensor.on_delay_s or 0)
@@ -268,6 +266,8 @@ def sensor_message(sensor: Sensor) -> dict:
         "value": sensor.last_value,
         "ts": _aware(sensor.last_ts).isoformat() if sensor.last_ts else None,
         "alarm": sensor.alarm.value,
+        "stale": bool(sensor.stale),
+        "age_s": round((datetime.now(timezone.utc) - _aware(sensor.last_ts)).total_seconds(), 1) if sensor.last_ts else None,
         "alarm_mode": effective_mode(sensor) or "normal",
         "quality": sensor.last_quality or "good",
         "element_guid": sensor.element_guid,
@@ -428,6 +428,11 @@ def ingest(
             sensor.last_quality = quality
             changed_map.setdefault(sensor.id, sensor)
     changed = list(changed_map.values())
+    for sensor in changed:
+        if sensor.stale:  # aloqa qaytdi: ochiq "stale" hodisasi yopiladi, jarayon alarmi o'z holida
+            sensor.stale = False
+            for ev in db.query(AlarmEvent).filter_by(sensor_id=sensor.id, state=AlarmState.stale, ended_at=None).all():
+                ev.ended_at = utcnow()
     _bulk_insert_readings(db, rows)
     # Alarm holati — har sensor uchun paketdagi eng so'nggi qiymat bo'yicha bir marta
     # (tarixiy import/CSV da har nuqta uchun hodisa ochilib "alarm toshqini" bo'lmasin)
@@ -563,18 +568,26 @@ def mark_bad(db: Session, project_id: int, sensor_ids: list[int], source: str = 
 
 
 def mark_stale(db: Session, project_id: int) -> list[Sensor]:
-    """stale_after_s dan beri ma'lumot kelmagan sensorlarni 'stale' qiladi."""
+    """stale_after_s dan beri ma'lumot kelmagan sensorlarga `stale` bayrog'i (F4): jarayon alarm holati
+    o'zgarmaydi (yuqori alarm yashirinmaydi), jurnalga alohida `stale` hodisasi yoziladi."""
     now = datetime.now(timezone.utc)
     changed, events = [], []
     for s in db.query(Sensor).filter_by(project_id=project_id, enabled=True).all():
-        if s.alarm != AlarmState.stale and (
-            s.last_ts is None or (now - _aware(s.last_ts)).total_seconds() > s.stale_after_s
-        ):
+        if not s.stale and (s.last_ts is None or (now - _aware(s.last_ts)).total_seconds() > s.stale_after_s):
+            s.stale = True
             s.alarm_pending = None
             s.alarm_pending_since = None
-            ev = transition(db, s, AlarmState.stale, s.last_value)
-            if ev is not None:
-                events.append((ev, s))
+            ev = AlarmEvent(
+                project_id=s.project_id,
+                sensor_id=s.id,
+                state=AlarmState.stale,
+                value=s.last_value,
+                started_at=utcnow(),
+                suppressed=effective_mode(s),
+            )
+            db.add(ev)
+            db.flush()
+            events.append((ev, s))
             changed.append(s)
     if changed:
         db.commit()

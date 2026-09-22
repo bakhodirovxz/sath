@@ -57,7 +57,7 @@ export function summarize(sensors: Sensor[]): AlarmSummary {
   let worstRank = Infinity;
   for (const s of sensors) {
     if (!s.enabled) continue;
-    if (s.alarm === "stale") { out.stale++; continue; }
+    if (s.stale) out.stale++;  // aloqa yo'q — alohida sanaladi, lekin faol alarm yashirinmaydi (F4)
     if (!isActiveAlarm(s.alarm)) continue;
     if ((s.alarm_mode ?? "normal") !== "normal" || s.suppressed) continue; // shelved/OOS/bostirilgan — ko'rsatilmaydi
     out.total++;

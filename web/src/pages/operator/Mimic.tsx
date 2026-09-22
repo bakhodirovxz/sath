@@ -141,7 +141,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const p = sensorOf(e);
             const run = sensorOf(e, "run");
             const st = p ? alarmStyle(p.alarm, p.priority) : null;
-            const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && p.last_value != null && p.last_value > 0.05 && p.alarm !== "stale";
+            const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && p.last_value != null && p.last_value > 0.05 && !p.stale;
             return (
               <g key={e.id} {...common} data-testid="mimic-unit">
                 <circle cx={e.x} cy={e.y} r={24} fill={p ? (on ? "var(--mimic-unit-on)" : "var(--mimic-unit-off)") : "url(#nodata)"} stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth="2" strokeDasharray={p ? undefined : "3 3"} />
@@ -209,7 +209,7 @@ function ValueBox({ x, y, w, s, label, now, onOpen, editing }: { x: number; y: n
   const st = s ? alarmStyle(s.alarm, s.priority) : null;
   const q = s ? qualityStyle(s.last_quality) : null;
   const age = s ? ageSeconds(s.last_ts, now) : null;
-  const stale = !!s && (s.alarm === "stale" || (age != null && age > s.stale_after_s));
+  const stale = !!s && (!!s.stale || (age != null && age > s.stale_after_s));
   return (
     <g className={`mimic-slot ${s && onOpen && !editing ? "clickable" : ""}`} onClick={() => s && !editing && onOpen?.(s.id)} data-testid="mimic-value" data-bound={s ? "1" : "0"}>
       <rect x={x - w / 2} y={y - 16} width={w} height={32} rx="2" fill="var(--panel)" stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth={st && st.rank ? 2 : 1} strokeDasharray={s ? undefined : "3 3"} />

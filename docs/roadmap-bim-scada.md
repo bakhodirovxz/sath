@@ -734,7 +734,7 @@ Qabul mezoni: har darajadan boshqasiga o'tish yo'li bor; e2e testda Level 1 → 
 sinaladi.
 Bog'liqlik: F1.
 
-### F3 — Mimikani konfiguratsiyalanadigan qilish ✅
+### F3 — Mimikani konfiguratsiyalanadigan qilish ✅ (`0e8a8ea`)
 
 Bajarildi: `web/src/pages/operator/scheme.ts` — sxema JSON (`{version, units, elements[{id,type,x,y,w,h,label,sensor_id,
 unit,extra}]}`), `defaultScheme(n)` 1–12 agregat (6+ ikki qator, zal kengligi moslashadi), `bindFromSlots` (eski slotlar),
@@ -763,7 +763,16 @@ server tomonda sxema saqlash
 Qabul mezoni: 2 va 6 agregatli konfiguratsiyalar to'g'ri chiziladi (test).
 Bog'liqlik: F1, F2.
 
-### F4 — Sifat, eskirish va aloqa holatini to'g'ri ko'rsatish
+### F4 — Sifat, eskirish va aloqa holatini to'g'ri ko'rsatish ✅
+
+Bajarildi: `Sensor.stale` bayrog'i alarm holatidan ajratildi (migratsiya 0017, backfill) — aloqa uzilsa jarayon alarmi
+(`high` …) saqlanadi va ko'rinadi, jurnalga alohida `stale` hodisasi, aloqa qaytsa u yopiladi; WS xabari
+`{value, quality, alarm, stale, age_s}`; `SensorOut` datetimelar UTC offset bilan; server WebSocket heartbeat ping
+(10 s). Klient: `useLive` yagona hook (MonitoringPanel nusxasi olib tashlandi) — `LIVE → STALE (15 s) → OFFLINE (30 s)`
+holat mashinasi, yarim ochiq soketni yopib qayta ulanish, eksponensial kechikish + jitter (≤ 60 s), 4401/4403 da
+takrorlanmaydi; holat belgisi uch xil (rang + matn + OFFLINE miltillaydi); sifat kodi (`✕`/`~`/`m`) va yosh matni
+(ValueCard, Mimic, faceplate). Testlar: server `test_stale_flag.py` (yuqori alarm aloqa yo'qolganda yashirinmaydi,
+ping), `useLive.test.tsx` (jim uzilish → 30 s ichida OFFLINE, qayta ulanish, 4401).
 
 Muammo:
 - `client.ts:233` — `AlarmState` sifat va alarm holatini bitta enum ga qo'shgan. Yuqori alarmdagi

@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from ..models import storage
 from ..orm import (
-    AlarmState,
     Asset,
     Model,
     Project,
@@ -180,7 +179,7 @@ def catalog_site_values(kind: str, st: dict) -> dict:
 
 
 def _live(s: Sensor | None) -> float | None:
-    if s is None or s.alarm == AlarmState.stale or s.last_value is None:
+    if s is None or s.stale or s.last_value is None:
         return None
     return float(s.last_value)
 
@@ -511,7 +510,7 @@ def asset_status(db: Session, project: Project) -> list[dict]:
                 "element_guid": a.element_guid,
                 "power_sensor_id": a.power_sensor_id,
                 "running": bool(
-                    s and s.alarm != AlarmState.stale and (s.last_value or 0) > RUN_THRESHOLD
+                    s and not s.stale and (s.last_value or 0) > RUN_THRESHOLD
                 ),
                 "run_hours_total": round(total_h, 1),
                 "starts_total": total_starts,
@@ -560,7 +559,7 @@ def snapshot(db: Session, project_id: int, at: datetime) -> list[dict]:
             )
             if h and live._aware(h.hour) >= floor_hour(at) - timedelta(hours=6):
                 ts, val = live._aware(h.hour), h.avg
-        alarm = "stale"
+        alarm = "ok"
         if val is not None:
             alarm = live.evaluate_alarm(s, val).value
         out.append(
@@ -570,6 +569,7 @@ def snapshot(db: Session, project_id: int, at: datetime) -> list[dict]:
                 "value": val,
                 "ts": ts.isoformat() if ts else None,
                 "alarm": alarm,
+                "stale": val is None,
                 "quality": quality,
                 "element_guid": s.element_guid,
                 "unit": s.unit,

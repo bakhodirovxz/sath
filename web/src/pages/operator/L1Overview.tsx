@@ -39,7 +39,7 @@ function Body() {
   }, [enabled]);
   const totalPower = useMemo(() => {
     if (key.total?.last_value != null) return key.total.last_value;
-    const ps = units.map(([, ss]) => ss.find((s) => s.kind === "power" && /\.P$/i.test(s.key))).filter((s): s is Sensor => !!s && s.alarm !== "stale" && s.last_value != null);
+    const ps = units.map(([, ss]) => ss.find((s) => s.kind === "power" && /\.P$/i.test(s.key))).filter((s): s is Sensor => !!s && !s.stale && s.last_value != null);
     return ps.length ? ps.reduce((a, s) => a + (s.last_value ?? 0), 0) : null;
   }, [key.total, units]);
   const powerUnit = units.flatMap(([, ss]) => ss).find((s) => s.kind === "power")?.unit ?? "MW";
@@ -67,7 +67,7 @@ function Body() {
               const run = ss.find((s) => /\.RUN$/i.test(s.key));
               const sm = summarize(ss);
               const st = sm.worst ? alarmStyle(sm.worst.alarm, sm.worst.priority) : null;
-              const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && (p.last_value ?? 0) > 0.05 && p.alarm !== "stale";
+              const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && (p.last_value ?? 0) > 0.05 && !p.stale;
               return (
                 <Link key={n} to={opsPath(pid, "unit", n)} className={`unit-card ${sm.total ? "alarm" : ""}`} data-testid="unit-card" style={st ? { borderColor: st.color } : undefined}>
                   <div className="row"><b>Agregat {n}</b><span className="grow" />{st && <span className="alarm-mark" style={{ color: st.color }}>{st.glyph}{st.code}</span>}<span className={`badge ${on ? "published" : "archived"}`}>{on ? "ISHLAYAPTI" : "TO'XTAGAN"}</span></div>

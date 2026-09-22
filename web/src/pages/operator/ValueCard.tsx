@@ -11,7 +11,7 @@ export default function ValueCard({ s, pid, compact = false, now }: { s: Sensor;
   const st = alarmStyle(s.alarm, s.priority);
   const q = qualityStyle(s.last_quality);
   const age = ageSeconds(s.last_ts, now);
-  const stale = s.alarm === "stale" || (age != null && age > s.stale_after_s);
+  const stale = !!s.stale || (age != null && age > s.stale_after_s);
   const bad = s.last_quality === "bad";
   const mode = s.alarm_mode && s.alarm_mode !== "normal" ? s.alarm_mode : s.suppressed ? "suppressed" : null;
   return (

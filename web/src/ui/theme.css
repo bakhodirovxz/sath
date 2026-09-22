@@ -653,8 +653,11 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .ops-nav { display: flex; gap: 6px; align-items: center; padding: 4px 16px; background: var(--chrome); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .ops-level { font-family: var(--mono); font-weight: 700; color: var(--text-muted); margin-right: 6px; }
 .live-dot { font-size: 11px; color: var(--text-muted); }
-.live-dot.jonli { color: var(--ok); }
-.live-dot.uzildi { color: var(--danger); }
+.live-dot.live { color: var(--ok); }
+.live-dot.stale { color: var(--warn); }
+.live-dot.offline { color: var(--danger); font-weight: 700; }
+.badge.live-offline { animation: live-blink 1s steps(2, start) infinite; }
+@keyframes live-blink { to { visibility: hidden; } }
 .alarm-strip { display: inline-flex; gap: 10px; align-items: center; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); text-decoration: none; }
 .alarm-strip:hover { text-decoration: none; background: var(--chrome-2); }
 .ops-body { padding: 12px 16px; }

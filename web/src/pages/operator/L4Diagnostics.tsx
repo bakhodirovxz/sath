@@ -31,13 +31,13 @@ function Body({ sensorId }: { sensorId: number | null }) {
   }, [pid, project?.my_role]);
   useEffect(() => { if (sel != null) api.readings(sel, 1, 200).then((r) => setRaw(r.points)).catch(() => setRaw([])); }, [sel]);
   const gw = useMemo(() => sensors.filter((s) => /^GW\./i.test(s.key)), [sensors]);
-  const stale = useMemo(() => sensors.filter((s) => s.enabled && (s.alarm === "stale" || (ageSeconds(s.last_ts, now) ?? Infinity) > s.stale_after_s)), [sensors, now]);
+  const stale = useMemo(() => sensors.filter((s) => s.enabled && (s.stale || (ageSeconds(s.last_ts, now) ?? Infinity) > s.stale_after_s)), [sensors, now]);
   const bad = useMemo(() => sensors.filter((s) => s.enabled && s.last_quality && s.last_quality !== "good"), [sensors]);
   const s: Sensor | undefined = sensors.find((x) => x.id === sel);
   return (
     <div className="l4">
       <div className="dash-kpi">
-        <div className={`tile ${live !== "jonli" ? "tile-alarm" : ""}`}><div className="tile-t">Jonli oqim (WebSocket)</div><div className="tile-v">{live}</div></div>
+        <div className={`tile ${live !== "LIVE" ? "tile-alarm" : ""}`}><div className="tile-t">Jonli oqim (WebSocket)</div><div className="tile-v">{live}</div></div>
         <div className="tile"><div className="tile-t">Server</div><div className="tile-v">{health ? String(health.status ?? "ok") : "—"} <span className="tile-u">{health && typeof health.version === "string" ? health.version : ""}</span></div></div>
         <div className={`tile ${stale.length ? "tile-alarm" : ""}`}><div className="tile-t">Aloqasiz sensorlar</div><div className="tile-v">{stale.length} <span className="tile-u">/ {sensors.filter((x) => x.enabled).length}</span></div></div>
         <div className={`tile ${bad.length ? "tile-alarm" : ""}`}><div className="tile-t">Sifati yaxshi emas</div><div className="tile-v">{bad.length}</div></div>

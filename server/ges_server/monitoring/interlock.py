@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from ges_sim import custom
 from sqlalchemy.orm import Session
 
-from ..orm import AlarmState, Interlock, Sensor
+from ..orm import Interlock, Sensor
 
 _IDENT = re.compile(r"[^0-9A-Za-z_]")
 
@@ -37,7 +37,7 @@ def env_for(db: Session, project_id: int, value: float | None = None) -> dict:
     """Baholash muhiti: faqat ishonchli (stale emas, bad emas, qiymati bor) sensorlar."""
     env: dict = {}
     for s in db.query(Sensor).filter_by(project_id=project_id, enabled=True).all():
-        if s.last_value is None or s.alarm == AlarmState.stale or (s.last_quality or "good") == "bad":
+        if s.last_value is None or s.stale or (s.last_quality or "good") == "bad":
             continue
         env[var_name(s.key)] = float(s.last_value)
     if value is not None:

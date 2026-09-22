@@ -33,6 +33,7 @@ from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, 
 from . import alarm_kpi, historian, interlock, keys, live, mqtt_bridge, soe
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
+WS_PING_S = 10.0  # WebSocket heartbeat davri (klient 3× davrda xabar kelmasa OFFLINE deb hisoblaydi)
 
 ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
@@ -201,6 +202,7 @@ class SensorOut(BaseModel):
     last_ts: datetime | None
     last_quality: str = "good"
     alarm: AlarmState
+    stale: bool = True
     priority: str = "medium"
     writable: bool = False
     min_setpoint: float | None = None
@@ -449,7 +451,7 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
         s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
-    if s.last_value is not None and s.alarm != AlarmState.stale:
+    if s.last_value is not None and not s.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
         s.alarm_pending = s.alarm_pending_since = None
     if "suppress_condition" in changes:
@@ -806,7 +808,9 @@ def alarms(project: ViewerProject, db: DB):
     return (
         db.query(Sensor)
         .filter(
-            Sensor.project_id == project.id, Sensor.enabled.is_(True), Sensor.alarm != AlarmState.ok
+            Sensor.project_id == project.id,
+            Sensor.enabled.is_(True),
+            (Sensor.alarm != AlarmState.ok) | Sensor.stale.is_(True),
         )
         .order_by(Sensor.name)
         .all()
@@ -1232,7 +1236,7 @@ def dashboard(project: ViewerProject, db: DB):
             "sensor_id": s.id,
             "name": s.name,
             "running": bool(
-                s.alarm != AlarmState.stale
+                not s.stale
                 and s.last_value is not None
                 and s.last_value > max(0.5, 0.01 * (s.high_alarm or 0))
             ),
@@ -1393,14 +1397,18 @@ async def live_ws(ws: WebSocket, project_id: int, token: str = Query("")):
     )
     try:
         await ws.send_json({"type": "snapshot", "sensors": snapshot})
+        # Heartbeat (F4): har WS_PING_S soniyada ping — klient xabar yoshi bo'yicha LIVE → STALE → OFFLINE ni aniqlaydi
         while True:
-            await ws.receive_text()  # ping/pong yoki mijoz xabari — e'tiborsiz
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=WS_PING_S)  # ping/pong yoki mijoz xabari — e'tiborsiz
+            except (TimeoutError, asyncio.TimeoutError):
+                await ws.send_json({"type": "ping", "ts": datetime.now(timezone.utc).isoformat()})
     except WebSocketDisconnect:
         pass
     finally:
         live.hub.disconnect(project_id, ws)
-        await asyncio.to_thread(
-            audit.log_now,
+        # Sinxron: ulanish bekor qilinayotganda (cancel) ham yozuv kafolatlanadi (qisqa DB yozuvi)
+        audit.log_now(
             user_id=uid,
             action="ws.disconnect",
             target_type="project",

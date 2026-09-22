@@ -305,7 +305,7 @@ def test_assets_and_snapshot(client, users, operator):
         params={"at": (d2 - timedelta(days=30)).isoformat()},
         headers=users["viewer"],
     ).json()
-    assert next(s for s in snap["sensors"] if s["key"] == "AGG1.P")["alarm"] == "stale"
+    assert next(s for s in snap["sensors"] if s["key"] == "AGG1.P")["stale"] is True
 
 
 def test_asset_patch_rejects_foreign_sensor(client, users, admin):

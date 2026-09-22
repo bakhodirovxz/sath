@@ -25,7 +25,7 @@ def sensor(client, users):
 
 def test_sensor_crud_and_permissions(client, users, sensor):
     pid = users["project_id"]
-    assert sensor["alarm"] == "stale" and sensor["last_value"] is None
+    assert sensor["alarm"] == "ok" and sensor["stale"] is True and sensor["last_value"] is None  # F4: aloqa bayrog'i alohida
     # viewer yarata olmaydi, ko'ra oladi
     r = client.post(
         f"/api/projects/{pid}/sensors", json={"key": "X", "name": "x"}, headers=users["viewer"]
@@ -236,7 +236,7 @@ def test_stale_detection(client, users, sensor):
 
     assert background.tick_stale() == 1
     alarms = client.get(f"/api/projects/{pid}/alarms", headers=users["viewer"]).json()
-    assert [a["alarm"] for a in alarms] == ["stale"]
+    assert [(a["alarm"], a["stale"]) for a in alarms] == [("ok", True)]
 
 
 def test_websocket_snapshot_and_live(client, users, sensor):
