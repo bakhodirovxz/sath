@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../../ui/Icon";
-import { api, type Clash, type ClashReport, type Qto, type Version } from "../../api/client";
+import { api, ApiError, type Clash, type ClashReport, type IdsResult, type Qto, type Version } from "../../api/client";
 import type { Viewer } from "../../viewer/Viewer";
 import { fmtValue, ifcLabel } from "../../ui/format";
 
@@ -16,9 +16,11 @@ const KIND_CLASS: Record<Clash["kind"], string> = { hard: "rejected", possible: 
 
 /** BIM tekshiruvlar: hajm-miqdor hisobi (QTO) va to'qnashuvlar (clash detection). */
 export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
-  const [mode, setMode] = useState<"qto" | "clash">("clash");
+  const [mode, setMode] = useState<"qto" | "clash" | "ids">("clash");
   const [qto, setQto] = useState<Qto | null>(null);
   const [clash, setClash] = useState<ClashReport | null>(null);
+  const [ids, setIds] = useState<IdsResult | null>(null);
+  const [idsPending, setIdsPending] = useState(false);
   const [kind, setKind] = useState<Clash["kind"] | "">("hard");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -26,20 +28,29 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
   const [qFilter, setQFilter] = useState("");
 
   const currentId = current?.id;
-  useEffect(() => { setQto(null); setClash(null); setPicked(null); }, [currentId]);
+  useEffect(() => { setQto(null); setClash(null); setIds(null); setIdsPending(false); setPicked(null); }, [currentId]);
 
   const run = useCallback(async () => {
     if (!currentId) return;
     setBusy(true); setError("");
     try {
       if (mode === "qto") setQto(await api.qto(currentId));
+      else if (mode === "ids") {
+        try { setIds(await api.ids(currentId)); setIdsPending(false); }
+        catch (e) { if (e instanceof ApiError && e.status === 404) setIdsPending(true); else throw e; } // navbatda — hali yo'q
+      }
       else setClash(await api.clashes(currentId));
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
     finally { setBusy(false); }
   }, [currentId, mode]);
   useEffect(() => {
-    if (currentId && ((mode === "qto" && !qto) || (mode === "clash" && !clash))) void run();
-  }, [mode, currentId, qto, clash, run]);
+    if (currentId && ((mode === "qto" && !qto) || (mode === "clash" && !clash) || (mode === "ids" && !ids && !idsPending))) void run();
+  }, [mode, currentId, qto, clash, ids, idsPending, run]);
+  const runIds = useCallback(async () => {
+    if (!currentId) return;
+    setBusy(true); setError("");
+    try { setIds(await api.runIds(currentId)); setIdsPending(false); } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } finally { setBusy(false); }
+  }, [currentId]);
 
   async function show(c: Clash, i: number) {
     setPicked(i);
@@ -59,6 +70,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
       <div className="row">
         <button className={`btn sm ${mode === "clash" ? "active" : ""}`} onClick={() => setMode("clash")}>To'qnashuvlar</button>
         <button className={`btn sm ${mode === "qto" ? "active" : ""}`} onClick={() => setMode("qto")}>Hajm-miqdor</button>
+        <button className={`btn sm ${mode === "ids" ? "active" : ""}`} onClick={() => setMode("ids")} data-testid="checks-ids">IDS</button>
         <span className="grow" />
         {busy && <span className="muted small">hisoblanmoqda…</span>}
       </div>
@@ -91,6 +103,49 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
             </div>
           )}
         </>
+      )}
+
+      {mode === "ids" && (
+        <div className="ids" data-testid="ids-panel">
+          <p className="muted small">
+            Axborot talablari (IDS, buildingSMART) — <code>docs/ids/sath-ges.ids</code>: nomlash, georeferensiya, Pset_GES_* pasportlari. Har yuklashda avtomatik.
+            <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => void runIds()} disabled={busy}>Qayta tekshirish</button>
+          </p>
+          {idsPending && !ids && <p className="muted">Tekshiruv navbatda… (bir necha soniya) yoki «Qayta tekshirish»</p>}
+          {ids && (
+            <>
+              <p>
+                <span className={`badge ${ids.status === "pass" ? "approved" : ids.status === "fail" ? "rejected" : "high"}`} data-testid="ids-status">{ids.status === "pass" ? "O'TDI" : ids.status === "fail" ? "O'TMADI" : "XATO"}</span>
+                {" "}{ids.total_specifications_pass ?? 0}/{ids.total_specifications ?? 0} talab · {ids.total_checks_pass ?? 0}/{ids.total_checks ?? 0} tekshiruv · {new Date(ids.checked_at).toLocaleString()}
+                {ids.error && <span className="error"> {ids.error}</span>}
+              </p>
+              <div className="list">
+                {(ids.specifications ?? []).map((sp) => (
+                  <div key={sp.identifier ?? sp.name} className="list-item">
+                    <div className="title">
+                      <span className={`badge ${sp.status ? "approved" : "rejected"}`}>{sp.status ? "ok" : "yo'q"}</span>
+                      <span className="mono dim small">{sp.identifier}</span> <span>{sp.name}</span>
+                      <span className="grow" />
+                      <span className="dim small">{sp.passed}/{sp.applicable}{sp.failed ? ` · ${sp.failed} yiqildi` : ""}</span>
+                    </div>
+                    {sp.description && <div className="dim small">{sp.description}</div>}
+                    {sp.requirements.filter((r) => !r.status).map((r, i) => (
+                      <div key={i} style={{ marginTop: 4 }}>
+                        <div className="small">{r.description}</div>
+                        {r.failed.slice(0, 50).map((f, j) => (
+                          <div key={j} className="small clickable" onClick={() => f.guid && viewer?.selectByGuids([f.guid], true)} title={f.reason ?? ""}>
+                            <Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {f.name || f.guid} <span className="dim">{f.class ? ifcLabel(f.class) : ""} — {f.reason}</span>
+                          </div>
+                        ))}
+                        {r.failed_total > 50 && <div className="dim small">…yana {r.failed_total - 50} ta</div>}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {mode === "qto" && qto && (

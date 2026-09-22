@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sath GES modeli uchun axborot talablari (IDS 1.0, buildingSMART). Har yuklashda ifctester bilan
+     tekshiriladi (G2), natija versiyaga biriktiriladi; loyihada "IDS majburiy" bo'lsa yiqilgan versiya
+     tasdiqlanmaydi. IFC4 (hozirgi) va IFC4X3 (G1) uchun. -->
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Sath GES — axborot talablari</title>
+    <copyright>Sath</copyright>
+    <version>1.0</version>
+    <description>GES BIM modeli: nomlash, georeferensiya, GES obyektlari pasporti (Pset_GES_*).</description>
+    <author>bim@sath.local</author>
+    <date>2026-09-22</date>
+    <purpose>Yuklashda avtomatik tekshiruv va tasdiqlash sharti</purpose>
+  </info>
+  <specifications>
+
+    <specification name="Loyiha nomi" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-01">
+      <applicability minOccurs="1" maxOccurs="1">
+        <entity><name><simpleValue>IFCPROJECT</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>Name</simpleValue></name></attribute>
+      </requirements>
+    </specification>
+
+    <specification name="Georeferensiya (maydon)" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-02"
+                   description="IfcSite RefLatitude/RefLongitude — DEM, toshqin chegarasi va GIS uchun (G3: IfcMapConversion)">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCSITE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>RefLatitude</simpleValue></name></attribute>
+        <attribute><name><simpleValue>RefLongitude</simpleValue></name></attribute>
+      </requirements>
+    </specification>
+
+    <specification name="Elementlar nomlangan" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-03"
+                   description="GES elementlari (togon, quvur, turbina, generator, transformator, ...) nomsiz bolmasin">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="IFCWALL"/>
+              <xs:enumeration value="IFCSLAB"/>
+              <xs:enumeration value="IFCCOLUMN"/>
+              <xs:enumeration value="IFCBEAM"/>
+              <xs:enumeration value="IFCPIPESEGMENT"/>
+              <xs:enumeration value="IFCFLOWMOVINGDEVICE"/>
+              <xs:enumeration value="IFCELECTRICGENERATOR"/>
+              <xs:enumeration value="IFCTRANSFORMER"/>
+              <xs:enumeration value="IFCVALVE"/>
+              <xs:enumeration value="IFCBUILDINGELEMENTPROXY"/>
+              <xs:enumeration value="IFCGEOGRAPHICELEMENT"/>
+            </xs:restriction>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>Name</simpleValue></name></attribute>
+      </requirements>
+    </specification>
+
+    <specification name="Togon pasporti (Pset_GES_Dam)" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-10">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_GES_Dam</simpleValue></propertySet>
+          <baseName><simpleValue>Turi</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_GES_Dam</simpleValue></propertySet>
+          <baseName><simpleValue>Turi</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Gravitatsion"/>
+              <xs:enumeration value="Tuproqli"/>
+              <xs:enumeration value="Toshli"/>
+              <xs:enumeration value="Arkali"/>
+              <xs:enumeration value="Tayanchli"/>
+              <xs:enumeration value="Kontrfors"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Dam</simpleValue></propertySet>
+          <baseName><simpleValue>Balandlik_m</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Dam</simpleValue></propertySet>
+          <baseName><simpleValue>Uzunlik_m</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Turbina pasporti (Pset_GES_Turbine)" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-11">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Turi</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Turi</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Francis"/>
+              <xs:enumeration value="Kaplan"/>
+              <xs:enumeration value="Pelton"/>
+              <xs:enumeration value="Bulb"/>
+              <xs:enumeration value="Propeller"/>
+              <xs:enumeration value="Turgo"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Quvvat_MW</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Napor_m</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Sarf_m3s</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Bosimli quvur pasporti (Pset_GES_Penstock)" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-12">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCPIPESEGMENT</simpleValue></name></entity>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Penstock</simpleValue></propertySet>
+          <baseName><simpleValue>Diametr_m</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Penstock</simpleValue></propertySet>
+          <baseName><simpleValue>Diametr_m</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Penstock</simpleValue></propertySet>
+          <baseName><simpleValue>Uzunlik_m</simpleValue></baseName>
+          <value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></value>
+        </property>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_GES_Penstock</simpleValue></propertySet>
+          <baseName><simpleValue>Material</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="Turbina — oqim harakatlantiruvchi qurilma" ifcVersion="IFC4 IFC4X3_ADD2" identifier="SATH-13"
+                   description="Pset_GES_Turbine berilgan element IfcFlowMovingDevice bolishi kerak">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <property dataType="IFCREAL">
+          <propertySet><simpleValue>Pset_GES_Turbine</simpleValue></propertySet>
+          <baseName><simpleValue>Quvvat_MW</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <entity><name><simpleValue>IFCFLOWMOVINGDEVICE</simpleValue></name></entity>
+      </requirements>
+    </specification>
+
+  </specifications>
+</ids>

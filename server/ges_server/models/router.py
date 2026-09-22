@@ -59,6 +59,7 @@ class VersionOut(BaseModel):
     state: VersionState
     meta: dict
     created_at: datetime
+    ids_status: str | None = None  # G2: pass | fail | error | None
 
     model_config = {"from_attributes": True}
 
@@ -110,6 +111,7 @@ def version_out(v: Version) -> VersionOut:
         file_size=v.file_size,
         state=v.state,
         meta=v.meta,
+        ids_status=v.ids_status,
         created_at=v.created_at,
     )
 
@@ -271,6 +273,37 @@ def upload_version(
     db.refresh(version)
     derived.enqueue_for(db, sha)
     return version_out(version)
+
+
+@router.get("/versions/{version_id}/ids")
+def version_ids(version_id: int, user: CurrentUser, db: DB):
+    """IDS tekshiruv natijasi (G2): talablar, yiqilgan elementlar (GUID) — hali tekshirilmagan bo'lsa 404."""
+    version = get_version_checked(db, version_id, user, Role.viewer)
+    if version.ids_result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IDS tekshiruvi hali bajarilmagan (navbatda) — «Qayta tekshirish»")
+    return version.ids_result
+
+
+@router.post("/versions/{version_id}/ids")
+def version_ids_run(version_id: int, user: CurrentUser, db: DB):
+    """IDS tekshiruvini hozir bajarish (muhandis+) va natijani saqlash."""
+    from . import ids_check
+
+    version = get_version_checked(db, version_id, user, Role.engineer)
+    try:
+        path = storage.resolve(version.file_sha256)
+    except FileNotFoundError:
+        raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
+    res = ids_check.validate(path)
+    for v in db.query(Version).filter_by(file_sha256=version.file_sha256).all():
+        v.ids_status = res["status"]
+        v.ids_result = res
+    audit.log(
+        db, user_id=user.id, action="version.ids_check", target_type="version", target_id=version.id,
+        project_id=version.model.project_id, detail={"status": res["status"]},
+    )
+    db.commit()
+    return res
 
 
 @router.get("/versions/{version_id}/fragments")

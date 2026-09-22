@@ -1069,7 +1069,7 @@ Fayllar: `server/ges_server/models/drafts.py`, `models/ifc_meta.py`,
 Qabul mezoni: IFC4.3 model yuklanadi, tur xaritalash testi o'tadi, noto'g'ri sinf nomi xato beradi.
 Bog'liqlik: yo'q. Bu sezilarli ish — alohida loyiha sifatida rejalashtirilsin.
 
-### G2 — IDS validatsiya
+### G2 — IDS validatsiya ✅
 
 Muammo: model tekshiruvi spetsifikatsiyasi yo'q. "Soddalashtirilgan ISO 19650" da'vosi
 tekshirilmaydigan.
@@ -2047,7 +2047,7 @@ Fayllar: yangi `docs/security-zones.md`, `deploy/README.md`, `docs/admin.md`
 Qabul mezoni: hujjat mavjud va deploy uni aks ettiradi.
 Bog'liqlik: L1.
 
-### L8 — Yuqori ishonchlilik ✅
+### L8 — Yuqori ishonchlilik ✅ (`0427f26`)
 
 Muammo: bitta `ges` xizmati, SQLite default, fon sikli jarayon ichida
 (`monitoring/background.py:61`), `Hub` jarayon xotirasida. Ikki replikani load balancer ortida

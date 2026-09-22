@@ -77,6 +77,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
               {current?.id === v.id && <Icon name="eye" size={12} title="ochiq" />}
               <span className="grow">{v.message || <span className="dim">izohsiz</span>}</span>
               {v.tag && <BBadge kind="open" title="Yorliq">{v.tag}</BBadge>}
+              {v.ids_status && <BBadge kind={v.ids_status === "pass" ? "approved" : v.ids_status === "fail" ? "rejected" : "open"} title="IDS tekshiruvi (G2)">IDS {v.ids_status === "pass" ? "✓" : v.ids_status === "fail" ? "✗" : "?"}</BBadge>}
               <BBadge kind={v.state}>{label(v.state)}</BBadge>
               <span className="dim mono">{fmtDate(v.created_at).slice(0, 10)}</span>
             </>

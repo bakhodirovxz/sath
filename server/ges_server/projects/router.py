@@ -22,6 +22,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
     location: str | None = None
+    ids_required: bool | None = None  # G2: IDS yiqilgan versiya tasdiqlanmaydi
 
 
 class ProjectOut(BaseModel):
@@ -31,6 +32,7 @@ class ProjectOut(BaseModel):
     location: str
     my_role: Role | None = None
     model_count: int = 0
+    ids_required: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -59,6 +61,7 @@ def _out(db, project: Project, user: User, role: Role | None = None, model_count
         location=project.location,
         my_role=role if model_count is not None else get_project_role(db, project.id, user),
         model_count=model_count if model_count is not None else len(project.models),
+        ids_required=bool(project.ids_required),
     )
 
 

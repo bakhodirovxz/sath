@@ -27,6 +27,8 @@ export interface Project {
   location: string;
   my_role: Role | null;
   model_count: number;
+  /** G2: IDS tekshiruvi yiqilgan versiya tasdiqlanmaydi */
+  ids_required?: boolean;
 }
 export interface Member {
   user_id: number;
@@ -65,7 +67,13 @@ export interface Version {
     storeys?: { guid: string; name: string; elevation: number | null }[];
   };
   created_at: string;
+  /** G2: IDS natijasi — pass | fail | error | null (navbatda) */
+  ids_status?: "pass" | "fail" | "error" | null;
 }
+export interface IdsFailed { guid: string | null; class: string | null; name: string | null; reason: string | null }
+export interface IdsRequirement { description: string; status: boolean; failed: IdsFailed[]; failed_total: number }
+export interface IdsSpec { identifier: string | null; name: string; description: string; status: boolean; applicable: number; passed: number; failed: number; requirements: IdsRequirement[] }
+export interface IdsResult { status: "pass" | "fail" | "error"; ids: string; checked_at: string; error?: string; title?: string; total_specifications?: number; total_specifications_pass?: number; total_checks?: number; total_checks_pass?: number; specifications?: IdsSpec[] }
 export interface Review {
   id: number;
   reviewer_id: number;
@@ -575,6 +583,8 @@ export const api = {
   project: (id: number) => request<Project>(`/api/projects/${id}`),
   createProject: (body: { name: string; description: string; location: string }) =>
     request<Project>("/api/projects", { method: "POST", body: json(body) }),
+  updateProject: (id: number, body: Partial<{ name: string; description: string; location: string; ids_required: boolean }>) =>
+    request<Project>(`/api/projects/${id}`, { method: "PATCH", body: json(body) }),
   members: (projectId: number) => request<Member[]>(`/api/projects/${projectId}/members`),
   setMember: (projectId: number, user_id: number, role: Role) =>
     request<Member>(`/api/projects/${projectId}/members`, { method: "PUT", body: json({ user_id, role }) }),
@@ -735,6 +745,8 @@ export const api = {
   alarms: (projectId: number) => request<Sensor[]>(`/api/projects/${projectId}/alarms`),
   // BIM tekshiruvlar
   qto: (versionId: number) => request<Qto>(`/api/versions/${versionId}/qto`),
+  ids: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`),
+  runIds: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`, { method: "POST" }),
   clashes: (versionId: number, kind?: string) => request<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
   alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number, includeSuppressed = false) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}${includeSuppressed ? "&include_suppressed=true" : ""}`),

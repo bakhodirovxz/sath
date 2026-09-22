@@ -322,6 +322,29 @@ def create_cr(model_id: int, body: CRCreate, user: CurrentUser, db: DB):
     return _cr_out(cr)
 
 
+def _require_ids(db, version: Version) -> None:
+    """G2: loyihada IDS majburiy bo'lsa — tekshirilmagan versiya hozir tekshiriladi, yiqilgan → 409."""
+    project = version.model.project
+    if not project.ids_required:
+        return
+    if version.ids_status is None:
+        from ..models import ids_check
+
+        try:
+            res = ids_check.validate(storage.resolve(version.file_sha256))
+        except FileNotFoundError:
+            raise HTTPException(status.HTTP_410_GONE, "Versiya fayli topilmadi") from None
+        version.ids_status = res["status"]
+        version.ids_result = res
+        db.flush()
+    if version.ids_status != "pass":
+        failed = [s["name"] for s in (version.ids_result or {}).get("specifications", []) if not s.get("status")]
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "IDS tekshiruvi o'tmadi — tasdiqlash bloklangan (loyiha sozlamasi): " + ("; ".join(failed[:5]) or version.ids_status or "?"),
+        )
+
+
 @router.get("/change-requests/{cr_id}", response_model=CROut)
 def get_cr(cr_id: int, user: CurrentUser, db: DB):
     return _cr_out(_get_cr(db, cr_id, user, Role.viewer))
@@ -338,6 +361,8 @@ def review_cr(cr_id: int, body: ReviewIn, user: CurrentUser, db: DB):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Faqat tasdiqlovchi qaror bera oladi")
         if cr.author_id == user.id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "O'z CR ingizni tasdiqlay olmaysiz")
+    if body.decision == "approve":
+        _require_ids(db, cr.version)
     db.add(
         Review(
             change_request_id=cr.id,
@@ -420,6 +445,7 @@ def merge_cr(cr_id: int, user: CurrentUser, db: DB):
     cr = _get_cr(db, cr_id, user, Role.approver)
     if cr.status != CRStatus.approved:
         raise HTTPException(status.HTTP_409_CONFLICT, "Avval tasdiqlanishi kerak")
+    _require_ids(db, cr.version)
     for v in cr.version.model.versions:
         if v.state == VersionState.published:
             v.state = VersionState.archived

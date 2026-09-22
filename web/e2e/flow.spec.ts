@@ -106,6 +106,12 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".checks")).toContainText("juftlik tekshirildi");
     await page.locator(".checks button", { hasText: "Hajm-miqdor" }).click();
     await expect(page.locator(".checks")).toContainText("jami hajm");
+    // IDS (G2): namuna barcha talablarni qanoatlantiradi — natija navbatda hisoblangan yoki qayta tekshirish
+    await page.getByTestId("checks-ids").click();
+    const status = page.getByTestId("ids-status");
+    if (!(await status.isVisible().catch(() => false))) await page.locator(".checks button", { hasText: "Qayta tekshirish" }).click();
+    await expect(status).toHaveText("O'TDI", { timeout: 60_000 });
+    await expect(page.getByTestId("ids-panel")).toContainText("Georeferensiya");
   });
 
   test("dispetcher paneli va bildirishnomalar", async ({ page, request }) => {

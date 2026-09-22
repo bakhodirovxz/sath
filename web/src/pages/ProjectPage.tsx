@@ -101,6 +101,14 @@ export default function ProjectPage() {
           </table>
         )}
 
+        {canManage && (
+          <p className="small">
+            <label className="row" style={{ gap: 6 }}>
+              <input type="checkbox" checked={!!project?.ids_required} onChange={(e) => api.updateProject(pid, { ids_required: e.target.checked }).then(load).catch((err) => setError(err.message))} data-testid="ids-required" />
+              IDS majburiy — axborot talablari (docs/ids/sath-ges.ids) o'tmagan versiya tasdiqlanmaydi
+            </label>
+          </p>
+        )}
         <h2>A'zolar</h2>
         <table className="grid">
           <thead><tr><th>Foydalanuvchi</th><th>Rol</th>{canManage && <th />}</tr></thead>

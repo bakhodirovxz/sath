@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-u
 WORKDIR /app
 COPY sim/ ./sim/
 COPY server/ ./server/
+COPY docs/ids/ ./docs/ids/
 RUN pip install --no-cache-dir ./sim "./server[postgres,mqtt,cad]"  # cad — STEP/IGES (OpenCASCADE)
 COPY --from=web /web/dist ./web/dist
 COPY --from=web /web/tools ./web/tools

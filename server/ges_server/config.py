@@ -105,6 +105,8 @@ class Settings(BaseSettings):
     node_bin: str = "node"
     # Tashqi konverterlar papkasi (dwg2dxf, assimp, blender, ODAFileConverter) — PATH da bo'lmasa
     tools_dir: Path | None = None
+    # IDS (G2): yuklashda tekshiriladigan axborot talablari fayli (nisbiy — CWD, repo ildizi yoki /app)
+    ids_file: Path = Path("docs/ids/sath-ges.ids")
     # Relyef (DEM) plitkalari (L7, ma'lumot joylashuvi): default tashqi AWS Terrain Tiles — so'rovda faqat plitka
     # koordinatalari (z/x/y) ketadi, lekin bu ob'ekt joylashuvini uchinchi tomonga oshkor qiladi. Yopiq tarmoqda
     # ichki ko'zgu (dem_tile_url) yoki o'chirish (dem_enabled=false); ruxsat etilgan chiquvchi kanal — security-zones.md

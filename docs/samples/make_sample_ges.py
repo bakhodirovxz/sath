@@ -72,6 +72,10 @@ def build(v2: bool = False) -> ifcopenshell.file:
     )
 
     site = ifcopenshell.api.root.create_entity(f, ifc_class="IfcSite", name="GES maydoni")
+    # Georeferensiya (IDS SATH-02): Chorvoq GES atrofi — RefLatitude/RefLongitude (gradus, minut, soniya, mln soniya)
+    site.RefLatitude = (41, 37, 12, 0)
+    site.RefLongitude = (69, 58, 48, 0)
+    site.RefElevation = 890.0
     bld = ifcopenshell.api.root.create_entity(f, ifc_class="IfcBuilding", name="Mashina zali")
     st0 = ifcopenshell.api.root.create_entity(
         f, ifc_class="IfcBuildingStorey", name="Turbina qavati"

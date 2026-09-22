@@ -115,6 +115,8 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     location: Mapped[str] = mapped_column(String(256), default="")
+    # G2: IDS tekshiruvi yiqilgan versiya tasdiqlanmaydi/merge qilinmaydi (default: faqat ogohlantirish)
+    ids_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi) — faqat POST /readings
     ingest_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ingest_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -194,6 +196,9 @@ class Version(Base):
     # IfcOpenShell dan olingan metadata: schema, element soni, storey lar...
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # G2: IDS tekshiruvi — pass | fail | error | None (hali tekshirilmagan); to'liq natija (talablar, yiqilgan elementlar)
+    ids_status: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    ids_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     model: Mapped[Model] = relationship(back_populates="versions")
     author: Mapped[User] = relationship()

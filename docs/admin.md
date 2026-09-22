@@ -116,6 +116,16 @@ noto'liq o'qiydi (3DSOLID/ACIS jismlar umuman o'qilmaydi) — bunday chizmalarni
 yoki `EXPORT` → FBX/OBJ qilib yuklang; 2D kontur (yopiq polyline/aylana) bo'lsa yuklash formasida «2D konturlarni
 ko'tarish, m» ni kiriting.
 
+## IDS — axborot talablari (model tekshiruvi)
+
+Har yuklangan IFC `docs/ids/sath-ges.ids` (IDS 1.0, buildingSMART; `ifctester`) bo'yicha avtomatik
+tekshiriladi: loyiha nomi, maydon georeferensiyasi (RefLatitude/RefLongitude), elementlar nomlangan,
+`Pset_GES_Dam/Turbine/Penstock` pasport maydonlari (qiymat chegaralari, ro'yxatdan turi). Natija versiya
+ro'yxatida `IDS ✓/✗` belgisi, Model → Tekshiruv → IDS (talab bo'yicha yiqilgan elementlar, bosilsa 3D da
+tanlanadi, «Qayta tekshirish»). Loyiha sahifasida tasdiqlovchi «IDS majburiy» ni yoqsa o'tmagan versiya
+tasdiqlanmaydi va merge qilinmaydi (409, sabab bilan); o'chiq bo'lsa faqat ogohlantirish. Talablarni
+o'zgartirish: IDS faylini tahrirlang (`GES_IDS_FILE` bilan boshqa fayl) — sxema/kalitlar bir joyda.
+
 ## Rollar
 
 Loyiha ichida: ko'ruvchi < **dispetcher (operator)** < muhandis < tasdiqlovchi. Dispetcher — SCADA
