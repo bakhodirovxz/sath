@@ -335,15 +335,14 @@ def list_commands(
     db: DB,
     hours: float = Query(24 * 7, gt=0, le=24 * 366),
     limit: int = Query(200, gt=0, le=2000),
+    before_id: int | None = None,
 ):
+    """Buyruqlar tarixi; kursor `before_id` (id kamayish tartibi) — izchil sahifalash (D4)."""
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    q = (
-        db.query(Command)
-        .filter(Command.project_id == project.id, Command.created_at >= since)
-        .order_by(Command.id.desc())
-        .limit(limit)
-    )
-    return [_out(c) for c in q.all()]
+    q = db.query(Command).filter(Command.project_id == project.id, Command.created_at >= since)
+    if before_id is not None:
+        q = q.filter(Command.id < before_id)
+    return [_out(c) for c in q.order_by(Command.id.desc()).limit(limit).all()]
 
 
 def _target_sensor(db, project: Project, sensor_id: int, value: float) -> Sensor:
@@ -896,15 +895,13 @@ def list_journal(
     db: DB,
     hours: float = Query(24 * 7, gt=0, le=24 * 366),
     limit: int = Query(200, gt=0, le=2000),
+    before_id: int | None = None,
 ):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    rows = (
-        db.query(JournalEntry)
-        .filter(JournalEntry.project_id == project.id, JournalEntry.created_at >= since)
-        .order_by(JournalEntry.id.desc())
-        .limit(limit)
-        .all()
-    )
+    q = db.query(JournalEntry).filter(JournalEntry.project_id == project.id, JournalEntry.created_at >= since)
+    if before_id is not None:
+        q = q.filter(JournalEntry.id < before_id)
+    rows = q.order_by(JournalEntry.id.desc()).limit(limit).all()
     return [
         JournalOut(
             id=r.id,

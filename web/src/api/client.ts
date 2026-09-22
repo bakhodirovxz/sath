@@ -669,7 +669,7 @@ export const api = {
   qto: (versionId: number) => request<Qto>(`/api/versions/${versionId}/qto`),
   clashes: (versionId: number, kind?: string) => request<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
-  alarmEvents: (projectId: number, active: boolean, hours = 168) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}`),
+  alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}`),
   ackAlarm: (id: number, comment = "") => request<AlarmEvent>(`/api/alarm-events/${id}/ack`, { method: "POST", body: json({ comment }) }),
   ackAll: (projectId: number) => request<{ acked: number }>(`/api/projects/${projectId}/alarm-events/ack-all`, { method: "POST" }),
   shelveSensor: (id: number, reason: string, hours?: number) => request<Sensor>(`/api/sensors/${id}/shelve`, { method: "POST", body: json({ reason, hours }) }),

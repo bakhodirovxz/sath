@@ -22,6 +22,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func
 
 from .. import audit
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
@@ -237,11 +238,24 @@ class ReadingIn(BaseModel):
 
 
 @router.get("/projects/{project_id}/sensors", response_model=list[SensorOut])
-def list_sensors(project: ViewerProject, db: DB, model_id: int | None = None):
+def list_sensors(
+    project: ViewerProject,
+    db: DB,
+    model_id: int | None = None,
+    limit: int | None = Query(None, gt=0, le=20000),
+    after_id: int | None = None,
+):
+    """Sensorlar: `limit` bo'lmasa hammasi (nom tartibi); kursor `after_id` bilan id tartibi (D4)."""
     q = db.query(Sensor).filter_by(project_id=project.id)
     if model_id is not None:
         q = q.filter((Sensor.model_id == model_id) | (Sensor.model_id.is_(None)))
-    return q.order_by(Sensor.name).all()
+    if after_id is not None:
+        q = q.filter(Sensor.id > after_id).order_by(Sensor.id)
+    else:
+        q = q.order_by(Sensor.name, Sensor.id)
+    if limit is not None:
+        q = q.limit(limit)
+    return q.all()
 
 
 @router.post("/projects/{project_id}/sensors", response_model=SensorOut, status_code=201)
@@ -731,37 +745,20 @@ def readings(
             "hourly": tier == "1h",
             "tier": tier,
         }
-    rows = (
-        db.query(Reading.ts, Reading.value)
-        .filter(Reading.sensor_id == s.id, Reading.ts >= since, Reading.quality != "bad")
-        .order_by(Reading.ts)
-        .all()
-    )
-    total = len(rows)
+    base = db.query(Reading).filter(Reading.sensor_id == s.id, Reading.ts >= since, Reading.quality != "bad")
+    total = base.count()
     points: list[dict] = []
     if total <= limit:
         points = [
-            {
-                "ts": live._aware(t).isoformat(),
-                "v": round(v, 4),
-                "min": round(v, 4),
-                "max": round(v, 4),
-            }
-            for t, v in rows
+            {"ts": live._aware(t).isoformat(), "v": round(v, 4), "min": round(v, 4), "max": round(v, 4)}
+            for t, v in base.with_entities(Reading.ts, Reading.value).order_by(Reading.ts).all()
         ]
     else:
-        per = -(-total // limit)  # har bo'lakda nechta nuqta (yuqoriga yaxlitlash)
-        for i in range(0, total, per):
-            chunk = rows[i : i + per]
-            vals = [v for _, v in chunk]
-            points.append(
-                {
-                    "ts": live._aware(chunk[0][0]).isoformat(),
-                    "v": round(sum(vals) / len(vals), 4),
-                    "min": round(min(vals), 4),
-                    "max": round(max(vals), 4),
-                }
-            )
+        # Siyraklashtirish DB tomonda (D4): vaqt bo'laklari bo'yicha avg/min/max — xom qatorlar RAM ga yuklanmaydi
+        first = base.with_entities(func.min(Reading.ts)).scalar()
+        span_s = max(1.0, (now - live._aware(first)).total_seconds()) if first else hours * 3600
+        sec = max(1, -(-int(span_s) // limit))
+        points = historian.bucketed(db, s.id, since, now, sec)
     return {"sensor_id": s.id, "unit": s.unit, "total": total, "points": points, "hourly": False, "tier": "raw"}
 
 
@@ -881,10 +878,14 @@ def alarm_events(
     hours: float = Query(24 * 7, gt=0, le=24 * 366),
     limit: int = Query(500, gt=0, le=5000),
     include_suppressed: bool = False,
+    before_id: int | None = None,
 ):
     """Alarm jurnali: active=true — davom etayotgan yoki kvitlanmaganlar; aks holda tarix.
-    Bostirilgan (shelved/OOS/shart) hodisalar faqat include_suppressed=true bilan (KPI/audit uchun)."""
+    Bostirilgan (shelved/OOS/shart) hodisalar faqat include_suppressed=true bilan (KPI/audit uchun).
+    Kursor: `before_id` (id kamayish tartibi) — keyingi sahifa."""
     q = db.query(AlarmEvent).filter(AlarmEvent.project_id == project.id)
+    if before_id is not None:
+        q = q.filter(AlarmEvent.id < before_id)
     if not include_suppressed:
         q = q.filter(AlarmEvent.suppressed.is_(None))
     if active:

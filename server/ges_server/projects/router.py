@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 
 from .. import audit
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, require_project_role
-from ..orm import Project, ProjectMember, Role, User
+from ..orm import Model, Project, ProjectMember, Role, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -49,24 +50,53 @@ ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 ApproverProject = Annotated[Project, Depends(require_project_role(Role.approver))]
 
 
-def _out(db, project: Project, user: User) -> ProjectOut:
+def _out(db, project: Project, user: User, role: Role | None = None, model_count: int | None = None) -> ProjectOut:
     return ProjectOut(
         id=project.id,
         name=project.name,
         description=project.description,
         location=project.location,
-        my_role=get_project_role(db, project.id, user),
-        model_count=len(project.models),
+        my_role=role if model_count is not None else get_project_role(db, project.id, user),
+        model_count=model_count if model_count is not None else len(project.models),
     )
 
 
 @router.get("", response_model=list[ProjectOut])
-def list_projects(user: CurrentUser, db: DB):
-    """Admin hammasini, boshqalar faqat a'zo bo'lgan loyihalarni ko'radi."""
-    q = db.query(Project)
+def list_projects(
+    user: CurrentUser,
+    db: DB,
+    limit: int = Query(500, gt=0, le=5000),
+    after_id: int | None = None,
+    q: str | None = None,
+):
+    """Admin hammasini, boshqalar faqat a'zo bo'lgan loyihalarni ko'radi. So'rovlar soni loyihalar
+    sonidan mustaqil (D4): rollar va model soni ikkita agregat so'rov bilan. Kursor: `after_id`
+    (id bo'yicha tartib), `q` — nom bo'yicha qidiruv."""
+    base = db.query(Project)
     if not user.is_admin:
-        q = q.join(ProjectMember).filter(ProjectMember.user_id == user.id)
-    return [_out(db, p, user) for p in q.order_by(Project.name).all()]
+        base = base.join(ProjectMember).filter(ProjectMember.user_id == user.id)
+    if q:
+        base = base.filter(Project.name.ilike(f"%{q}%"))
+    if after_id is not None:
+        base = base.filter(Project.id > after_id).order_by(Project.id)
+    else:
+        base = base.order_by(Project.name, Project.id)
+    projects = base.limit(limit).all()
+    ids = [p.id for p in projects]
+    if not ids:
+        return []
+    counts = dict(
+        db.query(Model.project_id, func.count(Model.id)).filter(Model.project_id.in_(ids)).group_by(Model.project_id).all()
+    )
+    if user.is_admin:
+        roles = {pid: Role.approver for pid in ids}
+    else:
+        roles = dict(
+            db.query(ProjectMember.project_id, ProjectMember.role)
+            .filter(ProjectMember.user_id == user.id, ProjectMember.project_id.in_(ids))
+            .all()
+        )
+    return [_out(db, p, user, roles.get(p.id), counts.get(p.id, 0)) for p in projects]
 
 
 @router.post("", response_model=ProjectOut, status_code=201)
@@ -132,13 +162,17 @@ def delete_project(project_id: int, admin: AdminUser, db: DB):
 
 
 @router.get("/{project_id}/members", response_model=list[MemberOut])
-def list_members(project: ViewerProject):
-    return [
-        MemberOut(
-            user_id=m.user_id, username=m.user.username, full_name=m.user.full_name, role=m.role
-        )
-        for m in project.members
-    ]
+def list_members(project: ViewerProject, db: DB, limit: int = Query(500, gt=0, le=5000), after_id: int | None = None):
+    """A'zolar (bitta JOIN so'rov, N+1 yo'q); kursor `after_id` — user_id bo'yicha."""
+    q = (
+        db.query(ProjectMember, User)
+        .join(User, User.id == ProjectMember.user_id)
+        .filter(ProjectMember.project_id == project.id)
+    )
+    if after_id is not None:
+        q = q.filter(ProjectMember.user_id > after_id)
+    rows = q.order_by(ProjectMember.user_id).limit(limit).all()
+    return [MemberOut(user_id=m.user_id, username=u.username, full_name=u.full_name, role=m.role) for m, u in rows]
 
 
 @router.put("/{project_id}/members", response_model=MemberOut)

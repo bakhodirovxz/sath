@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
@@ -87,8 +87,20 @@ def change_password(body: PasswordChange, user: CurrentUser, db: DB):
 
 
 @router.get("/users", response_model=list[UserOut])
-def list_users(_: AdminUser, db: DB):
-    return db.query(User).order_by(User.username).all()
+def list_users(
+    _: AdminUser,
+    db: DB,
+    limit: int = Query(500, gt=0, le=5000),
+    after_id: int | None = None,
+    q: str | None = None,
+):
+    """Foydalanuvchilar: `limit` + kursor `after_id` (id tartibi), `q` — login/ism bo'yicha qidiruv."""
+    base = db.query(User)
+    if q:
+        base = base.filter((User.username.ilike(f"%{q}%")) | (User.full_name.ilike(f"%{q}%")))
+    if after_id is not None:
+        return base.filter(User.id > after_id).order_by(User.id).limit(limit).all()
+    return base.order_by(User.username, User.id).limit(limit).all()
 
 
 @router.post("/users", response_model=UserOut, status_code=201)

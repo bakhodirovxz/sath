@@ -263,6 +263,22 @@ def tier_points(db: Session, sensor_id: int, tier: str, since: datetime, until: 
     return pts
 
 
+def bucketed(db: Session, sensor_id: int, since: datetime, until: datetime, sec: int) -> list[dict]:
+    """Xom o'lchovlarni `sec` soniyalik bo'laklarga SQL da yig'adi (avg/min/max) — grafik siyraklashtirish."""
+    b = _bucket_expr(db, sec)
+    rows = (
+        db.query(b.label("b"), func.avg(Reading.value), func.min(Reading.value), func.max(Reading.value))
+        .filter(Reading.sensor_id == sensor_id, Reading.ts >= since, Reading.ts < until, Reading.quality != "bad")
+        .group_by(b)
+        .order_by(b)
+        .all()
+    )
+    return [
+        {"ts": datetime.fromtimestamp(int(bk) * sec, tz=timezone.utc).isoformat(), "v": round(avg, 4), "min": round(mn, 4), "max": round(mx, 4)}
+        for bk, avg, mn, mx in rows
+    ]
+
+
 def hourly_points(db: Session, sensor_id: int, since: datetime, until: datetime) -> list[dict]:
     rows = (
         db.query(ReadingHourly)
@@ -299,22 +315,24 @@ def sensor_stats(db: Session, sensor: Sensor, since: datetime, until: datetime) 
     )
     last_hour = max((_aware(h.hour) for h in hourly), default=None)
     raw_since = max(since, last_hour + timedelta(hours=1)) if last_hour else since
-    raw = (
-        db.query(Reading.ts, Reading.value)
+    # Yig'ilmagan dum — SQL agregat (D4): qatorlar RAM ga yuklanmaydi
+    raw_n, raw_sum, raw_min, raw_max = (
+        db.query(func.count(Reading.id), func.sum(Reading.value), func.min(Reading.value), func.max(Reading.value))
         .filter(
             Reading.sensor_id == sensor.id,
             Reading.ts >= raw_since,
             Reading.ts < until,
             Reading.quality != "bad",
         )
-        .all()
+        .one()
     )
-    n = sum(h.n for h in hourly) + len(raw)
+    raw_n = int(raw_n or 0)
+    n = sum(h.n for h in hourly) + raw_n
     if n == 0:
         return {"n": 0, "avg": None, "min": None, "max": None, "energy_mwh": None}
-    total = sum(h.avg * h.n for h in hourly) + sum(v for _, v in raw)
-    mn = min([h.min for h in hourly] + [v for _, v in raw])
-    mx = max([h.max for h in hourly] + [v for _, v in raw])
+    total = sum(h.avg * h.n for h in hourly) + float(raw_sum or 0.0)
+    mn = min([h.min for h in hourly] + ([float(raw_min)] if raw_n else []))
+    mx = max([h.max for h in hourly] + ([float(raw_max)] if raw_n else []))
     out = {
         "n": n,
         "avg": round(total / n, 4),
@@ -326,9 +344,9 @@ def sensor_stats(db: Session, sensor: Sensor, since: datetime, until: datetime) 
         # Quvvat (MW yoki kW) → energiya: soatlik o'rtacha × 1 soat; xom qism — o'rtacha × davr ulushi
         scale = 0.001 if sensor.unit.lower().startswith("kw") else 1.0
         e = sum(h.avg for h in hourly) * scale
-        if raw:
+        if raw_n:
             span_h = (until - raw_since).total_seconds() / 3600
-            e += sum(v for _, v in raw) / len(raw) * min(span_h, 1e9) * scale
+            e += float(raw_sum) / raw_n * min(span_h, 1e9) * scale
         out["energy_mwh"] = round(e, 3)
     return out
 

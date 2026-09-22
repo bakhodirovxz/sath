@@ -494,7 +494,7 @@ Qabul mezoni: 1 mln qatorli sensorda rollup xotirani bosmaydi (test); qatlamlar 
 ishlatiladi.
 Bog'liqlik: D1.
 
-### D3 — SOE (hodisalar ketma-ketligi) ✅
+### D3 — SOE (hodisalar ketma-ketligi) ✅ (`ce3143f`)
 
 Bajarildi: `SequenceEvent` (`soe_events`: project, source, point, state, ts, ts_ms, quality, raw; unikal kalit
 takrorni tashlaydi; migratsiya 0016); `POST /projects/{id}/soe` (ingest kaliti yoki muhandis+, partiyali, per-element
@@ -519,7 +519,13 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/router.py`, yangi `monitoring/s
 Qabul mezoni: 1 ms aniqlikdagi hodisalar tartibi saqlanadi va ko'rinadi.
 Bog'liqlik: A2, D1.
 
-### D4 — Sahifalash va N+1 so'rovlarni tuzatish
+### D4 — Sahifalash va N+1 so'rovlarni tuzatish ✅
+
+Bajarildi: `list_projects` — rollar va model soni ikkita agregat so'rov (so'rovlar soni loyihalar sonidan
+mustaqil, test 60 loyiha), `limit`/`after_id`/`q`; `list_users`, `list_members` (JOIN, N+1 yo'q),
+`list_sensors` (`limit` bo'lmasa hammasi) — `limit`+`after_id`; `alarm-events`, `commands`, `journal` —
+`before_id` kursori; `/sensors/{id}/readings` xom yo'lda siyraklashtirish SQL `GROUP BY` (D2 `bucketed`),
+`sensor_stats` dumi SQL agregat (qatorlar RAM ga yuklanmaydi).
 
 Muammo:
 - `projects/router.py:63` — har loyiha uchun `get_project_role` (bitta so'rov) va
