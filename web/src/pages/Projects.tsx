@@ -69,6 +69,7 @@ export default function Projects() {
                 <div className="row card-actions" onClick={(e) => e.stopPropagation()}>
                   <button className="btn sm" onClick={() => nav(`/projects/${p.id}`)}>Modellar</button>
                   <button className="btn sm" onClick={() => nav(`/projects/${p.id}/dashboard`)}>Dispetcher paneli</button>
+                  <button className="btn sm" onClick={() => nav(`/projects/${p.id}/ops`)} title="ISA-101 operator ekranlari: L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika">Operator (L1)</button>
                 </div>
               </div>
             ))}

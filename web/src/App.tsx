@@ -8,6 +8,10 @@ import ModelPage from "./pages/ModelPage";
 import Admin from "./pages/Admin";
 import DashboardPage from "./pages/DashboardPage";
 import SitePage from "./pages/SitePage";
+import L1Overview from "./pages/operator/L1Overview";
+import L2Area from "./pages/operator/L2Area";
+import L3Faceplate from "./pages/operator/L3Faceplate";
+import L4Diagnostics from "./pages/operator/L4Diagnostics";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, ready } = useAuth();
@@ -29,6 +33,13 @@ export default function App() {
       <Route path="/projects/:projectId" element={<RequireAuth><ProjectPage /></RequireAuth>} />
       <Route path="/projects/:projectId/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/projects/:projectId/site" element={<RequireAuth><SitePage /></RequireAuth>} />
+      {/* ISA-101 operator ekranlari (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika */}
+      <Route path="/projects/:projectId/ops" element={<RequireAuth><L1Overview /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/area/:area" element={<RequireAuth><L2Area /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/sensor/:sensorId" element={<RequireAuth><L3Faceplate /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/unit/:unit" element={<RequireAuth><L3Faceplate /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/diag" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/diag/:sensorId" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
       <Route path="/models/:modelId" element={<RequireAuth><ModelPage /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />

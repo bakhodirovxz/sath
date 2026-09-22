@@ -669,7 +669,7 @@ Bog'liqlik: A1.
 Qaror: dispetcher sahifalari ISA-101 bo'yicha qayta yoziladi; model va muhandislik sahifalari
 hozirgi Blender uslubida qoladi. Ikkalasi bitta dizayn tokenlari to'plamidan rang oladi.
 
-### F1 — Yagona dizayn tokenlari va rejim almashtirish ✅
+### F1 — Yagona dizayn tokenlari va rejim almashtirish ✅ (`28d1ffb`)
 
 Bajarildi: `web/src/ui/tokens.ts` — ikki tema (`engineer` Blender Dark, `operator` ISA-101 neytral kulrang),
 `alarmStyle(state, priority)` → rang + shakl (romb/kvadrat/uchburchak/doira) + matn kodi (HH/H/L/LL/ROC/DEV/?),
@@ -702,7 +702,17 @@ Qabul mezoni: rang qiymatlari faqat tokenlardan keladi (lint qoidasi yoki test);
 o'tadi.
 Bog'liqlik: C1.
 
-### F2 — Ekranlar ierarxiyasi (ISA-101 Level 1–4)
+### F2 — Ekranlar ierarxiyasi (ISA-101 Level 1–4) ✅
+
+Bajarildi: `web/src/pages/operator/` — `OperatorShell` (jonli sensorlar, alarm jamlanmasi shakl+son, L-navigatsiya,
+ota ekranga qaytish, tezkor tugmalar), `L1Overview` (KPI: faol alarmlar, chiqish quvvati, ombor sathi, kiruvchi/
+tashlama, agregatlar, chastota; agregat kartalari, uchastkalar, eng muhim alarmlar), `L2Area` (gidro / mashina
+zali / elektr / yordamchi — `model.areaOf` kalit+tur tasnifi, agregat bo'yicha guruh, uchastka alarmlari),
+`L3Faceplate` (sensor: qiymat, LL/L/H/HH, o'lik zona/kechikish, sifat, yosh, trend, shelve/OOS dialog, ratsionalizatsiya,
+boshqaruv havolasi; agregat: sensorlar + ochiq ish buyruqlari), `L4Diagnostics` (jonli oqim, server, aloqasiz/sifat,
+GW.* teglari, kalit muddati, xom qiymatlar); `ValueCard` (qiymat + alarm belgisi + sifat kodi + yosh, eskirgan —
+shtrix). Marshrutlar `/projects/{id}/ops[/area/:area|/sensor/:id|/unit/:n|/diag[/:id]]`; loyiha sahifalarida
+«Operator (L1)». Testlar: `model.test.ts`; e2e L1 → L2 → L3 → L4 → ota ekran (lokal o'tdi).
 
 Muammo: hozir bitta qo'lda chizilgan SVG mimika (`Mimic.tsx`) — taxminan bitta Level 2 ekran.
 Level 1 umumiy ko'rinish, Level 3 faceplate lar, Level 4 diagnostika yo'q; navigatsiya modeli yo'q.

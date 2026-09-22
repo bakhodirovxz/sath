@@ -123,6 +123,40 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".bell-menu")).toContainText("Alarm");
   });
 
+  test("ISA-101 operator ekranlari: L1 → L2 → L3 faceplate → L4 (F2)", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "RES.H", name: "Yuqori byef", kind: "level", unit: "m", high_alarm: 905 } });
+    await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "AGG1.P", name: "Agregat 1", kind: "power", unit: "MW", high_alarm: 30 } }); // 409 bo'lsa ham mayli
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "RES.H", value: 903.2 }, { key: "AGG1.P", value: 35 }] });
+    await login(page);
+    await page.goto(`/projects/${projectId}/ops`);
+    // L1: KPI, agregat kartasi, uchastkalar, faol alarm (AGG1.P > 30)
+    await expect(page.locator(".ops-nav .ops-level")).toHaveText("L1");
+    await expect(page.getByTestId("l1-alarms")).toContainText("Faol alarmlar");
+    await expect(page.locator(".l1-kpi")).toContainText("903.2");
+    const unit = page.getByTestId("unit-card").first();
+    await expect(unit).toContainText("Agregat 1");
+    // L1 → L2 (uchastka)
+    await page.locator("[data-testid=area-card]", { hasText: "Mashina zali" }).click();
+    await expect(page.locator(".ops-nav .ops-level")).toHaveText("L2");
+    await expect(page.locator("h2")).toContainText("Mashina zali");
+    // L2 → L3 faceplate (qiymat kartasi)
+    await page.locator("[data-testid=vcard][data-key='AGG1.P']").click();
+    await expect(page.locator(".ops-nav .ops-level")).toHaveText("L3");
+    const fp = page.getByTestId("faceplate");
+    await expect(fp).toContainText("Agregat 1");
+    await expect(fp).toContainText("AGG1.P");
+    await expect(fp.locator(".fp-big")).toContainText("35");
+    await expect(fp).toContainText("Ratsionalizatsiya");
+    // L3 → L4 diagnostika → ota ekranga qaytish
+    await fp.getByRole("link", { name: "L4 Diagnostika" }).click();
+    await expect(page.locator(".ops-nav .ops-level")).toHaveText("L4");
+    await expect(page.locator(".l4")).toContainText("Jonli oqim");
+    await page.locator(".ops-nav button", { hasText: "L1 Umumiy" }).click();
+    await expect(page.locator(".ops-nav .ops-level")).toHaveText("L1");
+  });
+
   test("simulyatsiya katalogi: to'g'on barqarorligi va yog'ingarchilik", async ({ page }) => {
     await login(page);
     await page.goto(`/models/${modelId}?v=${versionId}`);
@@ -134,7 +168,7 @@ test.describe.serial("Sath web oqimi", () => {
     await cat.locator(".blist-row", { hasText: "To'g'on barqarorligi" }).click();
     await expect(page.locator(".simform")).toContainText("Profil");
     await page.locator("form button", { hasText: "Hisoblash" }).click();
-    await expect(page.locator(".verdict")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".verdict").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".sim")).toContainText("Ag'darilish zaxirasi");
     await expect(page.locator(".dam-profile")).toBeVisible();
     // Katalogga qaytib (Blender sarlavha: orqaga ikki marta) yog'ingarchilik
@@ -142,7 +176,7 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator(".bhead button[title='Katalogga qaytish']").click();
     await cat.locator(".blist-row", { hasText: "Yog'ingarchilik" }).click();
     await page.locator("form button", { hasText: "Hisoblash" }).click();
-    await expect(page.locator(".verdict")).toContainText("CN", { timeout: 30_000 });
+    await expect(page.locator(".verdict").first()).toContainText("CN", { timeout: 30_000 });
   });
 
   test("3D da element qo'shish va IFC ga commit", async ({ page }) => {

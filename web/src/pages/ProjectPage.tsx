@@ -71,6 +71,7 @@ export default function ProjectPage() {
     <div className="page">
       <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name }]}>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/dashboard`)} title="SCADA: jonli qiymatlar, alarmlar, hisobot">Dispetcher paneli</button>
+        <button className="btn sm" onClick={() => nav(`/projects/${pid}/ops`)} title="ISA-101 operator ekranlari">Operator (L1)</button>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/site`)} title="Yer, tuproq, seysmiklik, sathlar, inshoot belgilari — simulyatsiyalar uchun">Maydon pasporti</button>
         {canEdit && <TwinButton pid={pid} onDone={(id) => nav(`/models/${id}`)} onError={setError} />}
         {canEdit && <button className="btn sm primary" onClick={() => setCreating(true)}>Yangi model</button>}
