@@ -15,6 +15,7 @@ os.environ["GES_SIM_ISOLATE"] = "false"  # testlarda simulyatsiya shu jarayonda 
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
+from ges_server import ratelimit
 from ges_server.auth import security
 from ges_server.db import Base, engine, stamp_head
 from ges_server.main import app, init_db
@@ -34,6 +35,7 @@ def fresh_db():
     stamp_head()
     init_db()
     live.invalidate_sensors()
+    ratelimit.limiter.reset()  # tezlik cheklovi hisoblari testlar orasida o'tmasin (L1)
     yield
 
 

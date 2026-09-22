@@ -94,6 +94,18 @@ class Settings(BaseSettings):
     command_sent_timeout_s: int = 120
     # Kunlik hisobot emaili (UTC soat); -1 — o'chirilgan. Muhandis/tasdiqlovchi/operatorlarga (SMTP bo'lsa)
     daily_report_hour: int = 6
+    # Tezlik cheklovlari (L1), daqiqasiga; 0 — o'chirilgan. Jarayon ichida (replika boshiga).
+    rate_login_per_min: int = 30  # IP bo'yicha (Argon2 CPU sarfi va brute force)
+    rate_ingest_per_min: int = 600  # loyiha bo'yicha (POST readings/soe so'rovlar soni, qatorlar emas)
+    rate_commands_per_min: int = 60  # foydalanuvchi bo'yicha (select/execute)
+    rate_sim_per_min: int = 20  # foydalanuvchi bo'yicha (sim ishlarini yaratish)
+    # Teskari proksi (Caddy) ortida X-Forwarded-For dan klient IP olinadi; to'g'ridan-to'g'ri ochiq serverda false!
+    rate_trust_forwarded: bool = False
+    # Hisobni bloklash: shuncha ketma-ket noto'g'ri parol/MFA → shuncha daqiqa kirish yo'q (DB da, umumiy)
+    login_max_failures: int = 10
+    login_lockout_minutes: int = 15
+    # Administratorlar uchun TOTP MFA majburiy: yoqilmaguncha admin endpointlari 403 (profil MFA sozlashdan tashqari)
+    mfa_required_for_admins: bool = False
 
     @property
     def files_dir(self) -> Path:

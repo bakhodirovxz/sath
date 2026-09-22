@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { useAuth } from "../store/auth";
 
 export default function Login() {
@@ -8,6 +9,8 @@ export default function Login() {
   const loc = useLocation() as { state?: { from?: string } };
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [needOtp, setNeedOtp] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -16,9 +19,10 @@ export default function Login() {
     setBusy(true);
     setError("");
     try {
-      await login(username, password);
+      await login(username, password, otp || undefined);
       nav(loc.state?.from ?? "/", { replace: true });
     } catch (err) {
+      if (err instanceof ApiError && err.mfaRequired) { setNeedOtp(true); if (otp) setError(err.message); return; }
       setError(err instanceof Error ? err.message : "Kirish amalga oshmadi");
     } finally {
       setBusy(false);
@@ -38,8 +42,14 @@ export default function Login() {
           <span>Parol</span>
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         </label>
+        {needOtp && (
+          <label className="field">
+            <span>MFA kodi (ilovadan)</span>
+            <input className="input" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(e) => setOtp(e.target.value)} autoFocus data-testid="login-otp" />
+          </label>
+        )}
         {error && <p className="error small">{error}</p>}
-        <button className="btn primary" type="submit" disabled={busy || !username || !password} style={{ width: "100%" }}>
+        <button className="btn primary" type="submit" disabled={busy || !username || !password || (needOtp && otp.length < 6)} style={{ width: "100%" }}>
           {busy ? "Tekshirilmoqda…" : "Kirish"}
         </button>
       </form>

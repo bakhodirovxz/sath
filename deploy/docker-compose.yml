@@ -7,7 +7,8 @@
 #   .env da GES_DATABASE_URL=sqlite:////data/ges.db bersangiz postgres servisi kerak emas.
 # CFD (OpenFOAM) kerak bo'lsa: docker compose --profile cfd up -d  (ges servisida GES_CFD_MODE=worker)
 # HTTPS kerak bo'lsa: docker compose --profile https up -d  (Caddy: GES_DOMAIN uchun avtomatik sertifikat,
-#   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen>
+#   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen> va
+#   .env da GES_BIND=127.0.0.1 — to'g'ridan-to'g'ri 8000 port faqat shu hostdan (TLS chegarasi aylanib o'tilmaydi, L1)
 services:
   ges:
     build:
@@ -16,11 +17,13 @@ services:
     image: sath:latest
     restart: unless-stopped
     ports:
-      - "${GES_PORT:-8000}:8000"
+      - "${GES_BIND:-0.0.0.0}:${GES_PORT:-8000}:8000"
     env_file: .env
     environment:
       # .env dagi GES_DATABASE_URL ustun; berilmasa — compose dagi Postgres
       GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      # Caddy ortida klient IP X-Forwarded-For dan (tezlik cheklovi uchun); to'g'ridan-to'g'ri ochiq bo'lsa false
+      GES_RATE_TRUST_FORWARDED: ${GES_RATE_TRUST_FORWARDED:-false}
     volumes:
       - ges_data:/data
     depends_on:

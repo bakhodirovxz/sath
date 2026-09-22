@@ -24,7 +24,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_serializer, field_validator
 from sqlalchemy import func
 
-from .. import audit
+from .. import audit, ratelimit
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..auth.security import decode_access_token
 from ..config import get_settings
@@ -561,7 +561,9 @@ def push_readings(
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """O'lchovlarni yuborish: yoki X-Ingest-Key (gateway), yoki foydalanuvchi tokeni (muhandis+)."""
+    """O'lchovlarni yuborish: yoki X-Ingest-Key (gateway), yoki foydalanuvchi tokeni (muhandis+).
+    Loyiha bo'yicha tezlik cheklovi (`rate_ingest_per_min` so'rov/daqiqa) — 429."""
+    ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
@@ -661,6 +663,7 @@ class SoeIn(BaseModel):
 
 def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: str | None) -> tuple[str, int | None]:
     """Ingest kaliti yoki muhandis+ tokeni → (auth turi, foydalanuvchi id)."""
+    ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")

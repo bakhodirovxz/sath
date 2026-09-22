@@ -3,6 +3,7 @@ import { useAuth } from "../store/auth";
 import NotificationsBell from "./NotificationsBell";
 import { useEffect, useState } from "react";
 import { applyTheme, currentTheme, type ThemeName } from "./tokens";
+import ProfileDialog from "./ProfileDialog";
 
 /** Tema almashtirgich (F1): engineer (Blender) ↔ operator (ISA-101); tanlov saqlanadi. */
 function ThemeToggle() {
@@ -24,6 +25,7 @@ export interface Crumb {
 export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; children?: React.ReactNode }) {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const [profile, setProfile] = useState(false);
   return (
     <div className="topbar ws-top">
       <Link to="/" className="brand">Sath</Link>
@@ -40,8 +42,9 @@ export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; ch
       <ThemeToggle />
       <NotificationsBell />
       {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
-      <span className="muted small">{user?.full_name || user?.username}</span>
+      <button className={`btn sm ${user?.mfa_required ? "warn" : ""}`} title={user?.mfa_required ? "MFA yoqilishi shart" : "Profil: parol, MFA"} onClick={() => setProfile(true)} data-testid="profile-btn">{user?.full_name || user?.username}{user?.mfa_required ? " ⚠" : ""}</button>
       <button className="btn sm" onClick={() => { logout(); nav("/login"); }}>Chiqish</button>
+      {profile && <ProfileDialog onClose={() => setProfile(false)} />}
     </div>
   );
 }

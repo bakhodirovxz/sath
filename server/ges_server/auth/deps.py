@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..db import get_db
 from ..orm import Project, ProjectMember, Role, User
 from .security import decode_access_token
@@ -38,6 +39,10 @@ DB = Annotated[Session, Depends(get_db)]
 def require_admin(user: CurrentUser) -> User:
     if not user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Faqat administrator uchun")
+    if get_settings().mfa_required_for_admins and not user.mfa_enabled:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Administrator uchun ikki bosqichli kirish (MFA) yoqilishi shart — Profil → MFA"
+        )
     return user
 
 

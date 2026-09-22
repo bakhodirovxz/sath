@@ -16,7 +16,7 @@ from ges_sim.cfd import build_case, run_case
 from ges_sim.cfd.runner import collect_results
 from pydantic import BaseModel, Field
 
-from .. import audit
+from .. import audit, ratelimit
 from ..auth.deps import DB, CurrentUser
 from ..config import get_settings
 from ..db import SessionLocal
@@ -215,6 +215,7 @@ def _hydro_from_site(params: dict, site: dict | None) -> None:
 def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks: BackgroundTasks):
     """Simulyatsiyani navbatga qo'yadi. Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi;
     byudjet, vaqt chegarasi va foydalanuvchi kvotasi bilan cheklangan); CFD — muhandis+."""
+    ratelimit.check("sim", str(user.id), get_settings().rate_sim_per_min)
     model = get_model_checked(
         db, model_id, user, Role.engineer if body.kind == "cfd" else Role.viewer
     )

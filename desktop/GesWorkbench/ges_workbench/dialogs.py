@@ -34,6 +34,10 @@ class LoginDialog(QtWidgets.QDialog):
         form.addRow("Server", self.server)
         form.addRow("Login", self.username)
         form.addRow("Parol", self.password)
+        self.otp = QtWidgets.QLineEdit()
+        self.otp.setPlaceholderText("MFA yoqilgan bo'lsa — ilovadagi 6 raqamli kod")
+        self.otp.setMaxLength(8)
+        form.addRow("MFA kodi", self.otp)
         self.status = QtWidgets.QLabel("")
         self.status.setStyleSheet("color:#d95c5c")
         form.addRow(self.status)
@@ -49,7 +53,10 @@ class LoginDialog(QtWidgets.QDialog):
     def try_login(self):
         try:
             user = session.login(
-                self.server.text().strip(), self.username.text().strip(), self.password.text()
+                self.server.text().strip(),
+                self.username.text().strip(),
+                self.password.text(),
+                self.otp.text().strip(),
             )
         except ServerError as e:
             self.status.setText(e.message)

@@ -1022,7 +1022,7 @@ Fayllar: `web/src/viewer/Viewer.ts`, `web/src/pages/model/MonitoringPanel.tsx`
 Qabul mezoni: 20 marta model ochib-yopishdan keyin listener soni o'smaydi (test).
 Bog'liqlik: yo'q.
 
-### F12 — Xatolar chegarasi va uzilish holati ✅
+### F12 — Xatolar chegarasi va uzilish holati ✅ (`120ecc9`)
 
 Muammo: `ErrorBoundary` butun kod bazasida yo'q. `Mimic`, `LineChart` yoki biror paneldagi
 render xatosi butun dispetcher sahifasini oq ekranga aylantiradi. `DashboardPage.tsx:197`
@@ -1882,7 +1882,7 @@ Bog'liqlik: yo'q. Eng arzon desktop tuzatishi — qolgan hammasini himoya qiladi
 
 ## L. Ishonchlilik, xavfsizlik, deploy
 
-### L1 — Tarmoq chegarasi va TLS
+### L1 — Tarmoq chegarasi va TLS ✅
 
 Muammo:
 - `deploy/docker-compose.yml:17` — `"${GES_PORT:-8000}:8000"` shartsiz e'lon qilinadi, ya'ni

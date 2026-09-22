@@ -71,6 +71,7 @@ class GesScene(bpy.types.PropertyGroup):
     version_number: bpy.props.IntProperty(default=0)
     model_name: bpy.props.StringProperty(default="")
     password: bpy.props.StringProperty(name="Parol", subtype="PASSWORD", default="")
+    otp: bpy.props.StringProperty(name="MFA kodi", default="", description="Hisobda MFA yoqilgan bo'lsa — ilovadagi 6 raqamli kod")
     projects: bpy.props.CollectionProperty(type=GesListItem)
     projects_index: bpy.props.IntProperty(default=-1, update=_on_project)
     models: bpy.props.CollectionProperty(type=GesListItem)

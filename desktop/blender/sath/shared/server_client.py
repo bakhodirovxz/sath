@@ -24,6 +24,8 @@ class GesClient:
     def __init__(self, base_url: str, token: str | None = None, timeout: float = 60.0):
         self.base_url = base_url.rstrip("/")
         self.token = token
+        # L2: access token qisqa umrli (15 daqiqa) — 401 da refresh token bilan yangilanib, so'rov takrorlanadi
+        self.refresh_token: str | None = None
         self.timeout = timeout
 
     # --- Ichki ---
@@ -38,6 +40,7 @@ class GesClient:
         params: dict | None = None,
         raw: bool = False,
         timeout: float | None = None,
+        _retry: bool = True,
     ) -> Any:
         url = self.base_url + path
         if params:
@@ -54,6 +57,10 @@ class GesClient:
                     return data
                 return json.loads(data) if data else None
         except error.HTTPError as e:
+            if e.code == 401 and _retry and self.refresh_token and path != "/api/auth/refresh" and self._refresh():
+                return self._request(
+                    method, path, body=body, content_type=content_type, params=params, raw=raw, timeout=timeout, _retry=False
+                )
             try:
                 detail = json.loads(e.read()).get("detail", e.reason)
             except Exception:
@@ -68,13 +75,42 @@ class GesClient:
 
     # --- Auth ---
 
-    def login(self, username: str, password: str) -> str:
-        body = parse.urlencode({"username": username, "password": password}).encode()
+    def login(self, username: str, password: str, otp: str = "") -> str:
+        """`otp` — TOTP kodi (hisobda MFA yoqilgan bo'lsa; bo'lmasa server 401 "MFA kodi kerak").
+        Javobdagi refresh token saqlanadi — access token tugaganda avtomatik yangilanadi."""
+        fields = {"username": username, "password": password, "client": "desktop"}
+        if otp:
+            fields["otp"] = otp
+        body = parse.urlencode(fields).encode()
         r = self._request(
             "POST", "/api/auth/login", body=body, content_type="application/x-www-form-urlencoded"
         )
         self.token = r["access_token"]
+        self.refresh_token = r.get("refresh_token") or None
+        self.must_change_password = bool(r.get("must_change_password"))
         return self.token
+
+    def _refresh(self) -> bool:
+        """Refresh token bilan yangi juftlik; muvaffaqiyatsiz bo'lsa False (chaqiruvchi 401 ni oladi)."""
+        try:
+            r = self._request(
+                "POST",
+                "/api/auth/refresh",
+                body=json.dumps({"refresh_token": self.refresh_token}).encode(),
+                content_type="application/json",
+                _retry=False,
+            )
+        except ServerError:
+            self.refresh_token = None
+            return False
+        self.token = r["access_token"]
+        self.refresh_token = r.get("refresh_token") or None
+        return True
+
+    def logout(self) -> None:
+        self._request("POST", "/api/auth/logout", _retry=False)
+        self.token = None
+        self.refresh_token = None
 
     def me(self) -> dict:
         return self._json("GET", "/api/auth/me")

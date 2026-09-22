@@ -60,6 +60,7 @@ class SATH_PT_server(GesPanel, bpy.types.Panel):
             col.prop(p, "server")
             col.prop(p, "username")
             col.prop(s, "password")
+            col.prop(s, "otp")
             col.operator("sath.connect", icon="LINKED")
         if s.status:
             col.label(text=s.status, icon="INFO")

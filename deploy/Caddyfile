@@ -2,11 +2,23 @@
 # Internetga ochiq domen bo'lsa `tls internal` qatorini olib tashlang — Let's Encrypt avtomatik;
 # ichki tarmoqda Caddy o'z CA si bilan sertifikat beradi. Root sertifikatini ishchi kompyuterlarga
 # o'rnatish: docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt
+# .env: GES_BIND=127.0.0.1 (8000 port tashqariga ochilmaydi), GES_RATE_TRUST_FORWARDED=true (klient IP).
 {$GES_DOMAIN} {
     tls internal
     encode gzip zstd
     request_body {
         max_size 2GB
+    }
+    # Xavfsizlik sarlavhalari (L1). CSP: SPA o'z manbasidan; inline style — three.js/React uslublari uchun;
+    # blob:/data: — 3D viewer (web-ifc wasm, fragmentlar) va ma'lumot eksporti; ws(s) — jonli tasma.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: blob: data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        -Server
     }
     reverse_proxy ges:8000 {
         flush_interval -1

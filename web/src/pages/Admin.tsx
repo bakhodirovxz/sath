@@ -61,7 +61,7 @@ export default function Admin() {
         <h1>Foydalanuvchilar</h1>
         {error && <p className="error">{error}</p>}
         <table className="grid">
-          <thead><tr><th>Login</th><th>Ism</th><th>Email</th><th>Admin</th><th>Faol</th><th /></tr></thead>
+          <thead><tr><th>Login</th><th>Ism</th><th>Email</th><th>Admin</th><th>Faol</th><th>MFA</th><th /></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
@@ -70,7 +70,11 @@ export default function Admin() {
                 <td><input className="input" style={{ width: 180 }} defaultValue={u.email ?? ""} placeholder="—" onBlur={(e) => e.target.value !== (u.email ?? "") && api.updateUser(u.id, { email: e.target.value }).then(load).catch((err) => setError(err.message))} /></td>
                 <td><input type="checkbox" checked={u.is_admin} disabled={u.id === me.id} onChange={() => toggle(u, "is_admin")} /></td>
                 <td><input type="checkbox" checked={u.is_active} disabled={u.id === me.id} onChange={() => toggle(u, "is_active")} /></td>
-                <td><button className="btn sm" onClick={() => setResetFor(u)}>Parolni almashtirish</button></td>
+                <td>{u.mfa_enabled ? <button className="btn sm" title="MFA ni bekor qilish (telefon yo'qolganda)" onClick={() => api.updateUser(u.id, { mfa_reset: true }).then(load).catch((err) => setError(err.message))}>yoqilgan · bekor</button> : <span className="dim small">—</span>}</td>
+                <td className="row" style={{ gap: 6 }}>
+                  <button className="btn sm" onClick={() => setResetFor(u)}>Parolni almashtirish</button>
+                  {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${new Date(u.locked_until).toLocaleTimeString()} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
+                </td>
               </tr>
             ))}
           </tbody>

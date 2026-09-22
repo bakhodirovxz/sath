@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -263,6 +264,57 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator("button", { hasText: "Optimal rejim" }).click();
     await expect(page.locator(".dash-block")).toContainText("Nima bo'lsa");
   });
+
+  test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
+    // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
+    await page.goto("/login");
+    await page.getByLabel(/login/i).fill(engineerCreds.username);
+    await page.getByLabel(/parol/i).fill(engineerCreds.password);
+    await page.getByRole("button", { name: /kirish/i }).click();
+    await expect(page.getByRole("heading", { name: "Loyihalar" })).toBeVisible();
+    await page.evaluate(() => localStorage.setItem("ges_help_seen", "1"));
+    await page.getByTestId("profile-btn").click();
+    await page.getByRole("button", { name: "MFA ni yoqish" }).click();
+    const secret = (await page.getByTestId("mfa-secret").textContent())!.trim();
+    expect(secret.length).toBeGreaterThan(16);
+    await page.getByTestId("mfa-code").fill(totp(secret));
+    await page.getByRole("button", { name: "Tasdiqlash va yoqish" }).click();
+    await expect(page.getByRole("status")).toContainText("MFA yoqildi");
+    await page.getByRole("button", { name: "Yopish" }).click();
+    await page.getByRole("button", { name: "Chiqish" }).click();
+    // kodsiz — OTP maydoni paydo bo'ladi; keyingi qadam kodi bilan kiradi (takror himoyasi: enable dagi kod ishlatilmaydi)
+    await page.getByLabel(/login/i).fill(engineerCreds.username);
+    await page.getByLabel(/parol/i).fill(engineerCreds.password);
+    await page.getByRole("button", { name: /kirish/i }).click();
+    await expect(page.getByTestId("login-otp")).toBeVisible();
+    await page.getByTestId("login-otp").fill(totp(secret, 1));
+    await page.getByRole("button", { name: /kirish/i }).click();
+    await expect(page.getByRole("heading", { name: "Loyihalar" })).toBeVisible();
+    // o'chirish (parol + kod): kirishda c+1 ishlatildi, server ±1 qadam oynasida takrorni rad etadi —
+    // haqiqiy vaqt keyingi qadamga o'tguncha kutamiz (≤ 30 s), so'ng c'+1
+    await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 200);
+    await page.getByTestId("profile-btn").click();
+    await page.getByPlaceholder("Parol").fill(engineerCreds.password);
+    await page.getByPlaceholder("Kod").fill(totp(secret, 1));
+    await page.getByRole("button", { name: "O'chirish" }).click();
+    await expect(page.getByRole("status")).toContainText("MFA o'chirildi");
+  });
+
+  /** TOTP (RFC 6238, SHA1, 30 s, 6 raqam) — serverdagi bilan bir xil; `offset` — qadam siljishi. */
+  function totp(secretB32: string, offset = 0): string {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let bits = "";
+    for (const ch of secretB32.toUpperCase().replace(/=+$/, "")) bits += alphabet.indexOf(ch).toString(2).padStart(5, "0");
+    const key = Buffer.from((bits.match(/.{8}/g) ?? []).map((b) => parseInt(b, 2)));
+    const counter = Math.floor(Date.now() / 1000 / 30) + offset;
+    const msg = Buffer.alloc(8);
+    msg.writeUInt32BE(Math.floor(counter / 2 ** 32), 0);
+    msg.writeUInt32BE(counter >>> 0, 4);
+    const h = createHmac("sha1", key).update(msg).digest();
+    const o = h[h.length - 1]! & 0x0f;
+    const code = (h.readUInt32BE(o) & 0x7fffffff) % 1_000_000;
+    return code.toString().padStart(6, "0");
+  }
 
   async function login(page: import("@playwright/test").Page) {
     await page.goto("/login");

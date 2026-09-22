@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
-from .. import audit, notifications
+from .. import audit, notifications, ratelimit
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..config import get_settings
 from ..orm import (
@@ -397,6 +397,7 @@ def select_command(
     """1-bosqich: tanlash — sensor/qiymat tekshiriladi, blokirovkalar baholanadi (natija javobda),
     30 s li imzolangan token qaytadi, yozilmaydi. Blokirovka bajarilmasa 409 (sabablar bilan);
     `override=true` — faqat tasdiqlovchi, sabab majburiy, audit + dispetcherlarga alarm."""
+    ratelimit.check("commands", str(user.id), get_settings().rate_commands_per_min)
     s = _target_sensor(db, project, body.sensor_id, body.value)
     results = _interlock_results(db, s, body.value)
     blocked = [r for r in results if not r.ok]
@@ -464,6 +465,7 @@ def select_command(
 def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser, db: DB):
     """2-bosqich: bajarish — faqat amaldagi select_token bilan (sensor va qiymat tokenda). Sensor
     `requires_dual_approval` bo'lsa buyruq `pending_approval` — boshqa operator tasdiqlaydi."""
+    ratelimit.check("commands", str(user.id), get_settings().rate_commands_per_min)
     tok = parse_select_token(body.select_token, user.id, project.id)
     s = _target_sensor(db, project, int(tok["s"]), float(tok["v"]))
     value = float(tok["v"])

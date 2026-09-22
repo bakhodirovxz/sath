@@ -73,6 +73,14 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # L1: ketma-ket noto'g'ri urinishlar → vaqtincha bloklash (DB da — replikalar orasida umumiy)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # L1: TOTP (RFC 6238); secret o'rnatilgan, lekin enabled=False — sozlash kutilmoqda
+    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # oxirgi qabul qilingan TOTP hisoblagichi — bir kodni ikki marta ishlatishni rad etish
+    mfa_last_counter: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Project(Base):

@@ -34,7 +34,10 @@ GES_DATA_DIR=/srv/ges-data ges-server        # http://0.0.0.0:8000 (web build av
 `docker compose --profile https up -d` — Caddy teskari proksi (`deploy/Caddyfile`): `GES_DOMAIN` uchun
 sertifikat. Ichki tarmoqda `tls internal` — Caddy o'z CA si; root sertifikatini ishchi kompyuterlarga
 o'rnating (`docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt`). Internetga ochiq
-domen bo'lsa `tls internal` qatorini olib tashlang (Let's Encrypt). `.env` da `GES_PUBLIC_URL=https://<domen>`.
+domen bo'lsa `tls internal` qatorini olib tashlang (Let's Encrypt). `.env` da `GES_PUBLIC_URL=https://<domen>`,
+`GES_BIND=127.0.0.1` (8000 port tashqariga ochilmaydi — TLS chegarasi aylanib o'tilmaydi) va
+`GES_RATE_TRUST_FORWARDED=true` (klient IP `X-Forwarded-For` dan — tezlik cheklovi uchun; Caddy siz **false**).
+Caddyfile HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi.
 
 ## Fon hisoblar va historian
 
@@ -151,6 +154,15 @@ Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` 
 
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.
 - `GES_SECRET_KEY` — o'zgartirilsa hamma sessiya tugaydi (avtomatik yaratilgani `data/secret.key`).
+- Tezlik cheklovi (429, `Retry-After`): login — IP bo'yicha (`GES_RATE_LOGIN_PER_MIN`, 30), ingest —
+  loyiha bo'yicha so'rovlar (`GES_RATE_INGEST_PER_MIN`, 600; gateway partiyalab yuborsin), buyruqlar va sim
+  ishlari — foydalanuvchi bo'yicha (60 / 20). Hisoblar jarayon ichida (replika boshiga).
+- Hisobni bloklash: `GES_LOGIN_MAX_FAILURES` (10) ketma-ket noto'g'ri parol/MFA → `GES_LOGIN_LOCKOUT_MINUTES`
+  (15) davomida 423, auditda `auth.account_locked`. Ochish: Boshqaruv → foydalanuvchi → «Blokni ochish»
+  (`PATCH /api/users/{id}` `{"unlock": true}`).
+- MFA (TOTP, RFC 6238 — Google Authenticator/Aegis/FreeOTP): Profil → MFA → kalitni ilovaga kiritib kod bilan
+  tasdiqlash. `GES_MFA_REQUIRED_FOR_ADMINS=true` — admin MFA yoqmaguncha admin amallari 403 (tavsiya).
+  Telefon yo'qolsa admin `{"mfa_reset": true}` bilan bekor qiladi (auditda).
 - Audit: `audit_log` jadvali (kim, nima, qachon) — barcha o'zgarishlar, shu jumladan kirish xatolari
   (`auth.login_failed`), parol o'zgarishi, WebSocket ulanishlari, ingest partiyalari (`readings.ingest`),
   eksportlar, ingest kalitini o'qish. Yozuvlar SHA-256 hash zanjiri bilan bog'langan:

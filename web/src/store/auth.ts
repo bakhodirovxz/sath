@@ -5,7 +5,9 @@ interface AuthState {
   user: User | null;
   ready: boolean;
   init: () => Promise<void>;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, otp?: string) => Promise<void>;
+  /** Profil o'zgargach (MFA, parol) foydalanuvchini qayta o'qish */
+  refresh: () => Promise<void>;
   logout: () => void;
 }
 
@@ -22,8 +24,11 @@ export const useAuth = create<AuthState>((set) => ({
       set({ user: null, ready: true });
     }
   },
-  async login(username, password) {
-    await api.login(username, password);
+  async login(username, password, otp) {
+    await api.login(username, password, otp);
+    set({ user: await api.me() });
+  },
+  async refresh() {
     set({ user: await api.me() });
   },
   logout() {

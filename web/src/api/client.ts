@@ -12,6 +12,10 @@ export interface User {
   email?: string;
   is_admin: boolean;
   is_active: boolean;
+  mfa_enabled?: boolean;
+  locked_until?: string | null;
+  /** /auth/me: administrator uchun MFA majburiy, hali yoqilmagan (L1) */
+  mfa_required?: boolean;
 }
 export interface Project {
   id: number;
@@ -455,6 +459,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** 401 + `X-MFA-Required` — parol to'g'ri, TOTP kodi kerak (L1) */
+    public mfaRequired = false,
   ) {
     super(message);
   }
@@ -473,7 +479,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   const res = await fetch(path, { ...init, headers });
-  if (res.status === 401) {
+  if (res.status === 401 && !res.headers.get("X-MFA-Required")) {
     setToken(null);
     onUnauthorized?.();
   }
@@ -485,7 +491,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* matn emas */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"));
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -499,8 +505,9 @@ export type DesktopPackage = { version: string; kind: "installer" | "zip"; url: 
 
 export const api = {
   // auth
-  async login(username: string, password: string) {
+  async login(username: string, password: string, otp?: string) {
     const form = new URLSearchParams({ username, password });
+    if (otp) form.set("otp", otp);
     const r = await request<{ access_token: string }>("/api/auth/login", {
       method: "POST",
       body: form,
@@ -515,11 +522,15 @@ export const api = {
       method: "POST",
       body: json({ old_password, new_password }),
     }),
+  // MFA (TOTP, L1)
+  mfaSetup: () => request<{ secret: string; otpauth_url: string }>("/api/auth/mfa/setup", { method: "POST" }),
+  mfaEnable: (code: string) => request<void>("/api/auth/mfa/enable", { method: "POST", body: json({ code }) }),
+  mfaDisable: (password: string, code: string) => request<void>("/api/auth/mfa/disable", { method: "POST", body: json({ password, code }) }),
   // users (admin)
   users: () => request<User[]>("/api/users"),
   createUser: (body: { username: string; password: string; full_name: string; email?: string; is_admin: boolean }) =>
     request<User>("/api/users", { method: "POST", body: json(body) }),
-  updateUser: (id: number, body: Partial<{ full_name: string; email: string; password: string; is_admin: boolean; is_active: boolean }>) =>
+  updateUser: (id: number, body: Partial<{ full_name: string; email: string; password: string; is_admin: boolean; is_active: boolean; mfa_reset: boolean; unlock: boolean }>) =>
     request<User>(`/api/users/${id}`, { method: "PATCH", body: json(body) }),
   // projects
   projects: () => request<Project[]>("/api/projects"),

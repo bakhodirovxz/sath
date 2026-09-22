@@ -8,10 +8,10 @@ _client: GesClient | None = None
 _user: dict | None = None
 
 
-def login(server: str, username: str, password: str) -> dict:
+def login(server: str, username: str, password: str, otp: str = "") -> dict:
     global _client, _user
     c = GesClient(server)
-    c.login(username, password)
+    c.login(username, password, otp)
     _user = c.me()
     _client = c
     from .prefs import prefs
