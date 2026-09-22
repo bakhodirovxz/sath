@@ -40,7 +40,7 @@ from ..orm import (
     ShiftHandover,
     utcnow,
 )
-from . import interlock, keys, live, shift
+from . import cmms, interlock, keys, live, shift
 
 router = APIRouter(prefix="/api", tags=["control"])
 
@@ -379,9 +379,14 @@ def create_command_legacy(project: OperatorProject):
 
 
 def _interlock_results(db, s: Sensor, value: float) -> list[InterlockResult]:
+    """Blokirovkalar (B4) va faol LOTO (H2). LOTO natijalari `interlock_id=0` bilan qaytadi va ular
+    chetlab o'tilmaydi — izolyatsiya ish buyrug'ida olib tashlanishi kerak."""
     return [
         InterlockResult(interlock_id=r.interlock_id, name=r.name, ok=r.ok, message=r.message)
         for r in interlock.evaluate(db, s, value)
+    ] + [
+        InterlockResult(interlock_id=0, name="LOTO", ok=False, message=msg)
+        for msg in cmms.loto_blocks(db, s)
     ]
 
 
@@ -401,6 +406,11 @@ def select_command(
     s = _target_sensor(db, project, body.sensor_id, body.value)
     results = _interlock_results(db, s, body.value)
     blocked = [r for r in results if not r.ok]
+    loto = [r for r in blocked if r.interlock_id == 0]
+    if loto:  # energiya izolyatsiyasi — chetlab o'tilmaydi (IEC 60204-1 §5.3)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "; ".join(r.message for r in loto)
+        )
     if blocked and override:
         if not has_role(get_project_role(db, project.id, user), Role.approver):
             raise HTTPException(
@@ -471,6 +481,9 @@ def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser
     value = float(tok["v"])
     # Blokirovkalar select dan keyin o'zgargan bo'lishi mumkin — execute da qayta baholanadi
     blocked = [r for r in _interlock_results(db, s, value) if not r.ok]
+    loto = [r for r in blocked if r.interlock_id == 0]
+    if loto:
+        raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(r.message for r in loto))
     if blocked and not tok.get("o"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,

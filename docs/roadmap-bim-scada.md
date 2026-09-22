@@ -1165,7 +1165,7 @@ Bog'liqlik: G1, H1.
 
 ## H. Aktivlar, kodlash, CMMS
 
-### H1 — Uskuna kodlash va ierarxiya (KKS / RDS-PP) ✅
+### H1 — Uskuna kodlash va ierarxiya (KKS / RDS-PP) ✅ (`df4d12b`)
 
 Muammo: `orm.py:598` — `Asset` tekis: nom, `element_guid`, `power_sensor_id`, hisoblagichlar,
 JSON `config`. `parent_id` yo'q, funksional joylashuv yo'q, taksonomiya darajasi yo'q, KKS yoki
@@ -1186,7 +1186,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/parts.py`, `monitoring/health.p
 Qabul mezoni: ierarxiya bo'yicha aktiv daraxti ko'rinadi; noto'g'ri KKS kodi rad etiladi (test).
 Bog'liqlik: A2. Bu aktiv registri o'sishidan oldin qilinishi kerak — keyinroq qimmat.
 
-### H2 — CMMS chuqurligi
+### H2 — CMMS chuqurligi ✅
 
 Muammo: `WorkOrder` (`orm.py:506`) yaxshi boshlanish, lekin yo'q: profilaktik xizmat rejalari
 (faqat bitta `Asset.maintenance_interval_hours` hisoblagichi), ish rejalari/vazifalar ro'yxati,

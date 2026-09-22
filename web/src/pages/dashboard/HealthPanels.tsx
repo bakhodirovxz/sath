@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "../../hooks/usePolling";
 import { dialogs } from "../../ui/dialogs";
-import { api, type AssetHealth, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
+import { api, type AssetHealth, type CmmsCodes, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
+import { PlansPanel, WorkOrderDetail } from "./CmmsPanels";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import Icon from "../../ui/Icon";
 import Dialog from "../../ui/Dialog";
@@ -188,17 +189,22 @@ const WO_STATUS: Record<string, [string, string]> = { open: ["ochiq", "open"], i
 const PRIO_CLS: Record<string, string> = { critical: "rejected", high: "high", medium: "open", low: "archived" };
 
 /** Ish buyruqlari (CMMS): ro'yxat, KPI, yaratish, holat, yopish. */
-export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { projectId: number; members: Member[]; canOperate: boolean; canEdit: boolean }) {
+export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canApprove = false }: { projectId: number; members: Member[]; canOperate: boolean; canEdit: boolean; canApprove?: boolean }) {
   const [items, setItems] = useState<WorkOrder[]>([]);
   const [kpi, setKpi] = useState<WorkOrderKpi | null>(null);
+  const [parts, setParts] = useState<SparePart[]>([]);
+  const [assets, setAssets] = useState<{ id: number; name: string }[]>([]);
+  const [codes, setCodes] = useState<CmmsCodes | null>(null);
+  const [detail, setDetail] = useState<WorkOrder | null>(null);
   const [filter, setFilter] = useState<string>("active");
   const [adding, setAdding] = useState(false);
   const [closing, setClosing] = useState<WorkOrder | null>(null);
   const [err, setErr] = useState("");
   const [form, setForm] = useState({ title: "", description: "", priority: "medium", assignee_id: "", due_at: "" });
-  const [closeForm, setCloseForm] = useState({ resolution: "", downtime_hours: "0", cost: "0" });
-  const load = useCallback(() => Promise.all([api.workOrders(projectId), api.workOrderKpi(projectId)]).then(([w, k]) => { setItems(w); setKpi(k); }).catch((e) => setErr(e.message)), [projectId]);
+  const [closeForm, setCloseForm] = useState({ resolution: "", downtime_hours: "0", extra_cost: "0", failure_mode: "", failure_cause: "", detection_method: "" });
+  const load = useCallback(() => Promise.all([api.workOrders(projectId), api.workOrderKpi(projectId)]).then(([w, k]) => { setItems(w); setKpi(k); setDetail((d) => (d ? w.find((x) => x.id === d.id) ?? null : null)); }).catch((e) => setErr(e.message)), [projectId]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { Promise.all([api.parts(projectId), api.assets(projectId), api.cmmsCodes()]).then(([p, a, c]) => { setParts(p); setAssets(a.map((x) => ({ id: x.id, name: x.name }))); setCodes(c); }).catch(() => undefined); }, [projectId]);
   const shown = items.filter((w) => filter === "all" ? true : filter === "active" ? (w.status === "open" || w.status === "in_progress") : w.status === filter);
   const setStatus = (w: WorkOrder, status: WorkOrder["status"]) => api.updateWorkOrder(w.id, { status }).then(load).catch((e) => setErr(e.message));
   return (
@@ -225,7 +231,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { p
           <tbody>{shown.map((w) => (
             <tr key={w.id} className={w.overdue ? "alarm-active" : undefined}>
               <td className="dim">{w.id}</td>
-              <td><b>{w.title}</b>{w.description && <div className="dim" style={{ maxWidth: 420, whiteSpace: "pre-wrap" }}>{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}</div></td>
+              <td><b>{w.title}</b>{w.loto_active && <span className="badge rejected" title="Izolyatsiya qo'yilgan — boshqaruv buyruqlari taqiqlangan">LOTO</span>}{w.permit_status !== "none" && <span className={`badge ${w.permit_status === "issued" ? "published" : "shared"}`}>PTW {w.permit_status}</span>}{w.description && <div className="dim" style={{ maxWidth: 420, whiteSpace: "pre-wrap" }}>{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "plan" ? "profilaktik reja" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}{w.cost ? ` · xarajat ${w.cost}` : ""}{w.tasks.length ? ` · ${w.tasks.filter((t) => t.done).length}/${w.tasks.length} vazifa` : ""}</div></td>
               <td>{w.asset_name ?? "—"}</td>
               <td><span className={`badge ${PRIO_CLS[w.priority]}`}>{w.priority}</span></td>
               <td><span className={`badge ${WO_STATUS[w.status][1]}`}>{WO_STATUS[w.status][0]}</span></td>
@@ -233,9 +239,10 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { p
               <td className="dim">{w.due_at ? fmtDate(w.due_at) : "—"}</td>
               <td className="row" style={{ gap: 4 }}>
                 {canOperate && w.status === "open" && <button className="btn sm" onClick={() => setStatus(w, "in_progress")}>Boshlash</button>}
-                {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm primary" onClick={() => { setClosing(w); setCloseForm({ resolution: "", downtime_hours: "0", cost: "0" }); }}>Yopish</button>}
+                {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm primary" data-testid={`wo-close-${w.id}`} onClick={() => { setClosing(w); setCloseForm({ resolution: "", downtime_hours: "0", extra_cost: String(w.extra_cost || 0), failure_mode: w.failure_mode ?? "", failure_cause: w.failure_cause ?? "", detection_method: w.detection_method ?? "" }); }}>Yopish</button>}
                 {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm" title="Bekor qilish" onClick={() => setStatus(w, "cancelled")}><Icon name="x" size={12} /></button>}
                 {canOperate && w.status !== "open" && w.status !== "in_progress" && <button className="btn sm" title="Qayta ochish" onClick={() => setStatus(w, "open")}><Icon name="refresh" size={12} /></button>}
+                <button className="btn sm" title="Tafsilot: vazifalar, mehnat, qismlar, ruxsatnoma/LOTO" data-testid={`wo-detail-${w.id}`} onClick={() => setDetail(w)}><Icon name="list" size={12} /></button>
                 {canEdit && <button className="btn sm" title="O'chirish" onClick={() => void dialogs.confirm("Ish buyrug'i o'chirilsinmi?", { text: w.title, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) api.deleteWorkOrder(w.id).then(load).catch((er) => setErr(er.message)); })}><Icon name="trash" size={12} /></button>}
               </td>
             </tr>
@@ -254,14 +261,22 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { p
           <div className="actions"><button className="btn" onClick={() => setAdding(false)}>Bekor</button><button className="btn primary" disabled={!form.title} onClick={() => api.createWorkOrder(projectId, { title: form.title, description: form.description, priority: form.priority, assignee_id: form.assignee_id ? Number(form.assignee_id) : null, due_at: form.due_at ? new Date(form.due_at).toISOString() : null }).then(() => { setAdding(false); void load(); }).catch((e) => setErr(e.message))}>Yaratish</button></div>
         </Dialog>
       )}
+      {detail && <WorkOrderDetail wo={detail} parts={parts} members={members} canApprove={canApprove} onClose={() => setDetail(null)} onChange={(w) => { setDetail(w); void load(); }} />}
+      <PlansPanel projectId={projectId} assets={assets} canEdit={canEdit} />
       {closing && (
         <Dialog title={`Yopish: ${closing.title}`} onClose={() => setClosing(null)}>
           <label className="field"><span>Natija / bajarilgan ish</span><textarea className="textarea" value={closeForm.resolution} autoFocus onChange={(e) => setCloseForm({ ...closeForm, resolution: e.target.value })} /></label>
           <div className="row">
             <label className="field grow"><span>To'xtab turish, soat</span><input className="input" type="number" step="any" value={closeForm.downtime_hours} onChange={(e) => setCloseForm({ ...closeForm, downtime_hours: e.target.value })} /></label>
-            <label className="field grow"><span>Xarajat</span><input className="input" type="number" step="any" value={closeForm.cost} onChange={(e) => setCloseForm({ ...closeForm, cost: e.target.value })} /></label>
+            <label className="field grow"><span>Qo'shimcha xarajat (pudrat, transport)</span><input className="input" type="number" step="any" value={closeForm.extra_cost} onChange={(e) => setCloseForm({ ...closeForm, extra_cost: e.target.value })} /></label>
           </div>
-          <div className="actions"><button className="btn" onClick={() => setClosing(null)}>Bekor</button><button className="btn primary" onClick={() => api.updateWorkOrder(closing.id, { status: "done", resolution: closeForm.resolution, downtime_hours: Number(closeForm.downtime_hours) || 0, cost: Number(closeForm.cost) || 0 }).then(() => { setClosing(null); void load(); }).catch((e) => setErr(e.message))}>Bajarildi</button></div>
+          <div className="row">
+            <label className="field grow"><span>Nosozlik rejimi (ISO 14224)</span><select className="select" value={closeForm.failure_mode} data-testid="wo-failure-mode" onChange={(e) => setCloseForm({ ...closeForm, failure_mode: e.target.value })}><option value="">—</option>{Object.entries(codes?.failure_modes ?? {}).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}</select></label>
+            <label className="field grow"><span>Sabab</span><select className="select" value={closeForm.failure_cause} onChange={(e) => setCloseForm({ ...closeForm, failure_cause: e.target.value })}><option value="">—</option>{Object.entries(codes?.failure_causes ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="field grow"><span>Aniqlash usuli</span><select className="select" value={closeForm.detection_method} onChange={(e) => setCloseForm({ ...closeForm, detection_method: e.target.value })}><option value="">—</option>{Object.entries(codes?.detection_methods ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+          </div>
+          <p className="small dim">Mehnat va ehtiyot qism xarajati tafsilot oynasidan avtomatik hisoblanadi.</p>
+          <div className="actions"><button className="btn" onClick={() => setClosing(null)}>Bekor</button><button className="btn primary" data-testid="wo-close-save" onClick={() => api.updateWorkOrder(closing.id, { status: "done", resolution: closeForm.resolution, downtime_hours: Number(closeForm.downtime_hours) || 0, extra_cost: Number(closeForm.extra_cost) || 0, ...(closeForm.failure_mode ? { failure_mode: closeForm.failure_mode } : {}), ...(closeForm.failure_cause ? { failure_cause: closeForm.failure_cause } : {}), ...(closeForm.detection_method ? { detection_method: closeForm.detection_method } : {}) }).then(() => { setClosing(null); void load(); }).catch((e) => setErr(e.message))}>Bajarildi</button></div>
         </Dialog>
       )}
     </div>

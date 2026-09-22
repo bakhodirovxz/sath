@@ -291,7 +291,7 @@ export default function DashboardPage() {
         {section === "health" && <ErrorBoundary name="Sog'liq"><HealthPanel projectId={pid} sensors={sensors} canEdit={canEdit} canOperate={canOperate} /></ErrorBoundary>}
         {section === "whatif" && <ErrorBoundary name="Optimal rejim"><WhatIfPanel projectId={pid} /></ErrorBoundary>}
         {section === "forecast" && <ErrorBoundary name="Toshqin prognozi"><ForecastPanel projectId={pid} /></ErrorBoundary>}
-        {section === "workorders" && <ErrorBoundary name="Ish buyruqlari"><WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} /></ErrorBoundary>}
+        {section === "workorders" && <ErrorBoundary name="Ish buyruqlari"><WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} canApprove={project?.my_role === "approver"} /></ErrorBoundary>}
         {section === "parts" && <ErrorBoundary name="Ehtiyot qismlar"><PartsPanel projectId={pid} canOperate={canOperate} canEdit={canEdit} /></ErrorBoundary>}
         {section === "assets" && <ErrorBoundary name="Aktivlar"><AssetsPanel projectId={pid} sensors={sensors} canEdit={canEdit} canMaint={canOperate} /></ErrorBoundary>}
         {section === "control" && <ErrorBoundary name="Boshqaruv"><CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} canOverride={project?.my_role === "approver"} /></ErrorBoundary>}

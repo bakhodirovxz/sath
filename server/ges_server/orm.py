@@ -813,10 +813,32 @@ class WorkOrder(Base):
     priority: Mapped[str] = mapped_column(String(16), default="medium")  # low|medium|high|critical
     source: Mapped[str] = mapped_column(
         String(16), default="manual"
-    )  # manual|health|alarm|maintenance
+    )  # manual|health|alarm|maintenance|plan
     status: Mapped[WorkOrderStatus] = mapped_column(
         Enum(WorkOrderStatus), default=WorkOrderStatus.open
     )
+    # H2 — CMMS chuqurligi
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("maintenance_plans.id", ondelete="SET NULL"), nullable=True
+    )
+    tasks: Mapped[list] = mapped_column(JSON, default=list)  # [{"title", "done"}]
+    failure_mode: Mapped[str | None] = mapped_column(String(8), nullable=True)  # ISO 14224 (cmms.FAILURE_MODES)
+    failure_cause: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    detection_method: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    labor_rate: Mapped[float] = mapped_column(Float, default=0.0)  # default soat stavkasi (mehnat yozuvida yo'q bo'lsa)
+    labor_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    parts_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    extra_cost: Mapped[float] = mapped_column(Float, default=0.0)  # pudrat, transport va h.k. (cost = labor+parts+extra)
+    permit_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    permit_status: Mapped[str] = mapped_column(String(16), default="none")  # none|requested|issued|closed
+    permit_issued_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    permit_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    permit_note: Mapped[str] = mapped_column(Text, default="")
+    loto_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    loto_points: Mapped[list] = mapped_column(JSON, default=list)  # [{"label", "sensor_id"?}] izolyatsiya nuqtalari
+    loto_applied_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    loto_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    loto_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -829,6 +851,70 @@ class WorkOrder(Base):
     author: Mapped[User] = relationship(foreign_keys=[created_by])
     assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id])
     asset: Mapped[Asset | None] = relationship()
+    plan: Mapped[MaintenancePlan | None] = relationship()
+
+
+class MaintenancePlan(Base):
+    """Profilaktik xizmat rejasi (H2): davriylik vaqt (kun) yoki ish soati bo'yicha (aktiv hisoblagichi),
+    vazifalar ro'yxati; muddati kelganda avtomatik ish buyrug'i (`source="plan"`), shu reja bo'yicha ochiq
+    buyruq bo'lsa takrorlanmaydi."""
+
+    __tablename__ = "maintenance_plans"
+    __table_args__ = (Index("ix_plans_project", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    asset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), nullable=True
+    )
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    tasks: Mapped[list] = mapped_column(JSON, default=list)  # ["vazifa", ...]
+    interval_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    interval_hours: Mapped[float | None] = mapped_column(Float, nullable=True)  # ish soati (aktiv)
+    priority: Mapped[str] = mapped_column(String(16), default="medium")
+    lead_days: Mapped[int] = mapped_column(Integer, default=7)  # buyruq muddati = yaratilgan + lead
+    permit_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_hours: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    asset: Mapped[Asset | None] = relationship()
+
+
+class LaborEntry(Base):
+    """Mehnat yozuvi (H2): kim, qancha soat, qanday ish; stavka bo'lmasa ish buyrug'i stavkasi."""
+
+    __tablename__ = "labor_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    hours: Mapped[float] = mapped_column(Float)
+    rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str] = mapped_column(String(300), default="")
+    work_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship()
+
+
+class PartReservation(Base):
+    """Ehtiyot qism bandlash (H2): ish buyrug'i uchun ombordan ajratilgan miqdor (qoldiq kamaymaydi,
+    bo'sh qoldiq = qty − band). Sarflanganda bandlik kamayadi."""
+
+    __tablename__ = "part_reservations"
+    __table_args__ = (UniqueConstraint("work_order_id", "part_id", name="uq_part_reservation"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    work_order_id: Mapped[int] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"))
+    part_id: Mapped[int] = mapped_column(ForeignKey("spare_parts.id", ondelete="CASCADE"))
+    qty: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    part: Mapped[SparePart] = relationship()
 
 
 class SparePart(Base):
@@ -866,6 +952,8 @@ class PartMovement(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     qty: Mapped[float] = mapped_column(Float)  # + kirim, − sarf
     note: Mapped[str] = mapped_column(String(200), default="")
+    kind: Mapped[str] = mapped_column(String(16), default="move")  # move|consume|receipt (H2)
+    unit_cost: Mapped[float | None] = mapped_column(Float, nullable=True)  # sarf paytidagi narx (H2)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     part: Mapped[SparePart] = relationship()

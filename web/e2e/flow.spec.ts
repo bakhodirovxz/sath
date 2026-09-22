@@ -368,6 +368,51 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(tree).toContainText("komponent");
   });
 
+  test("CMMS (H2): profilaktik reja avtomatik ish buyrug'i yaratadi, LOTO boshqaruvni taqiqlaydi", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    const asset = await (await request.post(`${API}/api/projects/${projectId}/assets`, { headers: h, data: { name: `H2 agregat ${stamp}` } })).json();
+    // muddati o'tgan reja (yaratilgan sana orqaga surilmaydi — 1 kunlik davriylik bilan darhol kelmaydi,
+    // shuning uchun interval_days=1 va reja yaratilgach server vaqtida tekshiriladi: bu yerda UI oqimini tekshiramiz)
+    await login(page);
+    await page.goto(`/projects/${projectId}/dashboard`);
+    await page.locator("button", { hasText: "Ish buyruqlari" }).click();
+    await page.getByTestId("plan-add").click();
+    await page.getByTestId("plan-name").fill(`Podshipnik ko'rigi ${stamp}`);
+    await page.getByTestId("plan-asset").selectOption(String(asset.id));
+    await page.getByTestId("plan-days").fill("30");
+    await page.getByTestId("plan-save").click();
+    await expect(page.getByTestId("plans-table")).toContainText(`Podshipnik ko'rigi ${stamp}`);
+    // oxirgi xizmat sanasini 40 kun orqaga surib muddatini keltiramiz (30 kunlik davriylik)
+    const plans = await (await request.get(`${API}/api/projects/${projectId}/maintenance-plans`, { headers: h })).json();
+    const plan = plans.find((x: { name: string }) => x.name.includes(`Podshipnik ko'rigi ${stamp}`));
+    const back = new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString();
+    await request.patch(`${API}/api/maintenance-plans/${plan.id}`, { headers: h, data: { last_generated_at: back } });
+    const due = await (await request.get(`${API}/api/projects/${projectId}/maintenance-plans`, { headers: h })).json();
+    expect(due.find((x: { id: number }) => x.id === plan.id).due_reason).toContain("vaqt bo'yicha");
+    await request.post(`${API}/api/projects/${projectId}/maintenance-plans/run`, { headers: h });
+    await page.reload();
+    await page.locator("button", { hasText: "Ish buyruqlari" }).click();
+    await expect(page.getByTestId("plans-table")).toContainText("faol");
+    const wos = await (await request.get(`${API}/api/projects/${projectId}/work-orders`, { headers: h })).json();
+    const wo = wos.find((x: { plan_id: number | null }) => x.plan_id === plan.id);
+    expect(wo.source).toBe("plan");
+    // LOTO: qo'yish → sensorga boshqaruv buyrug'i rad etiladi
+    await request.post(`${API}/api/work-orders/${wo.id}/loto`, { headers: h, data: { active: true, points: [{ label: "Yuritma" }] } });
+    await page.reload();
+    await page.locator("button", { hasText: "Ish buyruqlari" }).click();
+    await expect(page.locator("tr", { hasText: wo.title })).toContainText("LOTO");
+    const sensors = await (await request.get(`${API}/api/projects/${projectId}/sensors`, { headers: h })).json();
+    const writable = sensors.find((x: { writable: boolean }) => x.writable);
+    if (writable) {
+      await request.patch(`${API}/api/assets/${asset.id}`, { headers: h, data: { power_sensor_id: writable.id } });
+      const sel = await request.post(`${API}/api/projects/${projectId}/commands/select`, { headers: h, data: { sensor_id: writable.id, value: 5 } });
+      expect(sel.status()).toBe(409);
+      expect(JSON.stringify(await sel.json())).toContain("LOTO faol");
+    }
+    await request.post(`${API}/api/work-orders/${wo.id}/loto`, { headers: h, data: { active: false } });
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

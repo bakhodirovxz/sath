@@ -7,6 +7,7 @@ import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
 import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { dialogs } from "../../ui/dialogs";
+import { AssetHistoryDialog } from "./CmmsPanels";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
@@ -167,6 +168,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
   const [items, setItems] = useState<AssetState[]>([]);
   const [adding, setAdding] = useState(false);
   const [docsFor, setDocsFor] = useState<AssetState | null>(null);
+  const [histFor, setHistFor] = useState<number | null>(null);
   const [view, setView] = useState<"list" | "tree">("list");
   const [tree, setTree] = useState<AssetTree | null>(null);
   const loadTree = useCallback(() => api.assetTree(projectId).then(setTree).catch((e) => setErr(e.message)), [projectId]);
@@ -228,13 +230,14 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
                   <span className={`badge ${cls[a.status]}`}>{lbl[a.status]}</span>
                   {a.hours_to_maintenance != null && <div className="dim small">{a.hours_to_maintenance >= 0 ? `${a.hours_to_maintenance.toFixed(0)} soat qoldi` : `${(-a.hours_to_maintenance).toFixed(0)} soat kechikdi`}{a.last_maintenance_at && ` · oxirgi ${fmtDate(a.last_maintenance_at)}`}</div>}
                 </td>
-                <td><button className="btn sm" title="Hujjatlar: qo'llanma, pasport, sinov protokoli, ishga tushirish akti" onClick={() => setDocsFor(a)}>Hujjatlar</button> {canMaint && <button className="btn sm" onClick={() => void dialogs.prompt("Texnik xizmat bajarildi", "", { text: `${a.name}: izoh (nima qilindi)`, ok: "Yozish" }).then((n) => { if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); })}>Xizmat bajarildi</button>}</td>
+                <td><button className="btn sm" title="Xizmat tarixi va xarajat (ISO 14224 nosozlik kodlari)" data-testid={`asset-history-${a.id}`} onClick={() => setHistFor(a.id)}>Tarix</button> <button className="btn sm" title="Hujjatlar: qo'llanma, pasport, sinov protokoli, ishga tushirish akti" onClick={() => setDocsFor(a)}>Hujjatlar</button> {canMaint && <button className="btn sm" onClick={() => void dialogs.prompt("Texnik xizmat bajarildi", "", { text: `${a.name}: izoh (nima qilindi)`, ok: "Yozish" }).then((n) => { if (n != null) api.assetMaintenance(a.id, n).then(load).catch((e) => setErr(e.message)); })}>Xizmat bajarildi</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ))}
       {docsFor && <AssetDocsDialog asset={docsFor} canEdit={canMaint} canDelete={canEdit} onClose={() => setDocsFor(null)} />}
+      {histFor != null && <AssetHistoryDialog assetId={histFor} onClose={() => setHistFor(null)} />}
       {adding && (
         <Dialog title="Yangi aktiv" onClose={() => setAdding(false)}>
           <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></label>

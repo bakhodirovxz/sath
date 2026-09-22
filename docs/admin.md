@@ -167,6 +167,44 @@ yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → usk
 `GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
 bosimli quvur, HAD suv olish, …).
 
+## Texnik xizmat (CMMS): rejalar, mehnat, qismlar, ruxsatnoma va LOTO
+
+**Profilaktik rejalar.** Dispetcher paneli → Ish buyruqlari → «Profilaktik xizmat rejalari»: davriylik
+kun (`interval_days`) yoki agregat ish soati (`interval_hours`, quvvat sensori hisoblagichidan) bo'yicha,
+vazifalar ro'yxati, ustuvorlik, muddat (`lead_days`), ruxsatnoma talabi. Muddati kelganda ish buyrug'i
+avtomatik yaratiladi (`source="plan"`, soatlik fon vazifasida yoki «Hozir tekshirish» —
+`POST /api/projects/{id}/maintenance-plans/run`). Shu reja bo'yicha ochiq buyruq turganda yangisi
+yaratilmaydi. Mavjud uskunani ro'yxatga olayotganda «oxirgi bajarilgan xizmat sanasi»
+(`last_generated_at`) va ish soati hisoblagichi (`last_run_hours`) ko'rsatiladi.
+
+**Nosozlik kodlari (ISO 14224:2016).** Ish buyrug'ini yopishda nosozlik rejimi (`failure_mode`:
+FTS ishga tushmadi, BRD buzilish, VIB tebranish, OHE qizish, ELP tashqi oqish, …), sabab
+(`failure_cause`: loyiha, montaj, ekspluatatsiya, texnik xizmat, eskirish, tashqi ta'sir) va aniqlash
+usuli (`detection_method`: rejali ko'rik, holat monitoringi, funksional sinov, alarm, …) tanlanadi.
+Ro'yxat: `GET /api/cmms/codes`; ro'yxatdan tashqari kod 422.
+
+**Mehnat va xarajat.** `POST /api/work-orders/{id}/labor` — kim, necha soat, izoh (o'z vaqtini dispetcher
+yozadi, boshqa xodim nomidan — muhandis). Xarajat avtomatik: mehnat (soat × stavka; yozuvda stavka
+bo'lmasa buyruq `labor_rate` i) + sarflangan qismlar + qo'shimcha (`extra_cost`: pudrat, transport).
+
+**Ehtiyot qism bandlash va sarflash.** Bandlash (`/parts/reserve`) ombor qoldig'ini kamaytirmaydi, bo'sh
+qoldiqni (qoldiq − ochiq buyruqlardagi bandlik) kamaytiradi; sarflash (`/parts/consume`) ombordan chiqim
+qiladi, avval shu buyruqdagi bandlikdan yechadi va xarajatni qayta hisoblaydi. Qoldiq minimal zaxiradan
+tushsa muhandislarga bildirishnoma.
+
+**Ruxsatnoma (PTW) va LOTO.** `POST /api/work-orders/{id}/permit` — `requested` (dispetcher) →
+`issued`/`closed` (faqat tasdiqlovchi). `POST /api/work-orders/{id}/loto` — energiya izolyatsiyasi
+(IEC 60204-1 §5.3): ruxsatnoma talab qilinsa avval berilishi kerak. **LOTO faol ekan shu aktivga tegishli
+sensorlarga boshqaruv buyrug'i 409 bilan rad etiladi va chetlab o'tib bo'lmaydi** (tasdiqlovchining
+`override` i ham ishlamaydi) — izolyatsiyani ish buyrug'ida olib tashlash kerak (qo'ygan xodim yoki
+tasdiqlovchi). LOTO faol bo'lsa ish buyrug'i yopilmaydi. Sensor aktivga quvvat/tebranish/podshipnik
+sensori, bir xil IFC elementi yoki KKS kodi prefiksi (H1 ierarxiyasi) orqali bog'lanadi; izolyatsiya
+nuqtasida sensor to'g'ridan-to'g'ri ko'rsatilishi ham mumkin. Faol ro'yxat: `GET /api/projects/{id}/loto`.
+
+**Xizmat tarixi.** `GET /api/assets/{id}/history` (Aktivlar → «Tarix»): ish buyruqlari (mehnat soati,
+sarflangan qismlar, xarajat taqsimoti, ISO 14224 kodlari), yil bo'yicha jamlanma va nosozlik rejimlari
+taqsimoti — ISO 55001 aktiv yozuvi uchun.
+
 ## Aktiv topshiruvi (COBie ga o'xshash)
 
 Model versiyasidan aktiv registri: `GET /api/versions/{id}/assets/register` (JSON) yoki `?format=csv` —

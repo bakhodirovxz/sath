@@ -9,12 +9,12 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from .. import ha
+from .. import ha, notifications
 from ..auth import sessions
 from ..config import get_settings
 from ..db import SessionLocal
-from ..orm import Project, SystemState
-from . import control, health, historian, keys, live, soe, twin
+from ..orm import Project, Role, SystemState
+from . import cmms, control, health, historian, keys, live, soe, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
 
@@ -73,6 +73,15 @@ def tick_hourly() -> tuple[int, int]:
         purged += historian.purge_agg(db, "10m", settings.agg_10m_retention_days)
         purged += soe.purge(db, settings.soe_retention_days)
         twin.rollup_units(db)  # agregat kunlik statistikasi (tugagan kunlar)
+        for wo, proj in cmms.tick_plans(db):  # profilaktik rejalar → ish buyrug'i (H2)
+            notifications.push(
+                db,
+                notifications.member_ids(db, proj.id, Role.operator),
+                "workorder",
+                f"Profilaktik xizmat: {wo.title}",
+                wo.description.splitlines()[-1] if wo.description else "",
+                f"/projects/{proj.id}/dashboard",
+            )
         health.tick_hourly(db)  # sog'liq indekslari (HEALTH.*)
         sessions.purge_expired(db)  # tugagan/bekor qilingan sessiyalar (L2), 30 kundan keyin
         db.commit()
