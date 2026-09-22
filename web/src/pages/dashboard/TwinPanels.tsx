@@ -8,6 +8,7 @@ import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { dialogs } from "../../ui/dialogs";
 import { AssetHistoryDialog } from "./CmmsPanels";
+import { CalibrationPanel } from "./CalibrationPanel";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
@@ -28,6 +29,8 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
         <p className="muted">Egizak uchun ma'lumot yetarli emas: {t.reason}. {t.has_model === false ? "Modelda Pset_GES_Turbine bo'lgan versiya kerak." : "Sxemada yuqori/quyi byef sathi va agregat quvvati sensorlarini bog'lang."}</p>
       ) : (
         <>
+          {t.model_note && <p className={`small ${t.calibration?.drifted ? "error" : "dim"}`} data-testid="twin-model-note">⚠ {t.model_note}</p>}
+          {t.calibrated && !t.calibration?.drifted && <p className="small dim" data-testid="twin-calibrated">Model kalibrovkalangan{t.calibration?.applied_at ? ` (${new Date(t.calibration.applied_at).toLocaleDateString()})` : ""}{t.calibration?.rmse_mw != null ? ` · RMSE ${t.calibration.rmse_mw} MW` : ""}</p>}
           <p className="muted small">Brutto napor <b>{fmtValue(t.head_gross_m ?? 0)} m</b>{t.flow_total_m3s != null && <> · sarf <b>{fmtValue(t.flow_total_m3s)} m³/s</b></>} · o'lchangan <b>{fmtValue(t.measured_total_mw ?? 0)} MW</b> / kutilgan <b>{fmtValue(t.expected_total_mw ?? 0)} MW</b> (model v{t.version_id})</p>
           <table className="grid small">
             <thead><tr><th>Agregat</th><th>Holat</th><th>O'lchangan, MW</th><th>Kutilgan, MW</th><th>Og'ish</th><th>FIK (haqiqiy / model)</th><th>Sarf, m³/s</th><th>Netto napor, m</th></tr></thead>
@@ -71,6 +74,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
         </div>
       )}
       {(!t.safety || t.safety.length === 0) && <p className="dim small" style={{ marginTop: 6 }}>Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
+      <CalibrationPanel projectId={projectId} canEdit={canRun} />
     </div>
   );
 }

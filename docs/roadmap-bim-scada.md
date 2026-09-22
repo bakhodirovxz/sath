@@ -1208,7 +1208,7 @@ Qabul mezoni: profilaktik reja avtomatik ish buyrug'i yaratadi (test); LOTO faol
 boshqaruv buyrug'i rad etiladi (test).
 Bog'liqlik: B4, H1.
 
-### H3 — Holat monitoringi arxitekturasi (ISO 13374) ✅
+### H3 — Holat monitoringi arxitekturasi (ISO 13374) ✅ (`4c0459d`)
 
 Muammo: `health.asset_health` — 190 qatorli bitta funksiya, unda ma'lumot yig'ish, holat
 aniqlash, sog'liq bahosi, prognoz va tavsiya birlashib ketgan. OSA-CBM ning oltita funksional
@@ -1239,7 +1239,7 @@ Bog'liqlik: H1.
 Hozirgi holat: tavsifiy va informativ, tor bashoratli bo'laklar bilan. Yuqoriga ko'tarilish
 uchun quyidagilar kerak.
 
-### I1 — Model kalibrovkasi
+### I1 — Model kalibrovkasi ✅
 
 Muammo: `monitoring/twin.py` model parametrlarini berilgan holda ishlatadi. Quvur g'adir-budurligi,
 turbina FIK egri chizig'i, ombor hajm-sath egri chizig'i — hech biri o'lchangan ma'lumotga

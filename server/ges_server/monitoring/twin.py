@@ -214,10 +214,12 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
         }
     head_gross = up - down
     pen = params.get("penstocks") or []
+    # I1: qo'llangan kalibrovka bo'lsa g'adir-budurlik va FIK undan olinadi (aks holda IFC pasporti)
+    cal = dict(project.calibration or {})
+    cal_eff = {int(k): float(v) for k, v in (cal.get("eff") or {}).items()}
+    roughness = float(cal.get("penstock_roughness_mm") or (pen[0]["roughness_mm"] if pen else 0.1))
     spec_p = (
-        PenstockSpec(pen[0]["length_m"], pen[0]["diameter_m"], pen[0]["roughness_mm"])
-        if pen
-        else None
+        PenstockSpec(pen[0]["length_m"], pen[0]["diameter_m"], roughness) if pen else None
     )
     slot_of = {s.id: k for k, s in slots.items()}
 
@@ -235,7 +237,7 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
             rated_power_mw=spec_d["rated_power_mw"],
             rated_head_m=spec_d["rated_head_m"],
             rated_flow_m3s=spec_d["rated_flow_m3s"],
-            max_efficiency=spec_d.get("max_efficiency", 0.92),
+            max_efficiency=cal_eff.get(i + 1, spec_d.get("max_efficiency", 0.92)),
         )
         measured = unit_val(s)
         is_running = measured is not None and measured > RUN_THRESHOLD
@@ -277,6 +279,23 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
     return {
         "status": "ok",
         "version_id": params.get("version_id"),
+        # I1 — model kalibrovkasi: og'ish % ni qanday o'qish kerakligini ko'rsatadi
+        "calibrated": bool(cal),
+        "calibration": {
+            "penstock_roughness_mm": roughness,
+            "eff": cal_eff,
+            "run_id": cal.get("run_id"),
+            "applied_at": cal.get("applied_at"),
+            "rmse_mw": cal.get("rmse"),
+            "drifted": bool(cal.get("drift_notified_at")),
+        }
+        if cal
+        else None,
+        "model_note": (
+            "Model kalibrovkalanmagan — «og'ish %» degradatsiya bilan model xatosini qo'shib ko'rsatadi"
+            if not cal
+            else ("Model siljigan (drift) — qayta kalibrovka tavsiya etiladi" if cal.get("drift_notified_at") else "")
+        ),
         "head_gross_m": round(head_gross, 3),
         "flow_total_m3s": q_total,
         "units": units_out,

@@ -167,6 +167,35 @@ yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → usk
 `GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
 bosimli quvur, HAD suv olish, …).
 
+## Model kalibrovkasi va qoldiq kuzatuvi (I1)
+
+Egizak model parametrlarini IFC pasportidan oladi. Ular o'lchangan ishga moslashtirilmasa, «og'ish %»
+haqiqiy degradatsiyani va model xatosini qo'shib ko'rsatadi — shuning uchun egizak javobida
+`calibrated` bayrog'i va `model_note` bor, interfeysda esa ogohlantirish chiqadi.
+
+**Kalibrovka.** Dispetcher paneli → Egizak → «Model kalibrovkasi»: oyna (kun) tanlanadi va
+«Hisoblash» / «Hisoblash va qo'llash» bosiladi (`POST /api/projects/{id}/calibration/run`, muhandis).
+Tarixiy soatlik ma'lumotdan (byef sathlari, sarf, agregat quvvati) qoldiq
+`P_o'lchangan − P_model(θ)` ning RMSE si minimallashtiriladi: koordinata bo'yicha tushish + oltin
+kesim qidiruvi, parametrlar fizik chegarada (`penstock_roughness_mm` 0.01–5 mm, `max_efficiency`
+0.80–0.96). Kamida 24 ta ishlagan soat kerak, aks holda natija `insufficient`.
+
+**Identifikatsiya tekshiruvi.** Har parametr uchun profil sinovi bajariladi: parametr pasport
+qiymatida qotiriladi, qolganlari qayta moslashtiriladi. Agar parametrni erkin qoldirish RMSE ni
+2 % dan kam yaxshilasa, u shu ma'lumotdan **ajratilmaydi** (masalan, qisqa quvurda g'adir-budurlik
+FIK bilan kollinear) va pasport qiymatida qoladi — natijada `diagnostics` da sababi yoziladi.
+Bu soxta «kalibrovkalangan» qiymat paydo bo'lishining oldini oladi.
+
+**Qo'llash va bekor qilish.** Natija `calibration_runs` da saqlanadi; qo'llanganda
+`Project.calibration` ga yoziladi va egizak shu parametrlar bilan hisoblaydi. Eski yozuvni qayta
+qo'llash — `POST /api/calibration/{run_id}/apply`; bekor qilish (pasportga qaytish) —
+`DELETE /api/projects/{id}/calibration`.
+
+**Drift.** Soatlik fon vazifasi oxirgi 7 kunlik qoldiqni tekshiradi: siljish (bias) kalibrovka
+RMSE sining 2 barobaridan oshsa, model «siljigan» deb belgilanadi va muhandislarga bildirishnoma
+yuboriladi (takrorlanmaydi; drift tugasa belgi olib tashlanadi). Holat:
+`GET /api/projects/{id}/calibration` → `residuals`.
+
 ## Holat monitoringi (ISO 13374 / OSA-CBM)
 
 Sog'liq hisobi olti funksional blokka ajratilgan (`server/ges_server/monitoring/cm/`), har biri

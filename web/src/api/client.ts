@@ -363,7 +363,11 @@ export interface SelectResult { select_token: string; sensor_id: number; value: 
 export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
-export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean }
+export interface CalibrationInfo { penstock_roughness_mm: number; eff: Record<string, number>; run_id?: number | null; applied_at?: string | null; rmse_mw?: number | null; drifted?: boolean }
+export interface CalibrationRun { id: number; project_id: number; created_at: string; author: string | null; window_from: string; window_to: string; n_points: number; targets: string[]; status: string; params_before: { penstock_roughness_mm?: number; eff?: Record<string, number> }; params_after: { penstock_roughness_mm?: number; eff?: Record<string, number> }; rmse_before: number | null; rmse_after: number | null; bias_after: number | null; improvement_pct: number | null; diagnostics: Record<string, { gain: number; identifiable: boolean; note: string }>; applied: boolean; note: string }
+export interface CalibrationResiduals { status: "ok" | "drifted" | "uncalibrated" | "insufficient"; calibrated?: boolean; n_points?: number; days?: number; rmse_mw?: number; bias_mw?: number; calibration_rmse_mw?: number | null; run_id?: number | null; applied_at?: string | null; advice?: string; reason?: string }
+export interface CalibrationState { current: Record<string, unknown>; residuals: CalibrationResiduals; runs: CalibrationRun[] }
+export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean; calibrated?: boolean; calibration?: CalibrationInfo | null; model_note?: string }
 export interface HealthSensorBlock { sensor_id: number; name: string; unit: string; value: number | null; stale: boolean; slope_per_day: number | null; baseline_mean: number | null; baseline_std: number | null; z: number | null; anomaly: boolean; points: number; zone?: string; zone_note?: string; days_to_c?: number | null; days_to_d?: number | null; warn?: number; alarm?: number; days_to_alarm?: number | null }
 export type CmState = "normal" | "alert" | "alarm" | "unknown";
 export interface CmStateItem { state: CmState; reason: string; zone?: string; zone_note?: string; limits?: number[]; warn?: number; alarm?: number; anomaly?: boolean; external?: boolean; match?: { name: string; f: number; amplitude: number; share: number; kind: string; spectrum_id: number } }
@@ -849,6 +853,10 @@ export const api = {
   },
   // Raqamli egizak, boshqaruv, jurnal, aktivlar, vaqt mashinasi
   twin: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin`),
+  calibration: (projectId: number) => request<CalibrationState>(`/api/projects/${projectId}/calibration`),
+  runCalibration: (projectId: number, body: { days?: number; targets?: string[]; apply?: boolean }) => request<CalibrationRun>(`/api/projects/${projectId}/calibration/run`, { method: "POST", body: json(body) }),
+  applyCalibration: (runId: number) => request<{ current: Record<string, unknown>; run: CalibrationRun }>(`/api/calibration/${runId}/apply`, { method: "POST" }),
+  revertCalibration: (projectId: number) => request<{ current: Record<string, unknown> }>(`/api/projects/${projectId}/calibration`, { method: "DELETE" }),
   twinRun: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin/run`, { method: "POST" }),
   commands: (projectId: number, hours = 168) => request<Command[]>(`/api/projects/${projectId}/commands?hours=${hours}`),
   /** Select-before-operate: 1) select → 30 s li token, 2) execute token bilan */

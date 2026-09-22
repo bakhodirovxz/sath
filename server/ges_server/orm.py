@@ -144,6 +144,8 @@ class Project(Base):
     # Maydon pasporti: yer/grunt/seysmiklik, ombor, to'g'on, quvur, quyi byef, inshoot belgilari
     # (ges_sim.site.SITE_FIELDS) — simulyatsiyalar shu yerdan avtomatik to'ldiriladi
     site: Mapped[dict] = mapped_column(JSON, default=dict)
+    # I1 — qo'llangan model kalibrovkasi: {penstock_roughness_mm, eff{idx: FIK}, run_id, applied_at, rmse, bias}
+    calibration: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -506,18 +508,6 @@ class SimTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     author: Mapped[User] = relationship()
-
-
-# O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
-# good — haqiqiy o'lchov; uncertain — shubhali (aloqa/diapazon); bad — yaroqsiz (alarm baholanmaydi,
-# last_value yangilanmaydi); substituted — o'rnini bosuvchi (hisoblangan/oldingi); manual — qo'lda kiritilgan
-QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
-
-
-# O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
-# good — haqiqiy o'lchov; uncertain — shubhali (aloqa/diapazon); bad — yaroqsiz (alarm baholanmaydi,
-# last_value yangilanmaydi); substituted — o'rnini bosuvchi (hisoblangan/oldingi); manual — qo'lda kiritilgan
-QUALITIES = ("good", "uncertain", "bad", "substituted", "manual")
 
 
 # O'lchov sifati (OPC UA StatusCode / IEC 61850 quality ga mos soddalashtirilgan to'plam):
@@ -960,6 +950,36 @@ class PartMovement(Base):
     author: Mapped[User] = relationship()
 
 
+class CalibrationRun(Base):
+    """Model kalibrovkasi yozuvi (I1): qaysi davr, qaysi parametrlar, qoldiq oldin/keyin, qo'llanganmi.
+    Qo'llangan parametrlar `Project.calibration` da (egizak shundan o'qiydi)."""
+
+    __tablename__ = "calibration_runs"
+    __table_args__ = (Index("ix_calibration_project", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    window_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_to: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    n_points: Mapped[int] = mapped_column(Integer, default=0)
+    targets: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(16), default="ok")  # ok|insufficient|failed
+    params_before: Mapped[dict] = mapped_column(JSON, default=dict)
+    params_after: Mapped[dict] = mapped_column(JSON, default=dict)
+    rmse_before: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rmse_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bias_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    improvement_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # parametr identifikatsiyasi: {param: {gain, identifiable, note}} — aniqlanmagan parametr o'zgarmaydi
+    diagnostics: Mapped[dict] = mapped_column(JSON, default=dict)
+    applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    author: Mapped[User | None] = relationship()
+
+
 class Spectrum(Base):
     """Holat monitoringi signali (H3, ISO 13374 DA bloki natijasi): spektr, envelope-spektr, orbita yoki
     to'lqin shakli. Vaqt qatori emas — alohida jadval: bitta o'lchov = chastota/amplituda massivi
@@ -1123,7 +1143,6 @@ class ReadingHourly(Base):
     max: Mapped[float] = mapped_column(Float)
     # soat ichida good ulushi (0..1) va bad soni — n ga faqat bad bo'lmaganlar kiradi
     pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
-    n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 

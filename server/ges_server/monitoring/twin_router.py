@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
-from ..orm import Asset, AssetDocument, Project, Role, Sensor, utcnow
-from . import health, kks, twin
+from ..orm import Asset, AssetDocument, CalibrationRun, Project, Role, Sensor, utcnow
+from . import calibration, health, kks, live, twin
 
 router = APIRouter(prefix="/api", tags=["twin"])
 
@@ -144,6 +144,123 @@ def project_health(project: ViewerProject, db: DB):
 @router.post("/projects/{project_id}/health/run")
 def project_health_run(project: EngineerProject, db: DB):
     return health.publish(db, project)
+
+
+# --------------------------------------------------------------- I1: model kalibrovkasi
+
+
+class CalibrationIn(BaseModel):
+    days: int = Field(default=30, ge=1, le=365, description="tarixiy oyna, kun")
+    targets: list[Literal["penstock_roughness_mm", "max_efficiency"]] = Field(
+        default_factory=lambda: ["penstock_roughness_mm", "max_efficiency"]
+    )
+    apply: bool = Field(default=False, description="natijani darhol qo'llash")
+
+
+def _run_out(r: CalibrationRun) -> dict:
+    return {
+        "id": r.id,
+        "project_id": r.project_id,
+        "created_at": live._aware(r.created_at),
+        "author": r.author.username if r.author else None,
+        "window_from": live._aware(r.window_from),
+        "window_to": live._aware(r.window_to),
+        "n_points": r.n_points,
+        "targets": list(r.targets or []),
+        "status": r.status,
+        "params_before": r.params_before or {},
+        "params_after": r.params_after or {},
+        "rmse_before": r.rmse_before,
+        "rmse_after": r.rmse_after,
+        "bias_after": r.bias_after,
+        "improvement_pct": r.improvement_pct,
+        "diagnostics": r.diagnostics or {},
+        "applied": bool(r.applied),
+        "note": r.note,
+    }
+
+
+@router.get("/projects/{project_id}/calibration")
+def calibration_state(project: ViewerProject, db: DB, limit: int = 20):
+    """Joriy kalibrovka, oxirgi qoldiq holati (drift) va kalibrovka tarixi."""
+    rows = (
+        db.query(CalibrationRun)
+        .filter_by(project_id=project.id)
+        .order_by(CalibrationRun.id.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    return {
+        "current": calibration.current(project),
+        "residuals": calibration.residuals(db, project),
+        "runs": [_run_out(r) for r in rows],
+    }
+
+
+@router.post("/projects/{project_id}/calibration/run")
+def calibration_run(project: EngineerProject, body: CalibrationIn, user: CurrentUser, db: DB):
+    """Kalibrovkani bajarish: tarixiy soatlik ma'lumotdan parametrlarni moslashtirish (eng kichik
+    kvadratlar). Natija yozuv sifatida saqlanadi; `apply` bo'lsa egizak darhol shu parametrlar bilan."""
+    rec = calibration.run(
+        db, project, user.id, days=body.days, targets=tuple(body.targets), apply=body.apply
+    )
+    audit.log(
+        db,
+        user_id=user.id,
+        action="twin.calibration",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"status": rec.status, "rmse_after": rec.rmse_after, "applied": rec.applied},
+    )
+    db.commit()
+    db.refresh(rec)
+    return _run_out(rec)
+
+
+@router.post("/calibration/{run_id}/apply")
+def calibration_apply(run_id: int, user: CurrentUser, db: DB):
+    """Saqlangan kalibrovkani qo'llash (masalan, eski yozuvga qaytish)."""
+    from ..auth.deps import get_project_role, has_role
+
+    rec = db.get(CalibrationRun, run_id)
+    if rec is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kalibrovka topilmadi")
+    project = db.get(Project, rec.project_id)
+    if not has_role(get_project_role(db, project.id, user), Role.engineer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Ruxsat yo'q")
+    try:
+        calibration.apply_run(db, project, rec)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    audit.log(
+        db,
+        user_id=user.id,
+        action="twin.calibration_apply",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"run_id": rec.id},
+    )
+    db.commit()
+    return {"current": calibration.current(project), "run": _run_out(rec)}
+
+
+@router.delete("/projects/{project_id}/calibration")
+def calibration_revert(project: EngineerProject, user: CurrentUser, db: DB):
+    """Kalibrovkani bekor qilish — model IFC pasporti qiymatlariga qaytadi."""
+    calibration.revert(db, project)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="twin.calibration_revert",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={},
+    )
+    db.commit()
+    return {"current": {}}
 
 
 _CONFIG_KEYS = {

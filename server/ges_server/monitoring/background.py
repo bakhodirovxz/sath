@@ -14,7 +14,7 @@ from ..auth import sessions
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Project, Role, SystemState
-from . import cmms, control, health, historian, keys, live, soe, twin
+from . import calibration, cmms, control, health, historian, keys, live, soe, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
 
@@ -73,6 +73,7 @@ def tick_hourly() -> tuple[int, int]:
         purged += historian.purge_agg(db, "10m", settings.agg_10m_retention_days)
         purged += soe.purge(db, settings.soe_retention_days)
         twin.rollup_units(db)  # agregat kunlik statistikasi (tugagan kunlar)
+        calibration.tick_drift(db)  # egizak modeli siljishi (I1)
         for wo, proj in cmms.tick_plans(db):  # profilaktik rejalar → ish buyrug'i (H2)
             notifications.push(
                 db,
