@@ -1905,7 +1905,7 @@ Fayllar: `deploy/docker-compose.yml`, `deploy/Caddyfile`, `server/ges_server/mai
 Qabul mezoni: 20 ta noto'g'ri login urinishi bloklanadi (test).
 Bog'liqlik: yo'q.
 
-### L2 — Sessiya boshqaruvi ✅
+### L2 — Sessiya boshqaruvi ✅ (`d850b96`)
 
 Muammo (`auth/security.py:24-45`, `config.py:25`):
 - `access_token_minutes = 60*12` — 12 soatlik token, bekor qilish yo'q, refresh yo'q, logout
@@ -1932,7 +1932,7 @@ Fayllar: `server/ges_server/auth/`, `orm.py`, `monitoring/router.py`, `web/src/a
 Qabul mezoni: parol o'zgargandan keyin eski token ishlamaydi (test).
 Bog'liqlik: A2.
 
-### L3 — Ish navbati va restartga chidamlilik
+### L3 — Ish navbati va restartga chidamlilik ✅
 
 Muammo: `BackgroundTasks` barcha geometriya/fragment/sim ishini olib yuradi
 (`models/router.py:253`, `:257`; `drafts_router.py:292`, `:296`, `:406`, `:410`;

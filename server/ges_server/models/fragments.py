@@ -11,11 +11,21 @@ import json
 import logging
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from ..config import get_settings
 
 log = logging.getLogger("ges_server.fragments")
+
+# Bir sha uchun bir vaqtda bitta konvertatsiya (navbat ishchisi va so'rovdagi konvertatsiya to'qnashmasin, L3)
+_locks: dict[str, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _lock_for(sha: str) -> threading.Lock:
+    with _locks_guard:
+        return _locks.setdefault(sha, threading.Lock())
 
 
 def tool_path() -> Path | None:
@@ -46,6 +56,13 @@ def convert(ifc: Path, sha: str, timeout_s: int = 1800) -> Path | None:
     out = frag_path(sha)
     if out.exists():
         return out
+    with _lock_for(sha):
+        if out.exists():
+            return out
+        return _convert_locked(ifc, sha, out, timeout_s)
+
+
+def _convert_locked(ifc: Path, sha: str, out: Path, timeout_s: int) -> Path | None:
     tool = tool_path()
     node = shutil.which(get_settings().node_bin)
     if tool is None or node is None:

@@ -10,19 +10,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from ges_sim import catalog, custom, scenario
 from ges_sim.cfd import build_case, run_case
 from ges_sim.cfd.runner import collect_results
 from pydantic import BaseModel, Field
 
-from .. import audit, ratelimit
+from .. import audit, jobs, ratelimit
 from ..auth.deps import DB, CurrentUser
 from ..config import get_settings
 from ..db import SessionLocal
 from ..models import storage
 from ..models.router import get_model_checked, get_version_checked
-from ..orm import Role, SimJob, SimStatus, SimTemplate, Version, utcnow
+from ..orm import Model, Role, SimJob, SimStatus, SimTemplate, Version, utcnow
 from . import compute, ges_params
 
 log = logging.getLogger("ges_server.sim")
@@ -34,6 +34,8 @@ class SimCreate(BaseModel):
     version_id: int | None = None
     kind: str = "hydro"
     params: dict[str, Any]
+    # L3: takror yuborilgan so'rov (tarmoq uzilishi) yangi ish ochmaydi — mavjud ish qaytadi
+    idempotency_key: str | None = Field(default=None, max_length=128)
 
 
 class SimOut(BaseModel):
@@ -51,6 +53,7 @@ class SimOut(BaseModel):
     created_at: datetime
     finished_at: datetime | None
     params: dict | None = None
+    attempts: int = 0
 
 
 def _out(j: SimJob, with_params: bool = False) -> SimOut:
@@ -69,6 +72,7 @@ def _out(j: SimJob, with_params: bool = False) -> SimOut:
         created_at=j.created_at,
         finished_at=j.finished_at,
         params=j.params if with_params else None,
+        attempts=j.attempts or 0,
     )
 
 
@@ -94,17 +98,17 @@ def _set_progress(job_id: int, progress: float, note: str) -> None:
 
 
 def run_job(job_id: int, cfd_mode: str | None = None) -> None:
-    """Fon vazifa (yoki worker): alohida sessiya, natija faylga, xulosa DB ga."""
+    """Ishchi (jarayon ichidagi navbat yoki CFD worker) — ish allaqachon claim qilingan (`running`, ijara
+    bilan). Alohida sessiya, natija faylga, xulosa DB ga; ijara ish davomida fon threadda uzaytiriladi."""
     settings = get_settings()
     with SessionLocal() as db:
         job = db.get(SimJob, job_id)
-        if job is None:
+        if job is None or job.status != SimStatus.running:
             return
         if job.kind == "cfd" and (cfd_mode or settings.cfd_mode) == "worker":
             return  # worker oladi
-        job.status = SimStatus.running
-        db.commit()
         kind, params = job.kind, dict(job.params)
+    lease = jobs.renew_forever(SimJob, job_id)
     try:
         if kind == "cfd":
             mode = cfd_mode or settings.cfd_mode
@@ -133,6 +137,8 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
     except Exception as e:  # noqa: BLE001 — foydalanuvchiga xato matni ko'rsatiladi
         log.exception("sim job %s failed", job_id)
         ok, summary, err = False, {}, str(e)[:4000]
+    finally:
+        lease.set()
     with SessionLocal() as db:
         job = db.get(SimJob, job_id)
         if job is None:
@@ -142,6 +148,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
         job.error = err
         job.progress = 1.0 if ok else job.progress
         job.finished_at = utcnow()
+        job.lease_until = None
         db.commit()
 
 
@@ -212,27 +219,31 @@ def _hydro_from_site(params: dict, site: dict | None) -> None:
 
 
 @router.post("/models/{model_id}/sim", response_model=SimOut, status_code=202)
-def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks: BackgroundTasks):
-    """Simulyatsiyani navbatga qo'yadi. Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi;
-    byudjet, vaqt chegarasi va foydalanuvchi kvotasi bilan cheklangan); CFD — muhandis+."""
+def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB):
+    """Simulyatsiyani navbatga qo'yadi (L3: DB navbati, restartda yo'qolmaydi; `idempotency_key` bilan takror
+    so'rov shu ishni qaytaradi). Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi; byudjet,
+    vaqt chegarasi va foydalanuvchi/loyiha kvotasi bilan cheklangan); CFD — muhandis+."""
     ratelimit.check("sim", str(user.id), get_settings().rate_sim_per_min)
     model = get_model_checked(
         db, model_id, user, Role.engineer if body.kind == "cfd" else Role.viewer
     )
     settings = get_settings()
-    active = (
-        db.query(SimJob)
-        .filter(
-            SimJob.author_id == user.id,
-            SimJob.status.in_([SimStatus.queued, SimStatus.running]),
-        )
-        .count()
-    )
-    if active >= settings.sim_max_active_per_user:
+    if body.idempotency_key:
+        existing = db.query(SimJob).filter_by(author_id=user.id, idempotency_key=body.idempotency_key).one_or_none()
+        if existing is not None:
+            return _out(existing, with_params=True)
+    active_q = db.query(SimJob).filter(SimJob.status.in_([SimStatus.queued, SimStatus.running]))
+    if active_q.filter(SimJob.author_id == user.id).count() >= settings.sim_max_active_per_user:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"Bir vaqtda {settings.sim_max_active_per_user} tadan ko'p simulyatsiya mumkin emas — "
             "avvalgilarini kuting",
+        )
+    project_model_ids = db.query(Model.id).filter(Model.project_id == model.project_id)
+    if active_q.filter(SimJob.model_id.in_(project_model_ids)).count() >= settings.sim_max_active_per_project:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Loyihada bir vaqtda {settings.sim_max_active_per_project} tadan ko'p simulyatsiya mumkin emas",
         )
     if body.version_id is not None:
         v = db.get(Version, body.version_id)
@@ -295,6 +306,8 @@ def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks:
         kind=body.kind,
         name=body.name or _default_name(body.kind, params),
         params=params,
+        idempotency_key=body.idempotency_key or None,
+        max_attempts=1 if body.kind == "cfd" else 2,  # CFD soatlab — avtomatik qayta urinilmaydi
     )
     db.add(job)
     db.flush()
@@ -318,7 +331,7 @@ def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB, tasks:
     )
     db.commit()
     db.refresh(job)
-    tasks.add_task(run_job, job.id)
+    jobs.kick()  # jarayon ichidagi ishchi darhol oladi (CFD worker rejimida — tashqi ishchi)
     return _out(job, with_params=True)
 
 

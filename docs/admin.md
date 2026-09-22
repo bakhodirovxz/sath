@@ -39,6 +39,18 @@ domen bo'lsa `tls internal` qatorini olib tashlang (Let's Encrypt). `.env` da `G
 `GES_RATE_TRUST_FORWARDED=true` (klient IP `X-Forwarded-For` dan — tezlik cheklovi uchun; Caddy siz **false**).
 Caddyfile HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi.
 
+## Ish navbati (simulyatsiya, fragments, geometriya)
+
+Simulyatsiyalar va yuklangan IFC uchun hosilaviy ishlar (fragments `.frag`, QTO/to'qnashuv) DB navbatida
+(`sim_jobs`, `jobs`): server qayta ishga tushsa ish yo'qolmaydi — startda egasiz `running` ishlar
+yarashtiriladi (urinish qolsa qayta navbatga, aks holda `failed` + sabab). Ishchi ishni atomik claim qiladi
+(ikki ishchi bir ishni ololmaydi) va ijarani (90 s) uzaytirib turadi; ijara tugasa ish egasiz hisoblanadi.
+Jarayon ichidagi ishchi: `GES_JOBS_CONCURRENCY` (2) ta ish bir vaqtda. CFD `GES_CFD_MODE=worker` da alohida
+`cfd` konteyneri (`ges-worker`) oladi — bir necha worker xavfsiz. Kvota: foydalanuvchi bo'yicha
+`GES_SIM_MAX_ACTIVE_PER_USER` (3), loyiha bo'yicha `GES_SIM_MAX_ACTIVE_PER_PROJECT` (10); CFD — muhandis+.
+Takror so'rov (tarmoq uzilishi) uchun `idempotency_key` — mavjud ish qaytadi. Bir hostda bitta Sath jarayoni
+kutiladi (restart yarashtirishi hostname bo'yicha); ko'p replika — L8.
+
 ## Fon hisoblar va historian
 
 - **Yuklashdan keyin** har IFC uchun fonda: fragments (.frag, brauzer uchun tez format — Node kerak, Docker

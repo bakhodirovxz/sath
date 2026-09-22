@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -18,7 +18,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..orm import Model, Project, Role, Version, VersionState
-from . import ifc_meta, storage
+from . import derived, ifc_meta, storage
 
 router = APIRouter(prefix="/api", tags=["models"])
 
@@ -203,7 +203,6 @@ def upload_version(
     file: UploadFile,
     user: CurrentUser,
     db: DB,
-    background: BackgroundTasks,
     message: Annotated[str, Form()] = "",
     parent_id: Annotated[int | None, Form()] = None,
 ):
@@ -270,14 +269,7 @@ def upload_version(
                     status.HTTP_409_CONFLICT, "Parallel yuklash — qayta urinib ko'ring"
                 ) from None
     db.refresh(version)
-    if settings.fragments_enabled:
-        from . import fragments
-
-        background.add_task(fragments.convert, storage.resolve(sha), sha)
-    if settings.precompute_geometry:
-        from . import geometry
-
-        background.add_task(geometry.precompute, storage.resolve(sha), sha)
+    derived.enqueue_for(db, sha)
     return version_out(version)
 
 
@@ -347,7 +339,7 @@ def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: D
 
 
 @router.post("/versions/{version_id}/restore", response_model=VersionOut, status_code=201)
-def restore_version(version_id: int, user: CurrentUser, db: DB, background: BackgroundTasks):
+def restore_version(version_id: int, user: CurrentUser, db: DB):
     """Eski versiyani qayta tiklash: fayli bilan yangi (oxirgi) versiya yaratiladi (git revert kabi),
     ota — joriy oxirgi versiya, izoh — qaysi versiyadan. Tarix o'chmaydi."""
     src = get_version_checked(db, version_id, user, Role.engineer)

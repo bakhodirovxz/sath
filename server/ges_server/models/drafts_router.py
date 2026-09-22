@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
@@ -15,7 +15,7 @@ from .. import audit
 from ..auth.deps import DB, CurrentUser
 from ..config import get_settings
 from ..orm import DraftObject, Role, Version, utcnow
-from . import assimp_load, cad_import, drafts, ifc_meta, mesh_import, storage
+from . import assimp_load, cad_import, derived, drafts, ifc_meta, mesh_import, storage
 from .router import get_model_checked, version_out
 
 router = APIRouter(prefix="/api", tags=["drafts"])
@@ -178,7 +178,7 @@ class CommitIn(BaseModel):
 
 @router.post("/models/{model_id}/drafts/commit", status_code=201)
 def commit_drafts(
-    model_id: int, body: CommitIn, user: CurrentUser, db: DB, background: BackgroundTasks
+    model_id: int, body: CommitIn, user: CurrentUser, db: DB
 ):
     """Qoralamalarni IFC ga qo'shib yangi versiya yaratadi (git commit kabi): ota — tanlangan/oxirgi versiya."""
     model = get_model_checked(db, model_id, user, Role.engineer)
@@ -286,14 +286,7 @@ def commit_drafts(
             db.delete(d)
     db.commit()
     db.refresh(v)
-    if settings.fragments_enabled:
-        from . import fragments
-
-        background.add_task(fragments.convert, storage.resolve(sha), sha)
-    if settings.precompute_geometry:
-        from . import geometry
-
-        background.add_task(geometry.precompute, storage.resolve(sha), sha)
+    derived.enqueue_for(db, sha)
     out = version_out(v).model_dump()
     out["guids"] = info["guids"]
     return out
@@ -305,7 +298,6 @@ def import_mesh_version(
     file: UploadFile,
     user: CurrentUser,
     db: DB,
-    background: BackgroundTasks,
     message: Annotated[str, Form()] = "",
     unit: Annotated[str, Form()] = "m",
     y_up: Annotated[bool, Form()] = False,
@@ -356,15 +348,14 @@ def import_mesh_version(
         with open(out, "rb") as fh:
             sha, fsize = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
     return _version_from_import(
-        db, user, model, base, sha, fsize, name, message, info, objects, background, {"unit": unit}
+        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": unit}
     )
 
 
 def _version_from_import(
-    db, user, model, base, sha, fsize, name, message, info, objects, background, detail
+    db, user, model, base, sha, fsize, name, message, info, objects, detail
 ):
     """Saqlangan IFC (sha) dan yangi versiya yozuvi, audit, fon vazifalar; javob JSON."""
-    settings = get_settings()
     meta = ifc_meta.extract(storage.resolve(sha))
     number = (
         db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar()
@@ -400,14 +391,7 @@ def _version_from_import(
     )
     db.commit()
     db.refresh(v)
-    if settings.fragments_enabled:
-        from . import fragments
-
-        background.add_task(fragments.convert, storage.resolve(sha), sha)
-    if settings.precompute_geometry:
-        from . import geometry
-
-        background.add_task(geometry.precompute, storage.resolve(sha), sha)
+    derived.enqueue_for(db, sha)
     out_v = version_out(v).model_dump()
     out_v["imported"] = info["count"]
     out_v["names"] = [o["name"] for o in objects][:50]
@@ -420,7 +404,6 @@ def import_image_version(
     file: UploadFile,
     user: CurrentUser,
     db: DB,
-    background: BackgroundTasks,
     mode: Annotated[str, Form()] = "drawing",
     message: Annotated[str, Form()] = "",
     width_m: Annotated[float, Form()] = 100.0,
@@ -497,7 +480,6 @@ def import_image_version(
         message,
         info,
         objects,
-        background,
         {"mode": mode, "width_m": width_m},
     )
 
@@ -519,7 +501,7 @@ class DemIn(BaseModel):
 
 @router.post("/models/{model_id}/versions/import-dem", status_code=201)
 def import_dem_version(
-    model_id: int, body: DemIn, user: CurrentUser, db: DB, background: BackgroundTasks
+    model_id: int, body: DemIn, user: CurrentUser, db: DB
 ):
     """Haqiqiy relyef (AWS Terrain Tiles / SRTM) — markaz lat/lon, maydon, burilish → IfcGeographicElement;
     parametrik «Relyef (vodiy)» o'rniga (replace_names). Internet kerak (plitkalar keshlanadi)."""
@@ -573,7 +555,6 @@ def import_dem_version(
         f"(~{info['m_per_px']:.0f} m/px), {info['source']}",
         built,
         [obj],
-        background,
         {"dem": True, "lat": body.lat, "lon": body.lon, "removed": built.get("removed", 0)},
     )
     res["dem"] = info

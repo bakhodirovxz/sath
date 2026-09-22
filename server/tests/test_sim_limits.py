@@ -37,11 +37,11 @@ def test_budget_exceeded_is_400_with_advice(client, users, model_id):
 
 
 def test_per_user_active_quota_429(client, users, model_id, monkeypatch):
-    from ges_server.sim import router as sim_router
+    from ges_server import jobs
 
     monkeypatch.setattr(config.get_settings(), "sim_max_active_per_user", 2)
-    # run_job ni to'xtatib turamiz — ishlar "queued" holatda qoladi
-    monkeypatch.setattr(sim_router, "run_job", lambda job_id, cfd_mode=None: None)
+    # Ishchi bajarmaydi (L3 navbat) — ishlar queued/running holatda qoladi
+    monkeypatch.setattr(jobs.runner, "_run_sim", lambda job_id: None)
     for _ in range(2):
         r = client.post(
             f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["viewer"]

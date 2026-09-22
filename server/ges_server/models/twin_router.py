@@ -6,7 +6,7 @@ import io
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from ges_sim import schema, site
 from pydantic import BaseModel, Field
 
@@ -14,7 +14,7 @@ from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
 from ..config import get_settings
 from ..orm import ImageUnderlay, Model, Project, Role, Version
-from . import drafts, ifc_meta, storage, twin_builder
+from . import derived, drafts, ifc_meta, storage, twin_builder
 
 router = APIRouter(prefix="/api", tags=["twin"])
 EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
@@ -52,7 +52,6 @@ def create_twin(
     body: TwinCreate,
     user: CurrentUser,
     db: DB,
-    background: BackgroundTasks,
 ):
     """Preset → yangi model (parametrik GES: relyef, to'g'on, minora, tunnellar, mashina zali, agregatlar,
     transformatorlar, suv tashlagich) + v1 IFC + loyiha maydon pasporti (+ foto asosi)."""
@@ -141,14 +140,7 @@ def create_twin(
     )
     db.commit()
     db.refresh(v)
-    if settings.fragments_enabled:
-        from . import fragments
-
-        background.add_task(fragments.convert, storage.resolve(sha), sha)
-    if settings.precompute_geometry:
-        from . import geometry
-
-        background.add_task(geometry.precompute, storage.resolve(sha), sha)
+    derived.enqueue_for(db, sha)
     return {
         "model_id": model.id,
         "model_name": model.name,

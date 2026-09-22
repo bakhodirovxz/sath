@@ -338,8 +338,47 @@ class SimJob(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # L3: navbat ijarasi — atomik claim, ijara muddati, urinishlar; idempotentlik kaliti (muallif bo'yicha)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     author: Mapped[User] = relationship()
+
+    __table_args__ = (UniqueConstraint("author_id", "idempotency_key", name="uq_sim_jobs_idem"),)
+
+
+class JobStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    done = "done"
+    failed = "failed"
+
+
+class Job(Base):
+    """Hosilaviy ish navbati (L3): fragments/geometriya konvertatsiyasi va boshqa fon ishlar — restartda
+    yo'qolmaydi, ijara bilan claim qilinadi, `idempotency_key` takrorni oldini oladi (masalan `fragments:<sha>`)."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[JobStatus] = mapped_column(Enum(JobStatus, length=16), default=JobStatus.queued, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=2)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class DraftObject(Base):

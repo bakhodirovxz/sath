@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, audit  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
+from . import __version__, audit, jobs  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
 from .auth.router import router as auth_router
 from .auth.security import hash_password
 from .config import get_settings, write_private
@@ -29,6 +29,7 @@ from .projects.router import router as projects_router
 from .review.router import router as review_router
 from .sim.catalog_router import router as sim_catalog_router
 from .sim.router import router as sim_router
+from .sim.router import run_job
 from .system.audit_router import router as audit_router
 from .system.router import router as system_router
 
@@ -75,9 +76,14 @@ async def lifespan(_: FastAPI):
     mqtt_bridge.start_if_configured(get_settings())
     stop = asyncio.Event()
     task = asyncio.create_task(background.loop(stop))  # stale sensorlar, historian
+    jobs.runner = jobs.Runner(run_job)  # ish navbati ishchisi (L3): sim va hosilaviy artefaktlar
+    jobs_task = asyncio.create_task(jobs.runner.run(stop))
     yield
     stop.set()
+    jobs.runner.kick()
     await task
+    await jobs_task
+    jobs.runner = None
     if mqtt_bridge.bridge is not None:
         mqtt_bridge.bridge.stop()
 
