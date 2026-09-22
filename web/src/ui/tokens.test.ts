@@ -13,6 +13,7 @@ describe("tokens: WCAG AA kontrast (F1)", () => {
       for (const bg of ["panel", "chrome", "canvas", "field"]) for (const k of TEXT) if (contrast(t[k], t[bg]) < 4.5) bad.push(`${k} on ${bg} ${contrast(t[k], t[bg]).toFixed(2)}`);
       if (contrast(t.text, t["alarm-row"]) < 4.5) bad.push("text on alarm-row");
       for (const bg of ["panel", "canvas", "mimic-hall"]) for (const k of GRAPHIC) if (contrast(t[k], t[bg]) < 3) bad.push(`gfx ${k} on ${bg} ${contrast(t[k], t[bg]).toFixed(2)}`);
+      for (let i = 1; i <= 6; i++) if (contrast(t[`pen-${i}`], t.field) < 3) bad.push(`pen-${i} on field`);
       if (contrast(t["alarm-row"], t.panel) < 1.5) bad.push("alarm-row vs panel");
       if (contrast("#ffffff", t.accent) < 4.5) bad.push("white on accent");
       if (contrast(t.text, t.sel) < 4.5) bad.push("text on sel");

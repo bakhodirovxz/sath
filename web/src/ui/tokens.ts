@@ -55,6 +55,13 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "mimic-unit-off": "#26282c",
     "mimic-unbound": "#9296a0",
     "mimic-idle": "#9aa0a8",
+    // Trend qalamlari (F7): grafik foni (--field) ustida ≥ 3:1
+    "pen-1": "#6fa8f5",
+    "pen-2": "#f0b35a",
+    "pen-3": "#6ad39c",
+    "pen-4": "#d29cf0",
+    "pen-5": "#f58c8c",
+    "pen-6": "#7fd9e6",
   },
   operator: {
     // ISA-101: ochiq neytral kulrang fon, rang faqat holat uchun
@@ -97,6 +104,12 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "mimic-unit-off": "#dfe1e4",
     "mimic-unbound": "#5f646c",
     "mimic-idle": "#5f646c",
+    "pen-1": "#1f5fb8",
+    "pen-2": "#9a5a00",
+    "pen-3": "#1c6b3f",
+    "pen-4": "#6b3fa0",
+    "pen-5": "#b3261e",
+    "pen-6": "#0f6e7e",
   },
 };
 

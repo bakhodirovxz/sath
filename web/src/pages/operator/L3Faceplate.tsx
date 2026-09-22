@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type ReadingPoint, type Sensor, type WorkOrder } from "../../api/client";
 import Dialog from "../../ui/Dialog";
-import LineChart from "../../ui/LineChart";
+import Trend from "../../ui/Trend";
 import { fmtDate, fmtValue } from "../../ui/format";
 import { alarmStyle, qualityStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
@@ -103,7 +103,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
         </section>
         <section className="panel">
           <div className="row"><b>Trend</b><span className="grow" />{[1, 6, 24, 168].map((h) => <button key={h} className={`btn sm ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>{h < 24 ? `${h} s` : `${h / 24} k`}</button>)}</div>
-          {pts.length ? <LineChart title="" unit={s.unit} x={pts.map((p) => p.ts)} series={[{ name: s.name, values: pts.map((p) => p.v) }]} height={180} refLines={refLines} /> : <p className="muted">Ma'lumot yo'q</p>}
+          {pts.length ? <Trend series={[{ id: s.id, name: s.name, unit: s.unit, points: pts.map((p) => ({ t: Date.parse(p.ts), v: p.v, min: p.min, max: p.max })) }]} height={200} refLines={refLines} /> : <p className="muted">Ma'lumot yo'q</p>}
         </section>
         <section className="panel">
           <div className="row"><b>Ratsionalizatsiya (ISA-18.2)</b><span className="grow" />{s.rationalized_at ? <span className="badge published">tasdiqlangan</span> : <span className="badge shared">tasdiqlanmagan</span>}</div>

@@ -40,6 +40,7 @@
   --mimic-unit-off: #26282c;
   --mimic-unbound: #9296a0;
   --mimic-idle: #9aa0a8;
+  --pen-1: #6fa8f5; --pen-2: #f0b35a; --pen-3: #6ad39c; --pen-4: #d29cf0; --pen-5: #f58c8c; --pen-6: #7fd9e6;
   --radius: 4px;
   --font: "Inter", "Segoe UI", "DejaVu Sans", "Noto Sans", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
@@ -690,3 +691,11 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .mimic-el-props { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 6px; }
 .l1-mimic { margin-top: 10px; }
 .l1-mimic .mimic { width: 100%; height: auto; max-height: 360px; }
+
+/* --- F7: trend server --- */
+.trend { width: 100%; }
+.trend svg { display: block; width: 100%; height: auto; }
+.trend-tick { font-family: var(--mono); font-size: 10px; fill: var(--text-muted); }
+.trend-legend { font-size: 12px; margin-top: 4px; }
+.trend-readout { margin-top: 6px; }
+.sep { width: 1px; height: 18px; background: var(--line-strong); display: inline-block; }

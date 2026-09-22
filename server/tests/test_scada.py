@@ -313,3 +313,16 @@ def test_dashboard_scheme_saved_and_validated(client, users, power):
     assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": odd}, headers=users["engineer"]).status_code == 422
     # viewer saqlay olmaydi
     assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "scheme": scheme}, headers=users["viewer"]).status_code == 403
+
+
+def test_dashboard_pen_groups(client, users, power):
+    """F7: trend qalam guruhlari (nom → sensorlar) dashboard konfiguratsiyasida; sensor id tekshiriladi."""
+    pid = users["project_id"]
+    r = client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "pen_groups": [{"name": "Agregat 1", "sensor_ids": [power["id"]]}]}, headers=users["engineer"])
+    assert r.status_code == 200, r.text
+    d = client.get(f"/api/projects/{pid}/dashboard", headers=users["viewer"]).json()
+    assert d["pen_groups"] == [{"name": "Agregat 1", "sensor_ids": [power["id"]]}]
+    client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": []}, headers=users["engineer"])  # None — saqlanadi
+    assert client.get(f"/api/projects/{pid}/dashboard", headers=users["viewer"]).json()["pen_groups"][0]["name"] == "Agregat 1"
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "pen_groups": [{"name": "x", "sensor_ids": [99999]}]}, headers=users["engineer"]).status_code == 400
+    assert client.put(f"/api/projects/{pid}/dashboard", json={"mimic": {}, "tiles": [], "pen_groups": [{"name": "x", "sensor_ids": list(range(1, 9))}]}, headers=users["engineer"]).status_code == 422

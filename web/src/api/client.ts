@@ -371,6 +371,7 @@ export interface RationalizationReport { total: number; rationalized: number; un
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
 export interface SchemeElement { id: string; type: string; x: number; y: number; w?: number; h?: number; label?: string; sensor_id?: number | null; unit?: number; extra?: Record<string, number | null> }
 export interface Scheme { version: 1; units: number; elements: SchemeElement[] }
+export interface PenGroup { name: string; sensor_ids: number[] }
 export interface Dashboard {
   sensors: Sensor[];
   units: { sensor_id: number; name: string; running: boolean; power: number | null }[];
@@ -378,6 +379,7 @@ export interface Dashboard {
   slots: MimicSlot[];
   tiles: number[];
   scheme?: Scheme | null;
+  pen_groups?: PenGroup[];
   active_alarms: number;
   energy_24h_mwh: number | null;
   alarms_24h: { count: number; by_state: Record<string, number>; unacked: number };
@@ -692,7 +694,7 @@ export const api = {
   alarmKpi: (projectId: number, hours = 24) => request<AlarmKpi>(`/api/projects/${projectId}/alarms/kpi?hours=${hours}`),
   adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),
-  saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[]; scheme?: Scheme | null }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
+  saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[]; scheme?: Scheme | null; pen_groups?: PenGroup[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),
   async downloadCsv(path: string, filename: string) {
     // Bearer bilan yuklab olish (URL da token yo'q): blob → <a download>

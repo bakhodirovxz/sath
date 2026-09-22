@@ -85,6 +85,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
           <Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>Mashina zali</Link>
           <Link className="btn sm" to={opsPath(pid, "area", "electrical")}>Elektr</Link>
           <Link className="btn sm" to={opsPath(pid, "alarms")} data-testid="nav-alarms">Alarmlar{summary.total ? ` (${summary.total})` : ""}</Link>
+          <Link className="btn sm" to={opsPath(pid, "trends")} data-testid="nav-trends">Trendlar</Link>
           <Link className={`btn sm ${level === 4 ? "active" : ""}`} to={opsPath(pid, "diag")}>L4 Diagnostika</Link>
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />

@@ -830,7 +830,7 @@ Fayllar: yangi `web/src/pages/operator/Alarms.tsx`, `web/src/pages/DashboardPage
 Qabul mezoni: 200 ta alarm toshqinida sahifa ishlaydi va kritiklar birinchi turadi (test).
 Bog'liqlik: C1, C2, C3, C4, F1.
 
-### F6 — Ovozli signal (annunciator) ✅
+### F6 — Ovozli signal (annunciator) ✅ (`c1b8b04`)
 
 Bajarildi: `web/src/ui/annunciator.ts` — bitta doimiy AudioContext (kechiktirib yaratiladi, yopilmaydi), `suspended`
 aniqlash va foydalanuvchi harakatida `unlock()`, sog'liq `ok | blocked | silenced | off | unsupported`; ustuvorlik
@@ -857,7 +857,16 @@ Fayllar: yangi `web/src/ui/annunciator.ts`, `web/src/pages/operator/*`
 Qabul mezoni: 20 ta ketma-ket alarmda ovoz ishlashda davom etadi (test).
 Bog'liqlik: F1.
 
-### F7 — Trend server
+### F7 — Trend server ✅
+
+Bajarildi: `web/src/ui/Trend.tsx` + `trendMath.ts` — har birlik uchun alohida Y o'qi (chap + o'ng o'qlar) yoki
+normallashtirilgan rejim (0…100 %); zoom (g'ildirak, kursor atrofida), pan (surish), kursor A (bosish) va B
+(Shift+bosish) o'qish jadvali va Δ; sifat/bo'shliq uzilish sifatida (`segments`: null yoki > 3× mediana oraliq —
+interpolyatsiya yo'q); `ResizeObserver`; uzunlik qo'riqchisi (≤ 20 000, seriyalar uzunligi farq qilsa NaN yo'q);
+ranglar `--pen-1…6` tokenlari (kontrast testi). `pages/operator/Trends.tsx` (`/ops/trends`): qalamlar (≤ 6), davr,
+rejim, saqlanadigan qalam guruhlari (server `dashboard.pen_groups`, nom bilan), ma'lumot serverdan siyraklashtirilgan
+(D4 `limit=2000`), klientda qayta hisoblanmaydi; faceplate trendi ham `Trend`. Testlar: uzilishlar, o'q qadamlari,
+normallashtirish, ikkilik qidiruv, zoom/pan chegaralari, 5 birlikdagi seriya → 5 o'q, 10 000 nuqta < 1.5 s render.
 
 Muammo: `LineChart.tsx:35` — barcha seriyalar uchun bitta Y o'qi. `DashboardPage.tsx:266`
 operatorga 5 ta istalgan sensorni tanlashga ruxsat beradi, `:273` esa `unit=""` uzatadi. Ombor

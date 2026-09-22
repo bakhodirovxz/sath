@@ -1253,10 +1253,17 @@ class SchemeIn(BaseModel):
         return v
 
 
+class PenGroupIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    sensor_ids: list[int] = Field(min_length=1, max_length=6)
+
+
 class DashboardIn(BaseModel):
     mimic: dict[str, int | None] = Field(default_factory=dict)
     tiles: list[int] = Field(default_factory=list)
     scheme: SchemeIn | None = None
+    # Trend qalam guruhlari (F7): nom → sensorlar; None — o'zgarmaydi
+    pen_groups: list[PenGroupIn] | None = Field(None, max_length=50)
 
 
 @router.get("/projects/{project_id}/dashboard")
@@ -1309,6 +1316,7 @@ def dashboard(project: ViewerProject, db: DB):
         "slots": [{"slot": s, "label": lb, "kind": k} for s, lb, k in MIMIC_SLOTS],
         "tiles": cfg.get("tiles") or [],
         "scheme": cfg.get("scheme"),  # F3: konfiguratsiyalanadigan mimika (None → klient standart sxema)
+        "pen_groups": cfg.get("pen_groups") or [],  # F7: trend qalam guruhlari
         "active_alarms": active,
         "energy_24h_mwh": round(energy, 3) if has_power else None,
         "alarms_24h": historian.alarm_stats(db, project.id, since, now),
@@ -1323,6 +1331,9 @@ def save_dashboard(body: DashboardIn, project: EngineerProject, user: CurrentUse
     bad = [v for v in body.mimic.values() if v and v not in ids] + [
         t for t in body.tiles if t not in ids
     ]
+    if body.pen_groups is not None:
+        for g in body.pen_groups:
+            bad.extend(i for i in g.sensor_ids if i not in ids)
     if body.scheme is not None:
         for e in body.scheme.elements:
             if e.sensor_id and e.sensor_id not in ids:
@@ -1339,6 +1350,7 @@ def save_dashboard(body: DashboardIn, project: EngineerProject, user: CurrentUse
         "mimic": {k: v for k, v in body.mimic.items() if v},
         "tiles": body.tiles,
         "scheme": body.scheme.model_dump(exclude_none=True) if body.scheme is not None else old.get("scheme"),
+        "pen_groups": [g.model_dump() for g in body.pen_groups] if body.pen_groups is not None else old.get("pen_groups") or [],
     }
     audit.log(
         db,
