@@ -17,7 +17,7 @@ from .models.drafts_router import router as drafts_router
 from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
 from .models.underlays import router as underlays_router
-from .monitoring import background, mqtt_bridge
+from .monitoring import background, backplane, mqtt_bridge
 from .monitoring.control import router as control_router
 from .monitoring.parts import router as parts_router
 from .monitoring.router import router as monitoring_router
@@ -78,7 +78,16 @@ async def lifespan(_: FastAPI):
     task = asyncio.create_task(background.loop(stop))  # stale sensorlar, historian
     jobs.runner = jobs.Runner(run_job)  # ish navbati ishchisi (L3): sim va hosilaviy artefaktlar
     jobs_task = asyncio.create_task(jobs.runner.run(stop))
+    from .monitoring import live
+
+    live.hub.loop = asyncio.get_running_loop()
+    live.hub.backplane = backplane.from_settings()  # L4: ko'p replika — Postgres LISTEN/NOTIFY
+    if live.hub.backplane is not None:
+        await live.hub.backplane.start(live.hub.deliver)
     yield
+    if live.hub.backplane is not None:
+        await live.hub.backplane.stop()
+        live.hub.backplane = None
     stop.set()
     jobs.runner.kick()
     await task

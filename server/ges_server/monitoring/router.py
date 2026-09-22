@@ -1445,6 +1445,12 @@ def _ws_authorized(db, project_id: int, uid: int) -> bool:
     return user is not None and user.is_active and has_role(get_project_role(db, project_id, user), Role.viewer)
 
 
+@router.get("/projects/{project_id}/live/clients")
+def live_clients(project: EngineerProject):
+    """Jonli oqim klientlari diagnostikasi (L4): navbat chuqurligi, tashlangan xabarlar — sekin HMI ni topish."""
+    return {"node": live.hub.backplane.node_id if live.hub.backplane else None, "clients": live.hub.diagnostics(project.id)}
+
+
 @router.websocket("/projects/{project_id}/live")
 async def live_ws(ws: WebSocket, project_id: int, ticket: str = Query("")):
     """Jonli o'lchovlar. `?ticket=` — `POST /api/auth/ws-ticket` dan 60 s li chipta (sessiya tokeni URL ga
@@ -1455,12 +1461,15 @@ async def live_ws(ws: WebSocket, project_id: int, ticket: str = Query("")):
         if user is None or not has_role(get_project_role(db, project_id, user), Role.viewer):
             await ws.close(code=4401)
             return
+        if live.hub.user_connections(user.id) >= get_settings().ws_max_per_user:
+            await ws.close(code=4429)  # foydalanuvchi bo'yicha ulanish chegarasi (L4)
+            return
         # stale tekshiruvi faqat fon vazifasida (C5): ulanish sikli alarm/email bo'roni bermasin
         snapshot = [
             live.sensor_message(s) for s in db.query(Sensor).filter_by(project_id=project_id).all()
         ]
         uid = user.id
-    await live.hub.connect(project_id, ws)
+    client = await live.hub.connect(project_id, ws, uid)
     opened = datetime.now(timezone.utc)
     await asyncio.to_thread(
         audit.log_now,
@@ -1471,15 +1480,24 @@ async def live_ws(ws: WebSocket, project_id: int, ticket: str = Query("")):
         project_id=project_id,
     )
     try:
-        await ws.send_json({"type": "snapshot", "sensors": snapshot})
-        # Heartbeat (F4): har WS_PING_S soniyada ping — klient xabar yoshi bo'yicha LIVE → STALE → OFFLINE ni aniqlaydi
-        reauth_at = asyncio.get_running_loop().time() + get_settings().ws_reauth_s
+        client.put({"type": "snapshot", "sensors": snapshot})
+        # Heartbeat (F4): har WS_PING_S soniyada ping — klient xabar yoshi bo'yicha LIVE → STALE → OFFLINE ni aniqlaydi.
+        # Bo'sh turish (L4): klient ws_idle_s davomida hech narsa (pong) yubormasa — yarim ochiq soket, 4408.
+        loop = asyncio.get_running_loop()
+        reauth_at = loop.time() + get_settings().ws_reauth_s
+        last_rx = loop.time()
         while True:
             try:
-                await asyncio.wait_for(ws.receive_text(), timeout=WS_PING_S)  # ping/pong yoki mijoz xabari — e'tiborsiz
+                await asyncio.wait_for(ws.receive_text(), timeout=WS_PING_S)  # pong yoki mijoz xabari — e'tiborsiz
+                last_rx = loop.time()
             except (TimeoutError, asyncio.TimeoutError):
-                await ws.send_json({"type": "ping", "ts": datetime.now(timezone.utc).isoformat()})
-            if asyncio.get_running_loop().time() >= reauth_at:
+                if client.closed:
+                    break
+                if loop.time() - last_rx > get_settings().ws_idle_s:
+                    await ws.close(code=4408)
+                    break
+                client.put({"type": "ping", "ts": datetime.now(timezone.utc).isoformat()})
+            if loop.time() >= reauth_at:
                 reauth_at = asyncio.get_running_loop().time() + get_settings().ws_reauth_s
                 with SessionLocal() as db:
                     ok = await asyncio.to_thread(_ws_authorized, db, project_id, uid)
@@ -1489,7 +1507,7 @@ async def live_ws(ws: WebSocket, project_id: int, ticket: str = Query("")):
     except WebSocketDisconnect:
         pass
     finally:
-        live.hub.disconnect(project_id, ws)
+        live.hub.disconnect(project_id, client)
         # Sinxron: ulanish bekor qilinayotganda (cancel) ham yozuv kafolatlanadi (qisqa DB yozuvi)
         audit.log_now(
             user_id=uid,

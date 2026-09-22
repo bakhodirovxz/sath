@@ -32,39 +32,114 @@ STATE_LABEL = {
 PRIORITY_LABEL = {"low": "", "medium": "", "high": "MUHIM: ", "critical": "KRITIK: "}
 
 
+WS_QUEUE_MAX = 200  # har klient uchun chegaralangan navbat (L4): to'lsa eng eski xabar tashlanadi
+WS_SEND_TIMEOUT_S = 10.0  # bitta send shuncha vaqtda tugamasa — qotgan klient, yopiladi
+
+
+class Client:
+    """Bitta WebSocket obunachi: o'z navbati va yuboruvchi vazifasi — sekin/qotgan klient boshqalarni to'xtatmaydi."""
+
+    __slots__ = ("ws", "user_id", "project_id", "queue", "task", "dropped", "sent", "opened_at", "closed")
+
+    def __init__(self, ws: WebSocket, project_id: int, user_id: int | None):
+        self.ws = ws
+        self.project_id = project_id
+        self.user_id = user_id
+        self.queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=WS_QUEUE_MAX)
+        self.task: asyncio.Task | None = None
+        self.dropped = 0
+        self.sent = 0
+        self.opened_at = time.monotonic()
+        self.closed = False
+
+    def put(self, message: dict) -> None:
+        """Navbatga (bloklamaydi); to'lgan bo'lsa eng eski xabar tashlanadi (jonli oqim — eng yangisi muhim)."""
+        if self.queue.full():
+            try:
+                self.queue.get_nowait()
+                self.dropped += 1
+            except asyncio.QueueEmpty:
+                pass
+        self.queue.put_nowait(message)
+
+    async def sender(self) -> None:
+        try:
+            while True:
+                m = await self.queue.get()
+                await asyncio.wait_for(self.ws.send_json(m), timeout=WS_SEND_TIMEOUT_S)
+                self.sent += 1
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 — uzilgan/qotgan ulanish: yopamiz, qabul sikli WebSocketDisconnect oladi
+            self.closed = True
+            log.info("ws klient (user=%s, loyiha=%s) yuborishda uzildi: %s", self.user_id, self.project_id, type(e).__name__)
+            try:
+                await self.ws.close(code=1011)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 class Hub:
-    """Loyiha → ochiq WebSocket lar. Sync (ingest) kontekstdan ham xabar yuborish mumkin."""
+    """Loyiha → ochiq WebSocket klientlar (har biri o'z navbati bilan). Sync (ingest) kontekstdan ham
+    xabar yuborish mumkin; backplane (L4) ulangan bo'lsa boshqa replikalarga ham uzatiladi."""
 
     def __init__(self) -> None:
-        self._subs: dict[int, set[WebSocket]] = {}
+        self._subs: dict[int, set[Client]] = {}
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.backplane = None  # backplane.Backplane | None
 
-    async def connect(self, project_id: int, ws: WebSocket) -> None:
+    async def connect(self, project_id: int, ws: WebSocket, user_id: int | None = None) -> Client:
         await ws.accept()
         self.loop = asyncio.get_running_loop()
-        self._subs.setdefault(project_id, set()).add(ws)
+        c = Client(ws, project_id, user_id)
+        c.task = asyncio.create_task(c.sender())
+        self._subs.setdefault(project_id, set()).add(c)
+        return c
 
-    def disconnect(self, project_id: int, ws: WebSocket) -> None:
-        self._subs.get(project_id, set()).discard(ws)
+    def disconnect(self, project_id: int, client: Client | WebSocket) -> None:
+        subs = self._subs.get(project_id, set())
+        c = client if isinstance(client, Client) else next((x for x in subs if x.ws is client), None)
+        if c is None:
+            return
+        subs.discard(c)
+        if c.task is not None:
+            c.task.cancel()
+
+    def user_connections(self, user_id: int) -> int:
+        return sum(1 for subs in self._subs.values() for c in subs if c.user_id == user_id)
+
+    def deliver(self, project_id: int, message: dict) -> None:
+        """Mahalliy obunachilarga (backplane dan kelgan yoki o'zimizniki). Loop threadidan chaqiriladi."""
+        for c in list(self._subs.get(project_id, ())):
+            c.put(message)
 
     async def broadcast(self, project_id: int, message: dict) -> None:
-        dead = []
-        for ws in list(self._subs.get(project_id, ())):
-            try:
-                await ws.send_json(message)
-            except Exception:  # noqa: BLE001 — uzilgan ulanish
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(project_id, ws)
+        self.deliver(project_id, message)
 
     def publish(self, project_id: int, message: dict) -> None:
-        """Sync koddan (HTTP handler, MQTT thread) chaqiriladi."""
+        """Sync koddan (HTTP handler, MQTT thread) chaqiriladi: mahalliy navbatlar + backplane."""
+        if self.backplane is not None:
+            self.backplane.publish(project_id, message)
         if self.loop is None or not self._subs.get(project_id):
             return
-        asyncio.run_coroutine_threadsafe(self.broadcast(project_id, message), self.loop)
+        self.loop.call_soon_threadsafe(self.deliver, project_id, message)
 
     def count(self, project_id: int) -> int:
         return len(self._subs.get(project_id, ()))
+
+    def diagnostics(self, project_id: int) -> list[dict]:
+        """Sekin klient diagnostikasi: navbat chuqurligi, tashlangan/yuborilgan xabarlar, davomiylik."""
+        return [
+            {
+                "user_id": c.user_id,
+                "queue": c.queue.qsize(),
+                "dropped": c.dropped,
+                "sent": c.sent,
+                "age_s": round(time.monotonic() - c.opened_at, 1),
+                "slow": c.dropped > 0 or c.queue.qsize() > WS_QUEUE_MAX // 2,
+            }
+            for c in self._subs.get(project_id, ())
+        ]
 
 
 hub = Hub()

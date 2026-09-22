@@ -51,6 +51,19 @@ Jarayon ichidagi ishchi: `GES_JOBS_CONCURRENCY` (2) ta ish bir vaqtda. CFD `GES_
 Takror so'rov (tarmoq uzilishi) uchun `idempotency_key` — mavjud ish qaytadi. Bir hostda bitta Sath jarayoni
 kutiladi (restart yarashtirishi hostname bo'yicha); ko'p replika — L8.
 
+## Jonli oqim (WebSocket) va ko'p replika
+
+Har klientning o'z chegaralangan navbati (200 xabar) va yuboruvchisi bor: sekin/qotgan HMI boshqalarni
+to'xtatmaydi — navbat to'lsa eng eski xabar tashlanadi, 10 s da yuborilmagan xabar ulanishni yopadi.
+Diagnostika: `GET /api/projects/{id}/live/clients` (muhandis+) — navbat chuqurligi, tashlangan xabarlar,
+`slow` belgisi. Server 10 s da `ping` yuboradi, klient `pong` qaytaradi; `GES_WS_IDLE_S` (90) davomida
+javob bo'lmasa 4408 bilan yopiladi (yarim ochiq soketlar yig'ilmaydi). Foydalanuvchi bo'yicha
+`GES_WS_MAX_PER_USER` (8) ulanish (4429). Bir necha `ges` replikasi (load balancer ortida) bo'lsa jonli
+xabarlar Postgres `LISTEN/NOTIFY` (`sath_live`) orqali replikalar orasida tarqaladi
+(`GES_LIVE_BACKPLANE=auto` — Postgres bo'lsa yoqiq; SQLite da bitta jarayon). Load balancer WebSocket ni
+(`/api/projects/*/live`) o'tkazishi va bitta ulanishni bitta replikaga yopishtirishi shart emas — chipta
+va sessiya DB da. Tezlik cheklovi (L1) esa replika boshiga hisoblanadi.
+
 ## Fon hisoblar va historian
 
 - **Yuklashdan keyin** har IFC uchun fonda: fragments (.frag, brauzer uchun tez format — Node kerak, Docker

@@ -1932,7 +1932,7 @@ Fayllar: `server/ges_server/auth/`, `orm.py`, `monitoring/router.py`, `web/src/a
 Qabul mezoni: parol o'zgargandan keyin eski token ishlamaydi (test).
 Bog'liqlik: A2.
 
-### L3 — Ish navbati va restartga chidamlilik ✅
+### L3 — Ish navbati va restartga chidamlilik ✅ (`3cfa6ea`)
 
 Muammo: `BackgroundTasks` barcha geometriya/fragment/sim ishini olib yuradi
 (`models/router.py:253`, `:257`; `drafts_router.py:292`, `:296`, `:406`, `:410`;
@@ -1956,7 +1956,7 @@ Fayllar: `server/ges_server/sim/router.py`, `sim/worker.py`, `models/router.py`,
 Qabul mezoni: restartdan keyin ishlar to'g'ri holatda; ikki ishchi bir ishni bajarmaydi (test).
 Bog'liqlik: yo'q.
 
-### L4 — WebSocket ni ko'p jarayonga tayyorlash
+### L4 — WebSocket ni ko'p jarayonga tayyorlash ✅
 
 Muammo (`monitoring/live.py:26-51`, `monitoring/router.py:830-855`):
 - `Hub` holati jarayon ichida. Ko'p ishchi yoki ko'p replikali deploy da jonli tasma, buyruq va

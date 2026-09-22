@@ -84,7 +84,8 @@ export function useLive(
         lastMsgAt = Date.now();
         const m = JSON.parse(ev.data) as LiveMessage;
         if (m.type === "snapshot" || m.type === "reading") setSensors((prev) => applyLiveMessage(prev, m));
-        if (m.type !== "ping") cb.current?.(m);
+        if (m.type === "ping") { try { ws?.send("pong"); } catch { /* yopilmoqda */ } } // L4: bo'sh turish chegarasi uchun javob
+        else cb.current?.(m);
         update();
       };
       ws.onclose = (ev) => {

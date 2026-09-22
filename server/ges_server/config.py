@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_hours: float = 12
     ws_reauth_s: int = 300
+    # L4: WS bo'sh turish chegarasi (klient shuncha soniya hech narsa yubormasa — 4408), foydalanuvchi bo'yicha
+    # ulanish chegarasi (4429), backplane: auto (Postgres bo'lsa LISTEN/NOTIFY) | pg | off
+    ws_idle_s: int = 90
+    ws_max_per_user: int = 8
+    live_backplane: str = "auto"
     # Parol siyosati (NIST 800-63B): minimal uzunlik; bloklash ro'yxati va login tekshiruvi doimiy
     password_min_length: int = 8
     database_url: str = "sqlite:///./data/ges.db"
