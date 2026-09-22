@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import Project, SystemState
-from . import control, health, historian, keys, live, twin
+from . import control, health, historian, keys, live, soe, twin
 
 log = logging.getLogger("ges_server.monitoring.bg")
 
@@ -69,6 +69,7 @@ def tick_hourly() -> tuple[int, int]:
         purged = historian.purge(db, settings.readings_retention_days)
         purged += historian.purge_agg(db, "1m", settings.agg_1m_retention_days)
         purged += historian.purge_agg(db, "10m", settings.agg_10m_retention_days)
+        purged += soe.purge(db, settings.soe_retention_days)
         twin.rollup_units(db)  # agregat kunlik statistikasi (tugagan kunlar)
         health.tick_hourly(db)  # sog'liq indekslari (HEALTH.*)
     return written, purged

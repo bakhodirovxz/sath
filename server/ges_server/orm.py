@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -856,6 +857,28 @@ class AuditLog(Base):
     # Hash zanjiri (audit.py): prev_hash — oldingi qatorning row_hash i ("" birinchisi uchun)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class SequenceEvent(Base):
+    """SOE — hodisalar ketma-ketligi (D3): millisekundli diskret hodisalar (trip, uzgich, zatvor STUCK);
+    agregat qilinmaydi, o'z saqlash muddati (GES_SOE_RETENTION_DAYS). Takror — unikal kalit bilan tashlanadi."""
+
+    __tablename__ = "soe_events"
+    __table_args__ = (
+        UniqueConstraint("project_id", "source", "point", "ts_ms", "state", name="uq_soe_event"),
+        Index("ix_soe_project_ts", "project_id", "ts_ms"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    source: Mapped[str] = mapped_column(String(32), default="gateway")  # gateway | iec104 | sim | manual
+    point: Mapped[str] = mapped_column(String(64))  # AGG1.PROT, AGG1.CB, GATE1 …
+    state: Mapped[str] = mapped_column(String(32))  # TRIP, OPEN, CLOSE, STUCK, 1/0 …
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ts_ms: Mapped[int] = mapped_column(BigInteger)  # epoch ms — tartib va aniqlik
+    quality: Mapped[str] = mapped_column(String(16), default="good")
+    raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class SystemState(Base):

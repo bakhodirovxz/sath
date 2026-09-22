@@ -663,6 +663,7 @@ class Pusher:
 
     def __init__(self, cfg: dict):
         self.url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/readings"
+        self.soe_url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/soe"
         self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
         self.spool = Spool(
             cfg.get("spool_path", "gateway_spool.db"),
@@ -706,11 +707,12 @@ class Pusher:
             out.append({"key": f"{p}.clock_offset_s", "value": round(self.clock_offset_s, 2)})
         return out
 
-    def push(self, items: list[dict]) -> None:
+    def push(self, items: list[dict], soe: list[dict] | None = None) -> None:
         items = self.sanitize(items)
         if self.diag:
             items = items + self.sanitize(self.diag_items())
-        self.spool.add(items)
+        # SOE hodisalari ham spool orqali (uzilishda yo'qolmaydi), `_soe` belgisi bilan ajratiladi
+        self.spool.add(items + [{"_soe": True, **e} for e in (soe or [])])
         self.flush()
 
     def flush(self) -> None:
@@ -720,12 +722,25 @@ class Pusher:
             ids, batch = self.spool.batch(self.batch_size)
             if not ids:
                 return
+            readings = [b for b in batch if not b.get("_soe")]
+            soe = [{k: v for k, v in b.items() if k != "_soe"} for b in batch if b.get("_soe")]
             try:
-                r = requests.post(self.url, json=batch, headers=self.headers, timeout=15)
+                if soe:
+                    rs = requests.post(self.soe_url, json=soe, headers=self.headers, timeout=15)
+                    if rs.status_code == 422:
+                        log.error("server 422 (SOE): partiya (%d) tashlandi: %s", len(soe), rs.text[:300])
+                    else:
+                        rs.raise_for_status()
+                        log.info("SOE yuborildi: %d (qabul %d)", len(soe), rs.json().get("accepted", 0))
+                if not readings:
+                    self.spool.ack(ids)
+                    self.backoff_s = 0.0
+                    continue
+                r = requests.post(self.url, json=readings, headers=self.headers, timeout=15)
                 self._check_clock(r)
                 if r.status_code == 422:
                     # Validatsiya xatosi — partiya hech qachon qabul qilinmaydi: o'chirib, loglaymiz
-                    log.error("server 422: partiya (%d) tashlandi: %s", len(batch), r.text[:300])
+                    log.error("server 422: partiya (%d) tashlandi: %s", len(readings), r.text[:300])
                     self.spool.ack(ids)
                     continue
                 r.raise_for_status()
@@ -734,7 +749,7 @@ class Pusher:
                     log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
                 if resp.get("rejected"):
                     log.warning("server rad etdi: %s", resp["rejected"][:10])
-                log.info("yuborildi: %d (qabul %d, spoolda %d)", len(batch), resp.get("accepted", 0), self.spool.size() - len(ids))
+                log.info("yuborildi: %d (qabul %d, spoolda %d)", len(readings), resp.get("accepted", 0), self.spool.size() - len(ids))
                 self.spool.ack(ids)
                 self.backoff_s = 0.0
             except requests.RequestException as e:
@@ -814,10 +829,14 @@ def main(config_path: str | None) -> None:
     log.info("gateway: %d manba, har %ss → %s", len(sources), interval, pusher.url)
     try:
         while True:
-            items = []
+            items, soe = [], []
             for src in sources:
                 items.extend(src.read_safe())
-            pusher.push(items)
+                buf = getattr(src, "soe", None)
+                if buf:  # vaqt tamg'ali diskret hodisalar (IEC 104 M_SP_TB_1 …) → SOE
+                    soe.extend({**e, "source": s_type} for e, s_type in ((x, src.__class__.__name__.replace("Source", "").lower()) for x in buf))
+                    buf.clear()
+            pusher.push(items, soe)
             if commander is not None:
                 commander.run_once()  # dispetcher buyruqlari (setpoint) → SCADA
             time.sleep(interval)

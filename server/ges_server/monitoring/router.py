@@ -29,7 +29,7 @@ from ..auth.security import decode_access_token
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import alarm_kpi, historian, interlock, keys, live, mqtt_bridge
+from . import alarm_kpi, historian, interlock, keys, live, mqtt_bridge, soe
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -624,6 +624,83 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
     )
     db.commit()
     return out
+
+
+# ---------- SOE — hodisalar ketma-ketligi (D3) ----------
+
+
+class SoeIn(BaseModel):
+    point: str = Field("", max_length=64)  # bo'sh — element rad etiladi (butun partiya emas)
+    state: str | bool | int = ""
+    ts: str | float | int
+    source: str | None = Field(None, max_length=32)
+    quality: str | None = Field(None, max_length=16)
+    raw: dict | list | str | None = None
+
+
+def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: str | None) -> tuple[str, int | None]:
+    """Ingest kaliti yoki muhandis+ tokeni → (auth turi, foydalanuvchi id)."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
+    if x_ingest_key:
+        keys.verify(db, project, "ingest", x_ingest_key)
+        return "key", None
+    if authorization and authorization.lower().startswith("bearer "):
+        uid = decode_access_token(authorization[7:])
+        user = db.get(User, uid) if uid else None
+        if user is not None and user.is_active and has_role(get_project_role(db, project_id, user), Role.engineer):
+            return "token", user.id
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
+
+
+@router.post("/projects/{project_id}/soe")
+def push_soe(
+    project_id: int,
+    body: list[SoeIn],
+    db: DB,
+    x_ingest_key: Annotated[str | None, Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """SOE hodisalarini yuborish (ingest kaliti yoki muhandis+): partiyali, ms aniqlik, takror tashlanadi."""
+    auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
+    if len(body) > 10000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
+    out = soe.ingest(db, project_id, [b.model_dump() for b in body], max_age=timedelta(days=get_settings().ingest_max_age_days))
+    audit.log(
+        db,
+        user_id=actor_id,
+        action="soe.ingest",
+        target_type="project",
+        target_id=project_id,
+        project_id=project_id,
+        detail={"count": len(body), "accepted": out["accepted"], "duplicates": out["duplicates"], "rejected": len(out["rejected"]), "auth": auth_kind},
+    )
+    db.commit()
+    return out
+
+
+@router.get("/projects/{project_id}/soe")
+def list_soe(
+    project: ViewerProject,
+    db: DB,
+    hours: float = Query(24, gt=0, le=24 * 366),
+    point: str | None = None,
+    source: str | None = None,
+    limit: int = Query(500, gt=0, le=5000),
+    before_id: int | None = None,
+):
+    """SOE ro'yxati: vaqt bo'yicha (ms), eng yangisi birinchi; `point` filtri `*` bilan (AGG1.*)."""
+    now = datetime.now(timezone.utc)
+    rows = soe.query(db, project.id, now - timedelta(hours=hours), now, point, source, limit, before_id)
+    return [soe.event_out(e) for e in rows]
+
+
+@router.get("/projects/{project_id}/timeline")
+def timeline(project: ViewerProject, db: DB, hours: float = Query(24, gt=0, le=24 * 366), limit: int = Query(500, gt=0, le=5000)):
+    """SOE + alarm jurnali birlashtirilgan vaqt chizig'i (avariya tahlili: sabab → oqibat)."""
+    now = datetime.now(timezone.utc)
+    return soe.timeline(db, project.id, now - timedelta(hours=hours), now, limit)
 
 
 # ---------- Tarix / holat ----------

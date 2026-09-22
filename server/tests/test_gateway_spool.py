@@ -32,6 +32,7 @@ class _RequestException(Exception):
 
 _req.RequestException = _RequestException
 _calls: list[list[dict]] = []
+_urls: list[str] = []
 _mode = {"fail": False, "status": 200, "date": None}
 
 
@@ -39,6 +40,7 @@ def _post(url, json=None, headers=None, timeout=None):
     if _mode["fail"]:
         raise _RequestException("tarmoq yo'q")
     _calls.append(list(json))
+    _urls.append(url)
     return _Resp(_mode["status"], {"accepted": len(json), "unknown": [], "rejected": [], "bad": 0}, _mode["date"])
 
 
@@ -189,3 +191,22 @@ def test_comms_loss_emits_single_bad_record_per_tag(tmp_path):
     assert [i["quality"] for i in s.read_safe()] == ["good", "good"]
     s.ok = False
     assert len(s.read_safe()) == 2  # qayta uzilish → yana bir marta
+
+
+def test_soe_goes_through_spool_to_soe_endpoint(tmp_path):
+    """D3: SOE hodisalari ham spool orqali (uzilishda yo'qolmaydi), alohida /soe manzilga; o'lchovlar /readings ga."""
+    gw = _load_gateway()
+    _calls.clear()
+    _urls.clear()
+    _mode.update(fail=True)
+    p = gw.Pusher(_cfg(tmp_path))
+    p.push([{"key": "A", "value": 1}], soe=[{"point": "AGG1.PROT", "state": "TRIP", "ts": "2026-09-21T10:00:00.012+00:00", "source": "iec104"}])
+    assert p.spool.size() == 2 and _calls == []
+    _mode.update(fail=False)
+    p.next_try = 0
+    p.flush()
+    assert p.spool.size() == 0 and len(_calls) == 2
+    by_url = {u.rsplit("/", 1)[1]: c for u, c in zip(_urls, _calls, strict=True)}
+    assert by_url["soe"] == [{"point": "AGG1.PROT", "state": "TRIP", "ts": "2026-09-21T10:00:00.012+00:00", "source": "iec104"}]
+    assert [i["key"] for i in by_url["readings"]] == ["A"]
+    p.spool.close()

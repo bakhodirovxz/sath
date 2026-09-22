@@ -3,7 +3,7 @@ import Icon from "../ui/Icon";
 import { ForecastPanel, HealthPanel, PartsPanel, WhatIfPanel, WorkOrdersPanel } from "./dashboard/HealthPanels";
 import { Link, useParams } from "react-router-dom";
 import { api, type AlarmEvent, type Command, type Dashboard, type JournalEntry, type LiveMessage, type Project, type ReadingPoint, type Report, type Sensor, type Member } from "../api/client";
-import { AssetsPanel, CommandsPanel, JournalPanel, TwinPanel } from "./dashboard/TwinPanels";
+import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from "./dashboard/TwinPanels";
 import { useLive } from "../hooks/useLive";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
@@ -18,7 +18,7 @@ const RANGES: { label: string; hours: number }[] = [
   { label: "30 kun", hours: 720 },
 ];
 
-type Section = "scheme" | "trend" | "twin" | "health" | "whatif" | "forecast" | "workorders" | "parts" | "assets" | "control" | "journal";
+type Section = "scheme" | "trend" | "twin" | "health" | "whatif" | "forecast" | "workorders" | "parts" | "assets" | "control" | "journal" | "soe";
 const SECTIONS: { id: Section; title: string }[] = [
   { id: "scheme", title: "Sxema" },
   { id: "trend", title: "Trendlar / Hisobot" },
@@ -31,6 +31,7 @@ const SECTIONS: { id: Section; title: string }[] = [
   { id: "assets", title: "Aktivlar" },
   { id: "control", title: "Boshqaruv" },
   { id: "journal", title: "Smena jurnali" },
+  { id: "soe", title: "SOE" },
 ];
 
 /** Alarm ovozi (muhim/kritik) — WebAudio, fayl kerak emas. */
@@ -310,6 +311,7 @@ export default function DashboardPage() {
         {section === "assets" && <AssetsPanel projectId={pid} sensors={sensors} canEdit={canEdit} canMaint={canOperate} />}
         {section === "control" && <CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} canOverride={project?.my_role === "approver"} />}
         {section === "journal" && <JournalPanel projectId={pid} canWrite={canOperate} live={liveJournal} />}
+        {section === "soe" && <SoePanel projectId={pid} />}
         <p className="dim small">Sensorlarni qo'shish/bog'lash — model sahifasidagi <Link to={`/projects/${pid}`}>Monitoring</Link> panelida; SCADA ulanishi — <code>deploy/gateway</code>.</p>
       </div>
 

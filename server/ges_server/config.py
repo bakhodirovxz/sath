@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     readings_retention_days: int = 90
     agg_1m_retention_days: int = 400
     agg_10m_retention_days: int = 1100
+    # SOE (hodisalar ketma-ketligi) saqlash muddati, kun; 0 — o'chirilmaydi
+    soe_retention_days: int = 1100
     # Jonli ingest (http/mqtt) vaqt tamg'asi oynasi: bundan eski yoki kelajakdagi qiymat rad etiladi
     ingest_max_age_days: int = 30
     ingest_future_s: int = 300

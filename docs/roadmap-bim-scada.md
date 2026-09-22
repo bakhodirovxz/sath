@@ -468,7 +468,7 @@ Fayllar: `deploy/docker-compose.yml`, `deploy/Dockerfile`, `server/ges_server/co
 Qabul mezoni: 10 000 qator/soniya ingest yuk testi o'tadi.
 Bog'liqlik: A2.
 
-### D2 — Ko'p qatlamli saqlash va siqish ✅
+### D2 — Ko'p qatlamli saqlash va siqish ✅ (`b87a6b0`)
 
 Bajarildi: `readings_agg` (1m/10m, migratsiya 0015) + `readings_hourly` (1h, abadiy); rollup SQL `GROUP BY`
 (epoch bo'lagi, dialektga mos), qatlam suv belgilari `SystemState` da, kech kelgan ma'lumot uchun lookback
@@ -494,7 +494,14 @@ Qabul mezoni: 1 mln qatorli sensorda rollup xotirani bosmaydi (test); qatlamlar 
 ishlatiladi.
 Bog'liqlik: D1.
 
-### D3 — SOE (hodisalar ketma-ketligi)
+### D3 — SOE (hodisalar ketma-ketligi) ✅
+
+Bajarildi: `SequenceEvent` (`soe_events`: project, source, point, state, ts, ts_ms, quality, raw; unikal kalit
+takrorni tashlaydi; migratsiya 0016); `POST /projects/{id}/soe` (ingest kaliti yoki muhandis+, partiyali, per-element
+rad), `GET /projects/{id}/soe` (ms tartib, `point=AGG1.*`, source, before_id), `GET /projects/{id}/timeline`
+(SOE + alarm jurnali birlashgan); agregat qilinmaydi, `GES_SOE_RETENTION_DAYS=1100`; gateway manbalarning `soe`
+buferini spool orqali `/soe` ga yuboradi (IEC 104 M_SP_TB_1 → simulyator SOE); web: Dashboard «SOE» bo'limi
+(ms bilan; F5 da to'liq ko'rinish).
 
 Muammo: hodisalar faqat analog tegdan olingan alarm sifatida mavjud. Agregat trip bo'lganda
 sabab-oqibatni ajratish uchun millisekundli SOE kerak, u alohida yo'l bilan keladi va

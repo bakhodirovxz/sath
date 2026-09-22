@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
-import { api, type AssetState, type Command, type JournalEntry, type SelectResult, type Sensor, type TwinState } from "../../api/client";
+import { api, type AssetState, type Command, type JournalEntry, type SelectResult, type Sensor, type SoeEvent, type TwinState } from "../../api/client";
 import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 
@@ -248,6 +248,48 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
           <div className="actions"><button className="btn" onClick={() => setAdding(false)}>Bekor</button><button className="btn primary" disabled={!form.name} onClick={() => api.createAsset(projectId, { name: form.name, power_sensor_id: form.power_sensor_id ? Number(form.power_sensor_id) : null, maintenance_interval_hours: form.maintenance_interval_hours ? Number(form.maintenance_interval_hours) : null, base_run_hours: Number(form.base_run_hours) || 0 }).then(() => { setAdding(false); void load(); }).catch((e) => setErr(e.message))}>Qo'shish</button></div>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+
+/** SOE — hodisalar ketma-ketligi (D3): ms aniqlikdagi diskret hodisalar + alarm jurnali bitta vaqt chizig'ida
+ * (avariya tahlili: sabab → oqibat). F5 da to'liq ko'rinish. */
+export function SoePanel({ projectId }: { projectId: number }) {
+  const [rows, setRows] = useState<SoeEvent[]>([]);
+  const [hours, setHours] = useState(24);
+  const [onlySoe, setOnlySoe] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [err, setErr] = useState("");
+  const load = useCallback(() => (onlySoe ? api.soe(projectId, hours, filter || undefined) : api.timeline(projectId, hours)).then(setRows).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [projectId, hours, onlySoe, filter]);
+  useEffect(() => { void load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  const fmtMs = (ts: string) => { const d = new Date(ts); return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
+  return (
+    <div className="panel">
+      <div className="row wrap" style={{ gap: 6 }}>
+        <b>Hodisalar ketma-ketligi (SOE)</b>
+        <select className="select" value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[1, 6, 24, 168, 720].map((h) => <option key={h} value={h}>{h} soat</option>)}</select>
+        <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={onlySoe} onChange={(e) => setOnlySoe(e.target.checked)} /> faqat SOE</label>
+        {onlySoe && <input className="input" style={{ width: 160 }} placeholder="nuqta, masalan AGG1.*" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        <span className="grow" />
+        <span className="muted small">{rows.length} ta · ms aniqlik · 15 s da yangilanadi</span>
+      </div>
+      {err && <p className="error">{err}</p>}
+      <table className="grid small mono">
+        <thead><tr><th>Vaqt (ms)</th><th>Manba</th><th>Nuqta</th><th>Holat</th><th>Sifat</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.type ?? "soe"}-${r.id}`} className={r.type === "alarm" ? "alarm-active" : undefined}>
+              <td>{fmtMs(r.ts)}</td>
+              <td>{r.source}</td>
+              <td>{r.point}</td>
+              <td>{r.state}{r.type === "alarm" && r.raw && (r.raw as { value?: number }).value != null ? ` (${(r.raw as { value: number }).value})` : ""}</td>
+              <td className="dim">{r.quality}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && <tr><td colSpan={5} className="muted">Hodisa yo'q</td></tr>}
+        </tbody>
+      </table>
     </div>
   );
 }

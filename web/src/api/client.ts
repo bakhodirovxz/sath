@@ -363,6 +363,7 @@ export interface AlarmEvent {
   response_time_s?: number | null;
 }
 
+export interface SoeEvent { id: number; type?: "soe" | "alarm"; source: string; point: string; state: string; ts: string; ts_ms: number; quality: string; raw: Record<string, unknown> | null }
 export interface RationalizationRow { id: number; project_id: number; key: string; name: string; priority: string; alarm_mode: string; missing: string[] }
 export interface RationalizationReport { total: number; rationalized: number; unrationalized: RationalizationRow[] }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
@@ -677,6 +678,8 @@ export const api = {
   sensorInService: (id: number) => request<Sensor>(`/api/sensors/${id}/in-service`, { method: "POST" }),
   rationalizeSensor: (id: number, body: { cause: string; consequence: string; corrective_action: string; response_time_s: number; priority_basis: string }) => request<Sensor>(`/api/sensors/${id}/rationalize`, { method: "POST", body: json(body) }),
   rationalization: (projectId: number) => request<RationalizationReport>(`/api/projects/${projectId}/alarms/rationalization`),
+  soe: (projectId: number, hours = 24, point?: string) => request<SoeEvent[]>(`/api/projects/${projectId}/soe?hours=${hours}${point ? `&point=${encodeURIComponent(point)}` : ""}`),
+  timeline: (projectId: number, hours = 24) => request<SoeEvent[]>(`/api/projects/${projectId}/timeline?hours=${hours}`),
   alarmKpi: (projectId: number, hours = 24) => request<AlarmKpi>(`/api/projects/${projectId}/alarms/kpi?hours=${hours}`),
   adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),

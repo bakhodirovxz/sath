@@ -39,6 +39,8 @@ python ges_gateway.py config.json
   — SBO, tasdiq, readback — o'z kuchida).
   **Litsenziya:** `c104` (lib60870 ustida) GPLv3 — shuning uchun u faqat shu alohida gateway jarayonida
   ishlatiladi, Sath serveri/web bilan bog'lanmaydi va server paketiga qo'shilmaydi (N2 talabi).
+- SOE: vaqt tamg'ali diskret hodisalar (IEC 104 `M_SP_TB_1`/`M_DP_TB_1`) manbaning `soe` buferiga tushadi va
+  spool orqali `POST /api/projects/{id}/soe` ga (ms aniqlik; takror serverda tashlanadi) yuboriladi.
 - Soat: server `Date` sarlavhasi bilan farq `clock_warn_s` (5 s) dan oshsa ogohlantirish — NTP ni tekshiring.
 - `sim` manbasi — sinov uchun (haqiqiy qurilma kerak emas).
 
