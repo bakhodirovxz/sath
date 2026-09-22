@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, type AlarmEvent, type Command, type Dashboard, type LiveMessage, type Project, type Sensor } from "../../api/client";
+import { api, type AlarmEvent, type Command, type Dashboard, type LiveMessage, type Project, type Sensor, type ShiftHandover } from "../../api/client";
 import { useLive, type LiveState } from "../../hooks/useLive";
 import TopBar from "../../ui/TopBar";
 import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
@@ -47,12 +47,14 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [events, setEvents] = useState<AlarmEvent[]>([]);
   const [liveCommand, setLiveCommand] = useState<Command | null>(null);
+  const [openHandover, setOpenHandover] = useState<ShiftHandover | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const reload = useCallback(async () => {
     try {
-      const [p, d, ev] = await Promise.all([api.project(pid), api.dashboard(pid), api.alarmEvents(pid, true)]);
+      const [p, d, ev, hs] = await Promise.all([api.project(pid), api.dashboard(pid), api.alarmEvents(pid, true), api.shiftHandovers(pid).catch(() => [] as ShiftHandover[])]);
       setProject(p); setDash(d); setSensors(d.sensors); setEvents(ev); setError("");
+      setOpenHandover(hs.find((h) => h.status === "handed") ?? null); // F9: qabul qilinmagan topshirish — ogohlantirish
     } catch (e) {
       setError(e instanceof Error ? e.message : "Yuklab bo'lmadi");
     }
@@ -90,11 +92,13 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
           <Link className="btn sm" to={opsPath(pid, "area", "electrical")}>Elektr</Link>
           <Link className="btn sm" to={opsPath(pid, "alarms")} data-testid="nav-alarms">Alarmlar{summary.total ? ` (${summary.total})` : ""}</Link>
           <Link className="btn sm" to={opsPath(pid, "trends")} data-testid="nav-trends">Trendlar</Link>
+          <Link className="btn sm" to={opsPath(pid, "shift")} data-testid="nav-shift">Smena</Link>
           <Link className={`btn sm ${level === 4 ? "active" : ""}`} to={opsPath(pid, "diag")}>L4 Diagnostika</Link>
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />
         </nav>
         {error && <p className="error" style={{ margin: "6px 16px" }}>{error}</p>}
+        {openHandover && <div className="verdict warn" style={{ margin: "6px 16px" }} data-testid="handover-banner">Smena topshirish #{openHandover.id} ({openHandover.handed_by_username}) qabul qilinmagan — <Link to={opsPath(pid, "shift")}>qabul qiluvchi imzolasin</Link></div>}
         <div className="page-body ops-body">{children}</div>
       </div>
     </Ctx.Provider>

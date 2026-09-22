@@ -890,7 +890,7 @@ Fayllar: `web/src/ui/LineChart.tsx` → yangi `web/src/ui/Trend.tsx`,
 Qabul mezoni: turli birlikdagi 5 seriya o'qilarli ko'rinadi; 10 000 nuqtada interfeys qotmaydi.
 Bog'liqlik: D2, D4, F1.
 
-### F8 — Boshqaruv interfeysi ✅
+### F8 — Boshqaruv interfeysi ✅ (`189ddd4`)
 
 Bajarildi: `operator/ControlBlock.tsx` (faceplate ichida, CommandsPanel va MonitoringPanel dialoglarida ham) — joriy
 qiymat, ruxsat etilgan diapazon (B1 min/max, tezlik), klient validatsiyasi (`validateSetpoint`: chekli son, diapazon,
@@ -924,7 +924,17 @@ Fayllar: `web/src/pages/operator/L3Faceplate.tsx`, `web/src/pages/dashboard/Twin
 Qabul mezoni: diapazondan tashqari qiymat klientda ham, serverda ham rad etiladi (test).
 Bog'liqlik: B1, B2, B4, F2.
 
-### F9 — Smena jurnali va navbat topshirish
+### F9 — Smena jurnali va navbat topshirish ✅
+
+Bajarildi: `ShiftHandover` (migratsiya 0018) va `monitoring/shift.py` — varaqa avtomatik (`snapshot`: faol/kvitlanmagan
+alarmlar, ochiq va muddati o'tgan ish buyruqlari, blokirovka chetlab o'tishlari (audit `command.interlock_override`
+smena oynasida), shelved/OOS/o'chirilgan nuqtalar, kutilayotgan buyruqlar, aloqasiz sensorlar; `warnings`);
+`POST /projects/{id}/shift/handover` (operator+, topshiruvchi imzosi; ogohlantirish bo'lsa `acknowledge_warnings`
+shart — aks holda 409 «yakunlanmagan»), `POST /shift/handovers/{id}/receive` (boshqa shaxs, ikkinchi imzo; audit
+`shift.handover`/`shift.receive`, jurnalga shift_end/shift_start), `GET .../shift/snapshot|handovers|feed` (alarm +
+buyruq + jurnal + SOE bitta xronologiya). Web `operator/Shift.tsx` (`/ops/shift`): varaqa bo'limlari, ogohlantirish
+tasdig'i, imzo dialoglari, tarix, hodisalar tasmasi; OperatorShell da qabul qilinmagan topshirish banneri.
+Testlar: `test_shift.py` (2), e2e smena topshirish.
 
 Muammo: `JournalEntry` faqat erkin matn. Tuzilgan topshirish ro'yxati, ikki tomonlama imzo yo'q.
 

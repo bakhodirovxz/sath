@@ -14,6 +14,7 @@ import L3Faceplate from "./pages/operator/L3Faceplate";
 import L4Diagnostics from "./pages/operator/L4Diagnostics";
 import AlarmsPage from "./pages/operator/AlarmsPage";
 import Trends from "./pages/operator/Trends";
+import Shift from "./pages/operator/Shift";
 import { DialogHost } from "./ui/dialogs";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -45,6 +46,7 @@ export default function App() {
       <Route path="/projects/:projectId/ops/unit/:unit" element={<RequireAuth><L3Faceplate /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/alarms" element={<RequireAuth><AlarmsPage /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/trends" element={<RequireAuth><Trends /></RequireAuth>} />
+      <Route path="/projects/:projectId/ops/shift" element={<RequireAuth><Shift /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/diag" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/diag/:sensorId" element={<RequireAuth><L4Diagnostics /></RequireAuth>} />
       <Route path="/models/:modelId" element={<RequireAuth><ModelPage /></RequireAuth>} />

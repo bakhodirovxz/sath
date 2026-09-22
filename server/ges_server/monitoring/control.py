@@ -29,8 +29,18 @@ from sqlalchemy.exc import IntegrityError
 from .. import audit, notifications
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
 from ..config import get_settings
-from ..orm import Command, CommandStatus, Interlock, JournalEntry, Project, Role, Sensor, utcnow
-from . import interlock, keys, live
+from ..orm import (
+    Command,
+    CommandStatus,
+    Interlock,
+    JournalEntry,
+    Project,
+    Role,
+    Sensor,
+    ShiftHandover,
+    utcnow,
+)
+from . import interlock, keys, live, shift
 
 router = APIRouter(prefix="/api", tags=["control"])
 
@@ -938,3 +948,90 @@ def add_journal(body: JournalIn, project: OperatorProject, user: CurrentUser, db
     )
     live.hub.publish(project.id, {"type": "journal", "entry": out.model_dump(mode="json")})
     return out
+
+
+# ---------- Smena topshirish (F9) ----------
+
+
+class HandoverIn(BaseModel):
+    notes: str = Field("", max_length=4000)
+    # Ogohlantirishlar bo'lsa (kvitlanmagan alarm, yakunlanmagan buyruq …) topshiruvchi ularni ko'rganini tasdiqlaydi
+    acknowledge_warnings: bool = False
+
+
+class ReceiveIn(BaseModel):
+    notes: str = Field("", max_length=4000)
+
+
+@router.get("/projects/{project_id}/shift/snapshot")
+def shift_snapshot(project: ViewerProject, db: DB):
+    """Joriy smena topshirish varaqasi mazmuni (avtomatik) — imzosiz ko'rish."""
+    return shift.snapshot(db, project.id, shift.shift_start(db, project.id))
+
+
+@router.get("/projects/{project_id}/shift/handovers")
+def list_handovers(project: ViewerProject, db: DB, limit: int = Query(20, gt=0, le=200)):
+    rows = db.query(ShiftHandover).filter_by(project_id=project.id).order_by(ShiftHandover.id.desc()).limit(limit).all()
+    return [shift.handover_out(h) for h in rows]
+
+
+@router.post("/projects/{project_id}/shift/handover", status_code=201)
+def create_handover(body: HandoverIn, project: OperatorProject, user: CurrentUser, db: DB):
+    """Smenani topshirish (operator+): varaqa avtomatik to'ldiriladi, topshiruvchi imzosi (audit). Ogohlantirish
+    bo'lsa `acknowledge_warnings=true` bo'lmasa 409 — yakunlanmagan ishlar ko'rilmay topshirilmaydi."""
+    open_h = db.query(ShiftHandover).filter_by(project_id=project.id, status="handed").first()
+    if open_h is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Avvalgi topshirish (#{open_h.id}) hali qabul qilinmagan")
+    since = shift.shift_start(db, project.id)
+    summ = shift.snapshot(db, project.id, since)
+    if summ["warnings"] and not body.acknowledge_warnings:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Topshirish yakunlanmagan: " + "; ".join(summ["warnings"]) + " — ko'rib chiqib, tasdiqlang (acknowledge_warnings)")
+    h = ShiftHandover(project_id=project.id, status="handed", since=since, summary=summ, notes=body.notes, handed_by=user.id, handed_at=utcnow())
+    db.add(h)
+    db.flush()
+    db.add(JournalEntry(project_id=project.id, user_id=user.id, kind="shift_end", text=f"Smenani topshirdim (varaqa #{h.id}): {body.notes}"))
+    audit.log(
+        db,
+        user_id=user.id,
+        action="shift.handover",
+        target_type="shift_handover",
+        target_id=h.id,
+        project_id=project.id,
+        detail={"warnings": summ["warnings"], "unacked": summ["unacked"], "pending_commands": len(summ["pending_commands"]), "acknowledged": body.acknowledge_warnings},
+    )
+    db.commit()
+    return shift.handover_out(h)
+
+
+@router.post("/shift/handovers/{handover_id}/receive")
+def receive_handover(handover_id: int, body: ReceiveIn, user: CurrentUser, db: DB):
+    """Smenani qabul qilish (operator+, topshiruvchidan boshqa shaxs) — ikkinchi imzo (audit)."""
+    h = db.get(ShiftHandover, handover_id)
+    if h is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topshirish topilmadi")
+    if not has_role(get_project_role(db, h.project_id, user), Role.operator):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
+    if h.status != "handed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Allaqachon qabul qilingan")
+    if h.handed_by == user.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Topshiruvchi o'zi qabul qila olmaydi (ikki imzo)")
+    h.status, h.received_by, h.received_at, h.receive_notes = "received", user.id, utcnow(), body.notes
+    db.add(JournalEntry(project_id=h.project_id, user_id=user.id, kind="shift_start", text=f"Smenani qabul qildim (varaqa #{h.id}): {body.notes}"))
+    audit.log(
+        db,
+        user_id=user.id,
+        action="shift.receive",
+        target_type="shift_handover",
+        target_id=h.id,
+        project_id=h.project_id,
+        detail={"handed_by": h.handed_by, "warnings": (h.summary or {}).get("warnings", [])},
+    )
+    db.commit()
+    return shift.handover_out(h)
+
+
+@router.get("/projects/{project_id}/shift/feed")
+def shift_feed(project: ViewerProject, db: DB, hours: float = Query(12, gt=0, le=24 * 31), limit: int = Query(500, gt=0, le=5000)):
+    """Smena hodisalari tasmasi: alarm, buyruq, jurnal izohi, SOE — bitta xronologiya."""
+    now = datetime.now(timezone.utc)
+    return shift.feed(db, project.id, now - timedelta(hours=hours), now, limit)

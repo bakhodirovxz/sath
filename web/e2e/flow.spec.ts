@@ -186,6 +186,18 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.getByRole("dialog")).toContainText("1");
     await page.getByTestId("ack-all-ok").click();
     await expect(page.getByTestId("cnt-unacked").locator(".tile-v")).toHaveText(String(before - 1)); // faqat filtrlangan bittasi
+    // F9: smena topshirish — yakunlanmagan ishlar ogohlantirishi, imzo; qabul qilinmagan banner
+    await page.getByTestId("nav-shift").click();
+    await expect(page.getByTestId("shift-snapshot")).toContainText("Topshirish varaqasi");
+    await expect(page.getByTestId("shift-warnings")).toContainText("buyruq");
+    await page.getByTestId("handover-btn").click();
+    await expect(page.getByTestId("handover-ok")).toBeDisabled(); // ogohlantirishlar ko'rilmaguncha
+    await page.getByTestId("ack-warn").check();
+    await page.getByTestId("handover-notes").fill("e2e: zatvor buyrug'i navbatda");
+    await page.getByTestId("handover-ok").click();
+    await expect(page.getByTestId("handover-open")).toContainText("qabul qilinmagan");
+    await page.goto(`/projects/${projectId}/ops`);
+    await expect(page.getByTestId("handover-banner")).toContainText("qabul qilinmagan");
   });
 
   test("simulyatsiya katalogi: to'g'on barqarorligi va yog'ingarchilik", async ({ page }) => {

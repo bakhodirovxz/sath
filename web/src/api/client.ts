@@ -365,7 +365,17 @@ export interface AlarmEvent {
   response_time_s?: number | null;
 }
 
-export interface SoeEvent { id: number; type?: "soe" | "alarm"; source: string; point: string; state: string; ts: string; ts_ms: number; quality: string; raw: Record<string, unknown> | null }
+export interface SoeEvent { id: number; type?: "soe" | "alarm" | "command" | "journal"; source: string; point: string; state: string; ts: string; ts_ms: number; quality: string; raw: Record<string, unknown> | null }
+export interface ShiftSnapshot {
+  since: string; at: string; unacked: number; warnings: string[];
+  alarms: { event_id: number; sensor_id: number; key: string; name: string; state: string; label: string; priority: string; value: number | null; started_at: string; acked: boolean }[];
+  work_orders: { id: number; title: string; status: string; priority: string; due_at: string | null; overdue: boolean }[];
+  interlock_overrides: { at: string; user_id: number | null; detail: Record<string, unknown> }[];
+  alarm_modes: { sensor_id: number; key: string; name: string; mode: string; reason: string; until: string | null }[];
+  pending_commands: { id: number; sensor_key: string; value: number; status: string; author_id: number; created_at: string }[];
+  stale_sensors: { sensor_id: number; key: string; name: string }[];
+}
+export interface ShiftHandover { id: number; project_id: number; status: "handed" | "received"; since: string; summary: ShiftSnapshot; notes: string; handed_by: number; handed_by_username: string | null; handed_at: string | null; received_by: number | null; received_by_username: string | null; received_at: string | null; receive_notes: string; warnings: string[] }
 export interface RationalizationRow { id: number; project_id: number; key: string; name: string; priority: string; alarm_mode: string; missing: string[] }
 export interface RationalizationReport { total: number; rationalized: number; unrationalized: RationalizationRow[] }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
@@ -691,6 +701,11 @@ export const api = {
   rationalization: (projectId: number) => request<RationalizationReport>(`/api/projects/${projectId}/alarms/rationalization`),
   soe: (projectId: number, hours = 24, point?: string) => request<SoeEvent[]>(`/api/projects/${projectId}/soe?hours=${hours}${point ? `&point=${encodeURIComponent(point)}` : ""}`),
   timeline: (projectId: number, hours = 24) => request<SoeEvent[]>(`/api/projects/${projectId}/timeline?hours=${hours}`),
+  shiftSnapshot: (projectId: number) => request<ShiftSnapshot>(`/api/projects/${projectId}/shift/snapshot`),
+  shiftHandovers: (projectId: number) => request<ShiftHandover[]>(`/api/projects/${projectId}/shift/handovers`),
+  shiftHandover: (projectId: number, notes: string, acknowledge_warnings: boolean) => request<ShiftHandover>(`/api/projects/${projectId}/shift/handover`, { method: "POST", body: json({ notes, acknowledge_warnings }) }),
+  shiftReceive: (id: number, notes: string) => request<ShiftHandover>(`/api/shift/handovers/${id}/receive`, { method: "POST", body: json({ notes }) }),
+  shiftFeed: (projectId: number, hours = 12) => request<SoeEvent[]>(`/api/projects/${projectId}/shift/feed?hours=${hours}`),
   alarmKpi: (projectId: number, hours = 24) => request<AlarmKpi>(`/api/projects/${projectId}/alarms/kpi?hours=${hours}`),
   adminRationalization: () => request<RationalizationReport>(`/api/admin/alarms/rationalization`),
   dashboard: (projectId: number) => request<Dashboard>(`/api/projects/${projectId}/dashboard`),

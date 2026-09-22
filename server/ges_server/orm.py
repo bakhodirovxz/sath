@@ -862,6 +862,29 @@ class AuditLog(Base):
     row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class ShiftHandover(Base):
+    """Smena topshirish varaqasi (F9): avtomatik tuzilgan mazmun (summary JSON), izohlar, topshiruvchi va qabul
+    qiluvchining imzosi (vaqt + audit). status: handed (topshirildi, qabul kutilmoqda) | received."""
+
+    __tablename__ = "shift_handovers"
+    __table_args__ = (Index("ix_shift_project_id", "project_id", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(16), default="handed")
+    since: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # smena boshi
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    handed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    handed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    received_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    receive_notes: Mapped[str] = mapped_column(Text, default="")
+
+    hander: Mapped[User] = relationship(foreign_keys=[handed_by])
+    receiver: Mapped[User | None] = relationship(foreign_keys=[received_by])
+
+
 class SequenceEvent(Base):
     """SOE — hodisalar ketma-ketligi (D3): millisekundli diskret hodisalar (trip, uzgich, zatvor STUCK);
     agregat qilinmaydi, o'z saqlash muddati (GES_SOE_RETENTION_DAYS). Takror — unikal kalit bilan tashlanadi."""
