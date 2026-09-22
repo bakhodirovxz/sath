@@ -405,7 +405,7 @@ export interface ClashReport { element_count: number; pairs_checked: number; exa
 export interface LiveMessage {
   type: "snapshot" | "reading" | "alarm" | "command" | "journal" | "ping";
   sensors?: LiveReading[];
-  event?: { id: number; sensor_id: number; sensor_name: string; state: AlarmState; value: number | null; started_at: string; ended_at: string | null; acked_by: number | null; priority?: string };
+  event?: { id: number; sensor_id: number; sensor_name: string; state: AlarmState; value: number | null; started_at: string; ended_at: string | null; acked_by: number | null; acked_at?: string | null; priority?: string };
   command?: Command;
   entry?: JournalEntry;
   sensor_id?: number;
@@ -677,6 +677,7 @@ export const api = {
   clashes: (versionId: number, kind?: string) => request<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
   alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number, includeSuppressed = false) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}${includeSuppressed ? "&include_suppressed=true" : ""}`),
+  annunciatorSilence: (projectId: number, minutes: number, reason = "") => request<{ ok: boolean; minutes: number }>(`/api/projects/${projectId}/annunciator/silence`, { method: "POST", body: json({ minutes, reason }) }),
   ackAlarmsBatch: (projectId: number, ids: number[], comment = "") => request<{ acked: number }>(`/api/projects/${projectId}/alarm-events/ack-batch`, { method: "POST", body: json({ ids, comment }) }),
   ackAlarm: (id: number, comment = "") => request<AlarmEvent>(`/api/alarm-events/${id}/ack`, { method: "POST", body: json({ comment }) }),
   ackAll: (projectId: number) => request<{ acked: number }>(`/api/projects/${projectId}/alarm-events/ack-all`, { method: "POST" }),

@@ -1075,6 +1075,30 @@ def admin_rationalization(user: CurrentUser, db: DB):
     return _rationalization_report(db.query(Sensor).all())
 
 
+# ---------- Annunciator (F6): silence auditi ----------
+
+
+class SilenceIn(BaseModel):
+    minutes: int = Field(ge=0, le=24 * 60)  # 0 — bekor qilish
+    reason: str = Field("", max_length=200)
+
+
+@router.post("/projects/{project_id}/annunciator/silence")
+def annunciator_silence(body: SilenceIn, project: OperatorProject, user: CurrentUser, db: DB):
+    """Ovozli signalni vaqtincha o'chirish (klientda) — kim, qancha vaqtga: audit yozuvi (ISA-18.2 §12)."""
+    audit.log(
+        db,
+        user_id=user.id,
+        action="annunciator.silence" if body.minutes > 0 else "annunciator.unsilence",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"minutes": body.minutes, "reason": body.reason},
+    )
+    db.commit()
+    return {"ok": True, "minutes": body.minutes}
+
+
 # ---------- Alarm rejimi: shelving / out-of-service (ISA-18.2, C2) ----------
 
 

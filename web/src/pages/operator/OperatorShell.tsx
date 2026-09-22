@@ -1,9 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type AlarmEvent, type Dashboard, type LiveMessage, type Project, type Sensor } from "../../api/client";
 import { useLive, type LiveState } from "../../hooks/useLive";
 import TopBar from "../../ui/TopBar";
 import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
+import { annunciator } from "../../ui/annunciator";
+import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
 
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
@@ -57,8 +59,13 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
     if (m.type === "alarm" && m.event) {
       const e = m.event as AlarmEvent;
       setEvents((prev) => [e, ...prev.filter((x) => x.id !== e.id)].filter((x) => !(x.ended_at && x.acked_at)));
+      // Annunciator (F6): yangi kvitlanmagan alarm — signal (kritik ack gacha takror); kvitlash/yopilish — to'xtaydi
+      if (e.acked_at || e.ended_at) annunciator.ack(e.id);
+      else if (!prevIds.current.has(e.id)) annunciator.alarm(e.id, (e.priority ?? "medium") as "low" | "medium" | "high" | "critical");
+      prevIds.current.add(e.id);
     }
   }, []);
+  const prevIds = useRef(new Set<number>());
   const live = useLive(pid, setSensors, onMessage);
   const summary = useMemo(() => summarize(sensors), [sensors]);
   const ctx: OpsContext = { projectId: pid, project, sensors, dash, live, summary, events, reload, error };
@@ -68,6 +75,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
       <div className="page ops" data-level={level}>
         <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
           <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
+          <AnnunciatorControl projectId={pid} canOperate={["operator", "engineer", "approver"].includes(project?.my_role ?? "")} />
         </TopBar>
         <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
           <span className="ops-level">L{level}</span>

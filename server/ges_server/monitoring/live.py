@@ -174,6 +174,7 @@ def event_message(ev: AlarmEvent, sensor: Sensor) -> dict:
             "started_at": _aware(ev.started_at).isoformat(),
             "ended_at": _aware(ev.ended_at).isoformat() if ev.ended_at else None,
             "acked_by": ev.acked_by,
+            "acked_at": _aware(ev.acked_at).isoformat() if ev.acked_at else None,
             "priority": sensor.priority or "medium",
         },
     }

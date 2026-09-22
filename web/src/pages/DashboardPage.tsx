@@ -12,6 +12,8 @@ import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
 import Mimic from "./operator/Mimic";
 import MimicEditor from "./operator/MimicEditor";
 import { loadScheme, type Scheme } from "./operator/scheme";
+import { annunciator } from "../ui/annunciator";
+import AnnunciatorControl from "../ui/AnnunciatorControl";
 import AlarmTable from "./operator/AlarmTable";
 import { sortAlarms, toRows } from "./operator/alarms";
 import { applyTheme, savedTheme } from "../ui/tokens";
@@ -39,20 +41,6 @@ const SECTIONS: { id: Section; title: string }[] = [
   { id: "soe", title: "SOE" },
 ];
 
-/** Alarm ovozi (muhim/kritik) — WebAudio, fayl kerak emas. */
-function beep(critical: boolean) {
-  try {
-    const ctx = new AudioContext();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "square"; o.frequency.value = critical ? 880 : 620;
-    g.gain.value = 0.08;
-    o.connect(g); g.connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + (critical ? 0.6 : 0.25));
-    o.onended = () => void ctx.close();
-  } catch { /* ovoz bo'lmasa jim */ }
-}
 
 /** Dispetcher paneli (SCADA HMI): mimik sxema, KPI, jonli qiymatlar, trendlar, alarm jurnali, hisobot,
  * raqamli egizak, aktivlar, boshqaruv buyruqlari, smena jurnali, vaqt mashinasi. */
@@ -80,7 +68,6 @@ export default function DashboardPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [section, setSection] = useState<Section>("scheme");
-  const [muted, setMuted] = useState(false);
   const [liveCmd, setLiveCmd] = useState<Command | null>(null);
   const [liveJournal, setLiveJournal] = useState<JournalEntry | null>(null);
   // Vaqt mashinasi: null — jonli; aks holda tanlangan vaqtdagi holat (sensorlar snapshot dan)
@@ -121,7 +108,8 @@ export default function DashboardPage() {
       });
       if (!e.ended_at) {
         setFlash(`${e.priority === "critical" ? "KRITIK · " : e.priority === "high" ? "MUHIM · " : ""}${e.sensor_name}: ${ALARM_LABEL[e.state]}`);
-        if (!muted && (e.priority === "critical" || e.priority === "high")) beep(e.priority === "critical");
+        if (e.acked_at || e.ended_at) annunciator.ack(e.id);
+        else annunciator.alarm(e.id, (e.priority ?? "medium") as "low" | "medium" | "high" | "critical");
       }
     } else if (m.type === "command" && m.command) {
       setLiveCmd(m.command);
@@ -130,7 +118,7 @@ export default function DashboardPage() {
     } else if (m.type === "reading" && m.sensor_id != null && m.ts && m.value != null && trend.includes(m.sensor_id) && hours <= 72) {
       setSeries((prev) => ({ ...prev, [m.sensor_id!]: [...(prev[m.sensor_id!] ?? []), { ts: m.ts!, v: m.value!, min: m.value!, max: m.value! }].slice(-2000) }));
     }
-  }, [sensors, trend, hours, muted]);
+  }, [sensors, trend, hours]);
   // Tarix rejimida jonli yangilanishlar sensorlarga qo'llanmaydi (snapshot ustun)
   const setSensorsLive = useCallback<React.Dispatch<React.SetStateAction<Sensor[]>>>((u) => { if (!historyRef.current) setSensors(u); }, []);
   const live = useLive(pid, setSensorsLive, onLive);
@@ -207,7 +195,7 @@ export default function DashboardPage() {
           <input className="input" style={{ width: 190, padding: "2px 6px" }} type="datetime-local" value={historyAt ? toLocalInput(historyAt) : ""} onChange={(e) => setHistoryAt(e.target.value ? new Date(e.target.value).toISOString() : null)} />
           {historyAt && <button className="btn sm primary" onClick={() => setHistoryAt(null)}>Jonli</button>}
         </label>
-        <button className={`btn sm ${muted ? "" : "active"}`} title="Alarm ovozi (muhim/kritik)" onClick={() => setMuted(!muted)}><Icon name={muted ? "volume-x" : "volume"} /></button>
+        <AnnunciatorControl projectId={pid} canOperate={canOperate} />
         {canEdit && !editing && <button className="btn sm" onClick={() => setEditing(true)}>Sxemani sozlash</button>}
         {editing && <><button className="btn sm primary" onClick={saveMimic}>Saqlash</button><button className="btn sm" onClick={() => { setEditing(false); setMimic(dash.mimic); setScheme(loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3))); setSelEl(null); }}>Bekor</button></>}
       </TopBar>

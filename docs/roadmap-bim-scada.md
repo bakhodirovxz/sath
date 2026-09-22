@@ -797,7 +797,7 @@ Fayllar: `web/src/hooks/useLive.ts`, `web/src/pages/model/MonitoringPanel.tsx`,
 Qabul mezoni: WebSocket jimgina uzilganda 30 soniya ichida `OFFLINE` ko'rinadi (test).
 Bog'liqlik: A1, F1.
 
-### F5 — Alarm sahifasi ✅
+### F5 — Alarm sahifasi ✅ (`7eb362b`)
 
 Bajarildi: `web/src/pages/operator/AlarmsPage.tsx` (`/projects/{id}/ops/alarms`) — saralash ustuvorlik → holat
 og'irligi → kvitlanmagan → vaqt (`alarms.ts: sortAlarms`), filtr (ustuvorlik, uchastka, ko'rinish: faol/kvitlanmagan/
@@ -830,7 +830,15 @@ Fayllar: yangi `web/src/pages/operator/Alarms.tsx`, `web/src/pages/DashboardPage
 Qabul mezoni: 200 ta alarm toshqinida sahifa ishlaydi va kritiklar birinchi turadi (test).
 Bog'liqlik: C1, C2, C3, C4, F1.
 
-### F6 — Ovozli signal (annunciator)
+### F6 — Ovozli signal (annunciator) ✅
+
+Bajarildi: `web/src/ui/annunciator.ts` — bitta doimiy AudioContext (kechiktirib yaratiladi, yopilmaydi), `suspended`
+aniqlash va foydalanuvchi harakatida `unlock()`, sog'liq `ok | blocked | silenced | off | unsupported`; ustuvorlik
+bo'yicha signal (kritik 3×880 Hz har 5 s ack gacha, yuqori 2×660, o'rta 1×520, past jim); `silence(minutes)` muddat
+bilan — `POST /projects/{id}/annunciator/silence` auditga (`annunciator.silence/unsilence`); `AnnunciatorControl`
+(TopBar: holat belgisi, «bloklangan — bosing», menyu: o'chirish/silence). OperatorShell va DashboardPage alarm
+xabarlarida `alarm()`/`ack()` (WS `acked_at`). Testlar: 20 ketma-ket alarmda bitta kontekst va ovoz davom etadi,
+suspended → unlock, unsupported, kritik takror/ack, silence/mute; server audit testi.
 
 Muammo: `DashboardPage.tsx:37` — har alarmda yangi `AudioContext`. Chrome hujjatga ~6 tadan
 ortiq `AudioContext` ga ruxsat bermaydi; undan keyin konstruktor xato tashlaydi va u

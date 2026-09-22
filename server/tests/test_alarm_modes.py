@@ -168,3 +168,15 @@ def test_ack_batch_only_listed_and_not_suppressed(client, users, sensor):
     assert client.post(f"/api/projects/{pid}/alarm-events/ack-batch", json={"ids": []}, headers=users["engineer"]).status_code == 422
     assert "alarm.ack_batch" in _audit_actions()
     assert a["id"] != b["id"]
+
+
+def test_annunciator_silence_audited(client, users):
+    """F6: ovozli signalni vaqtincha o'chirish auditga yoziladi (operator+)."""
+    pid = users["project_id"]
+    assert client.post(f"/api/projects/{pid}/annunciator/silence", json={"minutes": 15, "reason": "ta'mir"}, headers=users["viewer"]).status_code == 403
+    r = client.post(f"/api/projects/{pid}/annunciator/silence", json={"minutes": 15, "reason": "ta'mir"}, headers=users["engineer"])
+    assert r.status_code == 200 and r.json()["minutes"] == 15
+    client.post(f"/api/projects/{pid}/annunciator/silence", json={"minutes": 0}, headers=users["engineer"])
+    acts = _audit_actions()
+    assert "annunciator.silence" in acts and "annunciator.unsilence" in acts
+    assert client.post(f"/api/projects/{pid}/annunciator/silence", json={"minutes": 99999}, headers=users["engineer"]).status_code == 422
