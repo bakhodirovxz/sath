@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     node_bin: str = "node"
     # Tashqi konverterlar papkasi (dwg2dxf, assimp, blender, ODAFileConverter) — PATH da bo'lmasa
     tools_dir: Path | None = None
+    # Relyef (DEM) plitkalari (L7, ma'lumot joylashuvi): default tashqi AWS Terrain Tiles — so'rovda faqat plitka
+    # koordinatalari (z/x/y) ketadi, lekin bu ob'ekt joylashuvini uchinchi tomonga oshkor qiladi. Yopiq tarmoqda
+    # ichki ko'zgu (dem_tile_url) yoki o'chirish (dem_enabled=false); ruxsat etilgan chiquvchi kanal — security-zones.md
+    dem_enabled: bool = True
+    dem_tile_url: str = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
     # Fon tekshiruv davri (stale sensorlar, agregat), soniya
     monitor_interval_s: int = 30
     # Alarm shelving (ISA-18.2): default va maksimal muddat, soat

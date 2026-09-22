@@ -34,3 +34,27 @@ def test_backup_restore_scripts_syntax():
         r = subprocess.run(["sh", "-n", str(p)], capture_output=True, text=True, timeout=30)
         assert r.returncode == 0, r.stderr
     assert "restore.sh --test" in (DEPLOY / "backup.cron.example").read_text(encoding="utf-8")
+
+
+def test_dem_channel_can_be_disabled_or_mirrored(monkeypatch, tmp_path):
+    """L7 (C5 kanali): DEM tashqi manbasi o'chirilishi yoki ichki ko'zguga yo'naltirilishi mumkin."""
+    from ges_server.config import get_settings
+    from ges_server.models import dem
+
+    s = get_settings()
+    monkeypatch.setattr(s, "data_dir", tmp_path)
+    monkeypatch.setattr(s, "dem_enabled", False)
+    with pytest.raises(ValueError, match="o'chirilgan"):
+        dem._tile(12, 1, 1)
+    monkeypatch.setattr(s, "dem_enabled", True)
+    monkeypatch.setattr(s, "dem_tile_url", "http://127.0.0.1:9/kozgu/{z}/{x}/{y}.png")
+    seen = {}
+
+    def fake_urlopen(req, timeout=60):
+        seen["url"] = req.full_url
+        raise OSError("ko'zgu yo'q (sinov)")
+
+    monkeypatch.setattr(dem.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(OSError):
+        dem._tile(12, 3, 4)
+    assert seen["url"] == "http://127.0.0.1:9/kozgu/12/3/4.png"

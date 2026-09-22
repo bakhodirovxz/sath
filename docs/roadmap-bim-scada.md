@@ -2010,7 +2010,7 @@ Fayllar: `server/ges_server/monitoring/router.py`, `review/router.py`, `system/r
 Qabul mezoni: hajmi oshgan yuklash 413 beradi va xotirani bosmaydi (test).
 Bog'liqlik: yo'q.
 
-### L6 — Zaxira, tiklash, RTO/RPO ✅
+### L6 — Zaxira, tiklash, RTO/RPO ✅ (`e738c27`)
 
 Muammo: `deploy/backup.sh` Docker hajmini so'rovga ko'ra tar qiladi. Jadval yo'q, shifrlash yo'q,
 tashqi nusxa yo'q, tiklash tekshiruvi yo'q. Arxivda DB bilan birga `secret.key` ham ochiq
@@ -2026,7 +2026,7 @@ Fayllar: `deploy/backup.sh`, yangi `deploy/restore.sh`, `docs/admin.md`
 Qabul mezoni: tiklash protsedurasi hujjatlashtirilgan va sinalgan.
 Bog'liqlik: yo'q.
 
-### L7 — IEC 62443 zonalari va hujjatlashtirish
+### L7 — IEC 62443 zonalari va hujjatlashtirish ✅
 
 Muammo: amaldagi topologiya aslida mantiqiy — gateway SCADA tarmog'ida turadi va Sath ga
 chiquvchi HTTPS qiladi, bu to'g'ri L3→L3.5 kanali. Lekin bu tasodifiy, hujjatlashtirilmagan;

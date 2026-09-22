@@ -225,6 +225,9 @@ Sensor `min_raw`/`max_raw` (fizik diapazon) tashqarisidagi qiymat `quality=bad` 
 
 ## Xavfsizlik
 
+Zonalar/kanallar modeli (IEC 62443), gateway joylashuvi, firewall namunalari va O'zbekiston KAI tekshirish
+ro'yxati — [`security-zones.md`](security-zones.md). Tashqi DEM kanali: `GES_DEM_ENABLED`/`GES_DEM_TILE_URL`.
+
 - HTTPS: oldiga Caddy/nginx (reverse proxy) qo'ying; WebSocket (`/api/projects/*/live`) ni ham o'tkazing.
 - `GES_SECRET_KEY` — o'zgartirilsa hamma sessiya tugaydi (avtomatik yaratilgani `data/secret.key`).
 - Sessiyalar (L2): access token 15 daqiqa (`GES_ACCESS_TOKEN_MINUTES`), refresh token 12 soat

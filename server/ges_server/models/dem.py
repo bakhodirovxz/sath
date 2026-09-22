@@ -14,7 +14,7 @@ import numpy as np
 
 from ..config import get_settings
 
-TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"  # default; sozlama: dem_tile_url
 UA = "Sath/1.0 (ichki BIM; relyef import)"
 
 
@@ -34,7 +34,10 @@ def _tile(z: int, x: int, y: int) -> np.ndarray:
     cache.mkdir(parents=True, exist_ok=True)
     f = cache / f"{y}.png"
     if not f.exists():
-        req = urllib.request.Request(TILE_URL.format(z=z, x=x, y=y), headers={"User-Agent": UA})
+        s = get_settings()
+        if not s.dem_enabled:
+            raise ValueError("Relyef (DEM) importi o'chirilgan (GES_DEM_ENABLED=false) — tashqi kanal yopiq; parametrik relyefdan foydalaning")
+        req = urllib.request.Request(s.dem_tile_url.format(z=z, x=x, y=y), headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310 — sobit ochiq manba
             f.write_bytes(r.read())
     from PIL import Image
