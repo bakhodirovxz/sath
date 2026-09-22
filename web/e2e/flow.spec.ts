@@ -163,10 +163,11 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.getByTestId("alarm-table")).toBeVisible();
     await page.getByTestId("alarm-search").fill("RES.H");
     await expect(page.locator("[data-testid=alarm-row]")).toHaveCount(1);
+    const before = Number(await page.getByTestId("cnt-unacked").locator(".tile-v").innerText());
     await page.getByTestId("ack-all").click();
     await expect(page.getByRole("dialog")).toContainText("1");
     await page.getByTestId("ack-all-ok").click();
-    await expect(page.getByTestId("cnt-unacked")).toContainText("0");
+    await expect(page.getByTestId("cnt-unacked").locator(".tile-v")).toHaveText(String(before - 1)); // faqat filtrlangan bittasi
   });
 
   test("simulyatsiya katalogi: to'g'on barqarorligi va yog'ingarchilik", async ({ page }) => {
