@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { Link, useParams } from "react-router-dom";
 import { api, type ShiftHandover, type ShiftSnapshot, type SoeEvent } from "../../api/client";
 import Dialog from "../../ui/Dialog";
@@ -36,7 +37,7 @@ function Body() {
       setSnap(s); setHandovers(h); setFeed(f); setErr("");
     } catch (e) { setErr(e instanceof Error ? e.message : "Xato"); }
   }, [pid]);
-  useEffect(() => { void load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+  usePolling(load, 30_000, String(pid));
   const open = handovers.find((h) => h.status === "handed") ?? null;
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setErr("");

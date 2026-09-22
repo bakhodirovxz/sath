@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import ErrorBoundary from "../../ui/ErrorBoundary";
 import { Link, useNavigate } from "react-router-dom";
 import type { Sensor } from "../../api/client";
 import { fmtValue } from "../../ui/format";
@@ -56,7 +57,7 @@ function Body() {
         {key.grid && <div className="tile"><div className="tile-t">Chastota</div><div className="tile-v">{key.grid.last_value == null ? "—" : fmtValue(key.grid.last_value)} <span className="tile-u">{key.grid.unit}</span></div></div>}
       </div>
 
-      {scheme && <div className="panel l1-mimic"><Mimic scheme={scheme} sensors={sensors} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div>}
+      {scheme && <ErrorBoundary name="Mimika"><div className="panel l1-mimic"><Mimic scheme={scheme} sensors={sensors} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div></ErrorBoundary>}
       <div className="l1-grid">
         <section className="panel">
           <div className="row"><b>Agregatlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>L2 Mashina zali →</Link></div>

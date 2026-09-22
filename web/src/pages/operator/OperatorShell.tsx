@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import ErrorBoundary from "../../ui/ErrorBoundary";
+import { useOnline } from "../../hooks/useOnline";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type AlarmEvent, type Command, type Dashboard, type LiveMessage, type Project, type Sensor, type ShiftHandover } from "../../api/client";
 import { useLive, type LiveState } from "../../hooks/useLive";
@@ -73,6 +75,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   }, []);
   const prevIds = useRef(new Set<number>());
   const live = useLive(pid, setSensors, onMessage);
+  const online = useOnline();
   const summary = useMemo(() => summarize(sensors), [sensors]);
   const ctx: OpsContext = { projectId: pid, project, sensors, dash, live, summary, events, liveCommand, reload, error };
   const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2] : null;
@@ -99,7 +102,8 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
         </nav>
         {error && <p className="error" style={{ margin: "6px 16px" }}>{error}</p>}
         {openHandover && <div className="verdict warn" style={{ margin: "6px 16px" }} data-testid="handover-banner">Smena topshirish #{openHandover.id} ({openHandover.handed_by_username}) qabul qilinmagan — <Link to={opsPath(pid, "shift")}>qabul qiluvchi imzolasin</Link></div>}
-        <div className="page-body ops-body">{children}</div>
+        {!online && <div className="verdict warn" style={{ margin: "6px 16px" }} data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Qiymatlar oxirgi ma'lum holat.</div>}
+        <div className="page-body ops-body"><ErrorBoundary name={`L${level} ekran`}>{children}</ErrorBoundary></div>
       </div>
     </Ctx.Provider>
   );

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { Link, useParams } from "react-router-dom";
 import { api, type ReadingPoint, type WorkOrder } from "../../api/client";
 import Dialog from "../../ui/Dialog";
@@ -54,7 +55,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
   const canOperate = project?.my_role === "operator" || project?.my_role === "engineer" || project?.my_role === "approver";
   const canEngineer = project?.my_role === "engineer" || project?.my_role === "approver";
   const loadTrend = useCallback(() => api.readings(sensorId, hours, 400).then((r) => setPts(r.points)).catch(() => setPts([])), [sensorId, hours]);
-  useEffect(() => { void loadTrend(); const t = setInterval(loadTrend, 30_000); return () => clearInterval(t); }, [loadTrend]);
+  usePolling(loadTrend, 30_000, `${sensorId}:${hours}`);
   if (!s) return <p className="muted">Sensor topilmadi (id {sensorId})</p>;
   const st = alarmStyle(s.alarm, s.priority);
   const q = qualityStyle(s.last_quality);

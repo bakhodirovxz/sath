@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ErrorBoundary from "../ui/ErrorBoundary";
+import { useOnline } from "../hooks/useOnline";
 import Icon from "../ui/Icon";
 import { ForecastPanel, HealthPanel, PartsPanel, WhatIfPanel, WorkOrdersPanel } from "./dashboard/HealthPanels";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -76,11 +78,23 @@ export default function DashboardPage() {
 
   const canEdit = project?.my_role === "engineer" || project?.my_role === "approver";
   const canOperate = canEdit || project?.my_role === "operator";
+  const online = useOnline();
 
   const load = useCallback(async () => {
     try {
-      const [p, d, ev] = await Promise.all([api.project(pid), api.dashboard(pid), api.alarmEvents(pid, true)]);
+      const p = await api.project(pid);
       setProject(p);
+      const [dr, ev] = await Promise.all([api.dashboard(pid).catch((e: Error) => e), api.alarmEvents(pid, true).catch(() => [] as AlarmEvent[])]);
+      if (dr instanceof Error) {
+        // Qisman ishlash (F12): dashboard konfiguratsiyasi yiqilsa ham jonli ma'lumot ko'rsatiladi
+        setError(`Dispetcher konfiguratsiyasi yuklanmadi: ${dr.message} — jonli ma'lumot ko'rsatilmoqda`);
+        const ss = await api.sensors(pid).catch(() => [] as Sensor[]);
+        setSensors(ss); setEvents(ev);
+        setDash({ sensors: ss, units: [], mimic: {}, slots: [], tiles: [], scheme: null, pen_groups: [], active_alarms: ev.filter((e) => !e.ended_at).length, energy_24h_mwh: null, alarms_24h: { count: 0, by_state: {}, unacked: 0 }, alarm_flood: false, live_clients: 0 });
+        setScheme(loadScheme(null, {}, Math.max(1, ss.filter((x) => /^AGG\d+\.P$/i.test(x.key)).length || 3)));
+        return;
+      }
+      const d = dr;
       api.members(pid).then(setMembers).catch(() => setMembers([]));
       setDash(d);
       setSensors(d.sensors);
@@ -199,6 +213,7 @@ export default function DashboardPage() {
         {editing && <><button className="btn sm primary" onClick={saveMimic}>Saqlash</button><button className="btn sm" onClick={() => { setEditing(false); setMimic(dash.mimic); setScheme(loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3))); setSelEl(null); }}>Bekor</button></>}
       </TopBar>
       <div className="page-body dash">
+        {!online && <div className="verdict warn" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Ko'rsatilayotgan qiymatlar oxirgi ma'lum holat, yangilanmaydi.</div>}
         {error && <p className="error">{error}</p>}
         {flash && <div className="dash-flash" role="alert"><Icon name="alert-triangle" /> ALARM — {flash}</div>}
         {historyAt && <div className="dash-history"><Icon name="history" size={14} /> Tarix rejimi: {fmtDate(historyAt)} holati ko'rsatilmoqda. <a onClick={() => setHistoryAt(null)}>Jonli rejimga qaytish</a></div>}
@@ -217,7 +232,7 @@ export default function DashboardPage() {
 
         <div className="dash-main">
           <div className="dash-mimic">
-            {scheme && <Mimic scheme={scheme} sensors={sensors} editing={editing} selected={selEl} onSelect={setSelEl} onChange={setScheme} onOpen={(sid) => nav(`/projects/${pid}/ops/sensor/${sid}`)} />}
+            <ErrorBoundary name="Mimika">{scheme && <Mimic scheme={scheme} sensors={sensors} editing={editing} selected={selEl} onSelect={setSelEl} onChange={setScheme} onOpen={(sid) => nav(`/projects/${pid}/ops/sensor/${sid}`)} />}</ErrorBoundary>
             {editing && scheme && <MimicEditor scheme={scheme} sensors={sensors} selected={selEl} onSelect={setSelEl} onChange={setScheme} />}
           </div>
           <div className="dash-alarms">
@@ -225,7 +240,7 @@ export default function DashboardPage() {
             <div className="row"><b>Faol alarmlar</b><span className="dim small">{unacked} kvitlanmagan</span><span className="grow" />
               <Link className="btn sm" to={`/projects/${pid}/ops/alarms`}>Alarm sahifasi (tarix, filtr, hammasini kvitlash) →</Link>
             </div>
-            <AlarmTable rows={sortAlarms(toRows(events.filter((e) => !prioOnly || e.priority === "high" || e.priority === "critical"), sensors))} pid={pid} canOperate={canOperate} canEngineer={canEdit} compact onChanged={(u) => { if (u) setEvents((prev) => prev.map((x) => (x.id === u.id ? u : x)).filter((x) => !(x.ended_at && x.acked_at))); else void load(); }} onError={setError} />
+            <ErrorBoundary name="Alarm jurnali"><AlarmTable rows={sortAlarms(toRows(events.filter((e) => !prioOnly || e.priority === "high" || e.priority === "critical"), sensors))} pid={pid} canOperate={canOperate} canEngineer={canEdit} compact onChanged={(u) => { if (u) setEvents((prev) => prev.map((x) => (x.id === u.id ? u : x)).filter((x) => !(x.ended_at && x.acked_at))); else void load(); }} onError={setError} /></ErrorBoundary>
           </div>
         </div>
 
@@ -272,16 +287,16 @@ export default function DashboardPage() {
           )}
         </div>
         </>)}
-        {section === "twin" && <TwinPanel projectId={pid} canRun={canEdit} />}
-        {section === "health" && <HealthPanel projectId={pid} sensors={sensors} canEdit={canEdit} canOperate={canOperate} />}
-        {section === "whatif" && <WhatIfPanel projectId={pid} />}
-        {section === "forecast" && <ForecastPanel projectId={pid} />}
-        {section === "workorders" && <WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} />}
-        {section === "parts" && <PartsPanel projectId={pid} canOperate={canOperate} canEdit={canEdit} />}
-        {section === "assets" && <AssetsPanel projectId={pid} sensors={sensors} canEdit={canEdit} canMaint={canOperate} />}
-        {section === "control" && <CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} canOverride={project?.my_role === "approver"} />}
-        {section === "journal" && <JournalPanel projectId={pid} canWrite={canOperate} live={liveJournal} />}
-        {section === "soe" && <SoePanel projectId={pid} />}
+        {section === "twin" && <ErrorBoundary name="Raqamli egizak"><TwinPanel projectId={pid} canRun={canEdit} /></ErrorBoundary>}
+        {section === "health" && <ErrorBoundary name="Sog'liq"><HealthPanel projectId={pid} sensors={sensors} canEdit={canEdit} canOperate={canOperate} /></ErrorBoundary>}
+        {section === "whatif" && <ErrorBoundary name="Optimal rejim"><WhatIfPanel projectId={pid} /></ErrorBoundary>}
+        {section === "forecast" && <ErrorBoundary name="Toshqin prognozi"><ForecastPanel projectId={pid} /></ErrorBoundary>}
+        {section === "workorders" && <ErrorBoundary name="Ish buyruqlari"><WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} /></ErrorBoundary>}
+        {section === "parts" && <ErrorBoundary name="Ehtiyot qismlar"><PartsPanel projectId={pid} canOperate={canOperate} canEdit={canEdit} /></ErrorBoundary>}
+        {section === "assets" && <ErrorBoundary name="Aktivlar"><AssetsPanel projectId={pid} sensors={sensors} canEdit={canEdit} canMaint={canOperate} /></ErrorBoundary>}
+        {section === "control" && <ErrorBoundary name="Boshqaruv"><CommandsPanel projectId={pid} sensors={sensors} canCommand={canOperate && !historyAt} live={liveCmd} canOverride={project?.my_role === "approver"} /></ErrorBoundary>}
+        {section === "journal" && <ErrorBoundary name="Smena jurnali"><JournalPanel projectId={pid} canWrite={canOperate} live={liveJournal} /></ErrorBoundary>}
+        {section === "soe" && <ErrorBoundary name="SOE"><SoePanel projectId={pid} /></ErrorBoundary>}
         <p className="dim small">Sensorlarni qo'shish/bog'lash — model sahifasidagi <Link to={`/projects/${pid}`}>Monitoring</Link> panelida; SCADA ulanishi — <code>deploy/gateway</code>.</p>
       </div>
 

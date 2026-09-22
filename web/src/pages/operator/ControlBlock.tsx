@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { api, type Command, type Interlock, type SelectResult, type Sensor } from "../../api/client";
 import { fmtDate, fmtValue } from "../../ui/format";
 
@@ -35,7 +36,7 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
   const [last, setLast] = useState<Command | null>(null);
   const check = validateSetpoint(sensor, value);
   const loadInterlocks = useCallback(() => api.interlocks(projectId).then((all) => setInterlocks(all.filter((i) => i.sensor_id === sensor.id && i.enabled))).catch(() => setInterlocks([])), [projectId, sensor.id]);
-  useEffect(() => { void loadInterlocks(); const t = setInterval(loadInterlocks, 15_000); return () => clearInterval(t); }, [loadInterlocks]);
+  usePolling(loadInterlocks, 15_000, `${projectId}:${sensor.id}`);
   useEffect(() => { api.commands(projectId).then((cs) => setLast(cs.find((c) => c.sensor_id === sensor.id) ?? null)).catch(() => undefined); }, [projectId, sensor.id]);
   useEffect(() => { if (liveCommand && liveCommand.sensor_id === sensor.id) setLast(liveCommand); }, [liveCommand, sensor.id]);
   useEffect(() => {

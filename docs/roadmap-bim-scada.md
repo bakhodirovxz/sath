@@ -988,7 +988,7 @@ Fayllar: `web/package.json`, `web/eslint.config.js`, `web/tsconfig.json`, `web/v
 Qabul mezoni: lint CI da o'tadi, bostirish qolmaydi; login sahifasi to'plami 500 KB dan kichik.
 Bog'liqlik: yo'q.
 
-### F11 — 3D viewer nosozliklari ✅
+### F11 — 3D viewer nosozliklari ✅ (`5a87d20`)
 
 Bajarildi: `viewer/listeners.ts` — `DomListeners` reestri (`on()`, `timeout()`, `dispose()`); `Viewer.ts` dagi barcha
 10 ta `window/container/canvas` listeneri reestr orqali, `dispose()` hammasini (va hover taymerini) olib tashlaydi;
@@ -1022,7 +1022,7 @@ Fayllar: `web/src/viewer/Viewer.ts`, `web/src/pages/model/MonitoringPanel.tsx`
 Qabul mezoni: 20 marta model ochib-yopishdan keyin listener soni o'smaydi (test).
 Bog'liqlik: yo'q.
 
-### F12 — Xatolar chegarasi va uzilish holati
+### F12 — Xatolar chegarasi va uzilish holati ✅
 
 Muammo: `ErrorBoundary` butun kod bazasida yo'q. `Mimic`, `LineChart` yoki biror paneldagi
 render xatosi butun dispetcher sahifasini oq ekranga aylantiradi. `DashboardPage.tsx:197`

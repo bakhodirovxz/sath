@@ -699,3 +699,6 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .trend-legend { font-size: 12px; margin-top: 4px; }
 .trend-readout { margin-top: 6px; }
 .sep { width: 1px; height: 18px; background: var(--line-strong); display: inline-block; }
+
+/* --- F12: xatolar chegarasi --- */
+.error-boundary { border-color: var(--danger); color: var(--text); }

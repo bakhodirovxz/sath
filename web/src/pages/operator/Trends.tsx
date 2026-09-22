@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { useParams } from "react-router-dom";
 import { api, type PenGroup } from "../../api/client";
 import Dialog from "../../ui/Dialog";
@@ -49,7 +50,7 @@ function Body() {
     }));
     setData(out);
   }, [pens, hours, sensors]);
-  useEffect(() => { void load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+  usePolling(load, 30_000, `${pens.join(",")}:${hours}`);
   const series = useMemo(() => pens.map((id) => data[id]).filter((s): s is TrendSeries => !!s), [pens, data]);
   const toggle = (id: number) => setPens((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= 6 ? p : [...p, id]));
   const saveGroup = async () => {

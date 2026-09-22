@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
 import { api, type AssetState, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState } from "../../api/client";
@@ -15,7 +16,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
   const [t, setT] = useState<TwinState | null>(null);
   const [err, setErr] = useState("");
   const load = useCallback(() => api.twin(projectId).then(setT).catch((e) => setErr(e.message)), [projectId]);
-  useEffect(() => { void load(); const id = window.setInterval(load, 15000); return () => window.clearInterval(id); }, [load]);
+  usePolling(load, 15000, String(projectId));
   if (!t) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
     <div className="dash-block">
@@ -224,7 +225,7 @@ export function SoePanel({ projectId }: { projectId: number }) {
   const [filter, setFilter] = useState("");
   const [err, setErr] = useState("");
   const load = useCallback(() => (onlySoe ? api.soe(projectId, hours, filter || undefined) : api.timeline(projectId, hours)).then(setRows).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [projectId, hours, onlySoe, filter]);
-  useEffect(() => { void load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  usePolling(load, 15000, `${projectId}:${hours}:${onlySoe}:${filter}`);
   const fmtMs = (ts: string) => { const d = new Date(ts); return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
   return (
     <div className="panel">

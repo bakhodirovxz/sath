@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "../../hooks/usePolling";
 import { dialogs } from "../../ui/dialogs";
 import { api, type AssetHealth, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
@@ -16,7 +17,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
   const [err, setErr] = useState("");
   const [cfgFor, setCfgFor] = useState<AssetHealth | null>(null);
   const load = useCallback(() => api.health(projectId).then(setRep).catch((e) => setErr(e.message)), [projectId]);
-  useEffect(() => { void load(); const id = window.setInterval(load, 30000); return () => window.clearInterval(id); }, [load]);
+  usePolling(load, 30000, String(projectId));
   if (!rep) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
     <div className="dash-block">
