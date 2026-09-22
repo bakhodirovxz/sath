@@ -153,6 +153,20 @@ fayl ogohlantiradi, «majburiy» bo'lsa yuklash rad etiladi. Hujjatlar: EIR, BEP
 loyiha sahifasida (muhandis yuklaydi, tasdiqlovchi o'chiradi). Eski versiyalar migratsiyada holatdan
 kod oladi (wip S0, shared S3, published A1).
 
+## Uskuna kodlash (KKS / RDS-PP) va aktiv ierarxiyasi
+
+Aktivlar ISO 14224 taksonomiyasi bo'yicha ierarxiyada (stansiya → tizim → uskuna → komponent → qism):
+`parent_id`, `kks_code`, `taxonomy_level`, `function_location`. KKS (VGB-B 105/106) grammatikasi
+tekshiriladi: `[n]AAAnn [AAnnn [AAnn]]` — masalan `1MKA10 AH001 MA01` (blok 1, generator tizimi 10,
+agregat 001, komponent 01); RDS-PP (IEC 81346-10) — `=1MKA10 AH001`. Noto'g'ri kod 422, band kod 409,
+ierarxiya halqasi 400; daraja koddan aniqlanadi (tizim/uskuna/komponent). Sensorlarga ham `kks_code`.
+Dispetcher paneli → Aktivlar → «Ierarxiya (KKS)»: daraxt, uskuna holati va sog'ligi komponentlardan
+agregatsiya (eng yomon holat / eng past indeks). CSV import: `kks_code,name,parent_kks,taxonomy_level,
+element_guid,sensor_key,function_location` (`POST /api/projects/{id}/assets/import-kks`) — mavjud kod
+yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → uskuna → tizim).
+`GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
+bosimli quvur, HAD suv olish, …).
+
 ## Aktiv topshiruvi (COBie ga o'xshash)
 
 Model versiyasidan aktiv registri: `GET /api/versions/{id}/assets/register` (JSON) yoki `?format=csv` —

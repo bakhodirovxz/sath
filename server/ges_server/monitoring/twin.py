@@ -508,6 +508,10 @@ def asset_status(db: Session, project: Project) -> list[dict]:
                 "id": a.id,
                 "name": a.name,
                 "element_guid": a.element_guid,
+                "parent_id": a.parent_id,
+                "kks_code": a.kks_code,
+                "taxonomy_level": a.taxonomy_level,
+                "function_location": a.function_location or "",
                 "power_sensor_id": a.power_sensor_id,
                 "running": bool(
                     s and not s.stale and (s.last_value or 0) > RUN_THRESHOLD

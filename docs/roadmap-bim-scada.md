@@ -1045,7 +1045,7 @@ Bog'liqlik: yo'q.
 
 ## G. BIM tomoni
 
-### G1 — IFC4.3 ga o'tish ✅
+### G1 — IFC4.3 ga o'tish ✅ (`15ebb40`)
 
 Muammo: `models/drafts.py:44` va `docs/samples/make_sample_ges.py:66` — `version="IFC4"` qat'iy
 kodlangan; testlar `meta["schema"] == "IFC4"` ni tekshiradi. IFC4 da infratuzilma entitylari yo'q,
@@ -1165,7 +1165,7 @@ Bog'liqlik: G1, H1.
 
 ## H. Aktivlar, kodlash, CMMS
 
-### H1 — Uskuna kodlash va ierarxiya (KKS / RDS-PP)
+### H1 — Uskuna kodlash va ierarxiya (KKS / RDS-PP) ✅
 
 Muammo: `orm.py:598` — `Asset` tekis: nom, `element_guid`, `power_sensor_id`, hisoblagichlar,
 JSON `config`. `parent_id` yo'q, funksional joylashuv yo'q, taksonomiya darajasi yo'q, KKS yoki

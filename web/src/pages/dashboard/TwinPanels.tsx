@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "../../hooks/usePolling";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
-import { api, type AssetDocKind, type AssetDocument, type AssetState, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState, type Version } from "../../api/client";
+import { api, type AssetDocKind, type AssetDocument, type AssetState, type AssetTree, type AssetTreeNode, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState, type Version } from "../../api/client";
 import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
 import { fmtDate, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
@@ -167,6 +167,10 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
   const [items, setItems] = useState<AssetState[]>([]);
   const [adding, setAdding] = useState(false);
   const [docsFor, setDocsFor] = useState<AssetState | null>(null);
+  const [view, setView] = useState<"list" | "tree">("list");
+  const [tree, setTree] = useState<AssetTree | null>(null);
+  const loadTree = useCallback(() => api.assetTree(projectId).then(setTree).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { if (view === "tree") void loadTree(); }, [view, loadTree]);
   const [models, setModels] = useState<{ id: number; name: string; versions: Version[] }[]>([]);
   const [syncMsg, setSyncMsg] = useState("");
   // G6: IFC dan aktiv registri — loyiha modellari va oxirgi versiyalari
@@ -194,13 +198,28 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
         {canEdit && <button className="btn sm" onClick={() => setAdding(true)}>+ Aktiv</button>}</div>
       {syncMsg && <p className="small verdict ok" data-testid="assets-sync-msg">{syncMsg}</p>}
       {err && <p className="error small">{err}</p>}
-      {items.length === 0 ? <p className="muted">Aktivlar yo'q — quvvat sensori bilan agregat qo'shing.</p> : (
+      <div className="row" style={{ gap: 6, margin: "4px 0" }}>
+        <button className={`btn sm ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>Ro'yxat</button>
+        <button className={`btn sm ${view === "tree" ? "active" : ""}`} onClick={() => setView("tree")} data-testid="assets-tree-btn">Ierarxiya (KKS)</button>
+        {canEdit && <label className="btn sm" title="CSV: kks_code, name, parent_kks, taxonomy_level, element_guid, sensor_key, function_location">KKS CSV import<input type="file" accept=".csv" style={{ display: "none" }} data-testid="kks-csv" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.importKks(projectId, f).then((r) => { setSyncMsg(`KKS: ${r.created} yangi, ${r.updated} yangilandi${r.errors.length ? `, ${r.errors.length} xato: ${r.errors[0]}` : ""}`); void load(); void loadTree(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>}
+      </div>
+      {view === "tree" && tree && (
+        <div data-testid="assets-tree">
+          {tree.roots.length === 0 ? <p className="muted">Ierarxiya bo'sh — aktivga KKS kodi/ota bering yoki CSV import qiling.</p> : (
+            <table className="grid small">
+              <thead><tr><th>KKS / nomi</th><th>Daraja</th><th>Holat (agregat)</th><th>Sog'liq</th><th /></tr></thead>
+              <tbody>{tree.roots.map((n) => <TreeRows key={n.id} n={n} depth={0} labels={tree.level_labels} canEdit={canEdit} onEdit={(a) => void (async () => { const kks = await dialogs.prompt("KKS / RDS-PP kodi", a.kks_code ?? "", { text: "masalan 1MKA10 AH001 MA01 (tizim → uskuna → komponent); bo'sh — o'chirish" }); if (kks == null) return; api.updateAsset(a.id, { kks_code: kks }).then(() => { void load(); void loadTree(); }).catch((e) => setErr(e.message)); })()} onSelectGuid={onSelectGuid} />)}</tbody>
+            </table>
+          )}
+        </div>
+      )}
+      {view === "list" && (items.length === 0 ? <p className="muted">Aktivlar yo'q — quvvat sensori bilan agregat qo'shing.</p> : (
         <table className="grid small">
           <thead><tr><th>Aktiv</th><th>Holat</th><th>Ish soatlari</th><th>Ishga tushishlar</th><th>30 kun</th><th>Texnik xizmat</th><th /></tr></thead>
           <tbody>
             {items.map((a) => (
               <tr key={a.id}>
-                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
+                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}{a.kks_code && <span className="mono dim small"> {a.kks_code}</span>}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
                 <td>{a.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                 <td className="mono">{a.run_hours_total.toFixed(0)} s</td>
                 <td className="mono">{a.starts_total}</td>
@@ -214,7 +233,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
             ))}
           </tbody>
         </table>
-      )}
+      ))}
       {docsFor && <AssetDocsDialog asset={docsFor} canEdit={canMaint} canDelete={canEdit} onClose={() => setDocsFor(null)} />}
       {adding && (
         <Dialog title="Yangi aktiv" onClose={() => setAdding(false)}>
@@ -319,5 +338,25 @@ function AssetDocsDialog({ asset, canEdit, canDelete, onClose }: { asset: AssetS
       )}
       <div className="actions"><button className="btn" onClick={onClose}>Yopish</button></div>
     </Dialog>
+  );
+}
+
+/** H1: aktiv ierarxiyasi qatorlari (rekursiv) — KKS kodi, ISO 14224 darajasi, agregatsiya holati va sog'liq. */
+function TreeRows({ n, depth, labels, canEdit, onEdit, onSelectGuid }: { n: AssetTreeNode; depth: number; labels: Record<string, string>; canEdit: boolean; onEdit: (a: AssetTreeNode) => void; onSelectGuid?: ((g: string) => void) | undefined }) {
+  const cls: Record<string, string> = { ok: "published", due: "high", overdue: "rejected" };
+  return (
+    <>
+      <tr>
+        <td style={{ paddingLeft: 8 + depth * 18 }}>
+          {n.kks_code && <span className="mono">{n.kks_code}</span>} {n.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(n.element_guid!)}>{n.name}</a> : n.name}
+          {n.kks?.system_name && <span className="dim small"> · {n.kks.system_name}</span>}
+        </td>
+        <td className="dim small">{n.taxonomy_level ? labels[n.taxonomy_level] ?? n.taxonomy_level : "—"}</td>
+        <td><span className={`badge ${cls[n.agg_status] ?? "archived"}`}>{n.agg_status}</span>{n.running != null && <span className="dim small"> {n.running ? "ishlayapti" : "to'xtagan"}</span>}</td>
+        <td className="mono">{n.agg_score != null ? `${n.agg_score}${n.score != null && n.score !== n.agg_score ? ` (o'zi ${n.score})` : ""}` : "—"}</td>
+        <td>{canEdit && <button className="btn sm" onClick={() => onEdit(n)}>KKS</button>}</td>
+      </tr>
+      {n.children.map((c) => <TreeRows key={c.id} n={c} depth={depth + 1} labels={labels} canEdit={canEdit} onEdit={onEdit} onSelectGuid={onSelectGuid} />)}
+    </>
   );
 }

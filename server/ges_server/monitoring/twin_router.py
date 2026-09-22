@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
 from ..orm import Asset, AssetDocument, Project, Role, Sensor, utcnow
-from . import health, twin
+from . import health, kks, twin
 
 router = APIRouter(prefix="/api", tags=["twin"])
 
@@ -99,6 +99,11 @@ def snapshot(project: ViewerProject, db: DB, at: datetime):
 class AssetIn(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     element_guid: str | None = None
+    # H1: ierarxiya va kodlash
+    parent_id: int | None = None
+    kks_code: str | None = Field(default=None, max_length=32)
+    taxonomy_level: str | None = None
+    function_location: str = Field(default="", max_length=128)
     power_sensor_id: int | None = None
     base_run_hours: float = 0.0
     maintenance_interval_hours: float | None = None
@@ -111,6 +116,10 @@ class AssetIn(BaseModel):
 class AssetPatch(BaseModel):
     name: str | None = None
     element_guid: str | None = None
+    parent_id: int | None = None  # 0 — ildizga
+    kks_code: str | None = None  # "" — o'chirish
+    taxonomy_level: str | None = None
+    function_location: str | None = None
     power_sensor_id: int | None = None
     base_run_hours: float | None = None
     maintenance_interval_hours: float | None = None
@@ -169,13 +178,45 @@ def _check_config(db, project_id: int, cfg: dict) -> dict:
     return out
 
 
+def _check_hierarchy(db, project_id: int, data: dict, self_id: int | None = None) -> dict:
+    """H1: KKS kodi grammatikasi, loyihada unikalligi; ota aktiv shu loyihaniki va halqa emas; daraja ISO 14224."""
+    if "kks_code" in data:
+        try:
+            data["kks_code"] = kks.validate(data["kks_code"])
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+        if data["kks_code"]:
+            dup = db.query(Asset).filter_by(project_id=project_id, kks_code=data["kks_code"]).first()
+            if dup is not None and dup.id != self_id:
+                raise HTTPException(status.HTTP_409_CONFLICT, f"KKS kodi band: {data['kks_code']} ({dup.name})")
+    if "taxonomy_level" in data:
+        try:
+            data["taxonomy_level"] = kks.level_for(data.get("kks_code"), data["taxonomy_level"])
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    if "parent_id" in data:
+        if data["parent_id"] in (0, None):
+            data["parent_id"] = None
+        else:
+            p = db.get(Asset, int(data["parent_id"]))
+            if p is None or p.project_id != project_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ota aktiv loyihada yo'q")
+            cur, hops = p, 0
+            while cur is not None and hops < 100:
+                if cur.id == self_id:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ierarxiya halqasi (aktiv o'zining avlodi bo'lolmaydi)")
+                cur = db.get(Asset, cur.parent_id) if cur.parent_id else None
+                hops += 1
+    return data
+
+
 @router.post("/projects/{project_id}/assets", status_code=201)
 def create_asset(body: AssetIn, project: EngineerProject, user: CurrentUser, db: DB):
     if body.power_sensor_id is not None:
         s = db.get(Sensor, body.power_sensor_id)
         if s is None or s.project_id != project.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sensor loyihada yo'q")
-    data = body.model_dump()
+    data = _check_hierarchy(db, project.id, body.model_dump())
     data["config"] = _check_config(db, project.id, data.get("config") or {})
     a = Asset(project_id=project.id, **data)
     db.add(a)
@@ -203,6 +244,7 @@ def update_asset(asset_id: int, body: AssetPatch, user: CurrentUser, db: DB):
     if not has_role(get_project_role(db, a.project_id, user), Role.engineer):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi kerak")
     changes = body.model_dump(exclude_none=True)
+    changes = _check_hierarchy(db, a.project_id, changes, self_id=a.id)
     # Sensor faqat shu loyihaniki bo'lishi kerak (boshqa loyiha ma'lumotiga bog'lab bo'lmaydi)
     if "power_sensor_id" in changes:
         s = db.get(Sensor, changes["power_sensor_id"])
@@ -383,3 +425,124 @@ def asset_document_delete(asset_id: int, doc_id: int, user: CurrentUser, db: DB)
     db.delete(d)
     audit.log(db, user_id=user.id, action="asset.document.delete", target_type="asset", target_id=a.id, project_id=a.project_id, detail={"doc_id": doc_id})
     db.commit()
+
+
+# --------------------------------------------------------------------------- H1: aktiv daraxti, KKS import
+
+
+@router.get("/projects/{project_id}/assets/tree")
+def assets_tree(project: ViewerProject, db: DB):
+    """Ierarxiya (H1): ildizdan avlodlarga; har tugunda holat (texnik xizmat), sog'liq indeksi (health) va
+    avlodlardan agregatsiya (eng yomon holat/eng past indeks — uskuna sog'ligi komponentlardan)."""
+    status_by = {x["id"]: x for x in twin.asset_status(db, project)}
+    try:
+        health_by = {h["asset_id"]: h for h in health.compute(db, project).get("assets", [])}
+    except Exception:  # noqa: BLE001 — sog'liq hisobi bo'lmasa daraxt baribir ko'rinadi
+        health_by = {}
+    rows = db.query(Asset).filter_by(project_id=project.id).order_by(Asset.kks_code, Asset.name).all()
+    children: dict[int | None, list[Asset]] = {}
+    for a in rows:
+        children.setdefault(a.parent_id if a.parent_id in {r.id for r in rows} else None, []).append(a)
+    order = {"ok": 0, "due": 1, "overdue": 2}
+
+    def node(a: Asset) -> dict:
+        kids = [node(c) for c in children.get(a.id, [])]
+        st = status_by.get(a.id, {})
+        h = health_by.get(a.id)
+        own_score = h.get("score") if h else None
+        scores = [k["agg_score"] for k in kids if k["agg_score"] is not None] + ([own_score] if own_score is not None else [])
+        statuses = [k["agg_status"] for k in kids] + [st.get("status", "ok")]
+        return {
+            "id": a.id,
+            "name": a.name,
+            "kks_code": a.kks_code,
+            "taxonomy_level": a.taxonomy_level,
+            "function_location": a.function_location,
+            "element_guid": a.element_guid,
+            "kks": (kks.parse(a.kks_code) if a.kks_code else None),
+            "status": st.get("status"),
+            "running": st.get("running"),
+            "score": own_score,
+            "level": h.get("level") if h else None,
+            "agg_score": min(scores) if scores else None,
+            "agg_status": max(statuses, key=lambda x: order.get(x, 0)),
+            "children": kids,
+        }
+
+    return {"roots": [node(a) for a in children.get(None, [])], "count": len(rows), "levels": list(kks.LEVELS), "level_labels": kks.LEVEL_LABEL}
+
+
+@router.post("/projects/{project_id}/assets/import-kks")
+def assets_import_kks(project: EngineerProject, user: CurrentUser, db: DB, file: UploadFile):
+    """CSV import (H1): ustunlar kks_code, name, [parent_kks], [taxonomy_level], [element_guid], [sensor_key],
+    [function_location]. Kod bo'yicha mavjud aktiv yangilanadi, yo'q — yaratiladi; ota kod bo'yicha
+    bog'lanadi (ro'yxatdagi tartibdan qat'i nazar), sensor_key — sensor KKS kodini ham qo'yadi."""
+    import csv
+    import io
+
+    from ..config import get_settings
+
+    raw = file.file.read(get_settings().small_upload_mb * 1024 * 1024 + 1)
+    if len(raw) > get_settings().small_upload_mb * 1024 * 1024:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "CSV juda katta")
+    rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig", errors="replace"))))
+    if not rows or "kks_code" not in rows[0]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV: kks_code, name[, parent_kks, taxonomy_level, element_guid, sensor_key, function_location]")
+    by_code = {a.kks_code: a for a in db.query(Asset).filter_by(project_id=project.id).all() if a.kks_code}
+    created = updated = 0
+    errors: list[str] = []
+    parsed: list[tuple[dict, str]] = []
+    for i, r in enumerate(rows, start=2):
+        try:
+            code = kks.validate(r.get("kks_code"))
+            if not code:
+                raise ValueError("kks_code bo'sh")
+            level = kks.level_for(code, (r.get("taxonomy_level") or "").strip() or None)
+        except ValueError as e:
+            errors.append(f"{i}-qator: {e}")
+            continue
+        parsed.append((r, code))
+        a = by_code.get(code)
+        if a is None:
+            a = Asset(project_id=project.id, name=(r.get("name") or code).strip(), kks_code=code, taxonomy_level=level)
+            db.add(a)
+            db.flush()
+            by_code[code] = a
+            created += 1
+        else:
+            if (r.get("name") or "").strip():
+                a.name = r["name"].strip()
+            a.taxonomy_level = level
+            updated += 1
+        if (r.get("element_guid") or "").strip():
+            a.element_guid = r["element_guid"].strip()
+        if (r.get("function_location") or "").strip():
+            a.function_location = r["function_location"].strip()[:128]
+        if (r.get("sensor_key") or "").strip():
+            s = db.query(Sensor).filter_by(project_id=project.id, key=r["sensor_key"].strip()).first()
+            if s is not None:
+                s.kks_code = code
+    # ota bog'lanishi (ikkinchi o'tish — barcha kodlar mavjud)
+    for r, code in parsed:
+        pk = (r.get("parent_kks") or "").strip()
+        parent = None
+        if pk:
+            try:
+                parent = by_code.get(kks.validate(pk))
+            except ValueError:
+                parent = None
+            if parent is None:
+                errors.append(f"{code}: ota kod topilmadi ({pk})")
+        elif kks.parent_code(code):
+            parent = by_code.get(kks.parent_code(code))  # koddan kelib chiqadigan ota (tizim → uskuna → komponent)
+        if parent is not None and parent.id != by_code[code].id:
+            by_code[code].parent_id = parent.id
+    audit.log(db, user_id=user.id, action="asset.import_kks", target_type="project", target_id=project.id, project_id=project.id, detail={"created": created, "updated": updated, "errors": len(errors)})
+    db.commit()
+    return {"created": created, "updated": updated, "errors": errors}
+
+
+@router.get("/kks/systems")
+def kks_systems(_: CurrentUser):
+    """KKS tizim kalitlari (VGB-B 105, GES qismi) va ISO 14224 darajalari."""
+    return {"systems": kks.SYSTEM_KEYS, "levels": list(kks.LEVELS), "level_labels": kks.LEVEL_LABEL}

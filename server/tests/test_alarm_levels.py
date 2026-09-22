@@ -109,7 +109,7 @@ def test_on_delay_ignores_short_excursion_and_background_settles(client, users, 
 
 def test_rate_of_change_alarm(client, users, sensor):
     s = sensor(roc_limit_per_min=2.0)
-    t0 = datetime(2026, 9, 20, 10, 0, tzinfo=timezone.utc)
+    t0 = (datetime.now(timezone.utc) - timedelta(minutes=10)).replace(microsecond=0)  # fon tick_stale eskirtirmasin
     _push(client, users, [{"key": "RES.H", "value": 895.0, "ts": t0.isoformat()}])
     _push(client, users, [{"key": "RES.H", "value": 895.5, "ts": (t0 + timedelta(minutes=1)).isoformat()}])
     assert _alarm(s["id"]) == "ok"  # 0.5 m/min

@@ -37,7 +37,7 @@ from ..auth.deps import (
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import alarm_kpi, historian, interlock, keys, live, mqtt_bridge, soe
+from . import alarm_kpi, historian, interlock, keys, kks, live, mqtt_bridge, soe
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 WS_PING_S = 10.0  # WebSocket heartbeat davri (klient 3× davrda xabar kelmasa OFFLINE deb hisoblaydi)
@@ -57,6 +57,7 @@ OperatorProject = Annotated[Project, Depends(require_project_role(Role.operator)
 
 class SensorIn(BaseModel):
     key: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.\-/:]+$")
+    kks_code: str | None = Field(default=None, max_length=32)  # H1: KKS/RDS-PP (tekshiriladi)
     name: str = Field(min_length=1, max_length=128)
     kind: Kind = "value"
     unit: str = ""
@@ -112,6 +113,7 @@ class SensorIn(BaseModel):
 
 class SensorPatch(BaseModel):
     name: str | None = None
+    kks_code: str | None = None  # H1; "" — o'chirish
     kind: Kind | None = None
     unit: str | None = None
     model_id: int | None = None
@@ -171,6 +173,7 @@ class SensorOut(BaseModel):
     project_id: int
     model_id: int | None
     key: str
+    kks_code: str | None = None
     name: str
     kind: str
     unit: str
@@ -276,7 +279,12 @@ def list_sensors(
 def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, db: DB):
     if db.query(Sensor).filter_by(project_id=project.id, key=body.key).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Bunday kalitli sensor mavjud")
-    sensor = Sensor(project_id=project.id, **body.model_dump())
+    data = body.model_dump()
+    try:
+        data["kks_code"] = kks.validate(data.get("kks_code"))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    sensor = Sensor(project_id=project.id, **data)
     db.add(sensor)
     db.flush()
     audit.log(
@@ -446,6 +454,11 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         exclude_none=True,
         exclude={"clear_alarms", "clear_roc", "clear_raw_range", "clear_setpoint_range", "clear_archive_deadband"},
     )
+    if "kks_code" in changes:
+        try:
+            changes["kks_code"] = kks.validate(changes["kks_code"])
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:

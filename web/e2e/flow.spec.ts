@@ -354,6 +354,20 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".dock-body")).toContainText("IFC4X3");
   });
 
+  test("KKS (H1): aktiv ierarxiyasi CSV import va daraxt", async ({ page }) => {
+    await login(page);
+    await page.goto(`/projects/${projectId}/dashboard`);
+    await page.locator("button", { hasText: "Aktivlar" }).click();
+    const csv = ["kks_code,name,parent_kks,taxonomy_level", "1MKA10,Generator tizimi,,system", "1MKA10 AH001,Agregat 1 (KKS),,", "1MKA10 AH001 MA01,Podshipnik,1MKA10 AH001,", ""].join(String.fromCharCode(10));
+    await page.getByTestId("kks-csv").setInputFiles({ name: "kks.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await expect(page.getByTestId("assets-sync-msg")).toContainText("KKS: 3 yangi");
+    await page.getByTestId("assets-tree-btn").click();
+    const tree = page.getByTestId("assets-tree");
+    await expect(tree).toContainText("1MKA10 AH001 MA01");
+    await expect(tree).toContainText("Generator");
+    await expect(tree).toContainText("komponent");
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

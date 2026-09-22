@@ -553,6 +553,8 @@ class Sensor(Base):
         ForeignKey("models.id", ondelete="SET NULL"), nullable=True
     )
     key: Mapped[str] = mapped_column(String(64))  # SCADA teg nomi, masalan "AGG1.P"
+    # H1: o'lchov nuqtasining KKS kodi (masalan 1MKA10 CT001) — O&M hujjatlari, chizmalar bilan bir xil
+    kks_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     name: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(
         String(32), default="value"
@@ -885,9 +887,10 @@ class UnitDayStats(Base):
 
 
 class Asset(Base):
-    """Aktiv (agregat, transformator…): IFC element + quvvat sensori, texnik xizmat rejimi."""
+    """Aktiv (agregat, transformator…): IFC element + quvvat sensori, texnik xizmat rejimi; H1: ierarxiya (KKS)."""
 
     __tablename__ = "assets"
+    __table_args__ = (UniqueConstraint("project_id", "kks_code", name="uq_assets_kks"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(
@@ -895,6 +898,12 @@ class Asset(Base):
     )
     name: Mapped[str] = mapped_column(String(128))
     element_guid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # H1: ierarxiya va kodlash — ota aktiv, KKS/RDS-PP kodi (loyihada unikal), ISO 14224 taksonomiya darajasi
+    # (plant → system → equipment → component → part), funksional joylashuv (matn)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    kks_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    taxonomy_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    function_location: Mapped[str] = mapped_column(String(128), default="", server_default="")
     power_sensor_id: Mapped[int | None] = mapped_column(
         ForeignKey("sensors.id", ondelete="SET NULL"), nullable=True
     )
