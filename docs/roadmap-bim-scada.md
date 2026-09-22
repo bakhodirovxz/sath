@@ -2251,4 +2251,83 @@ Fayllar: `deploy/simulator/`, `web/src/pages/operator/Training.tsx`
 Qabul mezoni: mashq rejimida haqiqiy gateway ga birorta buyruq ketmaydi (test).
 Bog'liqlik: E4, F2, F8.
 
-Oxirgi yangilanish: 2026-09-21
+### P9 — Korxona hisoblari va xavfsizlik jurnali integratsiyasi
+Muammo: foydalanuvchilar faqat Sath ichida; korxonada AD/Keycloak bo'lsa hisoblar ikki joyda boshqariladi,
+jurnal esa SIEM ga tushmaydi.
+Ish: OIDC (Authorization Code + PKCE) orqali kirish — mavjud rollarga xaritalash (`oidc_groups_map`),
+lokal parol bilan kirish saqlanadi (favqulodda hisob); ixtiyoriy LDAP/AD qidiruvi; audit va alarm
+hodisalarini RFC 5424 syslog (TCP/TLS) yoki CEF shaklida eksport qilish, `GES_SYSLOG_URL`.
+Fayllar: yangi `auth/oidc.py`, `system/siem.py`, `config.py`, `docs/admin.md`, `docs/security-zones.md`
+Qabul mezoni: OIDC bilan kirgan foydalanuvchi guruhiga mos rol oladi (test, soxta provayder bilan);
+syslog eksportida `auth.login_failed` va `alarm.*` yozuvlari ko'rinadi (test).
+Bog'liqlik: L1, L2, A4.
+
+### P10 — Ko'p o'zgaruvchili anomaliya va prognoz modellari
+Muammo: anomaliya faqat bitta kanal z-score i; sekin rivojlanayotgan, bir nechta parametr birga
+o'zgaradigan nosozlik (masalan, harorat + tebranish + FIK) aniqlanmaydi. Tijoriy APM bu yerda ustun.
+Ish: egizak qoldig'i (o'lchov − model) ustida ko'p o'zgaruvchili baza — PCA (`numpy` bilan, yangi
+kutubxonasiz), Hotelling T² va Q (SPE) statistikasi, nazorat chegaralari tarixiy «sog'lom» oynadan;
+natija ISO 13374 SD blokiga yangi element sifatida qo'shiladi (`multivariate`), sabab sifatida eng katta
+hissa qo'shgan kanallar ko'rsatiladi. RUL: chiziqli o'rniga chegaraga yetish uchun eksponensial/Weibull
+moslashuvi (ishonch oralig'i bilan), ma'lumot kam bo'lsa — `None` (taxmin qilinmaydi).
+Fayllar: yangi `monitoring/cm/mv.py`, `cm/sd.py`, `cm/pa.py`, `docs/admin.md`
+Qabul mezoni: sun'iy ma'lumotda bitta kanal chegaradan chiqmasdan, birgalikdagi og'ish T² bilan
+aniqlanadi (test); baza oynasi yetarli bo'lmasa model ishlamaydi va holat `unknown` (test).
+Bog'liqlik: H3, I1.
+
+### P11 — 4D/5D: jadval va xarajatni modelga bog'lash
+Muammo: ta'mirlash/qurilish jadvali va byudjeti model elementlari bilan bog'lanmagan; ish buyruqlari
+(H2) vaqt o'qida ko'rinmaydi.
+Ish: `TaskLink` (element GUID / aktiv ↔ ish buyrug'i yoki reja ↔ sana oralig'i), Gantt ko'rinishi
+(web), 3D da sana bo'yicha rang berish (rejalashtirilgan / bajarilmoqda / bajarildi / kechikkan),
+xarajat jamlanmasi H2 dan (mehnat + qism + qo'shimcha) element va tizim (KKS) bo'yicha.
+Fayllar: `orm.py`, yangi `models/schedule.py`, `web/src/pages/dashboard/GanttPanel.tsx`, `viewer/`
+Qabul mezoni: ish buyrug'i sanasi o'zgarganda 3D dagi rang va Gantt yangilanadi (test + e2e).
+Bog'liqlik: H2, G6.
+
+### P12 — BCF (BIM Collaboration Format) import/eksport
+Muammo: taqriz izohlari faqat Sath ichida; loyihachi Revit/Navisworks/BIMcollab da ishlaydi.
+Ish: BCF 2.1 va 3.0 zip (markup.bcf, viewpoint.bcfv, snapshot.png) eksporti — mavjud taqriz
+izohlaridan, kamera holati bilan; import — tashqi BCF ni izohga aylantirish (element GUID bo'yicha
+bog'lash), takror import idempotent (`bcf_guid`).
+Fayllar: yangi `models/bcf.py`, `models/review.py`, `web/src/pages/model/ReviewPanel.tsx`
+Qabul mezoni: eksport qilingan BCF qayta import qilinganda yangi izoh yaratilmaydi va kamera
+holati saqlanadi (test).
+Bog'liqlik: G4, F bo'limi taqriz oqimi.
+
+### P13 — GIS qatlami
+Muammo: georeferensiya bor (G3), lekin havza, yer uchastkasi, kommunikatsiya va quyi oqim aholi
+punktlari xaritada ko'rinmaydi — toshqin natijasi kontekstsiz qoladi.
+Ish: XYZ/WMS asos xarita (oflayn uchun mahalliy tayl katalogi), aktivlar va sensorlar GeoJSON
+eksporti (`/api/projects/{id}/gis/assets.geojson`), toshqin natijasini (J6) suv bosish konturi
+sifatida chiqarish, QGIS/ArcGIS uchun havola; ma'lumot chiqishi faqat o'qish uchun.
+Fayllar: yangi `models/gis.py`, `web/src/pages/site/MapPanel.tsx`
+Qabul mezoni: aktivlar GeoJSON da to'g'ri EPSG bilan chiqadi va QGIS da joyiga tushadi (test:
+koordinata aylanishi G3 bilan mos).
+Bog'liqlik: G3, J6.
+
+### P14 — Dala rejimi (mobil, oflayn)
+Muammo: CMMS (H2) faqat ish stolida ishlaydi; xodim mashina zalida ish buyrug'ini yopa olmaydi.
+Ish: PWA (service worker) — ish buyruqlari, vazifalar, mehnat yozuvi va o'lchov kiritish oflayn
+navbatda (IndexedDB), aloqa qaytganda sinxronlash (konflikt: server ustun, mahalliy nusxa saqlanadi);
+KKS kodi bo'yicha QR/shtrix-kod bilan aktivni ochish; kamera bilan foto biriktirish (aktiv hujjati).
+Fayllar: `web/` (service worker, `pages/field/`), `monitoring/workorders.py` (sync endpoint)
+Qabul mezoni: oflayn holatda yopilgan ish buyrug'i aloqa qaytgach serverga o'tadi va takrorlanmaydi
+(idempotent `client_op_id`, test).
+Bog'liqlik: H2, L2.
+
+### P15 — FMEA / RCM kutubxonasi
+Muammo: nosozlik rejimlari (H2 dagi ISO 14224 kodlari) faqat yopilgan buyruqda qo'lda tanlanadi;
+qaysi kanal qaysi nosozlikni ko'rishi va qaysi chora kerakligi tizimda yozilmagan.
+Ish: `FailureMode` (aktiv turi yoki KKS tizimi bo'yicha) — ta'sir, ehtimollik, aniqlash usuli, RPN;
+har rejimga monitoring kanali (H3) va profilaktik reja (H2) bog'lanadi; sog'liq muammosi paydo
+bo'lganda mos rejim va tavsiya avtomatik ko'rsatiladi; RCM qarori (ishga ko'ra ta'mirlash / holatga
+ko'ra / ishlagunicha) rejaga yoziladi.
+Fayllar: `orm.py`, yangi `monitoring/fmea.py`, `cm/ag.py`, `web/src/pages/dashboard/FmeaPanel.tsx`
+Qabul mezoni: kanal holati «alarm» bo'lganda unga bog'langan nosozlik rejimi va chorasi tavsiyada
+chiqadi (test); RPN bo'yicha tartiblangan ro'yxat.
+Bog'liqlik: H2, H3.
+
+---
+
+Oxirgi yangilanish: 2026-09-22 (P9–P15 — `docs/benchmark.md` dagi taqqoslash natijasi)
