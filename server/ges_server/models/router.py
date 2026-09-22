@@ -18,7 +18,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..orm import Federation, Model, Project, Role, Version, VersionState
-from . import classification, cobie, derived, federation, ifc_meta, iso19650, storage
+from . import classification, cobie, derived, federation, ifc_meta, ifc_schema, iso19650, storage
 from . import crs as crs_mod
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -763,3 +763,13 @@ def version_asset_register(version_id: int, user: CurrentUser, db: DB, format: s
         db.commit()
         return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="cobie_{v.model.name}_v{v.number}.zip"'})
     return reg
+
+
+@router.get("/ifc/schemas")
+def ifc_schemas(_: CurrentUser):
+    """G1: qo'llab-quvvatlanadigan IFC sxemalari, joriy default va GES turi → sinf xaritasi (sxema bo'yicha)."""
+    return {
+        "default": ifc_schema.normalize(get_settings().ifc_schema),
+        "schemas": list(ifc_schema.SCHEMAS),
+        "map": {sc: {k: {"class": v[0], "predefined": v[1], "object_type": v[2]} for k, v in ifc_schema._MAP[sc].items()} for sc in ifc_schema.SCHEMAS},
+    }

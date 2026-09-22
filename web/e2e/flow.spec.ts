@@ -339,6 +339,21 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".dialog")).toContainText("pasport.pdf");
   });
 
+  test("IFC4.3 (G1): IFC4X3_ADD2 model yuklanadi va 3D da ochiladi", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    const m = await (await request.post(`${API}/api/projects/${projectId}/models`, { headers: h, data: { name: "Namuna 4.3" } })).json();
+    const up = await request.post(`${API}/api/models/${m.id}/versions`, { headers: h, multipart: { message: "ifc4x3", file: { name: "namuna_ifc4x3.ifc", mimeType: "application/octet-stream", buffer: readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../docs/samples/namuna_ges_v2_ifc4x3.ifc")) } } });
+    expect(up.status()).toBe(201);
+    const v = await up.json();
+    expect(String(v.meta.schema)).toContain("IFC4X3");
+    await login(page);
+    await page.goto(`/models/${m.id}?v=${v.id}&tab=versions`);
+    await expect(page.locator(".ws-status .msg")).toContainText("Yuklandi", { timeout: 90_000 });
+    await expect(page.locator(".outliner")).toContainText("Bosimli quvur 1"); // IfcFacilityPartCommon (suv tashlagich) — web-ifc fazoviy daraxtida hozircha yo'q, geometriyasi chiziladi
+    await expect(page.locator(".dock-body")).toContainText("IFC4X3");
+  });
+
   test("MFA (L1): profil orqali yoqish, kodsiz kirish rad, kod bilan kirish, o'chirish", async ({ page }) => {
     // Alohida foydalanuvchi — admin sessiyasi va boshqa testlar MFA talab qilmasin
     await page.goto("/login");

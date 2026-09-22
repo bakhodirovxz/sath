@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "desktop" / "GesWorkbench" / "ges_workbench"
 DST = ROOT / "desktop" / "blender" / "sath" / "shared"
-FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py"]
+FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py"]
 WB_FILES = ["ges_objects.py"]  # fc_engine uchun: sath/wb/
 WB_DST = ROOT / "desktop" / "blender" / "sath" / "wb"
 INIT = '"""GesWorkbench dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'

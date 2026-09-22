@@ -229,7 +229,7 @@ def commit_drafts(
             status.HTTP_400_BAD_REQUEST, "Asos versiya yo'q — mavjud elementni tahrirlab bo'lmaydi"
         )
     try:
-        tmp, info = drafts.build_to_temp(src, objects, remove_guids=remove_guids)
+        tmp, info = drafts.build_to_temp(src, objects, remove_guids=remove_guids, crs=crs_mod.from_project(model.project))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     settings = get_settings()

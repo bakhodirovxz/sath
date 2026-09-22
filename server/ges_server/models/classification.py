@@ -71,6 +71,9 @@ def kind_of(el) -> str | None:
             return k
     if el.is_a() in _CLASS_KIND:
         return _CLASS_KIND[el.is_a()]
+    ot = (getattr(el, "ObjectType", None) or "").upper()  # IFC4.3: IfcFacilityPartCommon USERDEFINED + ObjectType
+    if ot in ("SPILLWAY", "INTAKE", "POWERHOUSE", "DAM", "PENSTOCK", "CHANNEL"):
+        return {"SPILLWAY": "spillway", "INTAKE": "intake", "POWERHOUSE": "powerhouse", "DAM": "dam", "PENSTOCK": "penstock", "CHANNEL": "pipe"}[ot]
     name = (el.Name or "").lower()
     if "tashlag" in name or "spillway" in name:
         return "spillway"
@@ -117,13 +120,23 @@ def references(el) -> list[dict]:
     return out
 
 
+def _candidates(f: ifcopenshell.file):
+    """Klassifikatsiyalanadigan obyektlar: elementlar + IFC4.3 infratuzilma qismlari (IfcFacilityPart)."""
+    out = list(f.by_type("IfcElement"))
+    try:
+        out += list(f.by_type("IfcFacilityPart"))
+    except RuntimeError:  # IFC4 da bunday tur yo'q
+        pass
+    return out
+
+
 def classify_file(f: ifcopenshell.file, system: str = DEFAULT_SYSTEM, overwrite: bool = False) -> dict:
     """Barcha elementlarni GES turi bo'yicha klassifikatsiyalaydi (mavjud havolalar saqlanadi).
     Qaytaradi: {"system", "assigned", "skipped", "by_code": {...}}"""
     if system not in SYSTEMS:
         raise ValueError(f"Klassifikator: {', '.join(SYSTEMS)}")
     assigned, skipped, by_code = 0, 0, {}
-    for el in f.by_type("IfcElement"):
+    for el in _candidates(f):
         if not overwrite and any(r["system"] == system for r in references(el)):
             skipped += 1
             continue
@@ -142,7 +155,7 @@ def summary(f: ifcopenshell.file) -> dict:
     systems = {c.Name: {"source": c.Source, "edition": c.Edition} for c in f.by_type("IfcClassification")}
     counts: dict[str, int] = {}
     classified = 0
-    for el in f.by_type("IfcElement"):
+    for el in _candidates(f):
         refs = references(el)
         if refs:
             classified += 1

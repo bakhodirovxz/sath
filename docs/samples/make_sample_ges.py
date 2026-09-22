@@ -2,6 +2,7 @@
 
 Ishga tushirish:  python docs/samples/make_sample_ges.py [chiqish.ifc] [--v2]
 --v2: ikkinchi versiya (bitta quvur o'chirilgan, to'g'on balandroq, yangi transformator) — diff sinovi uchun.
+--schema=IFC4X3_ADD2: IFC4.3 (G1) — namuna_ges_v2_ifc4x3.ifc
 """
 
 import sys
@@ -62,8 +63,11 @@ def pipe(f, body, obj, length, diameter, x=0, y=0, z=0, rot=0.0):
     place(f, obj, x, y, z, rot_x_deg=rot)  # Z o'qi bo'ylab ekstruziya → rot_x=-90 bilan +Y ga
 
 
-def build(v2: bool = False) -> ifcopenshell.file:
-    f = ifcopenshell.api.project.create_file(version="IFC4")
+def build(v2: bool = False, schema: str = "IFC4") -> ifcopenshell.file:
+    """schema: IFC4 (default) yoki IFC4X3_ADD2 — G1: suv tashlagich IfcFacilityPartCommon (USERDEFINED/SPILLWAY),
+    bosimli quvur RIGIDSEGMENT/PENSTOCK, generator ENGINEGENERATOR, transformator VOLTAGE."""
+    x3 = schema.upper().startswith("IFC4X3")
+    f = ifcopenshell.api.project.create_file(version=schema)
     proj = ifcopenshell.api.root.create_entity(f, ifc_class="IfcProject", name="Namuna GES")
     ifcopenshell.api.unit.assign_unit(f)
     model = ifcopenshell.api.context.add_context(f, context_type="Model")
@@ -110,8 +114,14 @@ def build(v2: bool = False) -> ifcopenshell.file:
         {"Turi": "Gravitatsion", "Balandlik_m": 22.0 if v2 else 20.0, "Uzunlik_m": 60.0},
     )
 
-    # Suv tashlagich
-    spill = ent("IfcSlab", "Suv tashlagich", site)
+    # Suv tashlagich — IFC4.3 da infratuzilma fazoviy elementi (IfcFacilityPartCommon), IFC4 da plita
+    if x3:
+        spill = ifcopenshell.api.root.create_entity(f, ifc_class="IfcFacilityPartCommon", name="Suv tashlagich", predefined_type="USERDEFINED")
+        spill.GlobalId = stable_guid("IfcFacilityPartCommon:Suv tashlagich")
+        spill.ObjectType = "SPILLWAY"
+        ifcopenshell.api.aggregate.assign_object(f, relating_object=site, products=[spill])
+    else:
+        spill = ent("IfcSlab", "Suv tashlagich", site)
     box(f, body, spill, length=12, width=10, height=1.0, x=10, y=-17, z=12)
 
     # Mashina zali — pol, devorlar
@@ -135,17 +145,17 @@ def build(v2: bool = False) -> ifcopenshell.file:
             "Pset_GES_Turbine",
             {"Turi": "Francis", "Quvvat_MW": 25.0, "Napor_m": 45.0, "Sarf_m3s": 62.0},
         )
-        g = ent("IfcElectricGenerator", f"Generator {i + 1}", st1)
+        g = ent("IfcElectricGenerator", f"Generator {i + 1}", st1, **({"PredefinedType": "ENGINEGENERATOR"} if x3 else {}))
         box(f, body, g, length=3, width=3, height=2.0, x=x - 1.5, y=5.5, z=6.0)
         # Bosimli quvur — to'g'ondan turbinaga
         if v2 and i == 1:
             continue  # v2 da 2-quvur o'chirilgan
-        p = ent("IfcPipeSegment", f"Bosimli quvur {i + 1}", site)
+        p = ent("IfcPipeSegment", f"Bosimli quvur {i + 1}", site, **({"PredefinedType": "RIGIDSEGMENT", "ObjectType": "PENSTOCK"} if x3 else {}))
         pipe(f, body, p, length=22, diameter=2.4, x=x, y=-17, z=8, rot=-90)
         pset(f, p, "Pset_GES_Penstock", {"Diametr_m": 2.4, "Uzunlik_m": 18.0, "Material": "Po'lat"})
 
     if v2:
-        tr = ent("IfcTransformer", "Transformator", site)
+        tr = ent("IfcTransformer", "Transformator", site, **({"PredefinedType": "VOLTAGE"} if x3 else {}))
         box(f, body, tr, length=4, width=3, height=3, x=20, y=6, z=0)
 
     return f
@@ -154,5 +164,6 @@ def build(v2: bool = False) -> ifcopenshell.file:
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     out = args[0] if args else "sample_ges.ifc"
-    build(v2="--v2" in sys.argv).write(out)
+    schema = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--schema=")), "IFC4")
+    build(v2="--v2" in sys.argv, schema=schema).write(out)
     print("yozildi:", out)

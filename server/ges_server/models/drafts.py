@@ -26,9 +26,9 @@ import ifcopenshell.api.unit
 import ifcopenshell.util.representation
 import numpy as np
 
-from . import classification
+from . import classification, ifc_schema
 
-# Web "kind" → IFC klassi (desktop GES obyektlari bilan bir xil)
+# Web "kind" → IFC klassi (IFC4; IFC4X3 xaritasi — ifc_schema.map_kind) (desktop GES obyektlari bilan bir xil)
 IFC_CLASS = {
     "dam": "IfcWall",
     "penstock": "IfcPipeSegment",
@@ -42,8 +42,11 @@ DEFAULT_CLASS = "IfcBuildingElementProxy"
 MAX_VERTICES = 200_000
 
 
-def _new_file() -> ifcopenshell.file:
-    f = ifcopenshell.api.project.create_file(version="IFC4")
+def _new_file(schema: str | None = None) -> ifcopenshell.file:
+    """Yangi IFC fayl — sxema sozlamadan (G1: IFC4 yoki IFC4X3_ADD2)."""
+    from ..config import get_settings
+
+    f = ifcopenshell.api.project.create_file(version=ifc_schema.normalize(schema or get_settings().ifc_schema))
     project = ifcopenshell.api.root.create_entity(f, ifc_class="IfcProject", name="Sath loyiha")
     ifcopenshell.api.unit.assign_unit(f)
     ctx = ifcopenshell.api.context.add_context(f, context_type="Model")
@@ -156,16 +159,31 @@ def add_object(f: ifcopenshell.file, body, container, obj: dict, orig: dict | No
         raise ValueError(f"{obj.get('name') or obj.get('kind')}: mesh (vertices/faces) yo'q")
     if len(verts) > MAX_VERTICES:
         raise ValueError("Mesh juda katta")
-    ifc_class = (
-        (orig or {}).get("class")
-        or obj.get("ifc_class")
-        or IFC_CLASS.get(obj.get("kind", ""), DEFAULT_CLASS)
-    )
+    schema = ifc_schema.for_file(f)
+    dam_type = ((obj.get("psets") or {}).get("Pset_GES_Dam") or {}).get("Turi")
+    mapped_cls, mapped_pdt, mapped_ot = ifc_schema.map_kind(obj.get("kind"), schema, dam_type)
+    explicit = (orig or {}).get("class") or obj.get("ifc_class")
+    if explicit:
+        # G1: aniq berilgan sinf sxemaga nisbatan tekshiriladi — noto'g'ri nom xato (jimgina proxy emas)
+        try:
+            ifc_class = ifc_schema.check_class(explicit, schema)
+        except ValueError:
+            if orig and (orig or {}).get("class") == explicit:
+                ifc_class = mapped_cls  # eski fayldagi (boshqa sxema) sinf — xaritadan
+            else:
+                raise
+    else:
+        ifc_class = mapped_cls
     name = obj.get("name") or (orig or {}).get("name") or obj.get("kind")
-    try:
-        el = ifcopenshell.api.root.create_entity(f, ifc_class=ifc_class, name=name)
-    except Exception:  # noqa: BLE001 — noma'lum klass (masalan IFC2X3 da IfcTransformer)
-        el = ifcopenshell.api.root.create_entity(f, ifc_class=DEFAULT_CLASS, name=name)
+    el = ifcopenshell.api.root.create_entity(f, ifc_class=ifc_class, name=name)
+    if not explicit or ifc_class == mapped_cls:
+        if mapped_pdt and hasattr(el, "PredefinedType"):
+            try:
+                el.PredefinedType = mapped_pdt
+            except Exception:  # noqa: BLE001 — enum sxemada boshqacha
+                pass
+        if mapped_ot and hasattr(el, "ObjectType") and not el.ObjectType:
+            el.ObjectType = mapped_ot
     if orig:
         if obj.get("guid"):
             el.GlobalId = obj[
@@ -197,7 +215,14 @@ def add_object(f: ifcopenshell.file, body, container, obj: dict, orig: dict | No
     ifcopenshell.api.geometry.edit_object_placement(
         f, product=el, matrix=_placement(obj.get("transform") or {})
     )
-    ifcopenshell.api.spatial.assign_container(f, relating_structure=container, products=[el])
+    if el.is_a("IfcSpatialElement"):
+        # IFC4.3 IfcFacilityPartCommon (suv tashlagich, suv qabul qilgich) — fazoviy element: agregatsiya, joylashtirish emas
+        parent = container
+        while parent is not None and parent.is_a("IfcBuildingStorey"):
+            parent = next((r.RelatingObject for r in parent.Decomposes), None)
+        ifcopenshell.api.aggregate.assign_object(f, relating_object=parent or container, products=[el])
+    else:
+        ifcopenshell.api.spatial.assign_container(f, relating_structure=container, products=[el])
     psets = dict((orig or {}).get("psets") or {})
     for pname, props in (obj.get("psets") or {}).items():
         psets[pname] = {**psets.get(pname, {}), **props}  # web qiymatlari asl Pset ustidan
@@ -319,8 +344,8 @@ def build(
 
 
 def build_to_temp(
-    src: Path | None, objects: list[dict], remove_guids: list[str] | None = None
+    src: Path | None, objects: list[dict], remove_guids: list[str] | None = None, crs=None
 ) -> tuple[Path, dict]:
     tmp = Path(tempfile.mkdtemp(prefix="ges-drafts-")) / "drafts.ifc"
-    info = build(src, objects, tmp, remove_guids=remove_guids)
+    info = build(src, objects, tmp, remove_guids=remove_guids, crs=crs)
     return tmp, info

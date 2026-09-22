@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     node_bin: str = "node"
     # Tashqi konverterlar papkasi (dwg2dxf, assimp, blender, ODAFileConverter) — PATH da bo'lmasa
     tools_dir: Path | None = None
+    # G1: webdan yaratilgan yangi modellar sxemasi — IFC4 (default, keng mos) yoki IFC4X3_ADD2 (ISO 16739-1:2024,
+    # infratuzilma entitylari: IfcFacilityPartCommon, IfcEarthworksFill, IfcGeographicElement TERRAIN)
+    ifc_schema: str = "IFC4"
     # IDS (G2): yuklashda tekshiriladigan axborot talablari fayli (nisbiy — CWD, repo ildizi yoki /app)
     ids_file: Path = Path("docs/ids/sath-ges.ids")
     # Relyef (DEM) plitkalari (L7, ma'lumot joylashuvi): default tashqi AWS Terrain Tiles — so'rovda faqat plitka

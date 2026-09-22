@@ -1045,7 +1045,7 @@ Bog'liqlik: yo'q.
 
 ## G. BIM tomoni
 
-### G1 — IFC4.3 ga o'tish
+### G1 — IFC4.3 ga o'tish ✅
 
 Muammo: `models/drafts.py:44` va `docs/samples/make_sample_ges.py:66` — `version="IFC4"` qat'iy
 kodlangan; testlar `meta["schema"] == "IFC4"` ni tekshiradi. IFC4 da infratuzilma entitylari yo'q,
@@ -1145,7 +1145,7 @@ Fayllar: `server/ges_server/orm.py`, `models/`, `web/src/viewer/Viewer.ts`,
 Qabul mezoni: ikki modeldagi to'qnashuv aniqlanadi (test).
 Bog'liqlik: G3.
 
-### G6 — Aktiv topshiruvi (COBie yoki unga o'xshash) ✅
+### G6 — Aktiv topshiruvi (COBie yoki unga o'xshash) ✅ (`bec4a60`)
 
 Muammo: model dan ekspluatatsiyaga aktiv ma'lumotini topshirish yo'li yo'q. Aktivlar (`Asset`)
 qo'lda yaratiladi va `element_guid` bilan bog'lanadi.

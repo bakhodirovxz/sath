@@ -116,6 +116,22 @@ noto'liq o'qiydi (3DSOLID/ACIS jismlar umuman o'qilmaydi) — bunday chizmalarni
 yoki `EXPORT` → FBX/OBJ qilib yuklang; 2D kontur (yopiq polyline/aylana) bo'lsa yuklash formasida «2D konturlarni
 ko'tarish, m» ni kiriting.
 
+## IFC sxemasi (IFC4 / IFC4.3)
+
+`GES_IFC_SCHEMA` — webdan yaratilgan/import qilingan yangi modellar sxemasi: `IFC4` (default, barcha
+vositalar bilan mos) yoki `IFC4X3_ADD2` (ISO 16739-1:2024). IFC4.3 da GES obyektlari infratuzilma
+entitylariga xaritalanadi: suv tashlagich / suv qabul qilgich / mashina zali → `IfcFacilityPartCommon`
+(USERDEFINED, ObjectType SPILLWAY/INTAKE/POWERHOUSE; maydonga agregatsiya), tuproqli/toshli to'g'on →
+`IfcEarthworksFill` (EMBANKMENT), beton to'g'on → `IfcWall`, bosimli quvur → `IfcPipeSegment`
+(RIGIDSEGMENT/PENSTOCK), generator ENGINEGENERATOR, transformator VOLTAGE, relyef → `IfcGeographicElement`
+TERRAIN; `Pset_GES_*` ikkala sxemada saqlanadi. Mavjud IFC4 modellar o'qilishda davom etadi (viewer, QTO,
+IDS, klassifikatsiya). Aniq berilgan sinf nomi sxemaga nisbatan tekshiriladi — noto'g'ri nom xato (server
+`models/ifc_schema.py`, desktop `ifc_classes.py` — ro'yxat `desktop/build/gen_ifc_classes.py` bilan
+yangilanadi). Namuna: `docs/samples/namuna_ges_v2_ifc4x3.ifc` (`make_sample_ges.py --schema=IFC4X3_ADD2`).
+`GET /api/ifc/schemas` — sxemalar va xarita. Cheklov: brauzer viewer (web-ifc/fragments) IFC4.3 geometriyasini
+chizadi, lekin `IfcFacilityPartCommon` fazoviy elementini outlinerda hozircha ko'rsatmaydi (kutubxona
+chegarasi); server tomonida (QTO, to'qnashuv, IDS, klassifikatsiya, COBie) to'liq qo'llab-quvvatlanadi.
+
 ## IDS — axborot talablari (model tekshiruvi)
 
 Har yuklangan IFC `docs/ids/sath-ges.ids` (IDS 1.0, buildingSMART; `ifctester`) bo'yicha avtomatik

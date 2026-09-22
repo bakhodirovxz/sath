@@ -123,9 +123,12 @@ def ges_color(kind: str) -> tuple[float, float, float, float]:
     return (*rgb, 1.0)
 
 
-def ifc_class(freecad_ifc_type: str) -> str:
-    """FreeCAD IfcType ("Pipe Segment") → IFC klass ("IfcPipeSegment")."""
-    return "Ifc" + freecad_ifc_type.replace(" ", "")
+def ifc_class(freecad_ifc_type: str, schema: str = "IFC4") -> str:
+    """FreeCAD IfcType ("Pipe Segment") → IFC klass ("IfcPipeSegment") — sxemadagi sinflar ro'yxatiga nisbatan
+    tekshiriladi (G1); noto'g'ri nom ValueError."""
+    from .shared import ifc_classes
+
+    return ifc_classes.from_freecad_type(freecad_ifc_type, schema)
 
 
 def ges_schema(kind: str) -> list[dict]:

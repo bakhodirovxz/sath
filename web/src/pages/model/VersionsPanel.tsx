@@ -90,7 +90,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
           <BRow label="Izoh" value={selected.message || ""} />
           <BRow label="Muallif" value={selected.author_username} />
           <BRow label="Sana" value={fmtDate(selected.created_at)} />
-          <BRow label="Fayl" value={`${fmtSize(selected.file_size)} · ${selected.meta.element_count ?? "?"} element`} />
+          <BRow label="Fayl" value={`${fmtSize(selected.file_size)} · ${selected.meta.element_count ?? "?"} element · ${selected.meta.schema ?? "IFC"}`} />
           <BRow label="ISO 19650" value={selected.suitability_code ? `${selected.suitability_code} — ${selected.suitability_label ?? ""}${selected.revision_code ? ` · reviziya ${selected.revision_code}` : ""}` : "—"} />
           <BRow label="Klassifikatsiya" value={selected.meta.classification?.classified ? `${selected.meta.classification.classified} element · ${Object.keys(selected.meta.classification.systems).join(", ")}` : "yo'q"} />
           <BRow label="Georeferensiya" value={selected.meta.georef?.epsg ? `EPSG:${selected.meta.georef.epsg} · E ${selected.meta.georef.origin_e?.toFixed(1)} N ${selected.meta.georef.origin_n?.toFixed(1)}${selected.meta.georef.rotation_deg ? ` · ${selected.meta.georef.rotation_deg}°` : ""}` : selected.meta.georef?.site_lat != null ? `faqat IfcSite ${selected.meta.georef.site_lat.toFixed(4)}, ${selected.meta.georef.site_lon?.toFixed(4)}` : "yo'q"} />

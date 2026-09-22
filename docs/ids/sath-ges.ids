@@ -53,6 +53,8 @@
               <xs:enumeration value="IFCVALVE"/>
               <xs:enumeration value="IFCBUILDINGELEMENTPROXY"/>
               <xs:enumeration value="IFCGEOGRAPHICELEMENT"/>
+              <xs:enumeration value="IFCFACILITYPARTCOMMON"/>
+              <xs:enumeration value="IFCEARTHWORKSFILL"/>
             </xs:restriction>
           </name>
         </entity>

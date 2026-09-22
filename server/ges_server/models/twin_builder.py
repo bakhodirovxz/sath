@@ -399,7 +399,8 @@ def _build_compact(p: dict) -> list[dict]:
                                                "Sarf_m3s": u["flow_m3s"], "FIK": 0.92}}))  # fmt: skip
     # val
     sv, sf = _cylinder([ix, py, ph["floor_m"] + 7], [ix, py, ph["floor_m"] + 13], 0.9, 16)
-    out.append(_mesh_obj("Val", "shaft", "IfcShaft", sv, sf, (0.75, 0.75, 0.78)))
+    # IfcShaft IFC da yo'q — proxy (G1: sinf nomi sxemaga nisbatan tekshiriladi)
+    out.append(_mesh_obj("Val", "shaft", "IfcBuildingElementProxy", sv, sf, (0.75, 0.75, 0.78)))
     # 5) generator — yuqorida (statorli silindr)
     gv, gf = _cylinder([ix, py, ph["floor_m"] + 13], [ix, py, ph["floor_m"] + 21], 4.5, 28)
     out.append(_mesh_obj("5 Generator", "generator", "IfcElectricGenerator", gv, gf, (0.18, 0.35, 0.7),
