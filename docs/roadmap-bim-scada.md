@@ -763,7 +763,7 @@ server tomonda sxema saqlash
 Qabul mezoni: 2 va 6 agregatli konfiguratsiyalar to'g'ri chiziladi (test).
 Bog'liqlik: F1, F2.
 
-### F4 — Sifat, eskirish va aloqa holatini to'g'ri ko'rsatish ✅
+### F4 — Sifat, eskirish va aloqa holatini to'g'ri ko'rsatish ✅ (`4bbad0e`)
 
 Bajarildi: `Sensor.stale` bayrog'i alarm holatidan ajratildi (migratsiya 0017, backfill) — aloqa uzilsa jarayon alarmi
 (`high` …) saqlanadi va ko'rinadi, jurnalga alohida `stale` hodisasi, aloqa qaytsa u yopiladi; WS xabari
@@ -797,7 +797,16 @@ Fayllar: `web/src/hooks/useLive.ts`, `web/src/pages/model/MonitoringPanel.tsx`,
 Qabul mezoni: WebSocket jimgina uzilganda 30 soniya ichida `OFFLINE` ko'rinadi (test).
 Bog'liqlik: A1, F1.
 
-### F5 — Alarm sahifasi
+### F5 — Alarm sahifasi ✅
+
+Bajarildi: `web/src/pages/operator/AlarmsPage.tsx` (`/projects/{id}/ops/alarms`) — saralash ustuvorlik → holat
+og'irligi → kvitlanmagan → vaqt (`alarms.ts: sortAlarms`), filtr (ustuvorlik, uchastka, ko'rinish: faol/kvitlanmagan/
+kvitlangan/shelved-OOS/tarix, qidiruv), guruhlash (sensor/uchastka); `AlarmTable` — kvitlash/shelve/OOS `Dialog` bilan
+(prompt yo'q), qator ochilganda ratsionalizatsiya (C3) va rejim; «Hammasini kvitlash» tasdiqlash dialogi, son ko'rsatiladi,
+faqat filtrlangan to'plam (`POST /alarm-events/ack-batch`, bostirilganlar kvitlanmaydi); toshqin (C4) banneri va
+ustuvorlik filtri taklifi; faol hisoblagichlar (`counters`) tarix ko'rinishidan mustaqil. DashboardPage jurnali shu
+jadvaldan (Dialog), tarix tugmasi olib tashlandi (hisoblagich faol ro'yxatdan). Testlar: 200 alarm toshqini — kritiklar
+birinchi, filtr/guruh/hisoblagich, jadval render; server ack-batch; e2e alarm sahifasi.
 
 Muammo: alarm ro'yxati kelish tartibida (`DashboardPage.tsx:104`), ustuvorlik bo'yicha
 saralanmaydi. Ack `prompt()` bilan (`:172`) — asosiy oqimni bloklaydi. "Hammasini kvitlash"

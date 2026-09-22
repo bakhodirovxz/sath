@@ -928,6 +928,35 @@ def ack_alarm(event_id: int, body: AckIn, user: CurrentUser, db: DB):
     return _event_out(e)
 
 
+class AckBatchIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=5000)
+    comment: str = ""
+
+
+@router.post("/projects/{project_id}/alarm-events/ack-batch")
+def ack_batch(body: AckBatchIn, project: OperatorProject, user: CurrentUser, db: DB):
+    """Tanlangan (filtrlangan) hodisalarni kvitlash (F5) — «hammasini» emas, aynan ko'rsatilganlar."""
+    n = 0
+    now = utcnow()
+    rows = db.query(AlarmEvent).filter(AlarmEvent.project_id == project.id, AlarmEvent.id.in_(body.ids), AlarmEvent.acked_at.is_(None), AlarmEvent.suppressed.is_(None)).all()
+    for e in rows:
+        e.acked_by, e.acked_at, e.comment = user.id, now, body.comment
+        n += 1
+    audit.log(
+        db,
+        user_id=user.id,
+        action="alarm.ack_batch",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"count": n, "requested": len(body.ids)},
+    )
+    db.commit()
+    for e in rows:
+        live.hub.publish(project.id, live.event_message(e, e.sensor))
+    return {"acked": n}
+
+
 @router.post("/projects/{project_id}/alarm-events/ack-all")
 def ack_all(project: OperatorProject, user: CurrentUser, db: DB):
     n = 0

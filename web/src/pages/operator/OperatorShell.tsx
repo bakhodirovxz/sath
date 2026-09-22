@@ -76,6 +76,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
           <Link className="btn sm" to={opsPath(pid, "area", "hydro")}>Gidro</Link>
           <Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>Mashina zali</Link>
           <Link className="btn sm" to={opsPath(pid, "area", "electrical")}>Elektr</Link>
+          <Link className="btn sm" to={opsPath(pid, "alarms")} data-testid="nav-alarms">Alarmlar{summary.total ? ` (${summary.total})` : ""}</Link>
           <Link className={`btn sm ${level === 4 ? "active" : ""}`} to={opsPath(pid, "diag")}>L4 Diagnostika</Link>
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />
@@ -91,7 +92,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
 export function AlarmStrip({ summary, flood, pid }: { summary: AlarmSummary; flood: boolean; pid: number }) {
   const items: ("critical" | "high" | "medium" | "low")[] = ["critical", "high", "medium", "low"];
   return (
-    <Link to={`/projects/${pid}/dashboard`} className="alarm-strip" title="Alarm jurnali">
+    <Link to={opsPath(pid, "alarms")} className="alarm-strip" title="Alarm sahifasi">
       {flood && <span className="badge rejected">TOSHQIN</span>}
       {items.map((p) => {
         const st = alarmStyle("high", p);

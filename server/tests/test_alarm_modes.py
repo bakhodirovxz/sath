@@ -147,3 +147,24 @@ def test_suppression_by_design_condition(client, users, sensor):
     with SessionLocal() as db:
         assert db.get(Sensor, vib["id"]).suppressed is False
     assert run["id"] != vib["id"]
+
+
+def test_ack_batch_only_listed_and_not_suppressed(client, users, sensor):
+    """F5: tanlangan (filtrlangan) hodisalarni kvitlash — ro'yxatdagi, kvitlanmagan, bostirilmaganlar."""
+    pid = users["project_id"]
+    a = sensor(key="A", high_alarm=1.0)
+    b = sensor(key="B", high_alarm=1.0)
+    c = sensor(key="C", high_alarm=1.0)
+    client.post(f"/api/sensors/{c['id']}/shelve", json={"reason": "sinov"}, headers=users["engineer"])
+    _push(client, users, [{"key": "A", "value": 5}, {"key": "B", "value": 5}, {"key": "C", "value": 5}])
+    allev = client.get(f"/api/projects/{pid}/alarm-events?active=true&include_suppressed=true", headers=users["viewer"]).json()
+    ids = {e["sensor_key"]: e["id"] for e in allev}
+    assert set(ids) == {"A", "B", "C"}
+    r = client.post(f"/api/projects/{pid}/alarm-events/ack-batch", json={"ids": [ids["A"], ids["C"], 99999], "comment": "smena"}, headers=users["engineer"])
+    assert r.status_code == 200 and r.json() == {"acked": 1}  # C bostirilgan, 99999 yo'q
+    ev = {e["sensor_key"]: e for e in client.get(f"/api/projects/{pid}/alarm-events?active=true", headers=users["viewer"]).json()}
+    assert ev["A"]["alarm_state"] == "acked" and ev["A"]["comment"] == "smena" and ev["B"]["alarm_state"] == "unack"
+    assert client.post(f"/api/projects/{pid}/alarm-events/ack-batch", json={"ids": [ids["B"]]}, headers=users["viewer"]).status_code == 403
+    assert client.post(f"/api/projects/{pid}/alarm-events/ack-batch", json={"ids": []}, headers=users["engineer"]).status_code == 422
+    assert "alarm.ack_batch" in _audit_actions()
+    assert a["id"] != b["id"]

@@ -12,6 +12,8 @@ import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
 import Mimic from "./operator/Mimic";
 import MimicEditor from "./operator/MimicEditor";
 import { loadScheme, type Scheme } from "./operator/scheme";
+import AlarmTable from "./operator/AlarmTable";
+import { sortAlarms, toRows } from "./operator/alarms";
 import { applyTheme, savedTheme } from "../ui/tokens";
 
 const RANGES: { label: string; hours: number }[] = [
@@ -65,7 +67,6 @@ export default function DashboardPage() {
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [events, setEvents] = useState<AlarmEvent[]>([]);
   const [prioOnly, setPrioOnly] = useState(false); // toshqinda faqat yuqori/kritik (EEMUA-191)
-  const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [mimic, setMimic] = useState<Record<string, number | null>>({});
@@ -177,13 +178,6 @@ export default function DashboardPage() {
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
   }
-  async function ack(e: AlarmEvent) {
-    const comment = prompt(`${e.sensor_name} — ${ALARM_LABEL[e.state]}. Izoh (ixtiyoriy):`, "") ?? "";
-    try {
-      const u = await api.ackAlarm(e.id, comment);
-      setEvents((prev) => prev.map((x) => (x.id === u.id ? u : x)).filter((x) => !(x.ended_at && x.acked_at)));
-    } catch (err) { setError(err instanceof Error ? err.message : "Xatolik"); }
-  }
 
   // Trend grafigi: umumiy x — birinchi qatorning vaqtlari (eng uzun)
   const chart = useMemo(() => {
@@ -241,28 +235,10 @@ export default function DashboardPage() {
           </div>
           <div className="dash-alarms">
             {dash.alarm_flood && <div className="verdict warn" style={{ marginBottom: 6 }}>Alarm toshqini: 10 daqiqada 10 dan ko'p alarm (EEMUA-191). <button className={`btn sm ${prioOnly ? "active" : ""}`} onClick={() => setPrioOnly((v) => !v)}>{prioOnly ? "Hammasini ko'rsatish" : "Faqat yuqori/kritik"}</button></div>}
-            <div className="row"><b>Alarm jurnali</b><span className="grow" />
-              <button className={`btn sm ${showHistory ? "active" : ""}`} onClick={async () => { const h = !showHistory; setShowHistory(h); setEvents(await api.alarmEvents(pid, !h)); }}>{showHistory ? "Faollar" : "Tarix (7 kun)"}</button>
-              {canOperate && unacked > 0 && <button className="btn sm" onClick={() => api.ackAll(pid).then(load)}>Hammasini kvitlash</button>}
+            <div className="row"><b>Faol alarmlar</b><span className="dim small">{unacked} kvitlanmagan</span><span className="grow" />
+              <Link className="btn sm" to={`/projects/${pid}/ops/alarms`}>Alarm sahifasi (tarix, filtr, hammasini kvitlash) →</Link>
             </div>
-            {events.length === 0 ? <p className="muted">Alarm yo'q</p> : (
-              <table className="grid small">
-                <thead><tr><th>Vaqt</th><th>Sensor</th><th>Holat</th><th>Qiymat</th><th /></tr></thead>
-                <tbody>
-                  {events.filter((e) => !prioOnly || e.priority === "high" || e.priority === "critical").map((e) => (
-                    <tr key={e.id} className={!e.ended_at ? "alarm-active" : undefined}>
-                      <td className="mono">{fmtDate(e.started_at)}{e.ended_at && <div className="dim">→ {fmtDate(e.ended_at)}</div>}</td>
-                      <td>{e.sensor_name}<div className="dim">{e.sensor_key}</div></td>
-                      <td><span className={`badge ${e.state === "stale" ? "archived" : e.state}`}>{ALARM_LABEL[e.state]}</span>{(e.priority === "critical" || e.priority === "high") && <span className={`badge ${e.priority === "critical" ? "rejected" : "high"}`} style={{ marginLeft: 4 }}>{e.priority === "critical" ? "kritik" : "muhim"}</span>}{!e.ended_at && <div className="dim">davom etmoqda</div>}</td>
-                      <td className="mono">{e.value == null ? "—" : `${fmtValue(e.value)} ${e.unit}`}</td>
-                      <td className="row" style={{ gap: 4 }}>{e.acked_at ? <span className="dim" title={e.comment}>kvitlangan</span> : canOperate ? <button className="btn sm" onClick={() => ack(e)}>Kvitlash</button> : <span className="badge rejected">yangi</span>}
-                        {(() => { const s = sensors.find((x) => x.id === e.sensor_id); if (!s || !canOperate || e.ended_at) return null; return s.alarm_mode === "shelved" ? <button className="btn sm" title={`Shelved: ${s.alarm_mode_reason ?? ""}`} onClick={() => api.unshelveSensor(s.id).then(load)}>Qaytarish</button> : s.alarm_mode === "out_of_service" ? <span className="dim">xizmatdan chiqarilgan</span> : <button className="btn sm" title="Shelving (ISA-18.2): alarmni muddatga yashirish, sabab majburiy" onClick={() => { const reason = prompt(`${e.sensor_name} — shelving sababi:`, ""); if (reason && reason.trim().length >= 3) api.shelveSensor(s.id, reason.trim()).then(load).catch((err) => setFlash(err instanceof Error ? err.message : "Xato")); }}>Shelve</button>; })()}
-                        {(() => { const s = sensors.find((x) => x.id === e.sensor_id); return s?.element_guid && s.model_id ? <Link className="btn sm" to={`/models/${s.model_id}?sel=${encodeURIComponent(s.element_guid)}&tab=mon`} title="3D modelda elementni ko'rsatish (monitoring paneli bilan)">3D</Link> : null; })()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            <AlarmTable rows={sortAlarms(toRows(events.filter((e) => !prioOnly || e.priority === "high" || e.priority === "critical"), sensors))} pid={pid} canOperate={canOperate} canEngineer={canEdit} compact onChanged={(u) => { if (u) setEvents((prev) => prev.map((x) => (x.id === u.id ? u : x)).filter((x) => !(x.ended_at && x.acked_at))); else void load(); }} onError={setError} />
           </div>
         </div>
 

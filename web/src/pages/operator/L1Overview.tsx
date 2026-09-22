@@ -96,7 +96,7 @@ function Body() {
         </section>
 
         <section className="panel">
-          <div className="row"><b>Eng muhim alarmlar</b><span className="grow" /><Link className="btn sm" to={`/projects/${pid}/dashboard`}>Alarm jurnali ({events.filter((e) => !e.acked_at).length} kvitlanmagan) →</Link></div>
+          <div className="row"><b>Eng muhim alarmlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "alarms")}>Alarm sahifasi ({events.filter((e) => !e.acked_at).length} kvitlanmagan) →</Link></div>
           {worst.length === 0 ? <p className="muted">Faol alarm yo'q</p> : (
             <div className="vgrid">{worst.map((s) => <ValueCard key={s.id} s={s} pid={pid} compact />)}</div>
           )}

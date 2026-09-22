@@ -46,7 +46,7 @@ function Body({ area, title }: { area: AreaId; title: string }) {
         </section>
       ))}
       <section className="panel">
-        <div className="row"><b>Uchastka alarmlari</b><span className="grow" /><Link className="btn sm" to={`/projects/${pid}/dashboard`}>Jurnal →</Link></div>
+        <div className="row"><b>Uchastka alarmlari</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "alarms")}>Alarm sahifasi →</Link></div>
         {myEvents.length === 0 ? <p className="muted">Faol alarm yo'q</p> : (
           <table className="grid small">
             <thead><tr><th>Vaqt</th><th>Sensor</th><th>Holat</th><th>Qiymat</th><th /></tr></thead>

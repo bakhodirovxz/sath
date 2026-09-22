@@ -118,6 +118,8 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".dash-alarms")).toContainText("Agregat 1");
     await expect(page.locator(".mimic")).toBeVisible();
     await page.locator(".dash-alarms button", { hasText: "Kvitlash" }).first().click();
+    await page.getByTestId("dlg-text").fill("e2e kvitlash");  // Dialog (prompt emas, F5)
+    await page.getByTestId("dlg-ok").click();
     await expect(page.locator(".dash-alarms")).toContainText("kvitlangan");
     await page.locator(".bell button").first().click();
     await expect(page.locator(".bell-menu")).toContainText("Alarm");
@@ -155,6 +157,16 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".l4")).toContainText("Jonli oqim");
     await page.locator(".ops-nav button", { hasText: "L1 Umumiy" }).click();
     await expect(page.locator(".ops-nav .ops-level")).toHaveText("L1");
+    // Alarm sahifasi (F5): filtr, hammasini kvitlash — tasdiqlash dialogi, faqat filtrlangan to'plam
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "RES.H", value: 906 }] }); // yangi kvitlanmagan alarm (H > 905)
+    await page.getByTestId("nav-alarms").click();
+    await expect(page.getByTestId("alarm-table")).toBeVisible();
+    await page.getByTestId("alarm-search").fill("RES.H");
+    await expect(page.locator("[data-testid=alarm-row]")).toHaveCount(1);
+    await page.getByTestId("ack-all").click();
+    await expect(page.getByRole("dialog")).toContainText("1");
+    await page.getByTestId("ack-all-ok").click();
+    await expect(page.getByTestId("cnt-unacked")).toContainText("0");
   });
 
   test("simulyatsiya katalogi: to'g'on barqarorligi va yog'ingarchilik", async ({ page }) => {
