@@ -1239,7 +1239,7 @@ Bog'liqlik: H1.
 Hozirgi holat: tavsifiy va informativ, tor bashoratli bo'laklar bilan. Yuqoriga ko'tarilish
 uchun quyidagilar kerak.
 
-### I1 — Model kalibrovkasi ✅
+### I1 — Model kalibrovkasi ✅ (`8a4e737`)
 
 Muammo: `monitoring/twin.py` model parametrlarini berilgan holda ishlatadi. Quvur g'adir-budurligi,
 turbina FIK egri chizig'i, ombor hajm-sath egri chizig'i — hech biri o'lchangan ma'lumotga
@@ -1258,7 +1258,7 @@ Fayllar: `server/ges_server/monitoring/twin.py`, yangi `monitoring/calibration.p
 Qabul mezoni: sintetik ma'lumotda kalibrovka ma'lum parametrni tiklaydi (test).
 Bog'liqlik: A1, D2.
 
-### I2 — Holat baholash va ortiqcha o'lchovlarni solishtirish
+### I2 — Holat baholash va ortiqcha o'lchovlarni solishtirish ✅
 
 Muammo: o'lchovlar orasidagi fizik bog'liqlik ishlatilmaydi. Sarfni sath + zatvor holatidan
 baholab, sarf o'lchagichi bilan solishtirish mumkin — bu ham yomon ma'lumotni aniqlaydi, ham
@@ -1507,7 +1507,7 @@ Fayllar: `sim/ges_sim/seepage.py`, `sim/tests/`
 Qabul mezoni: qo'lda hisoblangan misollar bilan testlar; noto'g'ri mezonlar olib tashlangan.
 Bog'liqlik: yo'q.
 
-### J8 — Transformator issiqlik modelini tiklash
+### J8 — Transformator issiqlik modelini tiklash ✅ (`693ff9c`)
 
 Muammo: `transformer.py:178`, `:205` — `k21` va `k22` `_k21, _k22` sifatida ochiladi va tashlanadi;
 `:205` IEC 60076-7 band 8.2.2 dagi ikki shoxli model o'rniga bitta birinchi tartibli kechikish

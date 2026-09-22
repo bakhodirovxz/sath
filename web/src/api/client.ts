@@ -363,6 +363,9 @@ export interface SelectResult { select_token: string; sensor_id: number; value: 
 export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
 export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
+export interface RedundancyCheck { name: string; label: string; unit: string; sources: { label: string; value: number }[]; diff: number; tolerance: number; status: "ok" | "alert" | "alarm"; note?: string }
+export interface LevelEstimate { status: "ok" | "insufficient"; missing?: string[]; level_measured_m?: number | null; level_estimate_m?: number; sigma_m?: number; gain?: number; source?: "measured" | "model"; frozen?: boolean; sensor_key?: string | null; innovation_m?: number | null; expected_change_m?: number; dt_hours?: number; balance?: { status: string; level_m?: number; inflow_m3s?: number; outflow_m3s?: number; net_m3s?: number; area_m2?: number; dlevel_m_per_h?: number; missing?: string[] } }
+export interface EstimatorState { estimate: LevelEstimate; checks: RedundancyCheck[] }
 export interface CalibrationInfo { penstock_roughness_mm: number; eff: Record<string, number>; run_id?: number | null; applied_at?: string | null; rmse_mw?: number | null; drifted?: boolean }
 export interface CalibrationRun { id: number; project_id: number; created_at: string; author: string | null; window_from: string; window_to: string; n_points: number; targets: string[]; status: string; params_before: { penstock_roughness_mm?: number; eff?: Record<string, number> }; params_after: { penstock_roughness_mm?: number; eff?: Record<string, number> }; rmse_before: number | null; rmse_after: number | null; bias_after: number | null; improvement_pct: number | null; diagnostics: Record<string, { gain: number; identifiable: boolean; note: string }>; applied: boolean; note: string }
 export interface CalibrationResiduals { status: "ok" | "drifted" | "uncalibrated" | "insufficient"; calibrated?: boolean; n_points?: number; days?: number; rmse_mw?: number; bias_mw?: number; calibration_rmse_mw?: number | null; run_id?: number | null; applied_at?: string | null; advice?: string; reason?: string }
@@ -853,6 +856,8 @@ export const api = {
   },
   // Raqamli egizak, boshqaruv, jurnal, aktivlar, vaqt mashinasi
   twin: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin`),
+  estimator: (projectId: number) => request<EstimatorState>(`/api/projects/${projectId}/estimator`),
+  runEstimator: (projectId: number) => request<EstimatorState>(`/api/projects/${projectId}/estimator/run`, { method: "POST" }),
   calibration: (projectId: number) => request<CalibrationState>(`/api/projects/${projectId}/calibration`),
   runCalibration: (projectId: number, body: { days?: number; targets?: string[]; apply?: boolean }) => request<CalibrationRun>(`/api/projects/${projectId}/calibration/run`, { method: "POST", body: json(body) }),
   applyCalibration: (runId: number) => request<{ current: Record<string, unknown>; run: CalibrationRun }>(`/api/calibration/${runId}/apply`, { method: "POST" }),

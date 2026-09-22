@@ -167,6 +167,28 @@ yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → usk
 `GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
 bosimli quvur, HAD suv olish, …).
 
+## Holat baholash va ortiqchalik (I2)
+
+**Ortiqchalik.** Bitta kattalikning bir nechta manbasi solishtiriladi: umumiy quvvat sensori ↔
+agregatlar yig'indisi (chidamlilik 3 % yoki 0.5 MW); quvur sarfi o'lchagichi ↔ egizak modeli
+hisoblagan sarf (8 % yoki 1 m³/s). Chegaradan oshsa `alert`, ikki barobardan oshsa `alarm`; natija
+`TWIN.CHK.<nom>` virtual sensoriga (og'ish %) yoziladi va oddiy alarm qoidalari bilan ko'rinadi.
+
+**Sath bahosi (Kalman).** Bashorat suv balansidan: `Δh = (Q_kiruvchi − Q_turbina − Q_tashlagich)·Δt /
+A(h)`, bu yerda `A(h)` — ko'zgu yuzasi (maydon pasportidagi sath–hajm egri chizig'idan, bo'lmasa
+`area_km2`). Yangilash — sath sensori bilan (Kalman koeffitsienti model va sensor shovqinidan).
+Baho `TWIN.EST.LEVEL` virtual sensoriga yoziladi.
+
+**Qotgan sensor.** Oxirgi 6 o'lchov bir xil bo'lsa-yu, balans sezilarli o'zgarish kutsa, sensor
+«qotgan» deb belgilanadi: baho faqat model qadamidan olinadi, qiymat `substituted` sifati bilan
+yoziladi va dispetcher va undan yuqori rollarga bildirishnoma boradi. Balans nolga yaqin bo'lsa
+(sath haqiqatan o'zgarmasligi kerak) — qotgan deb belgilanmaydi.
+
+Ma'lumot yetarli bo'lmasa (kiruvchi sarf sensori yoki ombor egri chizig'i yo'q) baho hisoblanmaydi:
+`status: insufficient` va nima yetishmayotgani ko'rsatiladi — taxmin qilinmaydi.
+API: `GET /api/projects/{id}/estimator` (hisoblaydi, yozmaydi), `POST …/estimator/run` (muhandis,
+virtual sensorlarga yozadi); fon vazifasi soatiga bir marta bajaradi.
+
 ## Model kalibrovkasi va qoldiq kuzatuvi (I1)
 
 Egizak model parametrlarini IFC pasportidan oladi. Ular o'lchangan ishga moslashtirilmasa, «og'ish %»

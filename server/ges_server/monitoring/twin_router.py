@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
 from ..orm import Asset, AssetDocument, CalibrationRun, Project, Role, Sensor, utcnow
-from . import calibration, health, kks, live, twin
+from . import calibration, estimator, health, kks, live, twin
 
 router = APIRouter(prefix="/api", tags=["twin"])
 
@@ -144,6 +144,23 @@ def project_health(project: ViewerProject, db: DB):
 @router.post("/projects/{project_id}/health/run")
 def project_health_run(project: EngineerProject, db: DB):
     return health.publish(db, project)
+
+
+@router.get("/projects/{project_id}/estimator")
+def estimator_state(project: ViewerProject, db: DB):
+    """I2: ombor sathi bahosi (Kalman), suv balansi va ortiqcha o'lchovlar tekshiruvi (hisoblaydi,
+    yozmaydi)."""
+    st = twin.compute(db, project)
+    return {
+        "estimate": estimator.estimate(db, project, st),
+        "checks": estimator.redundancy(db, project, st),
+    }
+
+
+@router.post("/projects/{project_id}/estimator/run")
+def estimator_run(project: EngineerProject, db: DB):
+    """Bahoni hisoblab virtual sensorlarga yozish (TWIN.EST.LEVEL, TWIN.CHK.*)."""
+    return estimator.run(db, project)
 
 
 # --------------------------------------------------------------- I1: model kalibrovkasi

@@ -9,6 +9,7 @@ import Dialog from "../../ui/Dialog";
 import { dialogs } from "../../ui/dialogs";
 import { AssetHistoryDialog } from "./CmmsPanels";
 import { CalibrationPanel } from "./CalibrationPanel";
+import { EstimatorPanel } from "./EstimatorPanel";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
@@ -21,6 +22,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
   usePolling(load, 15000, String(projectId));
   if (!t) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
+    <>
     <div className="dash-block">
       <div className="row"><b>Raqamli egizak</b><span className="muted small">jonli o'lchov ↔ BIM model (Pset_GES, turbina FIK egri chizig'i)</span><span className="grow" />
         {canRun && <button className="btn sm" onClick={() => api.twinRun(projectId).then(setT).catch((e) => setErr(e.message))}>Hozir hisoblash</button>}
@@ -74,8 +76,10 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
         </div>
       )}
       {(!t.safety || t.safety.length === 0) && <p className="dim small" style={{ marginTop: 6 }}>Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
-      <CalibrationPanel projectId={projectId} canEdit={canRun} />
     </div>
+      <EstimatorPanel projectId={projectId} canEdit={canRun} />
+      <CalibrationPanel projectId={projectId} canEdit={canRun} />
+    </>
   );
 }
 

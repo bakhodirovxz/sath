@@ -413,6 +413,30 @@ test.describe.serial("Sath web oqimi", () => {
     await request.post(`${API}/api/work-orders/${wo.id}/loto`, { headers: h, data: { active: false } });
   });
 
+  test("Egizak (I1/I2): kalibrovka paneli va sath bahosi (ortiqchalik tekshiruvi)", async ({ page, request }) => {
+    const tok = await token(request);
+    const h = { Authorization: `Bearer ${tok}` };
+    // maydon pasporti: ombor egri chizig'i (baho uchun ko'zgu yuzasi)
+    await request.put(`${API}/api/projects/${projectId}/site`, { headers: h, data: { area_km2: 2.0, curve_elev: [890, 900, 910], curve_vol: [10, 30, 50] } });
+    const mk = async (key: string, name: string, kind: string, unit: string) =>
+      (await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key, name, kind, unit, high_alarm: 500 } })).json();
+    await mk(`EST.LEVEL.${stamp}`, "Yuqori byef sathi (I2)", "level", "m");
+    await mk(`EST.QIN.${stamp}`, "Kiruvchi sarf (I2)", "flow", "m3/s");
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [
+      { key: `EST.LEVEL.${stamp}`, value: 900 },
+      { key: `EST.QIN.${stamp}`, value: 120 },
+    ] });
+    await login(page);
+    await page.goto(`/projects/${projectId}/dashboard`);
+    await page.locator("button", { hasText: "Egizak" }).first().click();
+    await expect(page.locator(".dash-block", { hasText: "Holat baholash va ortiqchalik" })).toBeVisible();
+    await expect(page.locator(".dash-block", { hasText: "Model kalibrovkasi" })).toBeVisible();
+    await expect(page.getByTestId("calib-status")).toBeVisible();
+    // kalibrovka: ma'lumot kam bo'lsa ham buyruq xatosiz o'tadi va holat ko'rinadi
+    await page.getByTestId("calib-run").click();
+    await expect(page.locator(".dash-block", { hasText: "Model kalibrovkasi" })).toContainText(/yetarli emas|RMSE|nuqta/);
+  });
+
   test("Holat monitoringi (H3): ISO 13374 bloklari, spektr va tashqi tizim natijasi", async ({ page, request }) => {
     const tok = await token(request);
     const h = { Authorization: `Bearer ${tok}` };

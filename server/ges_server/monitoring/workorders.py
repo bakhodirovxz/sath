@@ -883,7 +883,7 @@ def set_loto(wo_id: int, body: LotoIn, user: CurrentUser, db: DB):
     )
     notifications.push(
         db,
-        notifications.member_ids(db, w.project_id, Role.operator),
+        notifications.member_ids(db, w.project_id, Role.operator, at_least=True),
         "workorder",
         ("LOTO qo'yildi: " if body.active else "LOTO olib tashlandi: ") + w.title,
         body.note[:200] or (w.asset.name if w.asset else ""),
