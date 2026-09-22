@@ -441,7 +441,7 @@ Bog'liqlik: yo'q.
 
 ## D. Historian va masshtab
 
-### D1 — Postgres + TimescaleDB ni ishlab chiqarish defaulti qilish ✅
+### D1 — Postgres + TimescaleDB ni ishlab chiqarish defaulti qilish ✅ (`492afc4`)
 
 Bajarildi: compose defaulti `timescale/timescaledb:latest-pg16` (SQLite faqat `.env` da aniq berilsa);
 migratsiya 0014 — `readings` hypertable (7 kunlik bo'laklar, `sensor_id` 4 bo'lim, PK → `(id, ts, sensor_id)`
@@ -468,7 +468,14 @@ Fayllar: `deploy/docker-compose.yml`, `deploy/Dockerfile`, `server/ges_server/co
 Qabul mezoni: 10 000 qator/soniya ingest yuk testi o'tadi.
 Bog'liqlik: A2.
 
-### D2 — Ko'p qatlamli saqlash va siqish
+### D2 — Ko'p qatlamli saqlash va siqish ✅
+
+Bajarildi: `readings_agg` (1m/10m, migratsiya 0015) + `readings_hourly` (1h, abadiy); rollup SQL `GROUP BY`
+(epoch bo'lagi, dialektga mos), qatlam suv belgilari `SystemState` da, kech kelgan ma'lumot uchun lookback
+qayta hisob, tickda cheklangan oyna (1 mln qatorli sensorda < 120 MB, test); `purge` partiyali (kursor),
+alarm hodisasi ±1 soat saqlanadi; `purge_agg` qatlam muddatlari (`GES_AGG_1M/10M_RETENTION_DAYS`);
+arxiv siqishi `archive_deadband` + `archive_max_interval_s` (bad har doim yoziladi); grafik qatlam tanlaydi
+(≤6 s xom, ≤48 s 1m, ≤96 s 10m, keyin 1h; `tier` javobda).
 
 Muammo: `historian.py` faqat soatlik agregat qiladi. Raw va soat orasida hech narsa yo'q, ya'ni
 raw 90 kundan keyin o'chgach, avariyadan keyingi tahlil imkonsiz.

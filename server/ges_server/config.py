@@ -67,8 +67,11 @@ class Settings(BaseSettings):
     # Partiyalash: xabarlar shuncha (yoki shuncha ms) yig'ilib bitta tranzaksiyada yoziladi
     mqtt_batch_size: int = 200
     mqtt_batch_ms: int = 250
-    # Historian: xom o'lchovlar shuncha kun saqlanadi (soatlik agregat abadiy); 0 — o'chirilmaydi
+    # Historian qatlamlari (D2): xom → 1 daqiqa → 10 daqiqa → 1 soat; har birining saqlash muddati (kun),
+    # 0 — o'chirilmaydi. Xom o'lchov alarm hodisasi atrofida (±1 soat) o'chirilmaydi.
     readings_retention_days: int = 90
+    agg_1m_retention_days: int = 400
+    agg_10m_retention_days: int = 1100
     # Jonli ingest (http/mqtt) vaqt tamg'asi oynasi: bundan eski yoki kelajakdagi qiymat rad etiladi
     ingest_max_age_days: int = 30
     ingest_future_s: int = 300

@@ -305,6 +305,24 @@ def _sensor_index(db: Session, project_id: int, force: bool = False) -> tuple[di
     return by_key, enabled
 
 
+def _archive(sensor: Sensor, value: float, ts: datetime, quality: str) -> bool:
+    """Arxiv siqishi (D2, o'lik zona): `archive_deadband` berilgan sensorda oxirgi yozilgan qiymatdan
+    o'zgarish shundan kichik va `archive_max_interval_s` o'tmagan bo'lsa xom qator yozilmaydi.
+    Bad sifat va sifat o'zgarishi har doim yoziladi. Qaytaradi: yozish kerakmi."""
+    d = sensor.archive_deadband
+    if d is None or d <= 0 or quality == "bad":
+        sensor.last_archived_value, sensor.last_archived_ts = value, ts
+        return True
+    lv, lt = sensor.last_archived_value, sensor.last_archived_ts
+    if lv is None or lt is None or abs(value - lv) >= d:
+        sensor.last_archived_value, sensor.last_archived_ts = value, ts
+        return True
+    if (ts - _aware(lt)).total_seconds() >= int(sensor.archive_max_interval_s or 3600):
+        sensor.last_archived_value, sensor.last_archived_ts = value, ts
+        return True
+    return False
+
+
 def _bulk_insert_readings(db: Session, rows: list[dict]) -> None:
     """Xom o'lchovlarni partiyalab yozadi: Postgres — COPY (psycopg 3), boshqalar — executemany INSERT."""
     if not rows:
@@ -394,9 +412,10 @@ def ingest(
             sensor.max_raw is not None and value > sensor.max_raw
         ):
             quality = "bad"  # fizik diapazondan tashqarida — o'lchov yaroqsiz
-        rows.append(
-            {"sensor_id": sensor.id, "ts": ts, "value": value, "quality": quality, "src_ts": _parse_ts(it.get("src_ts"))}
-        )
+        if _archive(sensor, value, ts, quality):
+            rows.append(
+                {"sensor_id": sensor.id, "ts": ts, "value": value, "quality": quality, "src_ts": _parse_ts(it.get("src_ts"))}
+            )
         accepted += 1
         if quality == "bad":
             bad += 1

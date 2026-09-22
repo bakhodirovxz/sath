@@ -67,6 +67,8 @@ def tick_hourly() -> tuple[int, int]:
     with SessionLocal() as db:
         written = historian.rollup(db)
         purged = historian.purge(db, settings.readings_retention_days)
+        purged += historian.purge_agg(db, "1m", settings.agg_1m_retention_days)
+        purged += historian.purge_agg(db, "10m", settings.agg_10m_retention_days)
         twin.rollup_units(db)  # agregat kunlik statistikasi (tugagan kunlar)
         health.tick_hourly(db)  # sog'liq indekslari (HEALTH.*)
     return written, purged

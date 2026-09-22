@@ -65,6 +65,9 @@ class SensorIn(BaseModel):
     roc_limit_per_min: float | None = Field(None, gt=0)
     # Suppression-by-design (ISA-18.2): ifoda rost bo'lsa alarm bostiriladi (masalan `AGG1_RUN == 0`)
     suppress_condition: str = ""
+    # Arxiv siqishi (D2): o'lik zona (sensor birligida) va majburiy yozuv oralig'i
+    archive_deadband: float | None = Field(None, gt=0)
+    archive_max_interval_s: int = Field(3600, ge=10, le=86400)
     # Ratsionalizatsiya (ISA-18.2 §10): matnlar; tasdiqlash — POST /sensors/{id}/rationalize
     cause: str = Field("", max_length=2000)
     consequence: str = Field("", max_length=2000)
@@ -115,6 +118,8 @@ class SensorPatch(BaseModel):
     off_delay_s: int | None = Field(None, ge=0, le=86400)
     roc_limit_per_min: float | None = Field(None, gt=0)
     suppress_condition: str | None = None
+    archive_deadband: float | None = Field(None, gt=0)
+    archive_max_interval_s: int | None = Field(None, ge=10, le=86400)
     cause: str | None = Field(None, max_length=2000)
     consequence: str | None = Field(None, max_length=2000)
     corrective_action: str | None = Field(None, max_length=2000)
@@ -147,6 +152,7 @@ class SensorPatch(BaseModel):
     readback_tolerance: float | None = Field(None, ge=0, le=1)
     clear_alarms: bool = False  # low/high/ll/hh ni null qilish uchun
     clear_roc: bool = False  # roc_limit_per_min ni null qilish uchun
+    clear_archive_deadband: bool = False
     clear_raw_range: bool = False  # min_raw/max_raw ni null qilish uchun
     clear_setpoint_range: bool = False  # min/max_setpoint, max_rate_per_min ni null qilish uchun
 
@@ -171,6 +177,8 @@ class SensorOut(BaseModel):
     off_delay_s: int = 0
     roc_limit_per_min: float | None = None
     suppress_condition: str = ""
+    archive_deadband: float | None = None
+    archive_max_interval_s: int = 3600
     suppressed: bool = False
     alarm_mode: str = "normal"
     alarm_mode_until: datetime | None = None
@@ -407,7 +415,8 @@ def _get_sensor(db, sensor_id: int, user: User, required: Role) -> Sensor:
 def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
     s = _get_sensor(db, sensor_id, user, Role.engineer)
     changes = body.model_dump(
-        exclude_none=True, exclude={"clear_alarms", "clear_roc", "clear_raw_range", "clear_setpoint_range"}
+        exclude_none=True,
+        exclude={"clear_alarms", "clear_roc", "clear_raw_range", "clear_setpoint_range", "clear_archive_deadband"},
     )
     for k, v in changes.items():
         setattr(s, k, v)
@@ -415,6 +424,8 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         s.low_alarm = s.high_alarm = s.ll_alarm = s.hh_alarm = None
     if body.clear_roc:
         s.roc_limit_per_min = None
+    if body.clear_archive_deadband:
+        s.archive_deadband = None
     if body.clear_raw_range:
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
@@ -631,36 +642,17 @@ def readings(
     s = _get_sensor(db, sensor_id, user, Role.viewer)
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
-    if hours > 72:
-        # Uzoq davr: historian (soatlik agregat) + hali yig'ilmagan soatlar xomdan
-        points = historian.hourly_points(db, s.id, since, now)
-        tail_since = (
-            datetime.fromisoformat(points[-1]["ts"]) + timedelta(hours=1) if points else since
-        )
-        rows = (
-            db.query(Reading.ts, Reading.value)
-            .filter(Reading.sensor_id == s.id, Reading.ts >= tail_since, Reading.quality != "bad")
-            .order_by(Reading.ts)
-            .all()
-        )
-        buckets: dict[datetime, list[float]] = {}
-        for t, v in rows:
-            buckets.setdefault(historian.floor_hour(t), []).append(v)
-        for h, vals in sorted(buckets.items()):
-            points.append(
-                {
-                    "ts": h.isoformat(),
-                    "v": round(sum(vals) / len(vals), 4),
-                    "min": round(min(vals), 4),
-                    "max": round(max(vals), 4),
-                }
-            )
+    tier = historian.tier_for_span(hours)
+    if tier != "raw":
+        # Uzoq davr: historian qatlami (1m/10m/1h) + hali yig'ilmagan dum xomdan (D2)
+        points = historian.tier_points(db, s.id, tier, since, now)
         return {
             "sensor_id": s.id,
             "unit": s.unit,
             "total": len(points),
             "points": points[-limit:],
-            "hourly": True,
+            "hourly": tier == "1h",
+            "tier": tier,
         }
     rows = (
         db.query(Reading.ts, Reading.value)
@@ -693,7 +685,7 @@ def readings(
                     "max": round(max(vals), 4),
                 }
             )
-    return {"sensor_id": s.id, "unit": s.unit, "total": total, "points": points, "hourly": False}
+    return {"sensor_id": s.id, "unit": s.unit, "total": total, "points": points, "hourly": False, "tier": "raw"}
 
 
 @router.get("/sensors/{sensor_id}/export.csv")

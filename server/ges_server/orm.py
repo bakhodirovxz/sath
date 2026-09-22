@@ -449,6 +449,12 @@ class Sensor(Base):
     off_delay_s: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # O'zgarish tezligi alarmi (birlik/daqiqa), None — o'chiq
     roc_limit_per_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Arxiv siqishi (D2): oxirgi yozilgan qiymatdan o'zgarish shundan kichik bo'lsa xom qator yozilmaydi
+    # (holat/alarm baribir yangilanadi); archive_max_interval_s dan keyin majburiy yozuv. None — o'chiq.
+    archive_deadband: Mapped[float | None] = mapped_column(Float, nullable=True)
+    archive_max_interval_s: Mapped[int] = mapped_column(Integer, default=3600, server_default="3600")
+    last_archived_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_archived_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Kechikish holat mashinasi: kutilayotgan holat va qachondan beri
     alarm_pending: Mapped[str | None] = mapped_column(String(16), nullable=True)
     alarm_pending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -776,6 +782,28 @@ class Asset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ReadingAgg(Base):
+    """Oraliq qatlamlar (D2): 1 daqiqa (`1m`) va 10 daqiqa (`10m`) agregatlari — raw o'chirilgach ham
+    avariyadan keyingi tahlil uchun; har qatlamning o'z saqlash muddati (config)."""
+
+    __tablename__ = "readings_agg"
+    __table_args__ = (
+        UniqueConstraint("sensor_id", "tier", "bucket"),
+        Index("ix_readings_agg_tier_bucket", "tier", "bucket"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id", ondelete="CASCADE"))
+    tier: Mapped[str] = mapped_column(String(4))  # 1m | 10m
+    bucket: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    n: Mapped[int] = mapped_column(Integer)
+    avg: Mapped[float] = mapped_column(Float)
+    min: Mapped[float] = mapped_column(Float)
+    max: Mapped[float] = mapped_column(Float)
+    pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
+    n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
 class ReadingHourly(Base):
     """Tarix agregati (historian): har sensor uchun soatlik o'rtacha/min/max. Uzoq davr grafiklari
     va hisobotlar shu jadvaldan; xom o'lchovlar retention muddatidan keyin o'chiriladi."""
@@ -793,8 +821,6 @@ class ReadingHourly(Base):
     # soat ichida good ulushi (0..1) va bad soni — n ga faqat bad bo'lmaganlar kiradi
     pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
     n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    # soat ichida good ulushi (0..1) va bad soni — n ga faqat bad bo'lmaganlar kiradi
-    pct_good: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
     n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 

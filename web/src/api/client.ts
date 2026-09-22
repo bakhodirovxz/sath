@@ -662,7 +662,7 @@ export const api = {
   updateSensor: (id: number, body: Partial<SensorIn> & { clear_alarms?: boolean }) => request<Sensor>(`/api/sensors/${id}`, { method: "PATCH", body: json(body) }),
   deleteSensor: (id: number) => request<void>(`/api/sensors/${id}`, { method: "DELETE" }),
   importSensors: (projectId: number, csv: string, modelId: number | null) => request<{ created: number; updated: number; bound: number; errors: string[] }>(`/api/projects/${projectId}/sensors/import`, { method: "POST", body: json({ csv, model_id: modelId }) }),
-  readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),
+  readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean; tier?: "raw" | "1m" | "10m" | "1h" }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),
   alarms: (projectId: number) => request<Sensor[]>(`/api/projects/${projectId}/alarms`),
   // BIM tekshiruvlar
   qto: (versionId: number) => request<Qto>(`/api/versions/${versionId}/qto`),
