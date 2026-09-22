@@ -519,7 +519,7 @@ Fayllar: `server/ges_server/orm.py`, `monitoring/router.py`, yangi `monitoring/s
 Qabul mezoni: 1 ms aniqlikdagi hodisalar tartibi saqlanadi va ko'rinadi.
 Bog'liqlik: A2, D1.
 
-### D4 — Sahifalash va N+1 so'rovlarni tuzatish ✅
+### D4 — Sahifalash va N+1 so'rovlarni tuzatish ✅ (`af56aad`)
 
 Bajarildi: `list_projects` — rollar va model soni ikkita agregat so'rov (so'rovlar soni loyihalar sonidan
 mustaqil, test 60 loyiha), `limit`/`after_id`/`q`; `list_users`, `list_members` (JOIN, N+1 yo'q),
@@ -669,7 +669,16 @@ Bog'liqlik: A1.
 Qaror: dispetcher sahifalari ISA-101 bo'yicha qayta yoziladi; model va muhandislik sahifalari
 hozirgi Blender uslubida qoladi. Ikkalasi bitta dizayn tokenlari to'plamidan rang oladi.
 
-### F1 — Yagona dizayn tokenlari va rejim almashtirish
+### F1 — Yagona dizayn tokenlari va rejim almashtirish ✅
+
+Bajarildi: `web/src/ui/tokens.ts` — ikki tema (`engineer` Blender Dark, `operator` ISA-101 neytral kulrang),
+`alarmStyle(state, priority)` → rang + shakl (romb/kvadrat/uchburchak/doira) + matn kodi (HH/H/L/LL/ROC/DEV/?),
+`qualityStyle`, `alarmRank`; `applyTheme`/`savedTheme` (localStorage, dispetcher sahifalari default operator,
+TopBar da almashtirgich); `--link` tokeni (havola matni tugma accent idan ajratildi), `--alarm-*`, `--quality-*`,
+`--mimic-*`; `tokens.test.ts` — WCAG AA kontrast (matn 4.5:1 panel/chrome/canvas/field, grafik 3:1, alarm qatori
+≥ 1.5:1 panelga nisbatan) va dispetcher sahifalarida (dashboard/operator/MonitoringPanel/hooks) hex literal yo'qligi
+testi. Mimic/MonitoringPanel ranglari tokenlardan (3D bo'yash uchun joriy tema hex qiymati).
+Eslatma: tema tanlovi brauzerda (localStorage) — server foydalanuvchi sozlamasi L/H blokida.
 
 Muammo:
 - `Mimic.tsx:7` da `low → var(--warn)` (sariq), `MonitoringPanel.tsx:30` da `low → "#e0656a"`

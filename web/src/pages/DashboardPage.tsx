@@ -10,6 +10,7 @@ import Dialog from "../ui/Dialog";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
 import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
 import Mimic from "./dashboard/Mimic";
+import { applyTheme, savedTheme } from "../ui/tokens";
 
 const RANGES: { label: string; hours: number }[] = [
   { label: "1 soat", hours: 1 },
@@ -52,6 +53,8 @@ function beep(critical: boolean) {
 /** Dispetcher paneli (SCADA HMI): mimik sxema, KPI, jonli qiymatlar, trendlar, alarm jurnali, hisobot,
  * raqamli egizak, aktivlar, boshqaruv buyruqlari, smena jurnali, vaqt mashinasi. */
 export default function DashboardPage() {
+  // Dispetcher sahifasi: default operator (ISA-101) temasi; foydalanuvchi tanlovi saqlanadi (F1)
+  useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const pid = Number(useParams().projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<Member[]>([]);

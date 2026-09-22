@@ -5,7 +5,8 @@ import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPo
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
-import { fmtDate } from "../../ui/format";
+import { fmtDate, isAlarm } from "../../ui/format";
+import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
 
 interface Props {
   projectId: number;
@@ -27,7 +28,15 @@ const KINDS: { id: SensorKind; title: string; unit: string }[] = [
   { id: "value", title: "Boshqa", unit: "" },
 ];
 const ALARM_LABEL: Record<AlarmState, string> = { ok: "normal", low: "past", high: "yuqori", stale: "uzilgan", lowlow: "juda past", highhigh: "juda yuqori", roc: "tez o'zgarish", deviation: "og'ish" };
-const ALARM_COLOR: Record<AlarmState, string> = { ok: "#3aa864", low: "#e0656a", high: "#e0656a", stale: "#6a6e76", lowlow: "#c8323a", highhigh: "#c8323a", roc: "#e0a83a", deviation: "#e0a83a" };
+/** 3D bo'yash uchun haqiqiy hex (viewer CSS o'zgaruvchini o'qimaydi) — tokenlardan, joriy tema bo'yicha (F1) */
+function hexOf(token: string): string {
+  return THEMES[currentTheme()][token] ?? THEMES.engineer[token];
+}
+function alarmHex(s: Sensor): string {
+  const st = alarmStyle(s.alarm, s.priority);
+  const m = /var\(--([\w-]+)\)/.exec(st.color);
+  return hexOf(m ? m[1] : "ok");
+}
 const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: "http", address: {}, low_alarm: null, high_alarm: null, stale_after_s: 600, enabled: true };
 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
@@ -125,10 +134,10 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   useEffect(() => {
     if (!viewer) return;
     const colors: Record<string, string> = {};
-    for (const s of view) if (s.element_guid && s.enabled) colors[s.element_guid] = ALARM_COLOR[s.alarm];
+    for (const s of view) if (s.element_guid && s.enabled) colors[s.element_guid] = alarmHex(s);
     if (!healthOn) { void viewer.colorByGuids(colors); return; }
     api.health(projectId).then((h) => {
-      for (const a of h.assets) if (a.element_guid) colors[a.element_guid] = a.level === "yaxshi" ? "#3aa864" : a.level === "qoniqarli" ? "#b98626" : "#d95c5c";
+      for (const a of h.assets) if (a.element_guid) colors[a.element_guid] = hexOf(a.level === "yaxshi" ? "ok" : a.level === "qoniqarli" ? "warn" : "danger");
       void viewer.colorByGuids(colors);
     }).catch(() => void viewer.colorByGuids(colors));
   }, [view, viewer, healthOn, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -137,15 +146,15 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   useEffect(() => {
     if (!viewer) return;
     if (!valuesOn) { void viewer.setValueLabels(null); return; }
-    const byGuid = new Map<string, { texts: string[]; color: string }>();
+    const byGuid = new Map<string, { texts: string[]; color: string; alarm: boolean }>();
     for (const s of view) {
       if (!s.element_guid || !s.enabled) continue;
-      const e = byGuid.get(s.element_guid) ?? { texts: [], color: ALARM_COLOR[s.alarm] };
+      const e = byGuid.get(s.element_guid) ?? { texts: [] as string[], color: alarmHex(s), alarm: false };
       e.texts.push(`${s.name}: ${s.last_value != null ? fmtVal(s.last_value) : "—"} ${s.unit}`.trim());
-      if (s.alarm !== "ok") e.color = ALARM_COLOR[s.alarm];
+      if (s.alarm !== "ok") { e.color = alarmHex(s); e.alarm = e.alarm || isAlarm(s.alarm); }
       byGuid.set(s.element_guid, e);
     }
-    void viewer.setValueLabels([...byGuid].map(([guid, e]) => ({ guid, text: e.texts.join(" · "), color: e.color, alarm: e.color === ALARM_COLOR.high })));
+    void viewer.setValueLabels([...byGuid].map(([guid, e]) => ({ guid, text: e.texts.join(" · "), color: e.color, alarm: e.alarm })));
   }, [view, viewer, valuesOn]); // eslint-disable-line react-hooks/exhaustive-deps
   // 3D animatsiya (HMI): darvoza ochilishi, agregat ishlashi, quvurdagi oqim — bog'langan sensorlar bo'yicha
   const [animOn, setAnimOn] = useState(true);
@@ -245,7 +254,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
       {view.map((s) => (
         <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`} onClick={() => setSelected(selected === s.id ? null : s.id)}>
           <div className="title">
-            <i className="dot" style={{ background: ALARM_COLOR[s.alarm] }} />
+            <i className="dot" style={{ background: alarmStyle(s.alarm, s.priority).color }} title={alarmStyle(s.alarm, s.priority).label} />{alarmStyle(s.alarm, s.priority).code && <span className="alarm-mark" style={{ color: alarmStyle(s.alarm, s.priority).color }}>{alarmStyle(s.alarm, s.priority).glyph}{alarmStyle(s.alarm, s.priority).code}</span>}
             <b>{s.name}</b>
             <span className="grow" />
             <span className="mono">{s.last_value != null ? `${fmtVal(s.last_value)} ${s.unit}` : "—"}</span>

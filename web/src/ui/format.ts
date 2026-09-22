@@ -53,6 +53,6 @@ export function fmtValue(v: number): string {
   const a = Math.abs(v);
   return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : v.toFixed(2);
 }
-export const ALARM_LABEL: Record<string, string> = { ok: "normal", low: "past", high: "yuqori", stale: "aloqa yo'q", lowlow: "juda past (LL)", highhigh: "juda yuqori (HH)", roc: "tez o'zgarish", deviation: "model bilan og'ish" };
+export { STATE_LABEL as ALARM_LABEL } from "./tokens";
 /** Faol alarm (ok/stale emas) */
 export const isAlarm = (a: string | undefined | null) => !!a && a !== "ok" && a !== "stale";

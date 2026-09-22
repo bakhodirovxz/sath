@@ -1,6 +1,20 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 import NotificationsBell from "./NotificationsBell";
+import { useEffect, useState } from "react";
+import { applyTheme, currentTheme, type ThemeName } from "./tokens";
+
+/** Tema almashtirgich (F1): engineer (Blender) ↔ operator (ISA-101); tanlov saqlanadi. */
+function ThemeToggle() {
+  const [theme, setTheme] = useState<ThemeName>(() => currentTheme());
+  useEffect(() => { setTheme(currentTheme()); }, []);
+  const next: ThemeName = theme === "operator" ? "engineer" : "operator";
+  return (
+    <button className="btn sm theme-toggle" title={`Tema: ${theme === "operator" ? "operator (ISA-101)" : "muhandis (Blender)"} — almashtirish`} onClick={() => { applyTheme(next); setTheme(next); }}>
+      {theme === "operator" ? "ISA-101" : "Blender"}
+    </button>
+  );
+}
 
 export interface Crumb {
   label: string;
@@ -23,6 +37,7 @@ export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; ch
       </div>
       <div className="spacer" />
       {children}
+      <ThemeToggle />
       <NotificationsBell />
       {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
       <span className="muted small">{user?.full_name || user?.username}</span>

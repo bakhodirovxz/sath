@@ -3,11 +3,13 @@ import Icon from "../ui/Icon";
 import { useNavigate } from "react-router-dom";
 import { api, type DesktopPackage, type Project } from "../api/client";
 import { useAuth } from "../store/auth";
+import { applyTheme, savedTheme } from "../ui/tokens";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { label } from "../ui/format";
 
 export default function Projects() {
+  useEffect(() => { applyTheme(savedTheme("engineer"), false); }, []);
   const user = useAuth((s) => s.user);
   const nav = useNavigate();
   const [projects, setProjects] = useState<Project[] | null>(null);

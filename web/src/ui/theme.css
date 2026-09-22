@@ -12,15 +12,34 @@
   --field: #1d1d1d;         /* matn maydoni foni */
   --sel: #334d80;           /* tanlangan qator (Blender: 334d80) */
   --text: #e6e6e6;
-  --text-muted: #9a9a9a;
-  --text-dim: #6e6e6e;
+  --text-muted: #b3b3b3;
+  --text-dim: #aaaaaa;
   --accent: #4772b3;        /* Blender ko'k: faol/tanlov */
   --accent-2: #39b7c9;      /* Sath brendi (logo, kirish) */
   --brand: #39b7c9;
-  --ok: #4caf7a;
-  --warn: #e0a93a;
-  --danger: #d95c5c;
+  --link: #8fb0e6;
+  --ok: #6ad39c;
+  --warn: #f0c060;
+  --danger: #f7a8a8;
   --wip: #9a9a9a;
+  /* Alarm ustuvorligi va sifat (F1, tokens.ts bilan bir xil; tema almashganda JS qayta yozadi) */
+  --alarm-critical: #f7a8a8;
+  --alarm-high: #f5b86a;
+  --alarm-medium: #ecd75a;
+  --alarm-low: #9fc0ea;
+  --alarm-stale: #c4c4c4;
+  --alarm-row: #703d3d;
+  --quality-bad: #d8b0f5;
+  --quality-uncertain: #d2c290;
+  --mimic-water: #1d3f55;
+  --mimic-concrete: #5b616b;
+  --mimic-outline: #8b9098;
+  --mimic-pipe: #9aa0a8;
+  --mimic-hall: #2b2f36;
+  --mimic-unit-on: #1f3b2c;
+  --mimic-unit-off: #26282c;
+  --mimic-unbound: #9296a0;
+  --mimic-idle: #9aa0a8;
   --radius: 4px;
   --font: "Inter", "Segoe UI", "DejaVu Sans", "Noto Sans", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
@@ -40,7 +59,7 @@ body {
   overflow: hidden;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
-a { color: var(--accent); text-decoration: none; }
+a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -396,7 +415,7 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 @keyframes mimic-flow { to { stroke-dashoffset: -24; } }
 .mimic-spin { animation: mimic-spin 2.4s linear infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes mimic-spin { to { transform: rotate(360deg); } }
-tr.alarm-active td { background: #3a2426; }
+tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { background: var(--chrome); border: 1px solid var(--line); color: var(--text-muted); padding: 1px 8px; font-size: 12px; cursor: pointer; border-radius: 10px; }
 .chip.on { border-color: var(--accent); color: var(--text); background: #2a3a4d; }
@@ -619,3 +638,13 @@ tr.alarm-active td { background: #3a2426; }
 .simform .brow .bfield input[type=checkbox] { margin: 0; }
 .site-form .simform { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .site-form .simform .brow .blabel { flex-basis: 50%; }
+
+/* --- F1: alarm belgisi (shakl + kod, rangdan mustaqil kanal) va tema --- */
+.alarm-mark { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 11px; font-weight: 700; }
+.mimic-code { font-family: var(--mono); font-size: 9px; font-weight: 700; }
+:root[data-theme="operator"] .btn.primary { color: #fff; }
+:root[data-theme="operator"] .badge { border: 1px solid var(--line-strong); }
+:root[data-theme="operator"] .mimic-cap { fill: var(--text-muted); }
+:root[data-theme="operator"] .mimic-lbl { fill: var(--text-muted); }
+:root[data-theme="operator"] .mimic-val { fill: var(--text); }
+.theme-toggle { font-size: 11px; }
