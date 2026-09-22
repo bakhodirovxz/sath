@@ -1,6 +1,6 @@
 /** Trend server mantig'i (F7): shkala, o'q belgilari, uzilishlar (sifat/bo'shliq), normallashtirish, kursor. */
 
-export interface TrendPoint { t: number; v: number | null; min?: number; max?: number }
+export interface TrendPoint { t: number; v: number | null; min?: number | undefined; max?: number | undefined }
 export interface TrendSeries { id: number | string; name: string; unit: string; color?: string; points: TrendPoint[] }
 
 export const MAX_POINTS = 20_000; // uzunlik qo'riqchisi — undan ko'p nuqta serverdan siyraklashtirilgan holda olinadi

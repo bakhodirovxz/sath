@@ -1,4 +1,5 @@
 import Icon from "../../ui/Icon";
+import { useLatest } from "../../hooks/useLatest";
 import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
@@ -84,14 +85,16 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
 
   // --- Vaqt mashinasi (replay): tarixdan tanlangan vaqtdagi qiymatlar 3D ga (yorliqlar, ranglar, suv, darvozalar)
   const [replay, setReplay] = useState<{ on: boolean; hours: number; t: number; data: Record<number, ReadingPoint[]>; loading: boolean }>({ on: false, hours: 24, t: 1, data: {}, loading: false });
+  const latestSensors = useLatest(sensors);
+  const sensorIdsKey = sensors.map((s) => (s.enabled ? s.id : -s.id)).join(","); // ro'yxat o'zgarganda qayta yuklash, har jonli qiymatda emas
   useEffect(() => {
     if (!replay.on) return;
     let dead = false;
     setReplay((r) => ({ ...r, loading: true }));
-    Promise.all(sensors.filter((s) => s.enabled).map((s) => api.readings(s.id, replay.hours, 600).then((r) => [s.id, r.points] as const).catch(() => [s.id, []] as const)))
+    Promise.all(latestSensors.current.filter((s) => s.enabled).map((s) => api.readings(s.id, replay.hours, 600).then((r) => [s.id, r.points] as const).catch(() => [s.id, []] as const)))
       .then((rows) => { if (!dead) setReplay((r) => ({ ...r, data: Object.fromEntries(rows), loading: false })); });
     return () => { dead = true; };
-  }, [replay.on, replay.hours, sensors.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [replay.on, replay.hours, sensorIdsKey, latestSensors]);
   const replayTime = replay.on ? Date.now() - replay.hours * 3600e3 * (1 - replay.t) : null;
   /** Ko'rsatiladigan sensorlar: jonli yoki tarixdagi vaqt bo'yicha (oxirgi o'qish ≤ t; alarm chegaralar bo'yicha) */
   const view: Sensor[] = replayTime == null ? sensors : sensors.map((s) => {
@@ -111,7 +114,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     if (!viewer) return;
     const s = view.find((x) => x.id === upstreamId);
     viewer.setWaterLevel(waterOn && s && s.last_value != null && !s.stale ? s.last_value : null, { upstreamOnly: true });
-  }, [viewer, view, upstreamId, waterOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewer, view, upstreamId, waterOn]);
   useEffect(() => () => { viewer?.setWaterLevel(null); }, [viewer]);
 
   // 3D: sensor bog'langan elementlar alarm rangi; «sog'liq» rejimida aktivlar sog'liq indeksi rangi
@@ -125,7 +128,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
       for (const a of h.assets) if (a.element_guid) colors[a.element_guid] = hexOf(a.level === "yaxshi" ? "ok" : a.level === "qoniqarli" ? "warn" : "danger");
       void viewer.colorByGuids(colors);
     }).catch(() => void viewer.colorByGuids(colors));
-  }, [view, viewer, healthOn, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, viewer, healthOn, projectId]);
   // 3D: elementlar ustida jonli qiymatlar (sensor nomi + qiymat, alarm rangi)
   const [valuesOn, setValuesOn] = useState(true);
   useEffect(() => {
@@ -140,7 +143,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
       byGuid.set(s.element_guid, e);
     }
     void viewer.setValueLabels([...byGuid].map(([guid, e]) => ({ guid, text: e.texts.join(" · "), color: e.color, alarm: e.alarm })));
-  }, [view, viewer, valuesOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, viewer, valuesOn]);
   // 3D animatsiya (HMI): darvoza ochilishi, agregat ishlashi, quvurdagi oqim — bog'langan sensorlar bo'yicha
   const [animOn, setAnimOn] = useState(true);
   useEffect(() => {
@@ -149,7 +152,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     const items = view.filter((s) => s.element_guid && s.enabled && (s.kind === "position" || s.kind === "status" || s.kind === "power" || s.kind === "flow") && !s.stale)
       .map((s) => ({ guid: s.element_guid!, kind: s.kind, value: s.last_value }));
     void viewer.setLiveBindings(items);
-  }, [view, viewer, animOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, viewer, animOn]);
   useEffect(() => () => { void viewer?.colorByGuids({}); void viewer?.setValueLabels(null); void viewer?.setLiveBindings(null); }, [viewer]);
 
   async function save(e: React.FormEvent) {

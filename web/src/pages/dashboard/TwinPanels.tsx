@@ -14,8 +14,8 @@ import { dialogs } from "../../ui/dialogs";
 export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: boolean }) {
   const [t, setT] = useState<TwinState | null>(null);
   const [err, setErr] = useState("");
-  const load = () => api.twin(projectId).then(setT).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); const id = window.setInterval(load, 15000); return () => window.clearInterval(id); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.twin(projectId).then(setT).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { void load(); const id = window.setInterval(load, 15000); return () => window.clearInterval(id); }, [load]);
   if (!t) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
     <div className="dash-block">
@@ -167,8 +167,8 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: "", power_sensor_id: "", maintenance_interval_hours: "8000", base_run_hours: "0" });
   const [err, setErr] = useState("");
-  const load = () => api.assets(projectId).then(setItems).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.assets(projectId).then(setItems).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { void load(); }, [load]);
   const powerSensors = sensors.filter((s) => s.kind === "power" && s.protocol !== "twin");
   const cls = { ok: "published", due: "high", overdue: "rejected" };
   const lbl = { ok: "normal", due: "xizmat yaqin", overdue: "muddati o'tgan" };

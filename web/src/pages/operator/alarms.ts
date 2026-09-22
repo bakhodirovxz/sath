@@ -15,7 +15,7 @@ export interface AlarmFilter {
 export const EMPTY_FILTER: AlarmFilter = { priorities: new Set(), area: "", view: "active", q: "" };
 
 export interface AlarmRow extends AlarmEvent {
-  sensor?: Sensor;
+  sensor?: Sensor | undefined;
   area: AreaId | "aux";
 }
 

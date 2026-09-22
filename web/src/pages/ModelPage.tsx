@@ -7,6 +7,7 @@ import { useViewer } from "../viewer/useViewer";
 import { COMMANDS, type ParsedCommand } from "../viewer/commands";
 import type { Hover, NavMode, Shading, ViewName } from "../viewer/Viewer";
 import { useAuth } from "../store/auth";
+import { useLatest } from "../hooks/useLatest";
 import { applyTheme, savedTheme } from "../ui/tokens";
 import NotificationsBell from "../ui/NotificationsBell";
 import CommandLine from "../ui/CommandLine";
@@ -81,7 +82,7 @@ export default function ModelPage() {
   const [navMode, setNavMode] = useState<NavMode>("Orbit");
   const [colorScheme, setColorScheme] = useState<"none" | "type" | "storey">("none");
   const [legend, setLegend] = useState<{ name: string; color: string }[] | null>(null);
-  const [hover, setHover] = useState<(Hover & { name?: string; category?: string }) | null>(null);
+  const [hover, setHover] = useState<(Hover & { name?: string | undefined; category?: string | undefined }) | null>(null);
   const [help, setHelp] = useState<boolean>(() => { try { return localStorage.getItem("ges_help_seen") !== "1"; } catch { return false; } });
   const closeHelp = () => { setHelp(false); try { localStorage.setItem("ges_help_seen", "1"); } catch { /* */ } };
   const nav = useNavigate();
@@ -96,36 +97,42 @@ export default function ModelPage() {
   const [underlays, setUnderlays] = useState<Underlay[]>([]); // rasm asoslari (foto/chizma tekisliklari)
   const [npu, setNpu] = useState<{ level: number; zero: number } | null>(null); // maydon pasporti: NPU va model 0
   const [waterOn, setWaterOn] = useState(false);
+  const projectIdForSite = project?.id;
   useEffect(() => {
-    if (!project) return;
-    api.site(project.id).then((s) => { const lvl = Number(s.values.normal_level_m); if (s.filled && Number.isFinite(lvl)) setNpu({ level: lvl, zero: Number(s.values.model_zero_m ?? 0) }); }).catch(() => undefined);
-  }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!projectIdForSite) return;
+    api.site(projectIdForSite).then((s) => { const lvl = Number(s.values.normal_level_m); if (s.filled && Number.isFinite(lvl)) setNpu({ level: lvl, zero: Number(s.values.model_zero_m ?? 0) }); }).catch(() => undefined);
+  }, [projectIdForSite]);
   useEffect(() => {
     const vw = viewer.current;
     if (!vw || !loadedKey) return;
     if (waterOn && npu) vw.setWaterLevel(npu.level - npu.zero, { upstreamOnly: true });
     else if (tab !== "sim" && tab !== "mon") vw.setWaterLevel(null);
-  }, [waterOn, npu, loadedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { void viewer.current?.setUnderlays(underlays, getToken()); }, [underlays, loadedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [waterOn, npu, loadedKey, tab, viewer]);
+  useEffect(() => { void viewer.current?.setUnderlays(underlays, getToken()); }, [underlays, loadedKey, viewer]);
   // Balandlik xaritasi — suv yuzasi relyef va inshootlarga moslashadi (ombor qirg'og'i, to'g'on to'sadi, quyi byef)
+  const water = useLatest({ waterOn, npu });
+  const currentId = current?.id;
   useEffect(() => {
     const vw = viewer.current;
-    if (!vw || !loadedKey || !current) return;
+    if (!vw || !loadedKey || !currentId) return;
     let dead = false;
     vw.setHeightmap(null);
-    api.heightmap(current.id).then((hm) => { if (!dead) { vw.setHeightmap(hm); if (waterOn && npu) vw.setWaterLevel(npu.level - npu.zero, { upstreamOnly: true }); } }).catch(() => undefined);
+    api.heightmap(currentId).then((hm) => { if (!dead) { vw.setHeightmap(hm); const w = water.current; if (w.waterOn && w.npu) vw.setWaterLevel(w.npu.level - w.npu.zero, { upstreamOnly: true }); } }).catch(() => undefined);
     return () => { dead = true; };
-  }, [loadedKey, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadedKey, currentId, viewer, water]);
   // URL: ?sel=<guid> — elementni tanlab kamerani moslash, ?tab=mon|sim|... — panelni ochish (dashboard/alarm havolalari)
+  const latestParams = useLatest(params);
   useEffect(() => {
     if (!loadedKey) return;
-    const sel = params.get("sel");
-    const t = params.get("tab") as Tab | null;
+    const p = latestParams.current;
+    const sel = p.get("sel");
+    const t = p.get("tab") as Tab | null;
     if (t && TABS.some((x) => x.id === t)) { setTab(t); setDockOpen(true); }
     if (sel) void viewer.current?.selectByGuids([sel], true);
-  }, [loadedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Versiya almashganda tahrirlanayotgan/o'chirilgan asl elementlar yana yashiriladi
-  useEffect(() => { if (loadedKey) { void viewer.current?.drafts?.syncHidden(); if (labelsOn) void viewer.current?.setLabels(true); } }, [loadedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadedKey, latestParams, viewer]);
+  // Versiya almashganda tahrirlanayotgan/o'chirilgan asl elementlar yana yashiriladi (yorliqlar holati o'qiladi, qayta ishga tushirmaydi)
+  const latestLabelsOn = useLatest(labelsOn);
+  useEffect(() => { if (loadedKey) { void viewer.current?.drafts?.syncHidden(); if (latestLabelsOn.current) void viewer.current?.setLabels(true); } }, [loadedKey, latestLabelsOn, viewer]);
   const [draftSel, setDraftSel] = useState<Draft | null>(null);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   // Blender: N — viewport yon paneli, Z — shading pie, F3 — operator qidiruvi, Ctrl+Space — maksimal viewport
@@ -165,12 +172,13 @@ export default function ModelPage() {
   }, [reload]);
 
   // Boshlang'ich versiya: ?v= yoki tasdiqlangan yoki oxirgi
+  const initial = useLatest({ openVersion, params, current });
   useEffect(() => {
-    if (!ready || versions.length === 0 || current) return;
-    const wanted = Number(params.get("v"));
+    if (!ready || versions.length === 0 || initial.current.current) return;
+    const wanted = Number(initial.current.params.get("v"));
     const v = versions.find((x) => x.id === wanted) ?? versions.find((x) => x.state === "published") ?? versions[0];
-    void openVersion(v);
-  }, [ready, versions]); // eslint-disable-line react-hooks/exhaustive-deps
+    void initial.current.openVersion(v);
+  }, [ready, versions, initial]);
 
   async function openVersion(v: Version) {
     const vw = viewer.current;
@@ -213,6 +221,7 @@ export default function ModelPage() {
   }
 
   // --- Buyruqlar ---
+  const latestShowDiff = useLatest(showDiff);
   const onCommand = useCallback(
     async (cmd: ParsedCommand) => {
       const vw = viewer.current;
@@ -268,7 +277,7 @@ export default function ModelPage() {
         case "LAYER": setTab("layers"); setDockOpen(true); break;
         case "PROPS": setTab("props"); setDockOpen(true); break;
         case "TREE": setOutlinerOpen(true); setDockOpen(true); break;
-        case "DIFF": if (current) { setTab("versions"); setDockOpen(true); await showDiff(current); } break;
+        case "DIFF": if (current) { setTab("versions"); setDockOpen(true); await latestShowDiff.current(current); } break;
         case "ISSUE": setTab("issues"); setDockOpen(true); setIssueTrigger((n) => n + 1); break;
         case "SIM": setTab("sim"); setDockOpen(true); setSimKind(cmd.args[0] ? cmd.args[0].toLowerCase() : null); break;
         case "CFD": setTab("sim"); setDockOpen(true); setSimKind("cfd"); break;
@@ -279,7 +288,7 @@ export default function ModelPage() {
         default: say(`Noma'lum buyruq: ${cmd.args[0]}. HELP — ro'yxat`);
       }
     },
-    [viewer, current, model], // eslint-disable-line react-hooks/exhaustive-deps
+    [viewer, current, model, latestShowDiff],
   );
 
   // Canvas ustida bosish: o'lchash asbobi
@@ -316,9 +325,10 @@ export default function ModelPage() {
   const toggleProjection = async () => { await viewer.current?.toggleProjection(); setProjection(viewer.current?.world.camera.projection.current ?? "Perspective"); };
 
   // --- Qoralamalar: serverdan yuklash, o'zgarishlarni saqlash (debounce), tanlash ---
+  const draftsModelId = model?.id;
   useEffect(() => {
     const vw = viewer.current;
-    if (!ready || !vw || !model) return;
+    if (!ready || !vw || !draftsModelId) return;
     const dm = vw.drafts;
     const offs = [
       dm.subscribe(setDrafts),
@@ -328,7 +338,7 @@ export default function ModelPage() {
         if (!canEdit) { setLog("Qoralama saqlanmaydi: faqat muhandis/tasdiqlovchi"); return; }
         const body = dm.payload(d.uid);
         if (!body) return;
-        api.createDraft(model.id, body).then((row) => dm.setServerId(d.uid, row.id)).catch((e) => setError(e.message));
+        api.createDraft(draftsModelId, body).then((row) => dm.setServerId(d.uid, row.id)).catch((e) => setError(e.message));
       }),
       dm.subscribeRemoved((d) => { if (canEdit && d.id) { void dm.restoreSource(d.uid); api.deleteDraft(d.id).catch((e) => setError(e.message)); } }),
       dm.subscribeChange((d) => {
@@ -343,8 +353,8 @@ export default function ModelPage() {
         }, 600));
       }),
     ];
-    api.underlays(model.id).then(setUnderlays).catch(() => undefined);
-    api.drafts(model.id).then((rows) => {
+    api.underlays(draftsModelId).then(setUnderlays).catch(() => undefined);
+    api.drafts(draftsModelId).then((rows) => {
       dm.clear();
       for (const r of rows) {
         try {
@@ -354,7 +364,7 @@ export default function ModelPage() {
       void dm.syncHidden();
     }).catch(() => undefined);
     return () => { offs.forEach((f) => f()); };
-  }, [ready, viewer, model?.id, canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, viewer, draftsModelId, canEdit]);
 
   const startAdd = (k: DraftKind) => { setAddMenu(null); if (!canEdit) { setLog("Element qo'shish — muhandis/tasdiqlovchi uchun"); return; } viewer.current?.drafts.startPlacing(k.id); setLog(`${k.title}: joylashtirish — model/yer ustiga bosing (Esc — bekor)`); };
   const deleteDraft = async (uid: string) => {
@@ -441,6 +451,7 @@ export default function ModelPage() {
 
   // Tezkor tugmalar (Blender): H yashirish, Alt+H hammasi, / ajratish, Home moslash, . tanlanganga,
   // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor
+  const keys = useLatest({ deleteDraft, duplicateDraft, editElement, deleteElement, render, selectAll, toggleLabels, toggleMaximize, toggleProjection, cmd });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -452,13 +463,13 @@ export default function ModelPage() {
       if ((k === "A" || k === "a") && e.shiftKey) { e.preventDefault(); setAddMenu({ x: lastMouse.current[0], y: lastMouse.current[1] }); return; }
       const dr = vw.drafts.handleKey(e);
       if (dr === "handled") { e.preventDefault(); return; }
-      if (dr === "delete") { const d = vw.drafts.selected; if (d) void deleteDraft(d.uid); e.preventDefault(); return; }
-      if (dr === "duplicate") { const d = vw.drafts.selected; if (d) duplicateDraft(d.uid); e.preventDefault(); return; }
+      if (dr === "delete") { const d = vw.drafts.selected; if (d) void keys.current.deleteDraft(d.uid); e.preventDefault(); return; }
+      if (dr === "duplicate") { const d = vw.drafts.selected; if (d) keys.current.duplicateDraft(d.uid); e.preventDefault(); return; }
       // Mavjud IFC element tanlangan: Tab — tahrirlash (Blender edit mode), X/Delete — o'chirish
       if (!vw.drafts.selected && vw.selection.length >= 1) {
         const ids = [...vw.selection];
-        if (k === "Tab") { e.preventDefault(); void (async () => { for (const id of ids) await editElement(id); })(); return; }
-        if (k === "x" || k === "X" || k === "Delete") { e.preventDefault(); void (async () => { if (ids.length > 1 && !(await dialogs.confirm(`${ids.length} ta elementni o'chirish?`, { danger: true, ok: "O'chirish" }))) return; for (const id of ids) await deleteElement(id, ids.length > 1); })(); return; }
+        if (k === "Tab") { e.preventDefault(); void (async () => { for (const id of ids) await keys.current.editElement(id); })(); return; }
+        if (k === "x" || k === "X" || k === "Delete") { e.preventDefault(); void (async () => { if (ids.length > 1 && !(await dialogs.confirm(`${ids.length} ta elementni o'chirish?`, { danger: true, ok: "O'chirish" }))) return; for (const id of ids) await keys.current.deleteElement(id, ids.length > 1); })(); return; }
       }
       const views: Record<string, [ViewName, ViewName]> = { Numpad1: ["front", "back"], Numpad3: ["right", "left"], Numpad7: ["top", "bottom"], "1": ["front", "back"], "3": ["right", "left"], "7": ["top", "bottom"] };
       const vk = views[e.code] ?? views[k];
@@ -469,21 +480,21 @@ export default function ModelPage() {
       else if (k === "/" || e.code === "NumpadDivide") { void vw.isolateSelected(); }
       else if (k === "Home") { void vw.fitAll(); }
       else if (k === "." || e.code === "NumpadDecimal") { void vw.fitSelection(); }
-      else if (e.code === "Numpad5" || k === "5") { void toggleProjection(); }
+      else if (e.code === "Numpad5" || k === "5") { void keys.current.toggleProjection(); }
       else if ((k === "z" || k === "Z") && !e.ctrlKey && !e.repeat) { setPie({ x: lastMouse.current[0], y: lastMouse.current[1] }); }
       else if (k === "n" || k === "N") { setSideOpen((v) => !v); }
       else if (k === "F3") { setSearch(true); }
-      else if (k === " " && e.ctrlKey) { toggleMaximize(); }
+      else if (k === " " && e.ctrlKey) { keys.current.toggleMaximize(); }
       else if ((k === "a" || k === "A") && e.altKey) { vw.escape(); }
-      else if ((k === "a" || k === "A") && !e.ctrlKey) { void selectAll(); }
+      else if ((k === "a" || k === "A") && !e.ctrlKey) { void keys.current.selectAll(); }
       else if ((k === "c" || k === "C") && e.shiftKey) { void vw.fitAll(); }
       else if (k === "t" || k === "T") { setToolsOpen((v) => !v); }
       else if (k === "Escape") { vw.escape(); used = false; }
-      else if (k === "F2") { void dialogs.prompt("Ko'rinish nomi").then((n) => cmd("VSAVE", n ?? "")); }
-      else if (k === "F12") { render(); }
+      else if (k === "F2") { void dialogs.prompt("Ko'rinish nomi").then((n) => keys.current.cmd("VSAVE", n ?? "")); }
+      else if (k === "F12") { keys.current.render(); }
       else if (k === "?" || (k === "/" && e.shiftKey)) { setHelp((h) => !h); }
       else if (k === "b" || k === "B") { void vw.sectionBox(); }
-      else if (k === "l" || k === "L") { void toggleLabels(); }
+      else if (k === "l" || k === "L") { void keys.current.toggleLabels(); }
       else used = false;
       // ishlatilgan tezkor tugma buyruqlar qatoriga tushmasin (AutoCAD «yozishni boshlash» faqat boshqa harflar uchun)
       if (used) e.preventDefault();
@@ -492,7 +503,7 @@ export default function ModelPage() {
     window.addEventListener("keydown", onKey, true); // capture: buyruqlar qatori fokusidan oldin
     window.addEventListener("mousemove", onMove);
     return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("mousemove", onMove); };
-  }, [shading, viewer, canEdit, labelsOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shading, viewer, canEdit, labelsOn, keys]);
 
   const menus: Menu[] = [
     { title: "Fayl", items: [

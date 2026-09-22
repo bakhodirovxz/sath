@@ -17,16 +17,16 @@ export interface Draft {
   psets: Record<string, Record<string, unknown>>;
   visible: boolean;
   /** kind "mesh": geometriya (IFC lokal, saqlangan); "deleted": yo'q */
-  mesh?: { vertices: number[][]; faces: number[][] } | null;
+  mesh?: { vertices: number[][]; faces: number[][] } | null | undefined;
   /** mavjud IFC element tahriri/o'chirish — asl GlobalId (commitda GUID saqlanadi) */
-  sourceGuid?: string | null;
-  ifcClass?: string | null; // mesh turi uchun asl klass
-  color?: string | null;
+  sourceGuid?: string | null | undefined;
+  ifcClass?: string | null | undefined; // mesh turi uchun asl klass
+  color?: string | null | undefined;
 }
 export type GizmoMode = "translate" | "rotate" | "scale";
 type Listener<T> = (v: T) => void;
 type Snap = Pick<Draft, "name" | "params" | "psets" | "transform" | "visible">;
-type HistoryEntry = ({ t: number; uid: string; kind: "edit"; before: Snap; after: Snap } | { t: number; uid: string; kind: "remove"; draft: Draft } | { t: number; uid: string; kind: "add" }) & { g?: number }; // g — guruh amali (bitta undo)
+type HistoryEntry = ({ t: number; uid: string; kind: "edit"; before: Snap; after: Snap } | { t: number; uid: string; kind: "remove"; draft: Draft } | { t: number; uid: string; kind: "add" }) & { g?: number | undefined }; // g — guruh amali (bitta undo)
 const snapOf = (d: Draft): Snap => JSON.parse(JSON.stringify({ name: d.name, params: d.params, psets: d.psets, transform: d.transform, visible: d.visible }));
 
 let uidCounter = 1;

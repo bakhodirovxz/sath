@@ -7,7 +7,7 @@ import Dialog from "./Dialog";
 type Req =
   | { kind: "confirm"; title: string; text?: string; ok?: string; danger?: boolean; resolve: (v: boolean) => void }
   | { kind: "prompt"; title: string; text?: string; initial?: string; ok?: string; multiline?: boolean; resolve: (v: string | null) => void }
-  | { kind: "alert"; title: string; text?: string; resolve: (v: void) => void };
+  | { kind: "alert"; title: string; text?: string | undefined; resolve: (v: void) => void };
 
 let push: ((r: Req) => void) | null = null;
 const queue: Req[] = [];

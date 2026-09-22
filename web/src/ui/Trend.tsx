@@ -39,7 +39,8 @@ export default function Trend({ series: raw, height = 260, mode = "multi", domai
   const [localDomain, setLocalDomain] = useState<[number, number] | null>(null);
   const domain = extDomain ?? localDomain ?? bounds;
   const setDomain = (d: [number, number]) => { setLocalDomain(d); onDomain?.(d); };
-  useEffect(() => { setLocalDomain(null); }, [bounds[0], bounds[1]]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [b0, b1] = bounds;
+  useEffect(() => { setLocalDomain(null); }, [b0, b1]);
   const shown = mode === "normalized" ? normalize(series, domain[0], domain[1]) : series;
   const units = useMemo(() => [...groupByUnit(shown).entries()], [shown]);
   const nAxes = Math.max(1, units.length);

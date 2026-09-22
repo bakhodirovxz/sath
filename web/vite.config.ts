@@ -7,6 +7,20 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": { target: "http://localhost:8000", ws: true } },
   },
-  build: { chunkSizeWarningLimit: 4000 },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        // Katta kutubxonalar alohida bo'laklarda (F10): faqat model sahifasi yuklaydi
+        manualChunks: (id) => {
+          if (id.includes("node_modules/three")) return "three";
+          if (id.includes("node_modules/@thatopen")) return "thatopen";
+          if (id.includes("node_modules/web-ifc")) return "web-ifc";
+          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) return "react";
+          return undefined;
+        },
+      },
+    },
+  },
   test: { environment: "jsdom", setupFiles: ["src/test-setup.ts"], exclude: ["e2e/**", "node_modules/**", "dist/**"] },
 });

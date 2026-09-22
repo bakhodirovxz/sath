@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../../ui/Icon";
 import { api, type Clash, type ClashReport, type Qto, type Version } from "../../api/client";
 import type { Viewer } from "../../viewer/Viewer";
@@ -25,20 +25,21 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
   const [picked, setPicked] = useState<number | null>(null);
   const [qFilter, setQFilter] = useState("");
 
-  useEffect(() => { setQto(null); setClash(null); setPicked(null); }, [current?.id]);
+  const currentId = current?.id;
+  useEffect(() => { setQto(null); setClash(null); setPicked(null); }, [currentId]);
 
-  async function run() {
-    if (!current) return;
+  const run = useCallback(async () => {
+    if (!currentId) return;
     setBusy(true); setError("");
     try {
-      if (mode === "qto") setQto(await api.qto(current.id));
-      else setClash(await api.clashes(current.id));
+      if (mode === "qto") setQto(await api.qto(currentId));
+      else setClash(await api.clashes(currentId));
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
     finally { setBusy(false); }
-  }
+  }, [currentId, mode]);
   useEffect(() => {
-    if (current && ((mode === "qto" && !qto) || (mode === "clash" && !clash))) void run();
-  }, [mode, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (currentId && ((mode === "qto" && !qto) || (mode === "clash" && !clash))) void run();
+  }, [mode, currentId, qto, clash, run]);
 
   async function show(c: Clash, i: number) {
     setPicked(i);

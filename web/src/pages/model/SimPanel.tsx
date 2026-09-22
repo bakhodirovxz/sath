@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLatest } from "../../hooks/useLatest";
 import Icon from "../../ui/Icon";
 import { useNavigate } from "react-router-dom";
 import { api, type GesParams, type SimCatalog as Catalog, type SimJob, type SimKind, type SimParams, type SimResult, type SimUnit, type Version } from "../../api/client";
@@ -13,7 +14,7 @@ import { fmtDate } from "../../ui/format";
 
 interface Props {
   modelId: number;
-  projectId?: number;
+  projectId?: number | undefined;
   current: Version | null;
   viewer: Viewer | null;
   selection: SelectedItem[];
@@ -67,34 +68,38 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     void loadJobs();
   }, [loadJobs]);
 
+  const activeId = active?.id, activeStatus = active?.status;
+  const pollCb = useLatest({ openResult, loadJobs });
   // Ish tugaguncha so'rab turish
   useEffect(() => {
-    if (!active || (active.status !== "queued" && active.status !== "running")) return;
+    if (!activeId || (activeStatus !== "queued" && activeStatus !== "running")) return;
     pollRef.current = window.setInterval(async () => {
-      const j = await api.simJob(active.id);
+      const j = await api.simJob(activeId);
       if (j.status === "done" || j.status === "failed") {
         setActive(j);
-        void loadJobs();
-        if (j.status === "done") openResult(j);
+        void pollCb.current.loadJobs();
+        if (j.status === "done") pollCb.current.openResult(j);
       }
     }, 700);
     return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
-  }, [active?.id, active?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, activeStatus, pollCb]);
 
   // Slayder → 3D: suv sathi (to'lqin bilan), quyi byef, agregat halqalari (yuklanish tezligi, Francis qo'pol
   // zona — sariq), quvurdagi oqim (turbina sarfi), suv tashlagichdan tashlama oqimi (sarfga qarab)
   const [gp, setGp] = useState<GesParams | null>(null);
+  const currentIdForGp = current?.id;
   useEffect(() => {
-    if (!current) return setGp(null);
+    if (!currentIdForGp) return setGp(null);
     let dead = false;
-    api.gesParams(current.id).then((g) => !dead && setGp(g)).catch(() => setGp(null));
+    api.gesParams(currentIdForGp).then((g) => !dead && setGp(g)).catch(() => setGp(null));
     return () => { dead = true; };
-  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIdForGp]);
+  const latestParams = useLatest({ active, params }); // slayder harakatida parametr o'zgarishi qayta chizishni boshlamaydi
   useEffect(() => {
     if (!viewer || !result) return;
     const s = result.series;
     const i = cursor ?? s.level.length - 1;
-    const p = active?.params ?? params;
+    const p = latestParams.current.active?.params ?? latestParams.current.params;
     const zero = p?.model_zero_elevation_m ?? 0;
     const spillMax = Math.max(1e-6, ...s.spill);
     viewer.setWaterLevel(s.level[i] - zero, { waves: 0.06 + 0.25 * (s.spill[i] / spillMax), upstreamOnly: true });
@@ -117,7 +122,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     const sp = gp?.spillways?.[0];
     if (sp && s.spill[i] > 0) void viewer.setOverflow([{ guid: sp.guid, topZ: s.level[i] - zero, bottomZ: (typeof tail === "number" ? tail : sp.crest_m - 20) - zero, intensity: Math.min(1, s.spill[i] / spillMax) }]);
     else void viewer.setOverflow([]);
-  }, [cursor, result, viewer, gp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cursor, result, viewer, gp, latestParams]);
 
   // Panel yopilganda 3D qatlamlarni olib tashlash
   useEffect(() => () => { viewer?.setWaterLevel(null); viewer?.setTailwaterLevel(null); void viewer?.setLiveBindings(null); void viewer?.setOverflow([]); void viewer?.colorByGuids({}); }, [viewer]);

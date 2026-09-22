@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { dialogs } from "../../ui/dialogs";
 import { api, type AssetHealth, type DispatchResult, type FloodForecast, type HealthReport, type Member, type PartMovement, type Sensor, type SparePart, type TwinState, type WorkOrder, type WorkOrderKpi } from "../../api/client";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
@@ -15,8 +15,8 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
   const [rep, setRep] = useState<HealthReport | null>(null);
   const [err, setErr] = useState("");
   const [cfgFor, setCfgFor] = useState<AssetHealth | null>(null);
-  const load = () => api.health(projectId).then(setRep).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); const id = window.setInterval(load, 30000); return () => window.clearInterval(id); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.health(projectId).then(setRep).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { void load(); const id = window.setInterval(load, 30000); return () => window.clearInterval(id); }, [load]);
   if (!rep) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
     <div className="dash-block">
@@ -196,8 +196,8 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit }: { p
   const [err, setErr] = useState("");
   const [form, setForm] = useState({ title: "", description: "", priority: "medium", assignee_id: "", due_at: "" });
   const [closeForm, setCloseForm] = useState({ resolution: "", downtime_hours: "0", cost: "0" });
-  const load = () => Promise.all([api.workOrders(projectId), api.workOrderKpi(projectId)]).then(([w, k]) => { setItems(w); setKpi(k); }).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => Promise.all([api.workOrders(projectId), api.workOrderKpi(projectId)]).then(([w, k]) => { setItems(w); setKpi(k); }).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { void load(); }, [load]);
   const shown = items.filter((w) => filter === "all" ? true : filter === "active" ? (w.status === "open" || w.status === "in_progress") : w.status === filter);
   const setStatus = (w: WorkOrder, status: WorkOrder["status"]) => api.updateWorkOrder(w.id, { status }).then(load).catch((e) => setErr(e.message));
   return (
@@ -324,8 +324,8 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
   const [hist, setHist] = useState<{ part: SparePart; rows: PartMovement[] } | null>(null);
   const [form, setForm] = useState({ name: "", code: "", unit: "dona", qty: "0", min_qty: "1", location: "", unit_cost: "0" });
   const [mv, setMv] = useState({ qty: "1", work_order_id: "", note: "" });
-  const load = () => Promise.all([api.parts(projectId), api.workOrders(projectId)]).then(([p, w]) => { setItems(p); setOrders(w.filter((o) => o.status === "open" || o.status === "in_progress")); }).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => Promise.all([api.parts(projectId), api.workOrders(projectId)]).then(([p, w]) => { setItems(p); setOrders(w.filter((o) => o.status === "open" || o.status === "in_progress")); }).catch((e) => setErr(e.message)), [projectId]);
+  useEffect(() => { void load(); }, [load]);
   const low = items.filter((p) => p.low).length;
   return (
     <div className="dash-block">

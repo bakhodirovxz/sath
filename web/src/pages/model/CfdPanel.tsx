@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLatest } from "../../hooks/useLatest";
 import { api, type CfdParams, type CfdResult, type SimJob, type Version } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
@@ -37,16 +38,6 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
 
   useEffect(() => { api.cfdStatus().then(setStatus).catch(() => setStatus({ mode: "?", available: false })); }, []);
 
-  // Progress so'rovi
-  useEffect(() => {
-    if (!active || (active.status !== "queued" && active.status !== "running")) return;
-    const id = window.setInterval(async () => {
-      const j = await api.simJob(active.id);
-      setActive(j);
-      if (j.status === "done" || j.status === "failed") { onJobsChanged(); if (j.status === "done") void openResult(j); }
-    }, 1500);
-    return () => window.clearInterval(id);
-  }, [active?.id, active?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openResult = useCallback(async (j: SimJob) => {
     try {
@@ -56,6 +47,18 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
       setLogs(null);
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
   }, []);
+  const activeId = active?.id, activeStatus = active?.status;
+  const poll = useLatest({ onJobsChanged, openResult });
+  // Progress so'rovi
+  useEffect(() => {
+    if (!activeId || (activeStatus !== "queued" && activeStatus !== "running")) return;
+    const id = window.setInterval(async () => {
+      const j = await api.simJob(activeId);
+      setActive(j);
+      if (j.status === "done" || j.status === "failed") { poll.current.onJobsChanged(); if (j.status === "done") void poll.current.openResult(j); }
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [activeId, activeStatus, poll]);
 
   const grid = useMemo(() => {
     if (!result) return null;

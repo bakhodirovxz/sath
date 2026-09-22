@@ -17,8 +17,8 @@ interface Props {
   series: Series[];
   height?: number;
   /** Tashqaridan boshqariladigan kursor (vaqt slayderi) */
-  cursor?: number | null;
-  onCursor?: (i: number | null) => void;
+  cursor?: number | null | undefined;
+  onCursor?: ((i: number | null) => void) | undefined;
   /** Y o'qida ko'rsatiladigan chegara chiziqlari (masalan NPU, o'lik sath) */
   refLines?: { value: number; label: string }[];
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useLatest } from "../../../hooks/useLatest";
 import { dialogs } from "../../../ui/dialogs";
 import { api, type CustomTemplate, type GenericParams, type GenericResult, type SimJob, type SimTemplate, type Version } from "../../../api/client";
 import Icon from "../../../ui/Icon";
@@ -7,7 +8,7 @@ import { fmtDate } from "../../../ui/format";
 
 interface Props {
   modelId: number;
-  projectId?: number;
+  projectId?: number | undefined;
   current: Version | null;
   canEdit: boolean;
   jobs: SimJob[];
@@ -33,20 +34,22 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
   const [active, setActive] = useState<SimJob | null>(null);
   const [name, setName] = useState("");
 
-  const loadTemplates = () => projectId ? api.simTemplates(projectId).then(setTemplates).catch((e) => setError(e.message)) : Promise.resolve();
-  useEffect(() => { void loadTemplates(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadTemplates = useCallback(() => (projectId ? api.simTemplates(projectId).then(setTemplates).catch((e) => setError(e.message)) : Promise.resolve()), [projectId]);
+  useEffect(() => { void loadTemplates(); }, [loadTemplates]);
 
+  const activeId = active?.id, activeStatus = active?.status;
+  const pollCb = useLatest({ onJobsChanged });
   useEffect(() => {
-    if (!active || (active.status !== "queued" && active.status !== "running")) return;
+    if (!activeId || (activeStatus !== "queued" && activeStatus !== "running")) return;
     const id = window.setInterval(async () => {
-      const j = await api.simJob(active.id);
+      const j = await api.simJob(activeId);
       if (j.status === "done" || j.status === "failed") {
-        setActive(j); onJobsChanged();
+        setActive(j); pollCb.current.onJobsChanged();
         if (j.status === "done") setResult(await api.genericResult(j.id)); else setError(j.error);
       }
     }, 600);
     return () => window.clearInterval(id);
-  }, [active?.id, active?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, activeStatus, pollCb]);
 
   const load = (tpl: CustomTemplate, id: number | null) => {
     setT({ ...EMPTY, ...tpl });

@@ -146,7 +146,7 @@ export interface MaterialsCatalog { concrete: { id: string; name: string; Rb: nu
 export interface SimPrefill { site: GenericParams; model: GenericParams; live: GenericParams; site_filled: boolean }
 export interface SiteRisk { name: string; value: number; unit: string; ok: boolean; note: string }
 export interface SiteProfile { values: GenericParams; filled: boolean; risks: SiteRisk[] }
-export interface CustomTemplate { name?: string; description?: string; inputs: { key: string; label?: string; unit?: string; default?: number; min?: number; max?: number }[]; steps: number; dt: number; init: Record<string, string>; step: { target: string; expr: string }[]; outputs: string[]; summary: Record<string, string>; checks: { expr: string; message: string }[] }
+export interface CustomTemplate { name?: string; description?: string; inputs: { key: string; label?: string | undefined; unit?: string | undefined; default?: number | undefined; min?: number | undefined; max?: number | undefined }[]; steps: number; dt: number; init: Record<string, string>; step: { target: string; expr: string }[]; outputs: string[]; summary: Record<string, string>; checks: { expr: string; message: string }[] }
 export interface DraftRow { id: number; model_id: number; author_id: number; author_username: string; kind: string; name: string; ifc_class: string; params: Record<string, number | string>; transform: Record<string, number>; psets: Record<string, Record<string, unknown>>; has_mesh: boolean; source_guid?: string | null; mesh?: { vertices: number[][]; faces: number[][] } | null; created_at: string; updated_at: string }
 export interface DraftBody { kind: string; name: string; ifc_class: string; params: Record<string, number | string>; transform: Record<string, number>; psets: Record<string, Record<string, unknown>>; mesh: { vertices: number[][]; faces: number[][] } | Record<string, never>; source_guid?: string | null }
 export interface SimTemplate { id: number; project_id: number; author_id: number; author_username: string; name: string; description: string; template: CustomTemplate; created_at: string; updated_at: string }
@@ -177,7 +177,7 @@ export interface SimUnit {
 }
 export interface SimParams {
   dt_hours: number;
-  start_date?: string;
+  start_date?: string | undefined;
   inflow_m3s: number[] | { constant: number; steps: number };
   reservoir: {
     curve: { elevations_m: number[]; volumes_mcm: number[] };
@@ -207,7 +207,7 @@ export interface CfdParams {
   // penstock
   length_m?: number; diameter_m?: number; flow_m3s?: number; roughness_mm?: number; max_iterations?: number;
   // spillway
-  crest_height_m?: number; head_m?: number; crest_length_m?: number; upstream_m?: number; downstream_m?: number; unit_discharge_m2s?: number | null; end_time_s?: number;
+  crest_height_m?: number; head_m?: number; crest_length_m?: number | undefined; upstream_m?: number; downstream_m?: number; unit_discharge_m2s?: number | null; end_time_s?: number;
   resolution?: number;
   element_guid?: string | null; // 3D da natijani qo'yish uchun
 }
@@ -279,10 +279,10 @@ export interface Sensor {
   enabled: boolean;
   last_value: number | null;
   last_ts: string | null;
-  last_quality?: Quality;
+  last_quality?: Quality | undefined;
   alarm: AlarmState;
   /** Aloqa yo'q / eskirgan (F4: alarm holatidan alohida) */
-  stale?: boolean;
+  stale?: boolean | undefined;
   priority: "low" | "medium" | "high" | "critical";
   writable: boolean;
 }
@@ -317,7 +317,7 @@ export interface SensorIn {
   rationalized_at?: string | null;
   stale_after_s: number;
   enabled: boolean;
-  priority?: "low" | "medium" | "high" | "critical";
+  priority?: "low" | "medium" | "high" | "critical" | undefined;
   writable?: boolean;
 }
 export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch";
@@ -379,7 +379,7 @@ export interface ShiftHandover { id: number; project_id: number; status: "handed
 export interface RationalizationRow { id: number; project_id: number; key: string; name: string; priority: string; alarm_mode: string; missing: string[] }
 export interface RationalizationReport { total: number; rationalized: number; unrationalized: RationalizationRow[] }
 export interface MimicSlot { slot: string; label: string; kind: SensorKind }
-export interface SchemeElement { id: string; type: string; x: number; y: number; w?: number; h?: number; label?: string; sensor_id?: number | null; unit?: number; extra?: Record<string, number | null> }
+export interface SchemeElement { id: string; type: string; x: number; y: number; w?: number | undefined; h?: number | undefined; label?: string | undefined; sensor_id?: number | null | undefined; unit?: number | undefined; extra?: Record<string, number | null> | undefined }
 export interface Scheme { version: 1; units: number; elements: SchemeElement[] }
 export interface PenGroup { name: string; sensor_ids: number[] }
 export interface Dashboard {
@@ -425,7 +425,7 @@ export interface LiveMessage {
   value?: number | null;
   ts?: string | null;
   alarm?: AlarmState;
-  stale?: boolean;
+  stale?: boolean | undefined;
   age_s?: number | null;
   quality?: Quality;
   element_guid?: string | null;
@@ -759,7 +759,7 @@ export const api = {
   notifications: (unread = false, limit = 50) => request<Notification[]>(`/api/notifications?unread=${unread}&limit=${limit}`),
   notificationCount: () => request<{ unread: number }>("/api/notifications/count"),
   markRead: (ids: number[] | null) => request<{ read: number }>("/api/notifications/read", { method: "POST", body: json({ ids }) }),
-  audit: (q: { project_id?: number; action?: string; user_id?: number; limit?: number; before_id?: number }) => {
+  audit: (q: { project_id?: number | undefined; action?: string | undefined; user_id?: number | undefined; limit?: number; before_id?: number | undefined }) => {
     const qs = Object.entries(q).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<AuditRow[]>(`/api/audit${qs ? `?${qs}` : ""}`);
   },

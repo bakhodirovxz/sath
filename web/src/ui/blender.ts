@@ -2,7 +2,7 @@
 
 export interface SearchItem {
   label: string;
-  hint?: string;
+  hint?: string | undefined;
   group?: string;
   run: () => void;
 }

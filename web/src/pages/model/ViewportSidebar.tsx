@@ -48,13 +48,15 @@ export default function ViewportSidebar(p: SidebarProps) {
   const [props, setProps] = useState<ItemProperties | null>(null);
   const [dims, setDims] = useState<{ size: [number, number, number]; center: [number, number, number] } | null>(null);
   const first = p.selection[0];
+  const localId = first?.localId;
+  const pv = p.viewer;
   useEffect(() => {
-    if (!p.viewer || !first) { setProps(null); setDims(null); return; }
+    if (!pv || localId == null) { setProps(null); setDims(null); return; }
     let live = true;
-    p.viewer.getProperties(first.localId).then((r) => live && setProps(r));
-    p.viewer.getDimensions(first.localId).then((d) => live && setDims(d)).catch(() => setDims(null));
+    pv.getProperties(localId).then((r) => live && setProps(r));
+    pv.getDimensions(localId).then((d) => live && setDims(d)).catch(() => setDims(null));
     return () => { live = false; };
-  }, [p.viewer, first?.localId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pv, localId]);
 
   return (
     <div className="vp-sidebar" onKeyDown={(e) => e.stopPropagation()}>

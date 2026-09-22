@@ -30,7 +30,7 @@ function Body() {
   const [err, setErr] = useState("");
   const [saveDlg, setSaveDlg] = useState(false);
   const [name, setName] = useState("");
-  const groups: PenGroup[] = dash?.pen_groups ?? [];
+  const groups = useMemo<PenGroup[]>(() => dash?.pen_groups ?? [], [dash?.pen_groups]);
   const canEdit = ["engineer", "approver"].includes(project?.my_role ?? "");
   useEffect(() => {
     if (pens.length || !sensors.length) return;

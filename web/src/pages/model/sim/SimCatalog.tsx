@@ -8,7 +8,7 @@ interface Props {
   jobs: SimJob[];
   onPick: (kind: SimKind) => void;
   siteFilled: boolean | null;
-  onSite?: () => void;
+  onSite?: (() => void) | undefined;
 }
 
 const GROUP_ORDER = ["gidrologiya", "gidravlika", "mustahkamlik", "favqulodda", "ekspluatatsiya", "custom"];

@@ -12,13 +12,14 @@ export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, on
   const [dims, setDims] = useState<{ size: [number, number, number]; center: [number, number, number] } | null>(null);
   const first = selection[0];
 
+  const localId = first?.localId;
   useEffect(() => {
-    if (!viewer || !first) return setProps(null);
+    if (!viewer || localId == null) return setProps(null);
     let live = true;
-    viewer.getProperties(first.localId).then((p) => live && setProps(p));
-    viewer.getDimensions(first.localId).then((d) => live && setDims(d)).catch(() => setDims(null));
+    viewer.getProperties(localId).then((p) => live && setProps(p));
+    viewer.getDimensions(localId).then((d) => live && setDims(d)).catch(() => setDims(null));
     return () => { live = false; };
-  }, [viewer, first?.localId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewer, localId]);
 
   if (!first) return <p className="muted">Elementni tanlang — xususiyatlari shu yerda ko'rinadi.</p>;
   return (

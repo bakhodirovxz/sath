@@ -17,7 +17,7 @@ export interface SchemeElement {
   /** Asosiy sensor (qiymat / holat) */
   sensor_id?: number | null;
   /** Agregat raqami (unit/breaker) */
-  unit?: number;
+  unit?: number | undefined;
   /** Qo'shimcha bog'lanishlar: unit — RUN/CB; gate — POS; breaker — holat */
   extra?: Record<string, number | null>;
 }

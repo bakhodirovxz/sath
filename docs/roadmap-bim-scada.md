@@ -924,7 +924,7 @@ Fayllar: `web/src/pages/operator/L3Faceplate.tsx`, `web/src/pages/dashboard/Twin
 Qabul mezoni: diapazondan tashqari qiymat klientda ham, serverda ham rad etiladi (test).
 Bog'liqlik: B1, B2, B4, F2.
 
-### F9 — Smena jurnali va navbat topshirish ✅
+### F9 — Smena jurnali va navbat topshirish ✅ (`b4ad4f0`)
 
 Bajarildi: `ShiftHandover` (migratsiya 0018) va `monitoring/shift.py` — varaqa avtomatik (`snapshot`: faol/kvitlanmagan
 alarmlar, ochiq va muddati o'tgan ish buyruqlari, blokirovka chetlab o'tishlari (audit `command.interlock_override`
@@ -948,7 +948,18 @@ Fayllar: `server/ges_server/monitoring/router.py`, yangi `web/src/pages/operator
 Qabul mezoni: topshirish yakunlanmasa ogohlantiriladi; imzolar auditda.
 Bog'liqlik: C2, D3, F2.
 
-### F10 — Front-end sifat infratuzilmasi
+### F10 — Front-end sifat infratuzilmasi ✅
+
+Bajarildi: ESLint 9 (flat config: `@eslint/js`, `typescript-eslint`, `eslint-plugin-react-hooks`), `npm run lint`
+CI da (web ishi); barcha 40 `eslint-disable` olib tashlandi — muammolar tuzatildi: `load` funksiyalari `useCallback`,
+«o'qish, lekin qayta ishga tushirmaslik» niyati uchun `hooks/useLatest` ref (klaviatura, poll, URL param, yorliq
+holati), obyekt o'rniga `id` bog'liqliklari; lint 0 xato/0 ogohlantirish. `tsconfig`: `noUnusedLocals`,
+`noUnusedParameters`, `exactOptionalPropertyTypes`, `noFallthroughCasesInSwitch` (29 tip kengaytmasi);
+`noUncheckedIndexedAccess` KEYINGA — 417 joy (asosan `Viewer.ts`/sim panellari), alohida vazifa. Kod bo'linishi:
+`React.lazy` + `Suspense` sahifa darajasida, `manualChunks` three/thatopen/web-ifc/react — login to'plami
+(index + react) 185 KB (< 500 KB; `scripts/check-bundle.mjs` build da tekshiradi). `@testing-library/react` +
+jest-dom: `ValueCard.test.tsx` (sifat/eskirish ko'rsatilishi); alarm mantig'i (`alarms.test.tsx`), `useLive`
+qayta ulanishi (`useLive.test.tsx`) testlari; `IS_REACT_ACT_ENVIRONMENT` setup.
 
 Muammo:
 - `grep -c eslint-disable src/` = 39, deyarli hammasi `react-hooks/exhaustive-deps`

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Icon from "../../ui/Icon";
 import { api, type SavedView } from "../../api/client";
 import type { Viewer } from "../../viewer/Viewer";
@@ -10,8 +10,8 @@ export default function ViewsPanel({ modelId, viewer, refresh }: Props) {
   const [views, setViews] = useState<SavedView[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const load = () => api.views(modelId).then(setViews).catch((e) => setError(e.message));
-  useEffect(() => { void load(); }, [modelId, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => api.views(modelId).then(setViews).catch((e) => setError(e.message)), [modelId]);
+  useEffect(() => { void load(); }, [load, refresh]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();

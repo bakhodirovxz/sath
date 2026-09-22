@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, type ReadingPoint, type Sensor, type WorkOrder } from "../../api/client";
+import { api, type ReadingPoint, type WorkOrder } from "../../api/client";
 import Dialog from "../../ui/Dialog";
 import Trend from "../../ui/Trend";
 import { fmtDate, fmtValue } from "../../ui/format";

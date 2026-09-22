@@ -1,21 +1,23 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./store/auth";
 import Login from "./pages/Login";
-import Projects from "./pages/Projects";
-import ProjectPage from "./pages/ProjectPage";
-import ModelPage from "./pages/ModelPage";
-import Admin from "./pages/Admin";
-import DashboardPage from "./pages/DashboardPage";
-import SitePage from "./pages/SitePage";
-import L1Overview from "./pages/operator/L1Overview";
-import L2Area from "./pages/operator/L2Area";
-import L3Faceplate from "./pages/operator/L3Faceplate";
-import L4Diagnostics from "./pages/operator/L4Diagnostics";
-import AlarmsPage from "./pages/operator/AlarmsPage";
-import Trends from "./pages/operator/Trends";
-import Shift from "./pages/operator/Shift";
 import { DialogHost } from "./ui/dialogs";
+
+// Sahifa darajasida kod bo'linishi (F10): login ekrani Three.js/ThatOpen/web-ifc ni yuklamaydi
+const Projects = lazy(() => import("./pages/Projects"));
+const ProjectPage = lazy(() => import("./pages/ProjectPage"));
+const ModelPage = lazy(() => import("./pages/ModelPage"));
+const Admin = lazy(() => import("./pages/Admin"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const SitePage = lazy(() => import("./pages/SitePage"));
+const L1Overview = lazy(() => import("./pages/operator/L1Overview"));
+const L2Area = lazy(() => import("./pages/operator/L2Area"));
+const L3Faceplate = lazy(() => import("./pages/operator/L3Faceplate"));
+const L4Diagnostics = lazy(() => import("./pages/operator/L4Diagnostics"));
+const AlarmsPage = lazy(() => import("./pages/operator/AlarmsPage"));
+const Trends = lazy(() => import("./pages/operator/Trends"));
+const Shift = lazy(() => import("./pages/operator/Shift"));
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, ready } = useAuth();
@@ -33,6 +35,7 @@ export default function App() {
   return (
     <>
     <DialogHost />
+    <Suspense fallback={<div className="page-body muted">Yuklanmoqda…</div>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><Projects /></RequireAuth>} />
@@ -53,6 +56,7 @@ export default function App() {
       <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
     </>
   );
 }

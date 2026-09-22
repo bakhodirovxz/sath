@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLatest } from "../../../hooks/useLatest";
 import { api, type GenericParams, type GenericResult, type SimJob, type SimKind, type Version } from "../../../api/client";
 import type { Viewer } from "../../../viewer/Viewer";
 import type { WaterSim } from "../../../viewer/waterSim";
@@ -10,7 +11,7 @@ import SimForm, { fieldDefaults } from "./SimForm";
 interface Props {
   kind: SimKind;
   modelId: number;
-  projectId?: number;
+  projectId?: number | undefined;
   current: Version | null;
   viewer: Viewer | null;
   jobs: SimJob[];
@@ -87,6 +88,8 @@ export default function GenericSim({ kind, modelId, projectId, current, viewer, 
   const [showField, setShowField] = useState(true);
   const [showSection, setShowSection] = useState(true); // 3D kesim sxemasi (kuchlar / depressiya egri chizig'i)
   // To'g'on kesimi ustida sxema: dam_stability — profil, kuchlar, h1/h2; seepage — depressiya egri chizig'i
+  const activeParams = active?.params;
+  const activeId = active?.id, activeStatus = active?.status;
   useEffect(() => {
     if (!viewer) return;
     const hasSec = result && (kind.id === "dam_stability" || kind.id === "seepage") && guids.dams.length && showSection;
@@ -94,13 +97,13 @@ export default function GenericSim({ kind, modelId, projectId, current, viewer, 
     viewer.largestGuid(guids.dams).then((g) => {
       if (!g) return;
       const prof = result.profile as { points?: [number, number][]; h1?: number; h2?: number } | undefined;
-      const p = (active?.params ?? {}) as Record<string, unknown>;
+      const p = (activeParams ?? {}) as Record<string, unknown>;
       const spec = kind.id === "dam_stability"
         ? { profile: prof?.points, h1: prof?.h1, h2: prof?.h2, forces: result.forces as { name: string; v_kn: number; h_kn: number; arm_v_m: number; arm_h_m: number }[] | undefined }
         : { phreatic: { x: result.series.x as number[], y: result.series.phreatic as number[] }, h1: Number(p.h1_m) || undefined, h2: Number(p.h2_m) || undefined };
       void viewer.showSection(g, spec);
     });
-  }, [viewer, result, kind.id, guids, showSection, active?.id]);
+  }, [viewer, result, kind.id, guids, showSection, activeParams]);
   const [dyn, setDyn] = useState<{ t: number; note: string } | null>(null); // jonli suv holati (sim vaqti, soat)
   // Toshqin xaritasi (jonli suvdan): oxirgi sim, xulosa, suv bosgan inshootlar
   const lastSim = useRef<WaterSim | null>(null);
@@ -198,19 +201,20 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
       if (projectId) api.site(projectId).then((s) => { zeroRef.current = Number(s.values.model_zero_m ?? 0); const n = Number(s.values.normal_level_m); npuRef.current = Number.isFinite(n) && n !== 0 ? n : null; siteRef.current = s.values as Record<string, unknown>; }).catch(() => undefined);
     })();
     return () => { dead = true; };
-  }, [kind.id, modelId, current?.id, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kind.id, modelId, current?.id, projectId]);
   // GES elementlari (to'g'on, quvur, agregat GUID lari) — 3D ko'rsatish uchun; prefill dan alohida, kutmasdan
+  const currentIdForGuids = current?.id;
   useEffect(() => {
-    if (!current) return;
+    if (!currentIdForGuids) return;
     let dead = false;
-    api.gesParams(current.id).then((g) => {
+    api.gesParams(currentIdForGuids).then((g) => {
       if (dead) return;
       const crest = g.dams.map((d) => d.crest_elevation_m).find((c): c is number => typeof c === "number") ?? null;
       const sp = g.spillways[0];
       setGuids({ dams: g.dams.map((d) => d.guid), pens: g.penstocks.map((p) => p.guid), units: g.units.map((u) => u.guid), damCrest: crest, spill: sp ? { guid: sp.guid, crest: sp.crest_m } : null });
     }).catch((e) => console.warn("ges-params", e));
     return () => { dead = true; };
-  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIdForGuids]);
 
   const applyPrefill = async (src: "model" | "live") => {
     try {
@@ -225,20 +229,22 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
   };
 
   // Tashqaridan berilgan hisobni ochish (xavfsizlik tekshiruvi jadvalidan)
+  const initialCb = useLatest({ openResult, kindId: kind.id });
   useEffect(() => {
     if (initialJobId == null) return;
-    api.simJob(initialJobId).then((j) => { if (j.kind === kind.id) void openResult(j); }).catch(() => undefined);
-  }, [initialJobId]); // eslint-disable-line react-hooks/exhaustive-deps
+    api.simJob(initialJobId).then((j) => { if (j.kind === initialCb.current.kindId) void initialCb.current.openResult(j); }).catch(() => undefined);
+  }, [initialJobId, initialCb]);
 
   // Poll
+  const pollCb = useLatest({ onJobsChanged, openResult });
   useEffect(() => {
-    if (!active || (active.status !== "queued" && active.status !== "running")) return;
+    if (!activeId || (activeStatus !== "queued" && activeStatus !== "running")) return;
     const id = window.setInterval(async () => {
-      const j = await api.simJob(active.id);
-      if (j.status === "done" || j.status === "failed") { setActive(j); onJobsChanged(); if (j.status === "done") void openResult(j); else setError(j.error); }
+      const j = await api.simJob(activeId);
+      if (j.status === "done" || j.status === "failed") { setActive(j); pollCb.current.onJobsChanged(); if (j.status === "done") void pollCb.current.openResult(j); else setError(j.error); }
     }, 600);
     return () => window.clearInterval(id);
-  }, [active?.id, active?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, activeStatus, pollCb]);
 
   async function openResult(j: SimJob) {
     try {
@@ -266,9 +272,9 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
   const sedSeries = kind.id === "sediment" && result && Array.isArray(result.series.capacity_mcm) ? (result.series.capacity_mcm as number[]) : null;
   useEffect(() => {
     if (!viewer) return;
-    if (!sedSeries || !active) { viewer.setSedimentLevel(null); return; }
+    if (!sedSeries || !activeId) { viewer.setSedimentLevel(null); return; }
     const i = cursor ?? sedSeries.length - 1;
-    const cap0 = Number((active.params as Record<string, unknown> | undefined)?.capacity_mcm) || sedSeries[0];
+    const cap0 = Number((activeParams as Record<string, unknown> | undefined)?.capacity_mcm) || sedSeries[0];
     const lost = Math.max(0, cap0 - sedSeries[i]); // mln m³ cho'kindi (tubdan)
     const sv = siteRef.current;
     const toNums = (v: unknown) => (Array.isArray(v) ? v.map(Number) : typeof v === "string" ? v.split(/[\s,;]+/).map(Number) : []).filter((x) => Number.isFinite(x));
@@ -287,7 +293,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
     viewer.setSedimentLevel(lost > 0 ? z : null);
     // ustida suv — NPU (pasport), ko'rinish uchun
     if (npuRef.current != null) viewer.setWaterLevel(npuRef.current - zeroRef.current, { upstreamOnly: true });
-  }, [viewer, sedSeries, cursor, active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewer, sedSeries, cursor, activeId, activeParams]);
 
   // --- 3D: suv sathi, elementlarni bo'yash ---
   const waterKey = kind.viz.water_level ?? null;
@@ -342,7 +348,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
       const base = tw != null ? tw - zeroRef.current : (viewer.baseIfcZ ?? 0);
       viewer.setTailwaterLevel(d[k] > 0.05 ? base + d[k] : null);
     } else viewer.setTailwaterLevel(null);
-  }, [viewer, result, cursor, active, levelSeries, waterKey, kind.viz, guids]);
+  }, [viewer, result, cursor, active, levelSeries, waterKey, kind.viz, kind.id, guids]);
   // Yoriq xavfi xaritasi to'g'on yuzasida (cracking) — ko'k → sariq → qizil
   useEffect(() => {
     if (!viewer) return;
@@ -687,7 +693,9 @@ function Sweep({ kind, values }: { kind: SimKind; values: GenericParams }) {
   const [err, setErr] = useState("");
   const [res, setRes] = useState<Awaited<ReturnType<typeof api.simSweep>> | null>(null);
   const field = numeric.find((f) => f.key === key);
+  const latestSweep = useLatest({ field, values });
   useEffect(() => {
+    const { field, values } = latestSweep.current;
     // oraliq: joriy qiymatning 0.5×…1.5× (chegaralar ichida)
     if (!field) return;
     const cur = Number(values[field.key] ?? field.default) || 0;
@@ -698,7 +706,7 @@ function Sweep({ kind, values }: { kind: SimKind; values: GenericParams }) {
     if (field.max != null) hi = Math.min(hi, field.max);
     setRange((r) => ({ ...r, min: String(+lo.toPrecision(4)), max: String(+hi.toPrecision(4)) }));
     setRes(null);
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, latestSweep]);
   async function run() {
     if (!field) return;
     const lo = Number(range.min), hi = Number(range.max), n = Math.max(2, Math.min(60, range.n));

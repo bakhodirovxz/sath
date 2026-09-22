@@ -42,8 +42,9 @@ jobs:
         with: { node-version: "22", cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
-      - run: npm run build
+      - run: npm run build  # + login to'plami < 500 KB tekshiruvi
   docker:
     runs-on: ubuntu-latest
     needs: [server, web]

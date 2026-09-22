@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type AuditRow, type RationalizationReport, type User } from "../api/client";
 import { fmtDate } from "../ui/format";
 import { useAuth } from "../store/auth";
@@ -152,11 +152,11 @@ function AuditSection({ users }: { users: User[] }) {
   const [action, setAction] = useState("");
   const [userId, setUserId] = useState("");
   const [error, setError] = useState("");
-  const load = (before?: number) =>
+  const load = useCallback((before?: number) =>
     api.audit({ action: action || undefined, user_id: userId ? Number(userId) : undefined, limit: 100, before_id: before })
       .then((r) => setRows((prev) => (before ? [...prev, ...r] : r)))
-      .catch((e) => setError(e.message));
-  useEffect(() => { void load(); }, [action, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((e) => setError(e.message)), [action, userId]);
+  useEffect(() => { void load(); }, [load]);
   return (
     <>
       <h1 style={{ marginTop: 28 }}>Audit jurnali</h1>

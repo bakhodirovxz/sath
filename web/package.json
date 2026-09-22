@@ -7,11 +7,12 @@
     "predev": "node scripts/copy-assets.mjs",
     "dev": "vite",
     "prebuild": "node scripts/copy-assets.mjs",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "lint": "eslint src e2e"
   },
   "dependencies": {
     "@thatopen/components": "3.4.8",
@@ -27,13 +28,19 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.20.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.70.1",
     "vite": "^6.0.3",
     "vitest": "^3.2.7"
   }

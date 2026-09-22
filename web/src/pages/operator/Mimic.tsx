@@ -17,7 +17,7 @@ interface Props {
   onSelect?: (id: string | null) => void;
   onChange?: (s: Scheme) => void;
   onOpen?: (sensorId: number) => void;
-  now?: number;
+  now?: number | undefined;
 }
 
 export default function Mimic({ scheme, sensors, editing = false, selected, onSelect, onChange, onOpen, now }: Props) {
@@ -205,7 +205,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
 }
 
 /** Qiymat katakchasi: qiymat + birlik, alarm kodi, sifat kodi; bog'lanmagan — shtrix "ma'lumot yo'q"; eskirgan — `?`. */
-function ValueBox({ x, y, w, s, label, now, onOpen, editing }: { x: number; y: number; w: number; s?: Sensor; label: string; now?: number; onOpen?: (id: number) => void; editing: boolean }) {
+function ValueBox({ x, y, w, s, label, now, onOpen, editing }: { x: number; y: number; w: number; s?: Sensor | undefined; label: string; now?: number | undefined; onOpen?: ((id: number) => void) | undefined; editing: boolean }) {
   const st = s ? alarmStyle(s.alarm, s.priority) : null;
   const q = s ? qualityStyle(s.last_quality) : null;
   const age = s ? ageSeconds(s.last_ts, now) : null;

@@ -12,7 +12,7 @@ interface Props {
   values: GenericParams;
   onChange: (key: string, v: unknown) => void;
   sources?: Record<string, string>;
-  compact?: boolean;
+  compact?: boolean | undefined;
 }
 
 export function fieldDefaults(fields: SimField[]): GenericParams {
@@ -48,7 +48,7 @@ export default function SimForm({ fields, values, onChange, sources = {}, compac
 }
 
 /** Bitta maydon — Blender qatori: chapda label (birlik, manba belgisi), o'ngda maydon. */
-function FieldInput({ f, v, set, source }: { f: SimField; v: unknown; set: (v: unknown) => void; source?: string; compact?: boolean }) {
+function FieldInput({ f, v, set, source }: { f: SimField; v: unknown; set: (v: unknown) => void; source?: string; compact?: boolean | undefined }) {
   const tag = source ? <span className={`src src-${source}`} title={`${SOURCE_LABEL[source] ?? source}dan to'ldirilgan`}>{SOURCE_LABEL[source] ?? source}</span> : null;
   const label = <span className="blabel" title={f.hint || f.label}>{f.label}{f.unit && <em className="unit">{f.unit}</em>}{tag}</span>;
   let input: React.ReactNode;

@@ -6,7 +6,6 @@ import { api, type AlarmEvent, type Command, type Dashboard, type JournalEntry, 
 import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from "./dashboard/TwinPanels";
 import { useLive } from "../hooks/useLive";
 import TopBar from "../ui/TopBar";
-import Dialog from "../ui/Dialog";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
 import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
 import Mimic from "./operator/Mimic";
@@ -129,7 +128,7 @@ export default function DashboardPage() {
     api.snapshot(pid, historyAt).then((snap) => {
       setSensors((prev) => prev.map((s) => { const u = snap.sensors.find((x) => x.sensor_id === s.id); return u ? { ...s, last_value: u.value, last_ts: u.ts, alarm: u.alarm } : s; }));
     }).catch((e) => setError(e.message));
-  }, [historyAt, pid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [historyAt, pid, load]);
 
   useEffect(() => {
     if (!flash) return;

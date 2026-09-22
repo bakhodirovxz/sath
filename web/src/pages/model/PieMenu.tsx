@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLatest } from "../../hooks/useLatest";
 import { pickPie, piePosition } from "../../ui/blender";
 
 /** Blender pie menyu: kursor atrofida bo'laklar; sichqoncha yo'nalishi bo'lagini tanlaydi, bosish yoki
@@ -18,24 +19,26 @@ export default function PieMenu({ x, y, title, items, releaseKey, onClose }: {
     onClose();
   };
 
+  const cbs = useLatest({ pick, onClose, releaseKey });
   useEffect(() => {
     const move = (e: MouseEvent) => { const h = pickPie(e.clientX - x, e.clientY - y, items.length); hotRef.current = h; setHot(h); };
     const up = (e: KeyboardEvent) => {
+      const { releaseKey, pick } = cbs.current;
       if (releaseKey && e.key.toLowerCase() === releaseKey.toLowerCase()) {
         // Blender: tugma qo'yib yuborilganda yo'nalish bo'lsa tanlanadi, bo'lmasa menyu ochiq qoladi (bosishga)
         if (hotRef.current != null) pick(hotRef.current);
       }
     };
     const down = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key === "Escape") { e.stopPropagation(); cbs.current.onClose(); return; }
       const n = Number(e.key);
-      if (n >= 1 && n <= items.length) { e.preventDefault(); pick(n - 1); }
+      if (n >= 1 && n <= items.length) { e.preventDefault(); cbs.current.pick(n - 1); }
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("keyup", up);
     window.addEventListener("keydown", down, true);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("keyup", up); window.removeEventListener("keydown", down, true); };
-  }, [x, y, items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [x, y, items.length, cbs]);
 
   return (
     <div className="pie-backdrop" onMouseDown={(e) => { e.preventDefault(); pick(hotRef.current, true); }} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>

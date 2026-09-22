@@ -996,7 +996,7 @@ export class Viewer {
 
   /** Suv sathi tekisligi (IFC Z, m). waves — to'lqin amplitudasi (m; 0 — tinch), shamol/ko'chki to'lqini,
    * toshqin uchun; upstreamOnly — faqat to'g'onning yuqori byef (+Y IFC) tomonida (ombor). */
-  setWaterLevel(ifcZ: number | null, opts: { waves?: number; upstreamOnly?: boolean } = {}) {
+  setWaterLevel(ifcZ: number | null, opts: { waves?: number | undefined; upstreamOnly?: boolean | undefined } = {}) {
     if (!this.alive()) { this.stopWaterAnim(); return; }
     if (this.dyn && ifcZ != null) return; // jonli suv ishlayapti — statik tekislik qo'yilmaydi
     if (this.water) {
@@ -1200,7 +1200,7 @@ export class Viewer {
    *  to'g'on uzun o'qi bo'ylab, ko'ndalang o'q — qisqa gorizontal tomon, yuqori byef — IFC koordinatasi katta tomon
    *  (conformingWater bilan bir xil). spec null — olib tashlash. */
   private section: THREE.Group | null = null;
-  async showSection(guid: string | null, spec: { profile?: [number, number][]; h1?: number; h2?: number; phreatic?: { x: number[]; y: number[] }; forces?: { name: string; v_kn: number; h_kn: number; arm_v_m: number; arm_h_m: number }[] } | null) {
+  async showSection(guid: string | null, spec: { profile?: [number, number][] | undefined; h1?: number | undefined; h2?: number | undefined; phreatic?: { x: number[]; y: number[] } | undefined; forces?: { name: string; v_kn: number; h_kn: number; arm_v_m: number; arm_h_m: number }[] | undefined } | null) {
     if (!this.alive()) return;
     if (this.section) {
       this.world.scene.three.remove(this.section);
