@@ -15,7 +15,9 @@ sys.path.insert(0, SPIKE)
 import fc_bridge  # noqa: E402  (main() ni chaqirmaydi — pastda import guard bor)
 
 FC_HOME = fc_bridge.FC_HOME
-DWG = os.environ.get("GES_TEST_DWG", r"C:\Users\uge226\Desktop\BIM\desktop\tests\Namuna.dwg")
+DWG = os.environ.get(  # CODE-04: repo ga nisbatan
+    "GES_TEST_DWG", os.path.join(os.path.dirname(os.path.dirname(SPIKE)), "tests", "Namuna.dwg")
+)
 OUT_DXF = os.path.join(os.environ.get("TEMP", "."), "ges_spike.dxf")
 
 

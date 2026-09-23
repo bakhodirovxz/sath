@@ -14,7 +14,9 @@ SPIKE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SPIKE)
 import fc_bridge  # noqa: E402
 
-IFC = os.environ.get("GES_TEST_IFC", r"C:\Users\uge226\Desktop\BIM\docs\samples\namuna_ges_v1.ifc")
+IFC = os.environ.get(  # CODE-04: repo ga nisbatan
+    "GES_TEST_IFC", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(SPIKE))), "docs", "samples", "namuna_ges_v1.ifc")
+)
 
 
 def main():

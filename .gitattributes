@@ -1,0 +1,8 @@
+# Git LFS (CODE-04): katta binar fayllar — repo tarixini emas, yangi versiyalarni LFS da saqlaydi.
+# Klonlashdan keyin: git lfs install && git lfs pull (CI: actions/checkout lfs: true)
+*.FCStd filter=lfs diff=lfs merge=lfs -text
+*.whl filter=lfs diff=lfs merge=lfs -text
+*.dwg filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.3ds filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text

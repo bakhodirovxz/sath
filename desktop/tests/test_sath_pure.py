@@ -213,3 +213,34 @@ def test_package_names_distinct_and_product_in_build_info(tmp_path, monkeypatch)
     side = bp.write_build_info(tmp_path, "0.3.0")
     assert json.loads(side.read_text(encoding="utf-8"))["product"] == "sath-freecad"
     assert json.loads((tmp_path / "Sath-BUILD.json").read_text(encoding="utf-8"))["name"].startswith("Sath-FreeCAD-")
+
+
+def test_binaries_in_git_lfs_and_no_local_user_paths():
+    """CODE-04: katta binar fayllar Git LFS da (indeksda pointer), ish nusxasida haqiqiy fayl (smudge);
+    lokal foydalanuvchi yo'llari (C:/Users/<nom>) va spike loglari repoda yo'q."""
+    import re
+    import shutil
+    import subprocess
+
+    attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    for pat in ("*.FCStd", "*.whl", "*.dwg", "*.fbx", "*.3ds", "*.blend"):
+        assert f"{pat} filter=lfs diff=lfs merge=lfs -text" in attrs, pat
+    git = shutil.which("git")
+    if git is None or not (ROOT / ".git").exists():
+        return
+    files = subprocess.run([git, "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    assert not [f for f in files if f.startswith("desktop/blender/spike/") and f.endswith(".log")]
+    lfs = subprocess.run([git, "lfs", "ls-files", "-n"], cwd=ROOT, capture_output=True, text=True)
+    if lfs.returncode == 0:
+        tracked = set(lfs.stdout.splitlines())
+        binaries = {f for f in files if re.search(r"\.(fcstd|whl|dwg|fbx|3ds|blend)$", f, re.I)}
+        assert binaries and binaries <= tracked, binaries - tracked
+        # ish nusxasida pointer emas, haqiqiy fayl (testlar shu fayllarni o'qiydi)
+        assert (ROOT / "server" / "tests" / "samples" / "box.fbx").read_bytes()[:7] == b"Kaydara"
+    bad = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+(?!<)[^\\/\s\"']+[\\/]", re.I)
+    for f in files:
+        if not f.endswith((".py", ".ps1", ".md", ".toml", ".yml", ".json", ".txt")) or f.endswith("package-lock.json"):
+            continue
+        p = ROOT / f
+        if p.is_file() and bad.search(p.read_text(encoding="utf-8", errors="replace")):
+            raise AssertionError(f"lokal foydalanuvchi yo'li: {f}")

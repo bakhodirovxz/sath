@@ -5,6 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { lfs: true }  # CODE-04: namuna FBX/3DS/DWG, wheel lar Git LFS da
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
@@ -28,6 +29,7 @@ jobs:
           --health-cmd "pg_isready -U ges" --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with: { lfs: true }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e "./sim[dev]" -e "./server[dev,postgres]"
