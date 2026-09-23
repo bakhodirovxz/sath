@@ -27,7 +27,7 @@ def _count_queries(fn):
     return c.n
 
 
-def test_list_projects_constant_queries(client, users, admin):
+def test_list_projects_constant_queries(client, users, admin, monkeypatch):
     uid = users["ids"]["engineer"]
     with SessionLocal() as db:
         creator = db.query(User).filter_by(username="admin").one().id
@@ -39,6 +39,11 @@ def test_list_projects_constant_queries(client, users, admin):
             for _ in range(i % 3):
                 db.add(Model(project_id=p.id, name=f"M{_}{i}"))
         db.commit()
+    # AUTH-01: sessiya tekshiruvi keshlanadi — isitib, kesh muddatini testga cho'zamiz (so'rovlar soni barqaror)
+    from ges_server.auth import sessions
+
+    monkeypatch.setattr(sessions, "SESSION_CACHE_S", 3600.0)
+    client.get("/api/auth/me", headers=users["engineer"])
     n_small = _count_queries(lambda: client.get("/api/projects?limit=5", headers=users["engineer"]))
     r = client.get("/api/projects?limit=500", headers=users["engineer"])
     n_big = _count_queries(lambda: client.get("/api/projects?limit=500", headers=users["engineer"]))
