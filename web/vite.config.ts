@@ -4,8 +4,9 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
-    proxy: { "/api": { target: "http://localhost:8000", ws: true } },
+    port: Number(process.env.VITE_PORT ?? 5173),
+    // Parallel ishlash/e2e uchun server manzili env orqali (default — lokal 8000)
+    proxy: { "/api": { target: process.env.VITE_API_PROXY ?? "http://localhost:8000", ws: true } },
   },
   build: {
     chunkSizeWarningLimit: 1500,
