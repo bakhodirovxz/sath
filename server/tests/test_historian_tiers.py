@@ -4,7 +4,7 @@ ma'lumot, partiyali purge (alarm atrofi saqlanadi), qatlam muddati, arxiv siqish
 import tracemalloc
 from datetime import datetime, timedelta, timezone
 
-from conftest import ingest_headers
+from conftest import ingest_headers, manual_headers
 from ges_server.db import SessionLocal, engine
 from ges_server.monitoring import historian, live
 from ges_server.orm import AlarmEvent, AlarmState, Reading, ReadingAgg, ReadingHourly, Sensor
@@ -159,7 +159,7 @@ def _import_csv(client, users, sid, start: datetime, n: int, step_s: int, value:
     r = client.post(
         f"/api/sensors/{sid}/import",
         files={"file": ("old.csv", body.encode(), "text/csv")},
-        headers=users["engineer"],
+        headers=manual_headers(client, users),
     )
     assert r.status_code == 200 and r.json()["accepted"] == n, r.text
 

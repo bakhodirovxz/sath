@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from conftest import upload
+from conftest import ingest_headers, upload
 from ges_server.db import SessionLocal
 from ges_server.monitoring import twin
 from ges_server.orm import Project, Sensor
@@ -25,7 +25,7 @@ def _read(client, users, **vals):
     client.post(
         f"/api/projects/{users['project_id']}/readings",
         json=[{"key": k.replace("_", "."), "value": v} for k, v in vals.items()],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
 
 

@@ -1,7 +1,7 @@
 """shift_supervisor roli (SCADA-01): Role enum kengaytmasi
 
 Revision ID: 0032
-Revises: 0031
+Revises: 0041
 Create Date: 2026-09-23
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = '0032'
-down_revision = '0031'
+down_revision = '0041'
 branch_labels = None
 depends_on = None
 
