@@ -129,6 +129,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
                 mode=mode,
                 image=settings.cfd_image,
                 cpus=settings.cfd_cpus,
+                memory=settings.cfd_memory,
                 timeout_s=settings.cfd_timeout_s,
                 on_progress=lambda p, note: _set_progress(job_id, p, note),
             )

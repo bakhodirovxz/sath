@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     cfd_mode: str = "docker"
     cfd_image: str = "opencfd/openfoam-default:2406"
     cfd_cpus: float = 2.0
+    # docker rejimi: konteyner xotira chegarasi (OPS-05; --memory, swap siz)
+    cfd_memory: str = "8g"
     # Analitik simulyatsiya: alohida jarayonda (spawn) vaqt chegarasi bilan; testlarda o'chiriladi
     sim_isolate: bool = True
     sim_timeout_s: int = 300

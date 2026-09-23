@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -43,6 +44,96 @@ def openfoam_available() -> str | None:
     return None
 
 
+# docker CLI (testda soxta buyruq bilan almashtiriladi)
+DOCKER: list[str] = ["docker"]
+LOCAL_CMD: list[str] = ["bash", "-c", "sh ./Allrun"]
+
+
+def docker_command(
+    case_dir: Path, name: str, *, image: str, cpus: float, memory: str, user: str | None
+) -> list[str]:
+    """OPS-05: nomli (timeoutda `docker kill <nom>`), tarmoqsiz, xotira/CPU/PID chegarali, root siz konteyner."""
+    cmd = [
+        *DOCKER,
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--network",
+        "none",
+        f"--cpus={float(cpus)}",
+        "--memory",
+        memory,
+        "--memory-swap",
+        memory,
+        "--pids-limit",
+        "2048",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "-e",
+        "HOME=/tmp",
+    ]
+    if user:
+        cmd += ["--user", user]
+    return cmd + [
+        "-v",
+        f"{case_dir}:/work",
+        "-w",
+        "/work",
+        image,
+        "bash",
+        "-c",
+        "source /openfoam/bash.rc 2>/dev/null; cd /work && sh ./Allrun",
+    ]
+
+
+def _default_user() -> str | None:
+    """Joriy uid:gid (Linux/macOS) — case papkasidagi fayllar root ga o'tmaydi; Windows da None."""
+    if hasattr(os, "getuid"):
+        return f"{os.getuid()}:{os.getgid()}"
+    return None
+
+
+def _popen_group_kwargs() -> dict:
+    """Lokal solver alohida jarayon guruhida — timeoutda butun daraxt (Allrun → blockMesh/simpleFoam) o'ldiriladi."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30, check=False
+            )
+        else:
+            import signal
+
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("CFD jarayon guruhini o'ldirib bo'lmadi: %s", e)
+    try:
+        proc.kill()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        log.warning("CFD jarayoni %s 30 s da to'xtamadi", proc.pid)
+
+
+def _docker_kill(name: str) -> None:
+    try:
+        subprocess.run([*DOCKER, "kill", name], capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("docker kill %s: %s", name, e)
+
+
 def run_case(
     case_dir: Path,
     total: float,
@@ -52,44 +143,49 @@ def run_case(
     on_progress: Callable[[float, str], None] | None = None,
     timeout_s: int = 3600,
     cpus: float = 2.0,
+    memory: str = "8g",
+    user: str | None = "auto",
+    poll_s: float = 2.0,
 ) -> None:
     """Allrun ni bajaradi; `total` — progress uchun (iteratsiya soni yoki endTime).
-    Log dan "Time = X" o'qib on_progress(x/total, satr) chaqiradi. Xato — RuntimeError."""
+    Log dan "Time = X" o'qib on_progress(x/total, satr) chaqiradi. Xato — CfdError.
+
+    Timeout (yoki kutilmagan xato) da solver haqiqatan to'xtatiladi (OPS-05): docker — `docker kill <nom>`
+    (CLI ni o'ldirish konteynerni to'xtatmaydi), lokal — butun jarayon guruhi (POSIX killpg / Windows
+    taskkill /T)."""
     mode = mode or openfoam_available()
     if mode is None:
         raise CfdError("OpenFOAM topilmadi: docker yoki lokal o'rnatma kerak")
     case_dir = case_dir.resolve()
+    name = None
     if mode == "docker":
-        cmd = [
-            "docker",
-            "run",
-            "--rm",
-            f"--cpus={cpus}",
-            "-v",
-            f"{case_dir}:/work",
-            "-w",
-            "/work",
-            image,
-            "bash",
-            "-c",
-            "source /openfoam/bash.rc 2>/dev/null; cd /work && sh ./Allrun",
-        ]
+        name = f"sath-cfd-{re.sub(r'[^a-zA-Z0-9_.-]', '_', case_dir.name)}-{uuid.uuid4().hex[:8]}"
+        cmd = docker_command(
+            case_dir, name, image=image, cpus=cpus, memory=memory, user=_default_user() if user == "auto" else user
+        )
     else:
-        cmd = ["bash", "-c", "sh ./Allrun"]
+        cmd = list(LOCAL_CMD)
     log_path = case_dir / "run.log"
     with open(log_path, "w", encoding="utf-8") as fh:
-        proc = subprocess.Popen(cmd, cwd=case_dir, stdout=fh, stderr=subprocess.STDOUT, env=solver_env())
+        proc = subprocess.Popen(
+            cmd, cwd=case_dir, stdout=fh, stderr=subprocess.STDOUT, env=solver_env(), **_popen_group_kwargs()
+        )
         start = time.time()
         last = -1.0
-        while proc.poll() is None:
-            time.sleep(2)
-            if time.time() - start > timeout_s:
-                proc.kill()
-                raise CfdError(f"CFD vaqt chegarasidan oshdi ({timeout_s}s)")
-            p = _progress(case_dir, total)
-            if on_progress and p > last:
-                on_progress(p, _last_time_line(case_dir))
-                last = p
+        try:
+            while proc.poll() is None:
+                time.sleep(poll_s)
+                if time.time() - start > timeout_s:
+                    raise CfdError(f"CFD vaqt chegarasidan oshdi ({timeout_s}s)")
+                p = _progress(case_dir, total)
+                if on_progress and p > last:
+                    on_progress(p, _last_time_line(case_dir))
+                    last = p
+        finally:
+            if proc.poll() is None:  # timeout yoki kutilmagan xato — solverni qoldirmaymiz
+                if name:
+                    _docker_kill(name)
+                _kill_tree(proc)
     if not (case_dir / "DONE").exists():
         # solver chiqishi foydalanuvchiga emas — server jurnaliga (u /sim/{id}/log da ham ko'rinadi)
         log.error("OpenFOAM xato bilan tugadi (%s):\n%s", case_dir.name, _tail(log_path))

@@ -184,3 +184,81 @@ def test_case_objects_coerce_numbers(tmp_path):
     cd = (tmp_path / "system/controlDict").read_text()
     assert "endTime         12;" in cd and "writeInterval   12;" in cd
     assert isinstance(case.end_time_s, float)
+
+
+# ---------- OPS-05: timeout solverni haqiqatan to'xtatadi ----------
+
+_CHILD = """
+import os, subprocess, sys, time
+hb = sys.argv[1]
+if len(sys.argv) > 2:  # nevara: yurak urishini faylga yozadi
+    while True:
+        with open(hb, "a") as fh:
+            fh.write("x")
+        time.sleep(0.05)
+subprocess.Popen([sys.executable, __file__, hb, "child"])
+time.sleep(60)
+"""
+
+
+def _heartbeat_stopped(path, wait=1.0) -> bool:
+    import time
+
+    time.sleep(wait)  # o'ldirilgan jarayon oxirgi yozuvni tugatsin
+    a = path.stat().st_size if path.exists() else 0
+    time.sleep(wait)
+    b = path.stat().st_size if path.exists() else 0
+    return a == b
+
+
+def test_local_timeout_kills_whole_process_tree(tmp_path, monkeypatch):
+    import sys
+
+    from ges_sim.cfd import runner
+
+    script = tmp_path / "solver.py"
+    script.write_text(_CHILD, encoding="utf-8")
+    hb = tmp_path / "hb.txt"
+    monkeypatch.setattr(runner, "LOCAL_CMD", [sys.executable, str(script), str(hb)])
+    import time
+
+    t0 = time.time()
+    with pytest.raises(runner.CfdError, match="vaqt chegarasidan"):
+        runner.run_case(tmp_path, 100, mode="local", timeout_s=1, poll_s=0.2)
+    assert time.time() - t0 < 30
+    assert hb.exists() and _heartbeat_stopped(hb)  # nevara jarayon ham o'ldirilgan
+
+
+def test_docker_timeout_kills_named_container(tmp_path, monkeypatch):
+    import json
+    import sys
+
+    from ges_sim.cfd import runner
+
+    calls = tmp_path / "calls.jsonl"
+    fake = tmp_path / "fake_docker.py"
+    fake.write_text(
+        "import json, sys, time\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+        "if sys.argv[1] == 'run':\n    time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runner, "DOCKER", [sys.executable, str(fake)])
+    case = tmp_path / "case7"
+    case.mkdir()
+    with pytest.raises(runner.CfdError):
+        runner.run_case(case, 100, mode="docker", timeout_s=1, poll_s=0.2, cpus=3, memory="4g", user="1000:1000")
+    lines = [json.loads(x) for x in calls.read_text(encoding="utf-8").splitlines()]
+    run = next(c for c in lines if c[0] == "run")
+    name = run[run.index("--name") + 1]
+    assert name.startswith("sath-cfd-case7-")
+    assert run[run.index("--network") + 1] == "none" and run[run.index("--memory") + 1] == "4g"
+    assert "--cpus=3.0" in run and run[run.index("--user") + 1] == "1000:1000"
+    assert ["kill", name] in lines  # CLI emas — konteynerning o'zi to'xtatildi
+
+
+def test_docker_command_defaults():
+    from ges_sim.cfd import runner
+
+    cmd = runner.docker_command(Path("/tmp/c"), "sath-cfd-x", image="img", cpus=2, memory="8g", user=None)
+    assert "--user" not in cmd and cmd[cmd.index("--pids-limit") + 1] == "2048" and "no-new-privileges" in cmd
