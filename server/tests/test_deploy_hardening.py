@@ -66,3 +66,74 @@ def test_ha_compose_override_and_caddy():
     caddy = (DEPLOY / "Caddyfile.ha").read_text(encoding="utf-8")
     assert "dynamic a" in caddy and "health_uri /api/ready" in caddy
     assert "/api/ready" in (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
+
+
+def _compose(name: str = "docker-compose.yml") -> dict:
+    import yaml
+
+    class _Loader(yaml.SafeLoader):
+        pass
+
+    # compose teglari (!reset, !override) — qiymatning o'zi
+    _Loader.add_multi_constructor("!", lambda loader, suffix, node: loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode) else loader.construct_scalar(node))
+    return yaml.load((DEPLOY / name).read_text(encoding="utf-8"), Loader=_Loader)  # noqa: S506
+
+
+def test_cfd_worker_shares_server_db_and_sees_only_cases():
+    """CFD worker server bilan bir DB (Postgres) ga ulanadi; /data to'liq (secret.key, ges.db) mount qilinmaydi,
+    .env (sirlar) berilmaydi — faqat cfd_data hajmi (SEC-01, yangi xato: worker boshqa SQLite ga ulanardi)."""
+    c = _compose()
+    cfd, ges = c["services"]["cfd"], c["services"]["ges"]
+    assert cfd["environment"]["GES_DATABASE_URL"] == ges["environment"]["GES_DATABASE_URL"]
+    assert "env_file" not in cfd
+    assert str(cfd["environment"]["GES_SECRET_KEY_REQUIRED"]).lower() == "false"
+    assert cfd["volumes"] == ["cfd_data:/data/cfd"]
+    assert not any(str(v).split(":")[1] == "/data" for v in cfd["volumes"])
+    assert "cfd_data:/data/cfd" in ges["volumes"] and "cfd_data" in c["volumes"]
+    ha = _compose("docker-compose.ha.yml")
+    assert "cfd_data:/data/cfd" in ha["services"]["ges-worker"]["volumes"]
+    dockerfile = (DEPLOY / "Dockerfile.cfd").read_text(encoding="utf-8")
+    assert "GES_DATABASE_URL=sqlite" not in dockerfile and "GES_SECRET_KEY_REQUIRED=false" in dockerfile
+
+
+def test_cfd_worker_refuses_invisible_sqlite(tmp_path):
+    from ges_server.sim.worker import check_database_url
+
+    assert check_database_url("sqlite:////data/ges.db") is not None  # konteynerda server bazasi ko'rinmaydi
+    db = tmp_path / "ges.db"
+    db.write_bytes(b"")
+    assert check_database_url(f"sqlite:///{db.as_posix()}") is None  # lokal dev: umumiy fayl
+    assert check_database_url("postgresql+psycopg://ges:x@postgres:5432/ges") is None
+
+
+def test_secret_key_not_required_for_worker(monkeypatch, tmp_path):
+    from ges_server import config
+
+    monkeypatch.delenv("GES_SECRET_KEY", raising=False)
+    monkeypatch.setenv("GES_SECRET_KEY_REQUIRED", "false")
+    monkeypatch.setenv("GES_DATA_DIR", str(tmp_path))
+    s = config.load_settings()
+    assert s.secret_key == "" and not (tmp_path / "secret.key").exists()
+
+
+def test_solver_env_drops_secrets():
+    from ges_sim.cfd.runner import solver_env
+
+    env = solver_env(
+        {
+            "PATH": "/usr/bin",
+            "WM_PROJECT_DIR": "/openfoam",
+            "FOAM_RUN": "/work",
+            "LD_LIBRARY_PATH": "/lib",
+            "DOCKER_HOST": "unix:///var/run/docker.sock",
+            "GES_DATABASE_URL": "postgresql://ges:parol@db/ges",
+            "GES_SECRET_KEY": "k",
+            "POSTGRES_PASSWORD": "p",
+            "PGPASSWORD": "p",
+            "AWS_SECRET_ACCESS_KEY": "s",
+            "GITHUB_TOKEN": "t",
+            "API_KEY": "a",
+            "DATABASE_URL": "x",
+        }
+    )
+    assert set(env) == {"PATH", "WM_PROJECT_DIR", "FOAM_RUN", "LD_LIBRARY_PATH", "DOCKER_HOST"}

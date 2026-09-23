@@ -78,7 +78,11 @@ def _out(j: SimJob, with_params: bool = False) -> SimOut:
     )
 
 
-def _result_path(job_id: int):
+def _result_path(job_id: int, kind: str = ""):
+    """Natija JSON. CFD — case papkasida (`cfd/<id>/result.json`): CFD worker faqat `cfd/` hajmini ko'radi,
+    butun `/data` ni (secret.key, fayllar) emas."""
+    if kind == "cfd":
+        return _case_dir(job_id) / "result.json"
     d = get_settings().data_dir / "sim"
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{job_id}.json"
@@ -134,7 +138,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
             result = compute.run_isolated(kind, params, settings.sim_timeout_s)
         else:
             result = compute.compute(kind, params)
-        _result_path(job_id).write_text(json.dumps(result), encoding="utf-8")
+        _result_path(job_id, kind).write_text(json.dumps(result), encoding="utf-8")
         ok, summary, err = True, result["summary"], ""
     except Exception as e:  # noqa: BLE001 — foydalanuvchiga xato matni ko'rsatiladi
         log.exception("sim job %s failed", job_id)
@@ -386,7 +390,9 @@ def get_result(job_id: int, user: CurrentUser, db: DB):
     job = _get_job(db, job_id, user)
     if job.status != SimStatus.done:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Holati: {job.status.value}")
-    p = _result_path(job.id)
+    p = _result_path(job.id, job.kind)
+    if not p.exists() and job.kind == "cfd":
+        p = _result_path(job.id)  # eski joy (data/sim/<id>.json)
     if not p.exists():
         raise HTTPException(status.HTTP_410_GONE, "Natija fayli topilmadi")
     return json.loads(p.read_text(encoding="utf-8"))

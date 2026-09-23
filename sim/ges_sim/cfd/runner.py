@@ -22,6 +22,18 @@ class CfdError(RuntimeError):
     """Foydalanuvchiga ko'rsatsa bo'ladigan CFD xatosi (ichki yo'l, solver chiqishi, muhit matnisiz)."""
 
 
+# Solver jarayoniga o'tmaydigan muhit o'zgaruvchilari (DB URL, JWT kaliti, parollar, tokenlar) — foydalanuvchi
+# case i (#include, codeStream) ular orqali sirni o'qiy olmasin
+_SECRET_ENV = re.compile(r"^(GES_|POSTGRES|PG[A-Z])|SECRET|PASSW|TOKEN|CREDENTIAL|PRIVATE|_KEY$|^KEY$|DATABASE_URL", re.I)
+
+
+def solver_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """OpenFOAM/docker uchun tozalangan muhit: sirlar (GES_*, POSTGRES*, *PASSWORD*, *TOKEN*, *_KEY ...)
+    olib tashlanadi, qolgani (PATH, WM_*, FOAM_*, LD_LIBRARY_PATH, DOCKER_HOST) saqlanadi."""
+    env = dict(os.environ if base is None else base)
+    return {k: v for k, v in env.items() if not _SECRET_ENV.search(k)}
+
+
 def openfoam_available() -> str | None:
     """'local' — lokal OpenFOAM (WM_PROJECT_DIR), 'docker' — docker bor, None — yo'q."""
     if os.environ.get("WM_PROJECT_DIR") and shutil.which("simpleFoam"):
@@ -65,8 +77,8 @@ def run_case(
     else:
         cmd = ["bash", "-c", "sh ./Allrun"]
     log_path = case_dir / "run.log"
-    with open(log_path, "w", encoding="utf-8") as log:
-        proc = subprocess.Popen(cmd, cwd=case_dir, stdout=log, stderr=subprocess.STDOUT)
+    with open(log_path, "w", encoding="utf-8") as fh:
+        proc = subprocess.Popen(cmd, cwd=case_dir, stdout=fh, stderr=subprocess.STDOUT, env=solver_env())
         start = time.time()
         last = -1.0
         while proc.poll() is None:

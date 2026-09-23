@@ -39,7 +39,7 @@ COPY --from=web /web/dist ./web/dist
 COPY --from=web /web/tools ./web/tools
 # Root siz (L5): sath foydalanuvchisi; /data hajmi shu egaga (named volume birinchi yaratilganda egalikni oladi)
 RUN useradd --system --uid 10001 --create-home --home-dir /home/sath sath \
-    && mkdir -p /data && chown -R sath:sath /data /app
+    && mkdir -p /data/cfd && chown -R sath:sath /data /app
 USER sath
 VOLUME ["/data"]
 EXPOSE 8000

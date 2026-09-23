@@ -31,6 +31,7 @@ services:
       GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
     volumes:
       - ges_data:/data
+      - cfd_data:/data/cfd
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true

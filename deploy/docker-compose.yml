@@ -26,6 +26,8 @@ services:
       GES_RATE_TRUST_FORWARDED: ${GES_RATE_TRUST_FORWARDED:-false}
     volumes:
       - ges_data:/data
+      # CFD case papkalari alohida hajmda — cfd worker faqat shuni ko'radi (secret.key, IFC fayllar emas)
+      - cfd_data:/data/cfd
     # Qattiqlashtirish (L5): imtiyozsiz, faqat o'qiladigan ildiz FS (/data va /tmp yoziladi), PID/xotira chegarasi
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -79,11 +81,20 @@ services:
     image: sath-cfd:latest
     profiles: ["cfd"]
     restart: unless-stopped
-    env_file: .env
+    # .env to'liq berilmaydi (SEC-01): worker ga faqat DB manzili kerak — JWT kaliti, admin/SMTP/MQTT
+    # parollari OpenFOAM konteyneriga tushmaydi. DB — server bilan AYNAN bir xil (default Postgres).
     environment:
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
       GES_CFD_MODE: local
+      GES_SECRET_KEY_REQUIRED: "false"
+      GES_CFD_TIMEOUT_S: ${GES_CFD_TIMEOUT_S:-10800}
+    # Faqat case papkalari (ges servisi bilan umumiy) — butun /data (secret.key, ges.db, fayllar) emas
     volumes:
-      - ges_data:/data
+      - cfd_data:/data/cfd
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     cpus: "${CFD_CPUS:-4}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -118,6 +129,7 @@ services:
 
 volumes:
   ges_data:
+  cfd_data:
   pg_data:
   caddy_data:
   caddy_config:

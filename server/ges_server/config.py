@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     app_name: str = "Sath"
     # Berilmasa data_dir/secret.key dan o'qiladi yoki yaratiladi (pastga qarang)
     secret_key: str = ""
+    # false — JWT kaliti umuman o'qilmaydi/yaratilmaydi (CFD worker: token chiqarmaydi, /data/secret.key ni
+    # ko'rmaydi — faqat case papkasi mount qilinadi)
+    secret_key_required: bool = True
     # L2: access token qisqa umrli, refresh token sessiya muddati (aylantiriladi); WS da qayta avtorizatsiya davri
     access_token_minutes: int = 15
     refresh_token_hours: float = 12
@@ -154,8 +157,14 @@ class Settings(BaseSettings):
         return self.secret_key
 
 
+def load_settings() -> Settings:
+    """Muhitdan yangi Settings (keshsiz); JWT kaliti kerak bo'lsa (default) o'qiladi/yaratiladi."""
+    settings = Settings()
+    if settings.secret_key_required:
+        settings.ensure_secret_key()
+    return settings
+
+
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-    settings.ensure_secret_key()
-    return settings
+    return load_settings()
