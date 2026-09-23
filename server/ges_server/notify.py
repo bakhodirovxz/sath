@@ -1,19 +1,30 @@
 """Email bildirishnomalar (ixtiyoriy). GES_SMTP_URL berilmasa hech narsa yubormaydi.
 
 Format: smtp://user:pass@host:587?from=ges@company.uz&tls=1   (smtps:// — SSL)
+        ixtiyoriy `cafile=/yo'l/ca.pem` — ichki (korporativ) CA sertifikati.
+TLS (SRV-02): STARTTLS va SMTPS `ssl.create_default_context()` bilan — server sertifikati va host nomi
+tekshiriladi (MITM da parol/xabar ochiq ketmaydi).
 
 Yuborish (C5): cheklangan o'lchamli navbat + bitta ishchi oqim — har xabar uchun yangi thread emas,
 navbat to'lsa xabar tashlanadi va loglanadi (`dropped`). Bir guruhdagi (`group`, masalan
 `alarm:<project_id>`) navbatda turgan xabarlar bitta jamlangan emailga birlashtiriladi — alarm
-toshqinida email bo'roni bo'lmaydi.
+toshqinida email bo'roni bo'lmaydi; jamlashda boshqa guruh xabarlari tartibi saqlanadi (navbat
+oldiga qaytadi, oxiriga emas). Yuborish xatosi — eksponensial kutish bilan `MAX_ATTEMPTS` gacha qayta
+urinish; `sent` faqat muvaffaqiyatli, `failed` — urinishlar tugagan xabarlar.
 """
 
 from __future__ import annotations
 
+import collections
+import heapq
+import itertools
 import logging
 import queue
 import smtplib
+import ssl
 import threading
+import time
+import weakref
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from urllib.parse import parse_qs, unquote, urlparse
@@ -24,6 +35,9 @@ log = logging.getLogger("ges_server.notify")
 
 QUEUE_MAX = 500  # navbat sig'imi; to'lsa yangi xabar tashlanadi
 COALESCE_MAX = 50  # bitta jamlangan emailga ko'pi bilan shuncha xabar
+MAX_ATTEMPTS = 5  # bitta xabar uchun urinishlar (1 + 4 qayta)
+RETRY_BASE_S = 10.0  # kutish: 10, 20, 40, 80 s … (RETRY_MAX_S dan oshmaydi)
+RETRY_MAX_S = 600.0
 
 
 @dataclass
@@ -33,6 +47,7 @@ class Item:
     body: str
     group: str | None = None
     merged: int = field(default=1)
+    attempts: int = field(default=0)
 
 
 _queue: queue.Queue[Item] | None = None
@@ -40,12 +55,25 @@ _worker: threading.Thread | None = None
 _lock = threading.Lock()
 dropped = 0
 sent = 0
+failed = 0
+retried = 0
+_now = time.monotonic  # testlarda almashtiriladi
+# Navbat bo'yicha: oldingi (jamlashda ajratilgan) xabarlar va kechiktirilgan qayta urinishlar
+_front: weakref.WeakKeyDictionary[queue.Queue, collections.deque[Item]] = weakref.WeakKeyDictionary()
+_retry: weakref.WeakKeyDictionary[queue.Queue, list[tuple[float, int, Item]]] = weakref.WeakKeyDictionary()
+_seq = itertools.count()
 
 
-def _send(to: list[str], subject: str, body: str) -> None:
+def tls_context(cafile: str | None = None) -> ssl.SSLContext:
+    """Sertifikat va host nomini tekshiradigan kontekst (CERT_REQUIRED, check_hostname)."""
+    return ssl.create_default_context(cafile=cafile)
+
+
+def _send(to: list[str], subject: str, body: str) -> bool:
+    """Bitta email. True — yuborildi (yoki SMTP sozlanmagan — yuboradigan narsa yo'q), False — xato."""
     url = get_settings().smtp_url
     if not url or not to:
-        return
+        return True
     u = urlparse(url)
     q = parse_qs(u.query)
     sender = q.get("from", [u.username or "sath@localhost"])[0]
@@ -55,30 +83,45 @@ def _send(to: list[str], subject: str, body: str) -> None:
     msg["To"] = ", ".join(to)
     msg["Subject"] = subject
     msg.set_content(body)
+    host = u.hostname or "localhost"
     try:
-        cls = smtplib.SMTP_SSL if u.scheme == "smtps" else smtplib.SMTP
-        with cls(
-            u.hostname or "localhost", u.port or (465 if u.scheme == "smtps" else 587), timeout=20
-        ) as s:
+        ctx = tls_context(q.get("cafile", [None])[0])
+        if u.scheme == "smtps":
+            conn = smtplib.SMTP_SSL(host, u.port or 465, timeout=20, context=ctx)
+        else:
+            conn = smtplib.SMTP(host, u.port or 587, timeout=20)
+        with conn as s:
             if u.scheme != "smtps" and use_tls:
-                s.starttls()
+                s.starttls(context=ctx)
             if u.username:
                 s.login(unquote(u.username), unquote(u.password or ""))
             s.send_message(msg)
-    except (OSError, smtplib.SMTPException) as e:
+        return True
+    except (OSError, smtplib.SMTPException, ssl.SSLError) as e:
         log.warning("email yuborilmadi (%s): %s", subject, e)
+        return False
+
+
+def _take(q: queue.Queue[Item], timeout: float | None) -> Item | None:
+    """Keyingi xabar: avval navbat oldiga qaytarilganlar, keyin navbat."""
+    front = _front.get(q)
+    if front:
+        return front.popleft()
+    try:
+        return q.get(timeout=timeout) if timeout is not None else q.get_nowait()
+    except queue.Empty:
+        return None
 
 
 def _coalesce(first: Item, q: queue.Queue[Item]) -> tuple[Item, list[Item]]:
     """Navbatdagi shu guruh va shu qabul qiluvchilarga mo'ljallangan xabarlarni `first` ga qo'shadi.
-    Boshqa xabarlar (tartibi saqlanib) qaytariladi — chaqiruvchi navbatga qaytaradi."""
-    if first.group is None:
+    Boshqa xabarlar (tartibi saqlanib) qaytariladi — chaqiruvchi ularni navbat OLDIGA qaytaradi."""
+    if first.group is None or first.attempts:
         return first, []
     same, rest = [first], []
     while len(same) < COALESCE_MAX:
-        try:
-            it = q.get_nowait()
-        except queue.Empty:
+        it = _take(q, None)
+        if it is None:
             break
         if it.group == first.group and it.to == first.to:
             same.append(it)
@@ -97,21 +140,40 @@ def _coalesce(first: Item, q: queue.Queue[Item]) -> tuple[Item, list[Item]]:
     return merged, rest
 
 
+def _due_retry(q: queue.Queue[Item]) -> Item | None:
+    h = _retry.get(q)
+    if h and h[0][0] <= _now():
+        return heapq.heappop(h)[2]
+    return None
+
+
 def process_once(q: queue.Queue[Item], timeout: float | None = 1.0) -> int:
-    """Navbatdan bitta (yoki jamlangan) xabarni oladi va yuboradi. Qaytaradi: birlashtirilgan xabarlar soni
-    (0 — navbat bo'sh)."""
-    global sent
-    try:
-        first = q.get(timeout=timeout) if timeout is not None else q.get_nowait()
-    except queue.Empty:
+    """Navbatdan bitta (yoki jamlangan) xabarni oladi va yuboradi; vaqti kelgan qayta urinish birinchi.
+    Qaytaradi: ishlangan (jamlangan) xabarlar soni (0 — ishlanadigan xabar yo'q)."""
+    global sent, failed, retried
+    first = _due_retry(q)
+    if first is None:
+        h = _retry.get(q)
+        if h and timeout is not None:  # kechiktirilgan urinish bor — navbatni uzoq kutmaymiz
+            timeout = max(0.0, min(timeout, h[0][0] - _now()))
+        first = _take(q, timeout)
+    if first is None:
         return 0
     item, rest = _coalesce(first, q)
-    for r in rest:
-        try:
-            q.put_nowait(r)
-        except queue.Full:
-            log.warning("email navbati to'la — xabar tashlandi: %s", r.subject)
-    _send(item.to, f"[Sath] {item.subject}", item.body)
+    if rest:
+        _front.setdefault(q, collections.deque()).extendleft(reversed(rest))
+    ok = _send(item.to, f"[Sath] {item.subject}", item.body)
+    item.attempts += 1
+    if ok is False:
+        if item.attempts < MAX_ATTEMPTS:
+            delay = min(RETRY_BASE_S * 2 ** (item.attempts - 1), RETRY_MAX_S)
+            heapq.heappush(_retry.setdefault(q, []), (_now() + delay, next(_seq), item))
+            retried += 1
+            log.info("email qayta yuboriladi %.0f s dan keyin (%d/%d): %s", delay, item.attempts, MAX_ATTEMPTS, item.subject)
+        else:
+            failed += 1
+            log.error("email %d urinishdan keyin yuborilmadi — tashlandi: %s", item.attempts, item.subject)
+        return item.merged
     sent += 1
     return item.merged
 
@@ -150,4 +212,7 @@ def send_async(to: list[str], subject: str, body: str, group: str | None = None)
 
 
 def pending() -> int:
-    return _queue.qsize() if _queue is not None else 0
+    """Navbatdagi + oldiga qaytarilgan + qayta urinish kutayotgan xabarlar."""
+    if _queue is None:
+        return 0
+    return _queue.qsize() + len(_front.get(_queue, ())) + len(_retry.get(_queue, ()))
