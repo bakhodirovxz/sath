@@ -151,6 +151,11 @@ class Settings(BaseSettings):
     # ichki ko'zgu (dem_tile_url) yoki o'chirish (dem_enabled=false); ruxsat etilgan chiquvchi kanal — security-zones.md
     dem_enabled: bool = True
     dem_tile_url: str = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+    # SRV-06: log formati json | text, darajasi; Prometheus /api/metrics — token berilsa Bearer shart, aks holda
+    # faqat loopback (127.0.0.1/::1) dan
+    log_format: str = "text"
+    log_level: str = "INFO"
+    metrics_token: str = ""
     # Fon tekshiruv davri (stale sensorlar, agregat), soniya
     monitor_interval_s: int = 30
     # Alarm shelving (ISA-18.2): default va maksimal muddat, soat

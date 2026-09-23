@@ -393,6 +393,17 @@ yoki `PRAGMA integrity_check` o'tmasa (exit 6) zaxira yozmaydi.
 Zaxira va tiklash — quyidagi bo'lim. Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
 sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
 
+## Log va metrikalar
+
+- Log: `GES_LOG_FORMAT=json` (Loki/ELK — bir qator bitta JSON: `ts`, `level`, `logger`, `msg`, `request_id`,
+  `exc`) yoki `text` (default); daraja `GES_LOG_LEVEL` (INFO). Har HTTP javobda `X-Request-ID` (kiruvchi
+  sarlavha qabul qilinadi) — log yozuvlarida xuddi shu id.
+- Prometheus: `GET /api/metrics` — `sath_http_requests_total{method,status}`, `sath_http_request_duration_seconds`,
+  `sath_ingest_requests_total{result}`, `sath_job_queue_depth{queue,status}`, `sath_build_info`. Himoya:
+  `GES_METRICS_TOKEN` berilsa `Authorization: Bearer <token>`; berilmasa faqat loopback dan. Caddy
+  `/api/metrics` ni tashqariga bermaydi (404) — Prometheus ichki tarmoqdan `ges:8000` ga token bilan ulanadi.
+  Hisoblagichlar replika boshiga (har replikani alohida scrape qiling).
+
 ## Yuqori ishonchlilik (ko'p replika)
 
 Kichik deploy: bitta `ges` (`GES_ROLE=all`). Uzluksizlik kerak bo'lsa `deploy/docker-compose.ha.yml`:

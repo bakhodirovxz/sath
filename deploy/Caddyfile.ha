@@ -15,6 +15,8 @@
         Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://{host} blob: data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         -Server
     }
+    # Prometheus metrikalari tashqariga berilmaydi (SRV-06) — ichki tarmoqdan ges:8000/api/metrics + token
+    respond /api/metrics 404
     reverse_proxy {
         dynamic a {
             name ges

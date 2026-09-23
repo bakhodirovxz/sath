@@ -65,8 +65,10 @@ def check_database_url(url: str) -> str | None:
 
 
 def main(poll_s: float = 3.0) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     from ..config import get_settings
+    from ..observability import configure_logging
+
+    configure_logging(get_settings().log_format, get_settings().log_level)  # SRV-06: server bilan bir xil
 
     problem = check_database_url(get_settings().database_url)
     if problem:

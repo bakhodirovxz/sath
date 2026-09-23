@@ -4,8 +4,8 @@ import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
@@ -31,6 +31,7 @@ from .monitoring.router import router as monitoring_router
 from .monitoring.twin_router import router as twin_router
 from .monitoring.workorders import router as workorders_router
 from .notifications import router as notifications_router
+from .observability import RequestContextMiddleware, configure_logging, render_metrics
 from .orm import User
 from .projects.router import router as projects_router
 from .review.router import router as review_router
@@ -197,11 +198,13 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    configure_logging(settings.log_format, settings.log_level)  # SRV-06: JSON/matn, request_id
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     # L5: Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413 (multipart sarlavhalari uchun +1 MB)
     app.add_middleware(MaxBodyMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024 + (1 << 20))
     # OPS-01: CSP, nosniff, X-Frame-Options, Referrer-Policy, HSTS (https) — Caddy siz ham
     app.add_middleware(SecurityHeadersMiddleware, trust_forwarded=settings.rate_trust_forwarded)
+    app.add_middleware(RequestContextMiddleware)  # eng tashqi: so'rov id + metrikalar (413/xato javoblar ham)
 
     app.include_router(auth_router)
     app.include_router(projects_router)
@@ -234,6 +237,19 @@ def create_app() -> FastAPI:
         # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»);
         # dwg: DWG import konverteri (LibreDWG dwg2dxf yoki ODA) bormi (CAD-10 — jimgina yo'qolmasin)
         return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role(), "dwg": dwg_available()}
+
+    @app.get("/api/metrics", tags=["system"], include_in_schema=False)
+    def prometheus_metrics(request: Request):
+        """Prometheus (SRV-06). GES_METRICS_TOKEN bo'lsa Bearer token; bo'lmasa faqat loopback dan (Caddy
+        orqali tashqariga berilmaydi)."""
+        token = get_settings().metrics_token
+        if token:
+            auth = request.headers.get("authorization", "")
+            if not secrets.compare_digest(auth, f"Bearer {token}"):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Metrika tokeni kerak")
+        elif (request.client.host if request.client else "") not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Metrikalar faqat loopback dan (yoki GES_METRICS_TOKEN)")
+        return PlainTextResponse(render_metrics(__version__), media_type="text/plain; version=0.0.4")
 
     @app.get("/api/ready", tags=["system"])
     def ready():
