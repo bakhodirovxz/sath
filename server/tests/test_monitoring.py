@@ -67,12 +67,9 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
     key = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()[
         "ingest_key"
     ]
-    assert (
-        client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()[
-            "ingest_key"
-        ]
-        == key
-    )
+    # SCADA-04: kalit bir marta ko'rsatiladi — keyingi o'qishda faqat prefiks
+    again = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()
+    assert again["ingest_key"] is None and again["key_prefix"] == key[:6] and again["exists"] is True
 
     # kalitsiz → 401; noto'g'ri kalit → 401
     assert (

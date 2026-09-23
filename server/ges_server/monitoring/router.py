@@ -28,11 +28,13 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, ratelimit, uploads
 from ..auth.deps import (
     DB,
+    P_GATEWAY_KEYS,
     P_SENSOR_CONFIGURE,
     CurrentUser,
     check_project_permission,
     get_project_role,
     has_role,
+    require_project_permission,
     require_project_role,
     user_from_token,
 )
@@ -46,7 +48,8 @@ WS_PING_S = 10.0  # WebSocket heartbeat davri (klient 3× davrda xabar kelmasa O
 
 ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
-ApproverProject = Annotated[Project, Depends(require_project_role(Role.approver))]
+# Gateway kalitlari — `gateway.keys` ruxsati (tasdiqlovchi, admin)
+KeysProject = Annotated[Project, Depends(require_project_permission(P_GATEWAY_KEYS))]
 
 Kind = Literal[
     "level", "flow", "power", "pressure", "temperature", "vibration", "status", "position", "value",
@@ -592,8 +595,8 @@ def delete_sensor(sensor_id: int, user: CurrentUser, db: DB):
 # ---------- Ingest ----------
 
 
-def _key_response(project: Project, kind: str) -> dict:
-    inf = keys.info(project, kind)
+def _key_response(project: Project, kind: str, new_key: str | None = None) -> dict:
+    inf = keys.info(project, kind, new_key)
     out = {
         **inf,
         "url": f"/api/projects/{project.id}/readings"
@@ -607,11 +610,12 @@ def _key_response(project: Project, kind: str) -> dict:
 
 @router.get("/projects/{project_id}/keys/{kind}")
 def get_project_key(
-    kind: Literal["ingest", "command"], project: ApproverProject, user: CurrentUser, db: DB
+    kind: Literal["ingest", "command"], project: KeysProject, user: CurrentUser, db: DB
 ):
-    """Gateway kaliti (ingest — X-Ingest-Key, faqat o'lchov; command — X-Command-Key, buyruq kanali).
-    Bo'lmasa yaratiladi (365 kun). Har o'qish auditda."""
-    keys.ensure(db, project, kind, user.id)
+    """Gateway kaliti holati (ingest — X-Ingest-Key, faqat o'lchov; command — X-Command-Key, buyruq kanali).
+    Bo'lmasa yaratiladi (365 kun) va kalit shu javobda bir marta ko'rsatiladi; keyin faqat prefiks
+    (SCADA-04: bazada xesh). Unutilgan kalit — almashtiriladi (POST). Har o'qish auditda."""
+    new_key = keys.ensure(db, project, kind, user.id)
     audit.log(
         db,
         user_id=user.id,
@@ -621,30 +625,31 @@ def get_project_key(
         project_id=project.id,
     )
     db.commit()
-    return _key_response(project, kind)
+    return _key_response(project, kind, new_key)
 
 
 @router.post("/projects/{project_id}/keys/{kind}")
 def rotate_project_key(
     kind: Literal["ingest", "command"],
-    project: ApproverProject,
+    project: KeysProject,
     user: CurrentUser,
     db: DB,
     ttl_days: int = Query(keys.DEFAULT_TTL_DAYS, ge=0, le=3650, description="0 — muddatsiz"),
 ):
-    keys.rotate(db, project, kind, user.id, ttl_days)
+    """Kalitni almashtirish — yangi kalit faqat shu javobda ko'rsatiladi."""
+    new_key = keys.rotate(db, project, kind, user.id, ttl_days)
     db.commit()
-    return _key_response(project, kind)
+    return _key_response(project, kind, new_key)
 
 
 @router.get("/projects/{project_id}/ingest-key")
-def get_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+def get_ingest_key(project: KeysProject, user: CurrentUser, db: DB):
     """Eski manzil — `GET .../keys/ingest` bilan bir xil."""
     return get_project_key("ingest", project, user, db)
 
 
 @router.post("/projects/{project_id}/ingest-key")
-def rotate_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+def rotate_ingest_key(project: KeysProject, user: CurrentUser, db: DB):
     """Eski manzil — `POST .../keys/ingest` bilan bir xil."""
     return rotate_project_key("ingest", project, user, db, keys.DEFAULT_TTL_DAYS)
 

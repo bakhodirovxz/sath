@@ -26,6 +26,7 @@ import hashlib
 import hmac
 import json
 import math
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
@@ -787,15 +788,24 @@ def claim_commands(
             continue
         set_status(c, CommandStatus.sent)
         c.sent_at = c.updated_at
+        c.nonce = secrets.token_hex(16)
+        exp = _aware(c.expires_at) or (c.sent_at + timedelta(seconds=60))
+        # SCADA-04: HMAC-SHA256 imzo (id, manzil, qiymat, nonce, expires_at) — gateway tekshiradi
         out.append(
-            {
-                "id": c.id,
-                "key": c.sensor.key,
-                "value": c.value,
-                # yaratilgan paytdagi snapshot (eski qatorlarda — sensordan)
-                "protocol": c.protocol if c.protocol is not None else c.sensor.protocol,
-                "address": c.address if c.address is not None else c.sensor.address,
-            }
+            keys.sign_command(
+                project,
+                {
+                    "id": c.id,
+                    "project_id": c.project_id,
+                    "key": c.sensor.key,
+                    "value": c.value,
+                    # yaratilgan paytdagi snapshot (eski qatorlarda — sensordan)
+                    "protocol": c.protocol if c.protocol is not None else c.sensor.protocol,
+                    "address": c.address if c.address is not None else c.sensor.address,
+                    "nonce": c.nonce,
+                    "expires_at": int(exp.timestamp()),
+                },
+            )
         )
     db.commit()  # buyruqlar + kalitning last_used_at
     for c in rows + expired:

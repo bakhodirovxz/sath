@@ -226,13 +226,14 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 <b>{k.kind}</b>
                 <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${new Date(k.expires_at).toLocaleDateString("uz")} (${k.days_left} kun)` : "muddatsiz"}</span>
                 <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? new Date(k.last_used_at).toLocaleString("uz") : "hali yo'q"}</span>
-                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then(() => loadKeys())}>Almashtirish (365 kun)</button>
+                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then((nk) => setGwKeys((p) => (p ?? []).map((x) => (x.kind === nk.kind ? nk : x))))}>Almashtirish (365 kun)</button>
               </div>
+              {k.key ? <div className="error small">Kalit faqat hozir ko'rsatiladi — nusxalab gateway ga saqlang (serverda faqat xeshi turadi).</div> : <div className="dim small">Kalit yashirin (prefiks {k.key_prefix ?? "—"}…); yo'qolgan bo'lsa almashtiring.</div>}
               <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
                 ? `curl -X POST ${location.origin}${k.url} \
-  -H "${k.header}: ${k.key}" -H "Content-Type: application/json" \
+  -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}" -H "Content-Type: application/json" \
   -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`
-                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key}"`}</pre>
+                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}"`}</pre>
             </div>
           ))}
           <div className="row"><button className="btn sm" onClick={() => setGwKeys(null)}>Yopish</button></div>

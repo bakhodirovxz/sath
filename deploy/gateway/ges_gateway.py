@@ -13,6 +13,8 @@ config.json namunasi — gateway_config.example.json
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import math
@@ -493,6 +495,69 @@ SOURCES = {"sim": SimSource, "modbus": ModbusSource, "opcua": OpcUaSource, "csv"
 # ---------- Yuborish ----------
 
 
+def tls_kwargs(cfg: dict) -> dict:
+    """HTTPS sozlamalari: ichki CA (`ca_bundle`) va mTLS mijoz sertifikati (`client_cert` + `client_key`).
+    Berilmagan bo'lsa bo'sh — requests standart tekshiruvi (tizim CA)."""
+    out: dict = {}
+    if cfg.get("ca_bundle"):
+        out["verify"] = cfg["ca_bundle"]
+    if cfg.get("client_cert"):
+        out["cert"] = (cfg["client_cert"], cfg["client_key"]) if cfg.get("client_key") else cfg["client_cert"]
+    if str(cfg.get("server", "")).startswith("http://"):
+        log.warning("server manzili http:// — kalitlar va buyruqlar shifrlanmagan (https tavsiya etiladi)")
+    return out
+
+
+SIGN_CONTEXT = b"sath-command-sign-v1"  # server: ges_server.monitoring.keys.SIGN_CONTEXT
+SIGN_ALG = "hmac-sha256-v1"
+
+
+def derive_sign_key(command_key: str) -> bytes:
+    """Buyruq kalitidan imzo kaliti — server `command_sign_key` bilan bir xil (SCADA-04)."""
+    return hmac.new(command_key.encode("utf-8"), SIGN_CONTEXT, hashlib.sha256).digest()
+
+
+def canonical(cmd: dict) -> bytes:
+    body = {k: cmd.get(k) for k in ("id", "project_id", "key", "protocol", "address", "value", "nonce", "expires_at")}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+class CommandVerifier:
+    """Serverdan kelgan buyruq imzosini tekshiradi (SCADA-04): HMAC-SHA256 (id, manzil, qiymat, nonce,
+    expires_at), loyiha mosligi, muddat (`clock_skew_s` tolerantligi bilan) va nonce takrori (replay)
+    keshi. Imzosiz, soxta, eskirgan yoki takroriy buyruq → RuntimeError (yozilmaydi)."""
+
+    def __init__(self, command_key: str, project_id: int, clock_skew_s: float = 30.0, cache_max: int = 10000):
+        self.key = derive_sign_key(command_key)
+        self.project_id = int(project_id)
+        self.clock_skew_s = float(clock_skew_s)
+        self.cache_max = int(cache_max)
+        self.seen: dict[str, float] = {}  # nonce → expires_at
+
+    def verify(self, cmd: dict, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        if cmd.get("alg") != SIGN_ALG or not isinstance(cmd.get("sig"), str):
+            raise RuntimeError("buyruq imzosiz yoki noma'lum algoritm — rad etildi")
+        want = hmac.new(self.key, canonical(cmd), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(want, cmd["sig"]):
+            raise RuntimeError("buyruq imzosi noto'g'ri — rad etildi")
+        if cmd.get("project_id") != self.project_id:
+            raise RuntimeError("buyruq boshqa loyihaniki — rad etildi")
+        nonce, exp = cmd.get("nonce"), cmd.get("expires_at")
+        if not nonce or not isinstance(exp, (int, float)):
+            raise RuntimeError("buyruqda nonce/expires_at yo'q — rad etildi")
+        if now > exp + self.clock_skew_s:
+            raise RuntimeError("buyruq muddati o'tgan — rad etildi")
+        for n, e in list(self.seen.items()):  # eskirganlarni tozalash
+            if e + self.clock_skew_s < now:
+                del self.seen[n]
+        if nonce in self.seen:
+            raise RuntimeError("buyruq takrorlandi (nonce) — rad etildi")
+        if len(self.seen) >= self.cache_max:
+            self.seen.pop(next(iter(self.seen)))
+        self.seen[nonce] = float(exp)
+
+
 class Commander:
     """Supervisory control: serverdagi kutayotgan buyruqlarni olib, manbaga yozadi (modbus/opcua/sim)
     va natijani qaytaradi.
@@ -512,6 +577,8 @@ class Commander:
                 "GES_GATEWAY_COMMAND_KEY muhit o'zgaruvchisi kerak — ingest kaliti buyruq kanaliga yaramaydi"
             )
         self.headers = {"X-Command-Key": cfg["command_key"]}
+        self.verifier = CommandVerifier(cfg["command_key"], cfg["project_id"], cfg.get("clock_skew_s", 30))
+        self.tls = tls_kwargs(cfg)
         self.tags: dict[str, tuple[object, dict]] = {}
         for src, scfg in zip(sources, source_cfgs, strict=False):
             for tag in scfg.get("tags", []):
@@ -545,7 +612,7 @@ class Commander:
 
     def run_once(self) -> None:
         try:
-            cmds = requests.post(self.claim_url, headers=self.headers, timeout=10).json()
+            cmds = requests.post(self.claim_url, headers=self.headers, timeout=10, **self.tls).json()
         except (requests.RequestException, ValueError) as e:
             log.warning("buyruqlarni olib bo'lmadi: %s", e)
             return
@@ -553,6 +620,7 @@ class Commander:
             status, result = "acked", ""
             src_tag = self.tags.get(c["key"])
             try:
+                self.verifier.verify(c)
                 src, tag, value = self.check_write(c["key"], c["value"])
                 if hasattr(src, "write"):
                     src.write(tag, value)
@@ -571,6 +639,7 @@ class Commander:
                     json={"status": status, "result": result},
                     headers=self.headers,
                     timeout=10,
+                    **self.tls,
                 )
             except requests.RequestException as e:
                 log.warning("buyruq #%s natijasi yuborilmadi: %s", c["id"], e)
@@ -595,6 +664,7 @@ class Commander:
                 json={"value": value, "ts": datetime.now(timezone.utc).isoformat()},
                 headers=self.headers,
                 timeout=10,
+                **self.tls,
             )
         except Exception as e:  # noqa: BLE001 — readback ixtiyoriy, asosiy siklni to'xtatmasin
             log.warning("buyruq #%s readback yuborilmadi: %s", c["id"], e)
@@ -693,6 +763,7 @@ class Pusher:
         self.url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/readings"
         self.soe_url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/soe"
         self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
+        self.tls = tls_kwargs(cfg)
         self.spool = Spool(
             cfg.get("spool_path", "gateway_spool.db"),
             cfg.get("spool_max_rows", 1_000_000),
@@ -754,7 +825,7 @@ class Pusher:
             soe = [{k: v for k, v in b.items() if k != "_soe"} for b in batch if b.get("_soe")]
             try:
                 if soe:
-                    rs = requests.post(self.soe_url, json=soe, headers=self.headers, timeout=15)
+                    rs = requests.post(self.soe_url, json=soe, headers=self.headers, timeout=15, **self.tls)
                     if rs.status_code == 422:
                         log.error("server 422 (SOE): partiya (%d) tashlandi: %s", len(soe), rs.text[:300])
                     else:
@@ -764,7 +835,7 @@ class Pusher:
                     self.spool.ack(ids)
                     self.backoff_s = 0.0
                     continue
-                r = requests.post(self.url, json=readings, headers=self.headers, timeout=15)
+                r = requests.post(self.url, json=readings, headers=self.headers, timeout=15, **self.tls)
                 self._check_clock(r)
                 if r.status_code == 422:
                     # Validatsiya xatosi — partiya hech qachon qabul qilinmaydi: o'chirib, loglaymiz

@@ -17,15 +17,16 @@ def test_keys_are_separate_with_expiry_and_audit(client, users, admin):
     ck = client.get(f"/api/projects/{pid}/keys/command", headers=users["approver"]).json()
     assert ik["key"] != ck["key"] and ik["header"] == "X-Ingest-Key" and ck["header"] == "X-Command-Key"
     assert 360 <= ik["days_left"] <= 365 and ik["last_used_at"] is None
-    assert ik["ingest_key"] == ik["key"]  # eski nom
-    # eski manzil bir xil kalit
-    assert client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()["ingest_key"] == ik["key"]
+    assert ik["ingest_key"] == ik["key"] and ik["shown_once"] is True  # eski nom
+    # SCADA-04: kalit faqat yaratilganda ko'rsatiladi; keyin — prefiks (eski manzil ham)
+    again = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()
+    assert again["ingest_key"] is None and again["key"] is None and again["key_prefix"] == ik["key"][:6]
     # muhandis kalitni ko'ra olmaydi
     assert client.get(f"/api/projects/{pid}/keys/command", headers=users["engineer"]).status_code == 403
     # rotatsiya alohida: command o'zgaradi, ingest o'zgarmaydi; muddatsiz kalit
     r = client.post(f"/api/projects/{pid}/keys/command", headers=users["approver"], params={"ttl_days": 0}).json()
-    assert r["key"] != ck["key"] and r["expires_at"] is None
-    assert client.get(f"/api/projects/{pid}/keys/ingest", headers=users["approver"]).json()["key"] == ik["key"]
+    assert r["key"] != ck["key"] and r["expires_at"] is None and r["shown_once"] is True
+    assert client.get(f"/api/projects/{pid}/keys/ingest", headers=users["approver"]).json()["key_prefix"] == ik["key"][:6]
     acts = [a["action"] for a in client.get("/api/audit", headers=admin, params={"project_id": pid}).json()]
     assert "project.command_key.rotate" in acts and "project.command_key.read" in acts
     assert "project.ingest_key.create" in acts
@@ -108,3 +109,54 @@ def test_gateway_commands_default_off_and_env_override(tmp_path, monkeypatch):
     monkeypatch.delenv("GES_GATEWAY_SERVER")
     with pytest.raises(ValueError, match="server"):
         gw.load_config(None)
+
+
+def test_keys_stored_hashed_not_plaintext(client, users):
+    """SCADA-04: bazada kalit ochiq holda yo'q — faqat SHA-256 xesh va prefiks; kalit bilan kirish ishlaydi."""
+    import hashlib
+
+    pid = users["project_id"]
+    ik = client.get(f"/api/projects/{pid}/keys/ingest", headers=users["approver"]).json()["key"]
+    ck = client.get(f"/api/projects/{pid}/keys/command", headers=users["approver"]).json()["key"]
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        assert p.ingest_key_hash == hashlib.sha256(ik.encode()).hexdigest() and p.ingest_key_prefix == ik[:6]
+        assert p.command_key_hash == hashlib.sha256(ck.encode()).hexdigest()
+        assert p.command_sign_key == keys.derive_sign_key(ck) and p.command_sign_key != ck
+        cols = {c.name for c in Project.__table__.columns}
+        assert "ingest_key" not in cols and "command_key" not in cols
+        row = db.execute(__import__("sqlalchemy").text("SELECT * FROM projects WHERE id = :i"), {"i": pid}).mappings().one()
+        assert ik not in [str(v) for v in row.values()] and ck not in [str(v) for v in row.values()]
+    assert client.post(f"/api/projects/{pid}/readings", json=[], headers={"X-Ingest-Key": ik}).status_code == 200
+    assert client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": ck}).status_code == 200
+
+
+def test_migration_hashes_existing_plaintext_keys(tmp_path):
+    """0034: mavjud ochiq kalitlar xeshlanadi va ochiq ustunlar olib tashlanadi."""
+    import hashlib
+
+    from alembic import command
+    from ges_server import db as gdb
+    from sqlalchemy import create_engine, inspect, text
+
+    eng = create_engine(f"sqlite:///{(tmp_path / 'k.db').as_posix()}")
+    with eng.begin() as conn:
+        cfg = gdb._alembic_config()
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "0033")
+        conn.execute(text(
+            "INSERT INTO users (id, username, full_name, email, password_hash, is_admin, is_active, created_at) "
+            "VALUES (1, 'a', 'A', '', 'x', 1, 1, '2026-01-01 00:00:00')"
+        ))
+        conn.execute(text(
+            "INSERT INTO projects (id, name, description, location, dashboard, site, created_by, created_at, "
+            "calibration, ingest_key, command_key) VALUES (1, 'P', '', '', '{}', '{}', 1, '2026-01-01 00:00:00', '{}', 'ikey123456', 'ckey654321')"
+        ))
+        command.upgrade(cfg, "0034")
+        row = conn.execute(text(
+            "SELECT ingest_key_hash, ingest_key_prefix, command_key_hash, command_sign_key FROM projects"
+        )).one()
+        assert row[0] == hashlib.sha256(b"ikey123456").hexdigest() and row[1] == "ikey12"
+        assert row[2] == hashlib.sha256(b"ckey654321").hexdigest() and row[3] == keys.derive_sign_key("ckey654321")
+        cols = {c["name"] for c in inspect(conn).get_columns("projects")}
+        assert "ingest_key" not in cols and "command_key" not in cols

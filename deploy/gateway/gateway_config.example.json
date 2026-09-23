@@ -1,5 +1,9 @@
 {
-  "server": "http://ges-server:8000",
+  "server": "https://sath.example.local",
+  "ca_bundle": null,
+  "client_cert": null,
+  "client_key": null,
+  "clock_skew_s": 30,
   "project_id": 1,
   "ingest_key": "<Monitoring → Ulanish kalitlari → ingest (yoki GES_GATEWAY_INGEST_KEY muhitdan)>",
   "commands": false,

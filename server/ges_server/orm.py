@@ -130,14 +130,19 @@ class Project(Base):
     origin_n: Mapped[float | None] = mapped_column(Float, nullable=True)
     origin_h: Mapped[float | None] = mapped_column(Float, nullable=True)
     crs_rotation_deg: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
-    # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi) — faqat POST /readings
-    ingest_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # SCADA/gateway o'lchovlarni yuborishi uchun kalit (X-Ingest-Key sarlavhasi) — faqat POST /readings.
+    # SCADA-04: bazada kalit emas, SHA-256 xeshi va 6 belgili prefiksi (identifikatsiya uchun)
+    ingest_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ingest_key_prefix: Mapped[str | None] = mapped_column(String(8), nullable=True)
     ingest_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ingest_key_last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Buyruq kanali kaliti (X-Command-Key): /commands/claim, /ack, /readback — alohida rotatsiya/audit (B3)
-    command_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Buyruq kanali kaliti (X-Command-Key): /commands/claim, /ack, /readback — alohida rotatsiya/audit (B3);
+    # xesh + prefiks, va undan hosil qilingan buyruq imzosi kaliti (HMAC-SHA256, SCADA-04)
+    command_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    command_key_prefix: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    command_sign_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     command_key_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     command_key_last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
