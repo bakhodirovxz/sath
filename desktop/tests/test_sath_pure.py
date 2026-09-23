@@ -161,3 +161,20 @@ def test_reading_at_picks_latest_before_ts():
     assert flows.reading_at(pts, "2026-09-17T11:30:00+00:00") == 2.0
     assert flows.reading_at(pts, "2026-09-17T09:00:00+00:00") is None
     assert flows.reading_at([], "2026-09-17T09:00:00+00:00") is None
+
+
+def test_ci_annotate_robust(tmp_path, capsys):
+    """CI-01: report.xml yo'q/buzilgan bo'lsa traceback emas — ::error:: va exit 2; xato bo'lsa 1, o'tsa 0."""
+    import ci_annotate
+
+    assert ci_annotate.main(str(tmp_path / "yoq.xml")) == 2
+    assert "::error" in capsys.readouterr().out
+    bad = tmp_path / "bad.xml"
+    bad.write_text("<testsuite><testcase", encoding="utf-8")
+    assert ci_annotate.main(str(bad)) == 2
+    ok = tmp_path / "ok.xml"
+    ok.write_text('<testsuite><testcase classname="a" name="b"/></testsuite>', encoding="utf-8")
+    assert ci_annotate.main(str(ok)) == 0
+    fail = tmp_path / "fail.xml"
+    fail.write_text('<testsuite><testcase classname="a" name="b"><failure message="x">tb</failure></testcase></testsuite>', encoding="utf-8")
+    assert ci_annotate.main(str(fail)) == 1

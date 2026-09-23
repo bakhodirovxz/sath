@@ -13,9 +13,10 @@ jobs:
       - run: pip install -e "./sim[dev]" -e "./server[dev]"
       - run: python desktop/build/sync_blender.py --check
       - run: ruff check server sim desktop
+      # CI-01: pytest xatosi ishni yiqitadi (continue-on-error yo'q); annotatsiya har holda (if: always())
       - run: pytest -q sim/tests server/tests desktop/tests --junitxml=report.xml
-        continue-on-error: true
-      - run: python desktop/build/ci_annotate.py report.xml
+      - if: always()
+        run: python desktop/build/ci_annotate.py report.xml
   postgres:
     # Butun server to'plami Postgres + TimescaleDB da (D1): hypertable migratsiyasi, COPY ingest, yuk testi
     runs-on: ubuntu-latest
