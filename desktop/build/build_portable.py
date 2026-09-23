@@ -5,8 +5,11 @@ Sath desktop paketini yig'ish (Windows): portable zip + NSIS installer.
 
 Fork (Sath-FreeCAD) overlay skripti bilan tayyor FreeCAD 1.1.3 binarini Sath ga aylantiradi
 (brending, Mod/Ges, Sath.exe, keraksiz modullar olib tashlanadi), so'ng:
-  * desktop/dist/Sath-<ver>-Windows-x86_64.zip            — portable (Sath.bat)
-  * desktop/dist/Sath-<ver>-Windows-x86_64-installer.exe  — NSIS installer (makensis bo'lsa)
+  * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64.zip            — portable (Sath.bat)
+  * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64-installer.exe  — NSIS installer (makensis bo'lsa)
+  * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64.build.json     — metama'lumot (product: sath-freecad)
+Nom Blender bundle (Sath-<ver>-Windows-x86_64) dan farq qiladi — FreeCAD foydalanuvchisiga Blender paketi
+«yangilanish» sifatida taklif qilinmasin (CODE-03).
 
     python desktop/build/build_portable.py [--freecad-dir "C:\\Program Files\\FreeCAD 1.1"]
         [--fork-dir ../Sath-FreeCAD] [--no-installer] [--no-zip] [--fast]
@@ -22,6 +25,7 @@ workbench bilan ochiladi -> "Serverga ulanish" -> server manzili + login.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -38,6 +42,26 @@ DEFAULT_FORK = next(  # FreeCAD forki: yangi yoki eski nomli papka
     ROOT.parent / "Sath-FreeCAD",
 )
 DEFAULT_FREECAD = Path(r"C:\Program Files\FreeCAD 1.1")
+PRODUCT = "sath-freecad"  # CODE-03: build metama'lumotidagi mahsulot (Blender bundle — sath-blender)
+
+
+def artifact_name(version: str) -> str:
+    """Paket nomi (kengaytmasiz): Blender bundle nomidan farqli."""
+    return f"Sath-FreeCAD-{version}-Windows-x86_64"
+
+
+def build_info(version: str) -> dict:
+    return {"product": PRODUCT, "version": version, "platform": "windows-x86_64", "name": artifact_name(version)}
+
+
+def write_build_info(stage: Path, version: str) -> Path:
+    """Sath-BUILD.json paket ichida va <nom>.build.json dist da (publish/yangilanish product ni o'qiydi)."""
+    text = json.dumps(build_info(version), ensure_ascii=False, indent=2) + "\n"
+    (stage / "Sath-BUILD.json").write_text(text, encoding="utf-8")
+    DIST.mkdir(parents=True, exist_ok=True)
+    side = DIST / f"{artifact_name(version)}.build.json"
+    side.write_text(text, encoding="utf-8")
+    return side
 # LibreDWG (dwg2dxf) — DWG ochish uchun paket ichiga qo'shiladi: tools/libredwg/ (GPL, ichki foydalanish)
 LIBREDWG_CANDIDATES = [
     Path(os.environ.get("LIBREDWG_DIR", "")),
@@ -138,8 +162,9 @@ def build(
     bundle_libredwg(stage)
     bundle_ezdxf(stage)
     version = (stage / "Sath-VERSION.txt").read_text(encoding="utf-8").strip()
-    name = f"Sath-{version}-Windows-x86_64"
+    name = artifact_name(version)
     DIST.mkdir(parents=True, exist_ok=True)
+    write_build_info(stage, version)
     outputs: list[Path] = []
     if make_zip:
         out = DIST / f"{name}.zip"

@@ -196,3 +196,20 @@ def test_legacy_parts_are_marked():
     for f in ("sync_fork.py", "build_portable.py"):
         head = (ROOT / "desktop" / "build" / f).read_text(encoding="utf-8")[:300]
         assert head.startswith('"""LEGACY (CODE-02)'), f
+
+
+def test_package_names_distinct_and_product_in_build_info(tmp_path, monkeypatch):
+    """CODE-03: Blender bundle va legacy FreeCAD paketi turli nomda, build metama'lumotida product."""
+    import json
+
+    import build_blender_bundle as bb
+    import build_portable as bp
+
+    assert bb.artifact_name("0.3.0") == "Sath-0.3.0-Windows-x86_64"
+    assert bp.artifact_name("0.3.0") == "Sath-FreeCAD-0.3.0-Windows-x86_64"
+    assert bb.build_info("0.3.0")["product"] == "sath-blender"
+    assert bp.build_info("0.3.0")["product"] == "sath-freecad"
+    monkeypatch.setattr(bp, "DIST", tmp_path / "dist")
+    side = bp.write_build_info(tmp_path, "0.3.0")
+    assert json.loads(side.read_text(encoding="utf-8"))["product"] == "sath-freecad"
+    assert json.loads((tmp_path / "Sath-BUILD.json").read_text(encoding="utf-8"))["name"].startswith("Sath-FreeCAD-")

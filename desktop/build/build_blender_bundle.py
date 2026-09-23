@@ -3,7 +3,8 @@
 
 python desktop/build/build_blender_bundle.py [--blender ~/Tools/blender-5.2] [--fc-home ~/Tools/fc-py313]
         [--bonsai <zip>] [--no-freecad] [--no-zip] [--installer] [--keep-stage]
-Natija: desktop/dist/Sath-<ver>-Windows-x86_64.zip (+ -installer.exe). Stage: desktop/build/_work/sath-bundle/Sath
+Natija: desktop/dist/Sath-<ver>-Windows-x86_64.zip (+ -installer.exe, .build.json — product: sath-blender).
+Stage: desktop/build/_work/sath-bundle/Sath. Legacy FreeCAD paketi boshqa nomda: Sath-FreeCAD-<ver>-… (CODE-03).
 """
 
 from __future__ import annotations
@@ -49,6 +50,25 @@ FC_PRUNE_BIN_PREFIX = (
     "rav1e", "svt", "vpx", "opus", "libvorbis", "libogg",
 )  # fmt: skip
 FC_KEEP_EXE = ("freecad",)
+PRODUCT = "sath-blender"  # CODE-03: build metama'lumotidagi mahsulot (legacy FreeCAD paketi — sath-freecad)
+
+
+def artifact_name(ver: str) -> str:
+    return f"Sath-{ver}-Windows-x86_64"
+
+
+def build_info(ver: str) -> dict:
+    return {"product": PRODUCT, "version": ver, "platform": "windows-x86_64", "name": artifact_name(ver)}
+
+
+def write_build_info(ver: str) -> Path:
+    """Sath-BUILD.json paket ichida va <nom>.build.json dist da (publish/yangilanish product ni o'qiydi)."""
+    text = json.dumps(build_info(ver), ensure_ascii=False, indent=2) + "\n"
+    (STAGE / "Sath-BUILD.json").write_text(text, encoding="utf-8")
+    DIST.mkdir(exist_ok=True)
+    side = DIST / f"{artifact_name(ver)}.build.json"
+    side.write_text(text, encoding="utf-8")
+    return side
 
 
 def version() -> str:
@@ -193,7 +213,7 @@ DWG/DXF: tools\libredwg (dwg2dxf). FreeCAD: freecad\ (GES obyektlari, DXF import
 
 
 def make_zip(ver: str) -> Path:
-    out = DIST / f"Sath-{ver}-Windows-x86_64.zip"
+    out = DIST / f"{artifact_name(ver)}.zip"
     print("zip:", out, flush=True)
     if out.exists():
         out.unlink()
@@ -217,7 +237,7 @@ def make_installer(ver: str) -> Path | None:
     if not makensis:
         print("  makensis topilmadi — installer yig'ilmadi", flush=True)
         return None
-    out = DIST / f"Sath-{ver}-Windows-x86_64-installer.exe"
+    out = DIST / f"{artifact_name(ver)}-installer.exe"
     run([makensis, f"/DVERSION={ver}", f"/DSTAGE={STAGE}", f"/DOUT={out}",
          f"/DICON={TEMPLATE / 'sath.ico'}", BUILD / "nsis" / "sath.nsi"])  # fmt: skip
     return out
@@ -258,6 +278,7 @@ def main() -> int:
         copy_freecad(a.fc_home)
     copy_libredwg()
     write_readme(ver, not a.no_freecad)
+    write_build_info(ver)
     if not a.no_zip:
         z = make_zip(ver)
         print(f"tayyor: {z} ({z.stat().st_size // 2**20} MB)")
