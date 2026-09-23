@@ -66,3 +66,20 @@ def test_compose_requires_postgres_password():
         text = (deploy / name).read_text(encoding="utf-8")
         assert "POSTGRES_PASSWORD:-" not in text and "POSTGRES_PASSWORD:?" in text, name
         assert "PG_REPL_PASSWORD:-" not in text
+
+
+def test_sqlite_warning_in_server_mode(monkeypatch):
+    """SRV-08: SQLite ishlab chiqarish (dev_mode=false) rejimida startda ogohlantirish; Postgres da yo'q."""
+    from ges_server import config, main
+
+    s = config.get_settings()
+    monkeypatch.setattr(s, "dev_mode", False)
+    monkeypatch.setattr(s, "database_url", "sqlite:////data/ges.db")
+    assert any("SQLite" in w for w in main.startup_warnings())
+    monkeypatch.setattr(s, "role", "api")
+    assert any("GES_ROLE=api" in w for w in main.startup_warnings())
+    monkeypatch.setattr(s, "database_url", "postgresql+psycopg://ges:Kuchli-2026@db/ges")
+    assert not any("SQLite" in w for w in main.startup_warnings())
+    monkeypatch.setattr(s, "database_url", "sqlite:////tmp/x.db")
+    monkeypatch.setattr(s, "dev_mode", True)
+    assert not any("SQLite" in w for w in main.startup_warnings())

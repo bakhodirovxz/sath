@@ -146,6 +146,13 @@ def startup_warnings() -> list[str]:
         )
     if s.dev_mode:
         out.extend("GES_DEV_MODE: " + p for p in production_problems())
+    if s.database_url.startswith("sqlite") and not s.dev_mode:
+        # SRV-08: SQLite — bitta yozuvchi qulfi, LISTEN/NOTIFY yo'q, historian hypertable yo'q
+        out.append(
+            "SQLite ishlatilyapti — ko'p foydalanuvchi, SCADA ingest va ko'p replika uchun tavsiya etilmaydi "
+            "(yozuv qulfi, backplane/Timescale yo'q). Ishlab chiqarishda Postgres: GES_DATABASE_URL=postgresql+psycopg://..."
+            + (f" | GES_ROLE={s.role}: ko'p jarayonli rejim SQLite bilan ishonchli emas" if s.role != "all" else "")
+        )
     legacy = legacy_cwd_env()
     if legacy is not None:
         out.append(
