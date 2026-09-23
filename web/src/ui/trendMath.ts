@@ -120,3 +120,26 @@ export function fmtNum(v: number): string {
   const a = Math.abs(v);
   return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3);
 }
+
+/** Birinchi indeks: `sorted[i] >= t` (o'sish tartibidagi massiv). */
+export function lowerBound(sorted: readonly number[], t: number): number {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Asosiy vaqt o'qiga har bir qatorning eng yaqin nuqtasi (FE-04): binar qidiruv, O(n log m) — avvalgi
+ * O(n·m) to'liq qidiruv katta davrlarda (30 kun × bir necha qator) sahifani qotirardi. `times` — o'sish tartibida. */
+export function alignNearest(base: readonly number[], times: readonly number[], values: readonly number[]): number[] {
+  if (!times.length) return base.map(() => NaN);
+  return base.map((t) => {
+    const i = lowerBound(times, t);
+    if (i <= 0) return values[0];
+    if (i >= times.length) return values[times.length - 1];
+    return t - times[i - 1] <= times[i] - t ? values[i - 1] : values[i];
+  });
+}
