@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from .. import audit
+from .. import audit, ratelimit
 from ..auth.deps import (
     DB,
     AdminUser,
@@ -640,6 +640,15 @@ def download_version(version_id: int, user: CurrentUser, db: DB):
 # ---------- BIM tekshiruvlar: hajm-miqdor (QTO), to'qnashuvlar ----------
 
 
+# OPS-03/04: og'ir hosilaviy hisob (geometriya, fragments) — foydalanuvchi bo'yicha yangi hisoblar chegarasi
+# (keshdagi natijani o'qish va navbatdagi ishni kuzatish cheklanmaydi)
+DERIVED_RATE_PER_MIN = 10
+
+
+def _derived_rate(user) -> None:
+    ratelimit.check("derived", f"user:{user.id}", int(getattr(get_settings(), "rate_derived_per_min", DERIVED_RATE_PER_MIN)))
+
+
 def _version_path(db, version_id: int, user):
     version = get_version_checked(db, version_id, user, Role.viewer)
     try:
@@ -660,7 +669,10 @@ def version_qto(
     from . import geometry
 
     version, path = _version_path(db, version_id, user)
-    data = geometry.cached(version.file_sha256, "qto", lambda: geometry.compute_qto(path))
+    data = geometry.peek(version.file_sha256, "qto")
+    if data is None:
+        _derived_rate(user)
+        data = geometry.cached(version.file_sha256, "qto", lambda: geometry.compute_qto(path))
     if format == "csv":
         import csv
         import io
@@ -725,16 +737,24 @@ def version_clashes(
 ):
     """To'qnashuvlar (clash detection): hard — sirtlar kesishadi, possible — ichma-ich/aniq emas,
     touch — tegib turadi. types_a/types_b — vergul bilan IFC turlari (masalan IfcWall,IfcPipeSegment)
-    — faqat shu guruhlar orasidagi juftlar."""
+    — faqat shu guruhlar orasidagi juftlar. OPS-04: turlar ma'lum IFC klasslari bo'lishi shart (aks holda
+    422), kesh kaliti — normallashtirilgan parametrlar xeshi, yangi hisob foydalanuvchi bo'yicha cheklangan."""
     from . import geometry
 
+    if kind is not None and kind not in ("hard", "possible", "touch"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind: hard | possible | touch")
+    try:
+        ta, tb = geometry.normalize_types(types_a), geometry.normalize_types(types_b)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
     version, path = _version_path(db, version_id, user)
-    ta = [t for t in (types_a or "").split(",") if t] or None
-    tb = [t for t in (types_b or "").split(",") if t] or None
-    key = "clash" if not (ta or tb) else f"clash_{'+'.join(ta or [])}_{'+'.join(tb or [])}"
-    data = geometry.cached(
-        version.file_sha256, key, lambda: geometry.compute_clashes(path, 0.0, ta, tb)
-    )
+    key = geometry.clash_kind(ta, tb)
+    data = geometry.peek(version.file_sha256, key)
+    if data is None:
+        _derived_rate(user)
+        data = geometry.cached(
+            version.file_sha256, key, lambda: geometry.compute_clashes(path, 0.0, ta, tb)
+        )
     if kind:
         data = {**data, "clashes": [c for c in data["clashes"] if c["kind"] == kind]}
     return data
