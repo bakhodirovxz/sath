@@ -1,22 +1,25 @@
-/** Dizayn tokenlari — yagona manba (F1).
+/** Dizayn tokenlari — yagona manba (F1, UX-05). Qoidalar: docs/design/ui-direction.md.
  *
- * Ikki tema: `engineer` (Blender Dark uslubi, model/muhandislik sahifalari) va `operator`
- * (ISA-101: neytral kulrang asos, past to'yinganlik, rang faqat anomaliya uchun; dispetcher sahifalari
- * default). Alarm holati × ustuvorlik → rang + shakl + matn kodi: rang yagona kanal emas
- * (ISA-101 §6.2, rang ko'rishi buzilgan operatorlar). Barcha juftliklar WCAG AA (matn 4.5:1, grafik 3:1) —
- * `tokens.test.ts` tekshiradi. Sahifalar rang qiymatini shu yerdan oladi (test: hex literal yo'q).
+ * Uch tema: `engineer` (Blender Dark — BIM/model sahifalari), `operator` (ISA-101 / High Performance HMI:
+ * neytral kulrang, rang faqat anomaliya uchun — dispetcher sahifalari) va `operator-hc` (kunduzgi, yuqori
+ * kontrast — yorug' boshqaruv xonasi). Alarm holati × ustuvorlik → rang + SHAKL + raqam + kod: rang yagona kanal
+ * emas (ISA-101, WCAG 1.4.1). Barcha juftliklar WCAG AA (matn 4.5:1, grafik 3:1) — `tokens.test.ts`.
+ * CSS da xuddi shu qiymatlar `tokens.css` da (test sinxronlikni tekshiradi); komponentlarda hex yo'q.
  */
 
-import { alarmLabel } from "../i18n/labels";
+import { alarmLabel, qualityLabel } from "../i18n/labels";
 
-export type ThemeName = "engineer" | "operator";
+export type ThemeName = "engineer" | "operator" | "operator-hc";
+export type OpsThemeName = Extract<ThemeName, "operator" | "operator-hc">;
 export type AlarmStateName = "ok" | "low" | "high" | "stale" | "lowlow" | "highhigh" | "roc" | "deviation";
 export type PriorityName = "low" | "medium" | "high" | "critical";
 export type QualityName = "good" | "uncertain" | "bad" | "substituted" | "manual";
 
-/** CSS o'zgaruvchilar (nomi `--` siz) — har tema uchun to'liq to'plam. */
+/** CSS o'zgaruvchilar (nomi `--` siz) — har tema uchun to'liq to'plam (faqat ranglar; o'lcham/oraliq —
+ * tokens.css da, temadan mustaqil). */
 export const THEMES: Record<ThemeName, Record<string, string>> = {
   engineer: {
+    // Blender 4.x "Blender Dark" neytrallari
     canvas: "#3d3d3d",
     panel: "#303030",
     chrome: "#282828",
@@ -27,36 +30,50 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "widget-hover": "#656565",
     "widget-line": "#3d3d3d",
     field: "#1d1d1d",
+    "menu-bg": "#1f1f1f",
     sel: "#334d80",
+    "sel-strong": "#4d6fa8",
     text: "#e6e6e6",
     "text-muted": "#b3b3b3",
     "text-dim": "#aaaaaa",
     accent: "#4772b3",
+    "accent-hover": "#5680c4",
+    "on-accent": "#ffffff",
     link: "#8fb0e6",
     "accent-2": "#39b7c9",
     brand: "#39b7c9",
+    focus: "#8fb0e6",
     ok: "#6ad39c",
     warn: "#f0c060",
     danger: "#f7a8a8",
+    "danger-strong": "#c0392b",
+    "on-danger": "#ffffff",
     wip: "#9a9a9a",
-    // Alarm ustuvorligi (ISA-101 jadvali): kritik qizil, yuqori sariq-to'q, o'rta sariq, past ko'k-kulrang
-    "alarm-critical": "#f7a8a8",
-    "alarm-high": "#f5b86a",
-    "alarm-medium": "#ecd75a",
-    "alarm-low": "#9fc0ea",
+    // Neytral "e'tibor" (muddati o'tgan ish buyrug'i, kam qism) — alarm EMAS (UX-02)
+    attention: "#c9b27a",
+    "attention-bg": "#3a3527",
+    // Alarm ustuvorligi: shakl to'ldirish + siyoh (shakl ichidagi raqam) + kontur
+    "alarm-critical": "#ff6262",
+    "alarm-high": "#f29a38",
+    "alarm-medium": "#f2c94c",
+    "alarm-low": "#5b8ff0",
+    "alarm-critical-ink": "#000000",
+    "alarm-high-ink": "#000000",
+    "alarm-medium-ink": "#000000",
+    "alarm-low-ink": "#000000",
+    "alarm-outline": "#111111",
     "alarm-stale": "#c4c4c4",
-    "alarm-row": "#703d3d",
+    "alarm-row": "#5a3434",
     "quality-bad": "#d8b0f5",
     "quality-uncertain": "#d2c290",
-    "mimic-water": "#1d3f55",
+    // Mimika (muhandis temasida ham ISA qoidalari: rang faqat holat)
+    "mimic-liquid": "#46505a",
     "mimic-concrete": "#5b616b",
     "mimic-outline": "#8b9098",
-    "mimic-pipe": "#9aa0a8",
-    "mimic-hall": "#2b2f36",
-    "mimic-unit-on": "#1f3b2c",
-    "mimic-unit-off": "#26282c",
+    "mimic-on": "#9aa0a8",
+    "mimic-off": "#3d3d3d",
+    "mimic-hall": "#353535",
     "mimic-unbound": "#9296a0",
-    "mimic-idle": "#9aa0a8",
     // Trend qalamlari (F7): grafik foni (--field) ustida ≥ 3:1
     "pen-1": "#6fa8f5",
     "pen-2": "#f0b35a",
@@ -66,46 +83,60 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "pen-6": "#7fd9e6",
   },
   operator: {
-    // ISA-101: ochiq neytral kulrang fon, rang faqat holat uchun
-    canvas: "#d9dbde",
-    panel: "#e6e7e9",
-    chrome: "#cfd2d6",
-    "chrome-2": "#d9dbde",
+    // ISA-101 / HP-HMI: neytral kulrang; rang FAQAT anomaliya uchun
+    canvas: "#dcdddf",
+    panel: "#e4e5e7",
+    chrome: "#cdd0d4",
+    "chrome-2": "#d6d8db",
     line: "#b8bcc2",
-    "line-strong": "#9aa0a8",
-    widget: "#c9ccd1",
-    "widget-hover": "#b8bcc2",
-    "widget-line": "#a8adb4",
+    "line-strong": "#8e949c",
+    widget: "#d0d3d7",
+    "widget-hover": "#c2c6cb",
+    "widget-line": "#8e949c",
     field: "#f4f5f6",
-    sel: "#b9c9e6",
-    text: "#1c1f24",
-    "text-muted": "#4c525a",
+    "menu-bg": "#f4f5f6",
+    sel: "#c9ccd1",
+    "sel-strong": "#b5b9bf",
+    text: "#16181b",
+    "text-muted": "#3f444b",
     "text-dim": "#4a4f57",
-    accent: "#27508f",
-    link: "#27508f",
-    "accent-2": "#1f7f8f",
-    brand: "#1f7f8f",
-    ok: "#1c5634",
+    // navigatsiya/tanlov — to'q kulrang (ko'k P4 alarmga band)
+    accent: "#2f343b",
+    "accent-hover": "#454a52",
+    "on-accent": "#ffffff",
+    link: "#1f3f73",
+    "accent-2": "#3f444b",
+    brand: "#1f5f6b",
+    focus: "#000000",
+    // "ok/normal" — rangsiz (ISA-101: normal holat uchun yashil yo'q)
+    ok: "#3f444b",
     warn: "#6e4700",
     danger: "#9e1b14",
-    wip: "#6a6e76",
-    "alarm-critical": "#9e1b14",
-    "alarm-high": "#823a00",
-    "alarm-medium": "#5e4c00",
-    "alarm-low": "#27508f",
+    "danger-strong": "#b3261e",
+    "on-danger": "#ffffff",
+    wip: "#4a4f57",
+    attention: "#3f444b",
+    "attention-bg": "#d6d8db",
+    "alarm-critical": "#d6211a",
+    "alarm-high": "#ec8a1c",
+    "alarm-medium": "#f2c200",
+    "alarm-low": "#2e6fd8",
+    "alarm-critical-ink": "#ffffff",
+    "alarm-high-ink": "#000000",
+    "alarm-medium-ink": "#000000",
+    "alarm-low-ink": "#ffffff",
+    "alarm-outline": "#1b1d20",
     "alarm-stale": "#4a4f57",
-    "alarm-row": "#e9b0aa",
-    "quality-bad": "#5a3388",
-    "quality-uncertain": "#54471c",
-    "mimic-water": "#a9c4d8",
-    "mimic-concrete": "#b0b5bd",
+    "alarm-row": "#f3d3d0",
+    "quality-bad": "#3f444b",
+    "quality-uncertain": "#3f444b",
+    "mimic-liquid": "#c4c8cd",
+    "mimic-concrete": "#b8bcc2",
     "mimic-outline": "#5c626b",
-    "mimic-pipe": "#8a9098",
-    "mimic-hall": "#d3d6da",
-    "mimic-unit-on": "#cfe7d8",
-    "mimic-unit-off": "#dfe1e4",
+    "mimic-on": "#5c626b",
+    "mimic-off": "#e4e5e7",
+    "mimic-hall": "#d6d8db",
     "mimic-unbound": "#5f646c",
-    "mimic-idle": "#5f646c",
     "pen-1": "#1f5fb8",
     "pen-2": "#9a5a00",
     "pen-3": "#1c6b3f",
@@ -113,33 +144,98 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "pen-5": "#b3261e",
     "pen-6": "#0f6e7e",
   },
+  "operator-hc": {
+    // Kunduzgi / yuqori kontrast: oqroq fon, qora matn, qalinroq konturlar
+    canvas: "#f2f2f2",
+    panel: "#ffffff",
+    chrome: "#e6e6e6",
+    "chrome-2": "#ededed",
+    line: "#8a8a8a",
+    "line-strong": "#333333",
+    widget: "#e6e6e6",
+    "widget-hover": "#d4d4d4",
+    "widget-line": "#333333",
+    field: "#ffffff",
+    "menu-bg": "#ffffff",
+    sel: "#d4d4d4",
+    "sel-strong": "#bdbdbd",
+    text: "#000000",
+    "text-muted": "#26292d",
+    "text-dim": "#333333",
+    accent: "#111111",
+    "accent-hover": "#333333",
+    "on-accent": "#ffffff",
+    link: "#0b2e66",
+    "accent-2": "#26292d",
+    brand: "#0b4a55",
+    focus: "#000000",
+    ok: "#26292d",
+    warn: "#5a3a00",
+    danger: "#8a130e",
+    "danger-strong": "#b3261e",
+    "on-danger": "#ffffff",
+    wip: "#333333",
+    attention: "#26292d",
+    "attention-bg": "#e6e6e6",
+    "alarm-critical": "#d6211a",
+    "alarm-high": "#ec8a1c",
+    "alarm-medium": "#f2c200",
+    "alarm-low": "#2e6fd8",
+    "alarm-critical-ink": "#ffffff",
+    "alarm-high-ink": "#000000",
+    "alarm-medium-ink": "#000000",
+    "alarm-low-ink": "#ffffff",
+    "alarm-outline": "#000000",
+    "alarm-stale": "#333333",
+    "alarm-row": "#f6cfcb",
+    "quality-bad": "#26292d",
+    "quality-uncertain": "#26292d",
+    "mimic-liquid": "#d4d4d4",
+    "mimic-concrete": "#c4c4c4",
+    "mimic-outline": "#333333",
+    "mimic-on": "#333333",
+    "mimic-off": "#ffffff",
+    "mimic-hall": "#ededed",
+    "mimic-unbound": "#333333",
+    "pen-1": "#1f5fb8",
+    "pen-2": "#8a5000",
+    "pen-3": "#1c6b3f",
+    "pen-4": "#6b3fa0",
+    "pen-5": "#b3261e",
+    "pen-6": "#0f6e7e",
+  },
 };
 
-export const THEME_KEY = "sath.theme";
+export const THEME_KEY = "sath.opsTheme";
 
-/** Temani hujjatga qo'llaydi (CSS o'zgaruvchilar + `data-theme`) va saqlaydi. */
+/** Temani hujjatga qo'llaydi (`data-theme` — qiymatlar tokens.css da). `persist` — faqat operator varianti
+ * (standart ↔ kunduzgi) saqlanadi; muhandis temasi BIM sahifalariga bog'langan. */
 export function applyTheme(name: ThemeName, persist = true): void {
   if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  root.setAttribute("data-theme", name);
-  for (const [k, v] of Object.entries(THEMES[name])) root.style.setProperty(`--${k}`, v);
-  if (persist) {
+  document.documentElement.setAttribute("data-theme", name);
+  if (persist && name !== "engineer") {
     try { localStorage.setItem(THEME_KEY, name); } catch { /* xotira yopiq (kiosk) — sessiya ichida ishlaydi */ }
   }
 }
 
-/** Saqlangan tema yoki `fallback` (dispetcher sahifalari `operator`, boshqalar `engineer`). */
-export function savedTheme(fallback: ThemeName): ThemeName {
+/** Dispetcher sahifalari temasi: saqlangan operator varianti (standart yoki kunduzgi), default — standart. */
+export function opsTheme(): OpsThemeName {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    if (v === "engineer" || v === "operator") return v;
+    if (v === "operator" || v === "operator-hc") return v;
   } catch { /* yo'q */ }
-  return fallback;
+  return "operator";
+}
+
+/** @deprecated — kontekst bo'yicha: BIM → `engineer`, dispetcher → `opsTheme()`. */
+export function savedTheme(fallback: ThemeName): ThemeName {
+  return fallback === "engineer" ? "engineer" : opsTheme();
 }
 
 export function currentTheme(): ThemeName {
   if (typeof document === "undefined") return "engineer";
-  return document.documentElement.getAttribute("data-theme") === "operator" ? "operator" : "engineer";
+  const t = document.documentElement.getAttribute("data-theme");
+  return t === "operator" || t === "operator-hc" ? t : "engineer";
 }
 
 /** Alarm holati × ustuvorlik → ko'rsatish tokeni. Shakl va kod rangdan mustaqil kanal. */
@@ -148,8 +244,12 @@ export interface AlarmStyle {
   color: string;
   /** Qator/fon uchun */
   bg: string;
-  /** ISA-101: kritik — romb, yuqori — kvadrat, o'rta — uchburchak, past — doira; ok — yo'q */
+  /** Shakl ichidagi raqam/kod rangi (to'ldirishga nisbatan ≥ 4.5:1) */
+  ink: string;
+  /** ISA-101 / HP-HMI: kritik — romb ◆, yuqori — uchburchak ▲, o'rta — kvadrat ■, past — doira ●; ok — yo'q */
   shape: "diamond" | "square" | "triangle" | "circle" | "none";
+  /** Ustuvorlik nomi (CSS sinf: `prio-<nom>`); ok/stale — null */
+  priority: PriorityName | null;
   /** Qisqa matn kodi: HH, H, L, LL, ROC, DEV, ?, — */
   code: string;
   /** Ustuvorlik raqami (1 = kritik … 4 = past), ok/stale — 0 */
@@ -163,8 +263,8 @@ export const STATE_CODE: Record<AlarmStateName, string> = {
   ok: "", low: "L", high: "H", stale: "?", lowlow: "LL", highhigh: "HH", roc: "ROC", deviation: "DEV",
 };
 const PRIO_RANK: Record<PriorityName, 1 | 2 | 3 | 4> = { critical: 1, high: 2, medium: 3, low: 4 };
-const PRIO_SHAPE: Record<PriorityName, AlarmStyle["shape"]> = { critical: "diamond", high: "square", medium: "triangle", low: "circle" };
-const PRIO_GLYPH: Record<PriorityName, string> = { critical: "◆", high: "■", medium: "▲", low: "●" };
+const PRIO_SHAPE: Record<PriorityName, AlarmStyle["shape"]> = { critical: "diamond", high: "triangle", medium: "square", low: "circle" };
+export const PRIO_GLYPH: Record<PriorityName, string> = { critical: "◆", high: "▲", medium: "■", low: "●" };
 
 export function isActiveAlarm(state: string | null | undefined): boolean {
   return !!state && state !== "ok" && state !== "stale";
@@ -173,12 +273,14 @@ export function isActiveAlarm(state: string | null | undefined): boolean {
 export function alarmStyle(state: AlarmStateName | string, priority: PriorityName | string = "medium"): AlarmStyle {
   const st = (state in STATE_CODE ? state : "ok") as AlarmStateName;
   const pr = (priority in PRIO_RANK ? priority : "medium") as PriorityName;
-  if (st === "ok") return { color: "var(--ok)", bg: "transparent", shape: "none", code: "", rank: 0, label: alarmLabel("ok"), glyph: "" };
-  if (st === "stale") return { color: "var(--alarm-stale)", bg: "transparent", shape: "none", code: "?", rank: 0, label: alarmLabel("stale"), glyph: "?" };
+  if (st === "ok") return { color: "var(--ok)", ink: "var(--text)", bg: "transparent", shape: "none", priority: null, code: "", rank: 0, label: alarmLabel("ok"), glyph: "" };
+  if (st === "stale") return { color: "var(--alarm-stale)", ink: "var(--text)", bg: "transparent", shape: "none", priority: null, code: "?", rank: 0, label: alarmLabel("stale"), glyph: "?" };
   return {
     color: `var(--alarm-${pr})`,
+    ink: `var(--alarm-${pr}-ink)`,
     bg: "var(--alarm-row)",
     shape: PRIO_SHAPE[pr],
+    priority: pr,
     code: STATE_CODE[st],
     rank: PRIO_RANK[pr],
     label: alarmLabel(st),
@@ -189,11 +291,11 @@ export function alarmStyle(state: AlarmStateName | string, priority: PriorityNam
 /** Sifat belgisi: rangdan tashqari `?`/`~`/`m` kodi — bad qiymat hech qachon "normal" ko'rinmaydi. */
 export function qualityStyle(q: QualityName | string | undefined): { code: string; color: string; label: string } {
   switch (q) {
-    case "bad": return { code: "✕", color: "var(--quality-bad)", label: "yaroqsiz" };
-    case "uncertain": return { code: "~", color: "var(--quality-uncertain)", label: "noaniq" };
-    case "substituted": return { code: "s", color: "var(--quality-uncertain)", label: "almashtirilgan" };
-    case "manual": return { code: "m", color: "var(--quality-uncertain)", label: "qo'lda" };
-    default: return { code: "", color: "var(--text)", label: "yaxshi" };
+    case "bad": return { code: "✕", color: "var(--quality-bad)", label: qualityLabel("bad") };
+    case "uncertain": return { code: "~", color: "var(--quality-uncertain)", label: qualityLabel("uncertain") };
+    case "substituted": return { code: "s", color: "var(--quality-uncertain)", label: qualityLabel("substituted") };
+    case "manual": return { code: "m", color: "var(--quality-uncertain)", label: qualityLabel("manual") };
+    default: return { code: "", color: "var(--text)", label: qualityLabel("good") };
   }
 }
 

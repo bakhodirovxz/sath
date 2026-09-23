@@ -73,7 +73,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const w = e.w ?? 200, h = e.h ?? 120;
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x} ${e.y + 10} Q${e.x + w * 0.25} ${e.y - 2} ${e.x + w * 0.5} ${e.y + 10} T${e.x + w} ${e.y + 10} L${e.x + w} ${e.y + h} L${e.x} ${e.y + h} Z`} fill="var(--mimic-water)" opacity="0.9" />
+                <path d={`M${e.x} ${e.y + 10} Q${e.x + w * 0.25} ${e.y - 2} ${e.x + w * 0.5} ${e.y + 10} T${e.x + w} ${e.y + 10} L${e.x + w} ${e.y + h} L${e.x} ${e.y + h} Z`} fill="var(--mimic-liquid)" opacity="0.9" />
                 <path d={`M${e.x} ${e.y + 10} Q${e.x + w * 0.25} ${e.y - 2} ${e.x + w * 0.5} ${e.y + 10} T${e.x + w} ${e.y + 10}`} fill="none" stroke="var(--accent-2)" strokeWidth="2" />
                 <text x={e.x + 12} y={e.y + h - 10} className="mimic-cap">{e.label}</text>
               </g>
@@ -97,7 +97,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const d = `M${e.x} ${e.y} L${e.x + w} ${e.y} L${e.x + w + 50} ${e.y + h}`;
             return (
               <g key={e.id} {...common}>
-                <path d={d} fill="none" stroke="var(--mimic-pipe)" strokeWidth="10" strokeLinejoin="round" />
+                <path d={d} fill="none" stroke="var(--mimic-outline)" strokeWidth="10" strokeLinejoin="round" />
                 <path d={d} fill="none" stroke="var(--accent-2)" strokeWidth="4" strokeLinejoin="round" strokeDasharray="14 10" className="mimic-flow" />
                 <text x={e.x + 40} y={e.y + 22} className="mimic-cap">{e.label}</text>
               </g>
@@ -144,8 +144,8 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && p.last_value != null && p.last_value > 0.05 && !p.stale;
             return (
               <g key={e.id} {...common} data-testid="mimic-unit">
-                <circle cx={e.x} cy={e.y} r={24} fill={p ? (on ? "var(--mimic-unit-on)" : "var(--mimic-unit-off)") : "url(#nodata)"} stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth="2" strokeDasharray={p ? undefined : "3 3"} />
-                <path d={`M${e.x - 12} ${e.y} h24 M${e.x} ${e.y - 12} v24 M${e.x - 8} ${e.y - 8} l16 16 M${e.x + 8} ${e.y - 8} l-16 16`} stroke={on ? "var(--ok)" : "var(--mimic-idle)"} strokeWidth="2" className={on ? "mimic-spin" : undefined} style={{ transformOrigin: `${e.x}px ${e.y}px` }} />
+                <circle cx={e.x} cy={e.y} r={24} fill={p ? (on ? "var(--mimic-on)" : "var(--mimic-off)") : "url(#nodata)"} stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth="2" strokeDasharray={p ? undefined : "3 3"} />
+                <path d={`M${e.x - 12} ${e.y} h24 M${e.x} ${e.y - 12} v24 M${e.x - 8} ${e.y - 8} l16 16 M${e.x + 8} ${e.y - 8} l-16 16`} stroke={on ? "var(--ok)" : "var(--mimic-unbound)"} strokeWidth="2" className={on ? "mimic-spin" : undefined} style={{ transformOrigin: `${e.x}px ${e.y}px` }} />
                 {st && st.code && <text x={e.x + 26} y={e.y - 18} className="mimic-code" fill={st.color}>{st.glyph}{st.code}</text>}
                 <ValueBox x={e.x} y={e.y + 50} w={e.w ?? 64} s={p} label={e.label ?? ""} now={now} onOpen={onOpen} editing={editing} />
               </g>
@@ -158,7 +158,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
               <g key={e.id} {...common} data-testid="mimic-breaker" data-state={closed == null ? "unknown" : closed ? "closed" : "open"}>
                 <line x1={e.x} y1={e.y - 25} x2={e.x} y2={e.y - 10} stroke="var(--warn)" strokeWidth="2" />
                 <line x1={e.x} y1={e.y + 10} x2={e.x} y2={e.y + 30} stroke="var(--warn)" strokeWidth="2" />
-                <rect x={e.x - 8} y={e.y - 10} width={16} height={20} fill={closed == null ? "url(#nodata)" : closed ? "var(--ok)" : "var(--mimic-unit-off)"} stroke={closed == null ? "var(--mimic-unbound)" : "var(--mimic-outline)"} strokeWidth="1.5" strokeDasharray={closed == null ? "3 3" : undefined} />
+                <rect x={e.x - 8} y={e.y - 10} width={16} height={20} fill={closed == null ? "url(#nodata)" : closed ? "var(--ok)" : "var(--mimic-off)"} stroke={closed == null ? "var(--mimic-unbound)" : "var(--mimic-outline)"} strokeWidth="1.5" strokeDasharray={closed == null ? "3 3" : undefined} />
                 {closed === false && <line x1={e.x - 6} y1={e.y + 8} x2={e.x + 6} y2={e.y - 8} stroke="var(--text)" strokeWidth="2" />}
                 <text x={e.x + 11} y={e.y + 4} className="mimic-lbl">{e.label}{closed == null ? " ?" : closed ? "" : " OCHIQ"}</text>
               </g>
@@ -182,7 +182,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const open = s ? (s.last_value ?? 0) >= 0.5 : null;
             return (
               <g key={e.id} {...common} data-testid="mimic-valve">
-                <path d={`M${e.x - 10} ${e.y - 8} L${e.x + 10} ${e.y + 8} L${e.x + 10} ${e.y - 8} L${e.x - 10} ${e.y + 8} Z`} fill={open == null ? "url(#nodata)" : open ? "var(--ok)" : "var(--mimic-unit-off)"} stroke="var(--mimic-outline)" strokeWidth="1.5" />
+                <path d={`M${e.x - 10} ${e.y - 8} L${e.x + 10} ${e.y + 8} L${e.x + 10} ${e.y - 8} L${e.x - 10} ${e.y + 8} Z`} fill={open == null ? "url(#nodata)" : open ? "var(--ok)" : "var(--mimic-off)"} stroke="var(--mimic-outline)" strokeWidth="1.5" />
                 <text x={e.x} y={e.y - 12} textAnchor="middle" className="mimic-lbl">{e.label}{open == null ? " ?" : open ? "" : " YOPIQ"}</text>
               </g>
             );

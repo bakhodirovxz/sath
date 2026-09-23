@@ -8,7 +8,6 @@ import { COMMANDS, type ParsedCommand } from "../viewer/commands";
 import type { Hover, NavMode, Shading, ViewName } from "../viewer/Viewer";
 import { useAuth } from "../store/auth";
 import { useLatest } from "../hooks/useLatest";
-import { applyTheme, savedTheme } from "../ui/tokens";
 import NotificationsBell from "../ui/NotificationsBell";
 import CommandLine from "../ui/CommandLine";
 import { ifcLabel, label } from "../ui/format";
@@ -56,7 +55,6 @@ const WORKSPACES: { id: string; title: string; tab: Tab }[] = [
 ];
 
 export default function ModelPage() {
-  useEffect(() => { applyTheme(savedTheme("engineer"), false); }, []);
   const { modelId } = useParams();
   const mid = Number(modelId);
   const [params, setParams] = useSearchParams();

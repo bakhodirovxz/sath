@@ -27,6 +27,8 @@ export default tseslint.config(
       // 3D ko'rinish (role=application) o'z klaviatura boshqaruviga ega — Tab bilan yetib borilishi shart
       "jsx-a11y/no-noninteractive-tabindex": ["error", { tags: [], roles: ["tabpanel", "application"], allowExpressionValues: true }],
       // Maxsus maydon komponentlari (ichida <input>) — label ular bilan bog'langan hisoblanadi
+      // `role` React komponentlarida — loyiha roli (viewer/engineer…), ARIA emas
+      "jsx-a11y/aria-role": ["error", { ignoreNonDOM: true }],
       "jsx-a11y/label-has-associated-control": ["error", { controlComponents: ["DateField", "DateTimeField"], depth: 3 }],
     },
   },

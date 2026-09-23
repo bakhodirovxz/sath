@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import { DialogHost } from "./ui/dialogs";
 import ProfileDialog from "./ui/ProfileDialog";
 import { t, useLocale } from "./i18n";
+import { applyTheme, opsTheme, type ThemeName } from "./ui/tokens";
 
 // Sahifa darajasida kod bo'linishi (F10): login ekrani Three.js/ThatOpen/web-ifc ni yuklamaydi
 const Projects = lazy(() => import("./pages/Projects"));
@@ -33,6 +34,17 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
+/** Tema marshrutga bog'langan (UX-05): dispetcher ekranlari (`/ops`, `/dashboard`) — ISA-101 operator varianti
+ * (standart yoki kunduzgi, foydalanuvchi tanlovi), qolgan hammasi (BIM) — Blender Dark. */
+export function themeForPath(path: string): ThemeName {
+  return /^\/projects\/\d+\/(ops|dashboard)(\/|$)/.test(path) ? opsTheme() : "engineer";
+}
+function RouteTheme() {
+  const { pathname } = useLocation();
+  useEffect(() => { applyTheme(themeForPath(pathname), false); }, [pathname]);
+  return null;
+}
+
 export default function App() {
   const init = useAuth((s) => s.init);
   const locale = useLocale(); // til almashganda sahifalar yangi matn bilan qayta chiziladi (UX-09)
@@ -41,6 +53,7 @@ export default function App() {
   }, [init]);
   return (
     <>
+    <RouteTheme />
     <DialogHost />
     <Suspense fallback={<div className="page-body muted">{t("common.loading")}</div>}>
     <Routes key={locale}>

@@ -4,15 +4,18 @@ import NotificationsBell from "./NotificationsBell";
 import { useEffect, useState } from "react";
 import { applyTheme, currentTheme, type ThemeName } from "./tokens";
 import ProfileDialog from "./ProfileDialog";
+import { t } from "../i18n";
 
-/** Tema almashtirgich (F1): engineer (Blender) ↔ operator (ISA-101); tanlov saqlanadi. */
+/** Dispetcher ekrani kontrasti (UX-05): standart (ISA-101 kulrang) ↔ kunduzgi (yuqori kontrast); tanlov saqlanadi.
+ * BIM (muhandis) sahifalarida ko'rsatilmaydi — u yerda Blender Dark doimiy. */
 function ThemeToggle() {
   const [theme, setTheme] = useState<ThemeName>(() => currentTheme());
   useEffect(() => { setTheme(currentTheme()); }, []);
-  const next: ThemeName = theme === "operator" ? "engineer" : "operator";
+  if (theme === "engineer") return null;
+  const next: ThemeName = theme === "operator" ? "operator-hc" : "operator";
   return (
-    <button className="btn sm theme-toggle" title={`Tema: ${theme === "operator" ? "operator (ISA-101)" : "muhandis (Blender)"} — almashtirish`} onClick={() => { applyTheme(next); setTheme(next); }}>
-      {theme === "operator" ? "ISA-101" : "Blender"}
+    <button className="btn sm theme-toggle" title={t("theme.toggleTitle")} aria-pressed={theme === "operator-hc"} onClick={() => { applyTheme(next); setTheme(next); }}>
+      {theme === "operator-hc" ? t("theme.operatorHc") : t("theme.operator")}
     </button>
   );
 }

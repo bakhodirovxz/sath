@@ -17,7 +17,6 @@ import { loadScheme, type Scheme } from "./operator/scheme";
 import AnnunciatorControl from "../ui/AnnunciatorControl";
 import AlarmTable from "./operator/AlarmTable";
 import { sortAlarms, toRows } from "./operator/alarms";
-import { applyTheme, savedTheme } from "../ui/tokens";
 import { alignNearest } from "../ui/trendMath";
 import { applyEvent, loadEvents, putSensors, useAlarmEvents, useLiveMessages, useProjectLive, useSensors } from "../store/live";
 
@@ -52,8 +51,6 @@ const SECTIONS: { id: Section; title: string }[] = [
  * yuklanadi (vaqt mashinasidan jonliga qaytganda — qayta). */
 export default function DashboardPage() {
   const nav = useNavigate();
-  // Dispetcher sahifasi: default operator (ISA-101) temasi; foydalanuvchi tanlovi saqlanadi (F1)
-  useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const pid = Number(useParams().projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<Member[]>([]);

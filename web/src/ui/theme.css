@@ -1,68 +1,19 @@
-/* Sath — Blender Dark uslubidagi ish maydoni (ranglar Blender 4.x «Blender Dark» temasidan, Sath brendi faqat logo) */
-:root {
-  --canvas: #3d3d3d;        /* 3D viewport foni (Blender: 3d3d3d) */
-  --panel: #303030;         /* editor foni (Outliner, Properties, dock) */
-  --chrome: #282828;        /* sarlavhalar: top bar, viewport header, status */
-  --chrome-2: #3d3d3d;      /* hover / ikkilamchi fon */
-  --line: #232323;          /* region chegaralari */
-  --line-strong: #191919;   /* editorlar orasidagi chegara */
-  --widget: #545454;        /* tugma/dropdown foni (Blender widget) */
-  --widget-hover: #656565;
-  --widget-line: #3d3d3d;   /* widget chegarasi */
-  --field: #1d1d1d;         /* matn maydoni foni */
-  --sel: #334d80;           /* tanlangan qator (Blender: 334d80) */
-  --text: #e6e6e6;
-  --text-muted: #b3b3b3;
-  --text-dim: #aaaaaa;
-  --accent: #4772b3;        /* Blender ko'k: faol/tanlov */
-  --accent-2: #39b7c9;      /* Sath brendi (logo, kirish) */
-  --brand: #39b7c9;
-  --link: #8fb0e6;
-  --ok: #6ad39c;
-  --warn: #f0c060;
-  --danger: #f7a8a8;
-  --wip: #9a9a9a;
-  /* Alarm ustuvorligi va sifat (F1, tokens.ts bilan bir xil; tema almashganda JS qayta yozadi) */
-  --alarm-critical: #f7a8a8;
-  --alarm-high: #f5b86a;
-  --alarm-medium: #ecd75a;
-  --alarm-low: #9fc0ea;
-  --alarm-stale: #c4c4c4;
-  --alarm-row: #703d3d;
-  --quality-bad: #d8b0f5;
-  --quality-uncertain: #d2c290;
-  --mimic-water: #1d3f55;
-  --mimic-concrete: #5b616b;
-  --mimic-outline: #8b9098;
-  --mimic-pipe: #9aa0a8;
-  --mimic-hall: #2b2f36;
-  --mimic-unit-on: #1f3b2c;
-  --mimic-unit-off: #26282c;
-  --mimic-unbound: #9296a0;
-  --mimic-idle: #9aa0a8;
-  --pen-1: #6fa8f5; --pen-2: #f0b35a; --pen-3: #6ad39c; --pen-4: #d29cf0; --pen-5: #f58c8c; --pen-6: #7fd9e6;
-  --radius: 4px;
-  --font: "Inter", "Segoe UI", "DejaVu Sans", "Noto Sans", system-ui, sans-serif;
-  --mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
-  --top-h: 30px;
-  --cmd-h: 26px;
-  --status-h: 22px;
-  --tools-w: 40px;
-  --dock-w: 340px;
-}
+/* Sath — komponent uslublari. Tokenlar (rang, tipografiya, oraliq) — tokens.css (UX-05); hex bu faylda yo'q. */
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
   background: var(--panel);
   color: var(--text);
-  font: 12.5px/1.45 var(--font);
+  font: var(--fs-body)/var(--lh-ui) var(--font);
   overflow: hidden;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Operator: ikki qavatli halqa — kulrang fonda ham, rangli alarm belgisi ustida ham ko'rinadi (WCAG 2.4.13) */
+:root[data-theme^="operator"] :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 4px var(--field); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* --- Umumiy elementlar --- */
@@ -77,12 +28,12 @@ a:hover { text-decoration: underline; }
 }
 .btn:hover { background: var(--widget-hover); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.btn.primary:hover { background: #5680c4; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-hover); }
 .btn.danger { border-color: var(--danger); color: var(--danger); }
 .btn.sm { padding: 2px 7px; font-size: 12px; }
 .btn.icon { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
-.btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 .input, .select, .textarea {
   background: var(--field);
@@ -118,7 +69,7 @@ a:hover { text-decoration: underline; }
 .badge.shared { color: var(--warn); }
 .badge.published { color: var(--ok); }
 .badge.archived { color: var(--text-dim); }
-.badge.open { color: var(--accent); }
+.badge.open { color: var(--link); }
 .badge.changes_requested { color: var(--warn); }
 .badge.approved { color: var(--ok); }
 .badge.merged { color: var(--ok); }
@@ -179,7 +130,6 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 .login h1 { color: var(--brand); }
 
 /* --- Ish maydoni (Blender/3ds Max uslubi) --- */
-:root { --vhead-h: 26px; --props-tabs-w: 36px; }
 .workspace {
   height: 100%;
   display: grid;
@@ -214,7 +164,7 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 .ws-tabs button { background: transparent; border: 0; color: var(--text-muted); padding: 0 12px; cursor: pointer; font-size: 12.5px; border-radius: 4px 4px 0 0; height: 24px; }
 .ws-tabs button:hover { color: var(--text); }
 .ws-tabs button.active { background: var(--panel); color: var(--text); }
-.ws-tabs button .count { margin-left: 5px; background: var(--danger); color: #fff; border-radius: 8px; font-size: 10px; padding: 0 5px; }
+.ws-tabs button .count { margin-left: 5px; background: var(--danger-strong); color: var(--on-danger); border-radius: 8px; font-size: 10px; padding: 0 5px; }
 .vp-header { grid-area: vhead; background: var(--chrome); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 12px; }
 .vp-mode { color: var(--text); background: var(--widget); border: 1px solid var(--widget-line); padding: 1px 8px; border-radius: var(--radius); }
 .vp-group { display: inline-flex; border: 1px solid var(--widget-line); border-radius: var(--radius); overflow: hidden; }
@@ -277,7 +227,7 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 .props-tabs button { position: relative; width: 28px; height: 28px; background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; font-size: 15px; border-radius: var(--radius); }
 .props-tabs button:hover { background: var(--chrome-2); color: var(--text); }
 .props-tabs button.active { background: var(--panel); border-color: var(--line-strong); color: var(--text); }
-.props-tabs button .count { position: absolute; top: -3px; right: -3px; background: var(--danger); color: #fff; border-radius: 7px; font-size: 9px; padding: 0 4px; line-height: 13px; }
+.props-tabs button .count { position: absolute; top: -3px; right: -3px; background: var(--danger-strong); color: var(--on-danger); border-radius: 7px; font-size: 9px; padding: 0 4px; line-height: 13px; }
 .props-body { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .dock-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; min-height: 0; }
 .dock-body h3:first-child { margin-top: 0; }
@@ -427,7 +377,7 @@ button.list-item:disabled, .row-btn:disabled { cursor: default; }
 .dash { max-width: 1400px; margin: 0 auto; }
 .dash-kpi { grid-template-columns: repeat(5, 1fr); }
 .tile-alarm { border-color: var(--danger); background: var(--alarm-row); }
-.dash-flash { background: var(--danger); color: #fff; font-weight: 600; padding: 6px 10px; margin: 6px 0; letter-spacing: 0.3px; }
+.dash-flash { background: var(--danger-strong); color: var(--on-danger); font-weight: 600; padding: 6px 10px; margin: 6px 0; letter-spacing: 0.3px; }
 .dash-main { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; align-items: start; }
 @media (max-width: 1000px) { .dash-main { grid-template-columns: 1fr; } .dash-kpi { grid-template-columns: repeat(2, 1fr); } }
 .dash-mimic, .dash-alarms, .dash-block { border: 1px solid var(--line); background: var(--panel); padding: 8px 10px; }
@@ -452,7 +402,7 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 
 /* --- Bildirishnomalar (qo'ng'iroq) --- */
 .bell { position: relative; }
-.bell-count { position: absolute; top: -4px; right: -6px; background: var(--danger); color: #fff; font-size: 10px; border-radius: 8px; padding: 0 4px; line-height: 14px; }
+.bell-count { position: absolute; top: -4px; right: -6px; background: var(--danger-strong); color: var(--on-danger); font-size: 10px; border-radius: 8px; padding: 0 4px; line-height: 14px; }
 .bell-menu { position: absolute; right: 0; top: 34px; width: 360px; max-height: 60vh; overflow: auto; background: var(--panel); border: 1px solid var(--line-strong); box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 50; }
 .bell-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 6px 10px; cursor: pointer; }
 .bell-item:hover { background: var(--chrome); }
@@ -675,11 +625,10 @@ kbd { font-family: var(--mono); font-size: 0.92em; padding: 0 4px; border: 1px s
 /* --- F1: alarm belgisi (shakl + kod, rangdan mustaqil kanal) va tema --- */
 .alarm-mark { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 11px; font-weight: 700; }
 .mimic-code { font-family: var(--mono); font-size: 9px; font-weight: 700; }
-:root[data-theme="operator"] .btn.primary { color: #fff; }
-:root[data-theme="operator"] .badge { border: 1px solid var(--line-strong); }
-:root[data-theme="operator"] .mimic-cap { fill: var(--text-muted); }
-:root[data-theme="operator"] .mimic-lbl { fill: var(--text-muted); }
-:root[data-theme="operator"] .mimic-val { fill: var(--text); }
+:root[data-theme^="operator"] .badge { border: 1px solid var(--line-strong); }
+:root[data-theme^="operator"] .mimic-cap { fill: var(--text-muted); }
+:root[data-theme^="operator"] .mimic-lbl { fill: var(--text-muted); }
+:root[data-theme^="operator"] .mimic-val { fill: var(--text); }
 .theme-toggle { font-size: 11px; }
 
 /* --- F2: ISA-101 operator ekranlari (L1–L4) --- */

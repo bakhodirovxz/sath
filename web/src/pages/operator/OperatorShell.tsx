@@ -6,7 +6,7 @@ import { api, type AlarmEvent, type Dashboard, type Project, type Sensor, type S
 import type { LiveState } from "../../hooks/liveConnection";
 import { loadEvents, putSensors, useAlarmEvents, useLiveSelector, useLiveState, useProjectLive, useSensors } from "../../store/live";
 import TopBar from "../../ui/TopBar";
-import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
+import { alarmStyle } from "../../ui/tokens";
 import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
 import { priorityLabel } from "../../i18n/labels";
@@ -60,7 +60,6 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [openHandover, setOpenHandover] = useState<ShiftHandover | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const reload = useCallback(async () => {
     try {
       const [p, d, hs] = await Promise.all([api.project(pid), api.dashboard(pid), api.shiftHandovers(pid).catch(() => [] as ShiftHandover[]), loadEvents(pid)]);
