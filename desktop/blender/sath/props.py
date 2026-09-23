@@ -70,8 +70,6 @@ class GesScene(bpy.types.PropertyGroup):
     version_id: bpy.props.IntProperty(default=0)
     version_number: bpy.props.IntProperty(default=0)
     model_name: bpy.props.StringProperty(default="")
-    password: bpy.props.StringProperty(name="Parol", subtype="PASSWORD", default="")
-    otp: bpy.props.StringProperty(name="MFA kodi", default="", description="Hisobda MFA yoqilgan bo'lsa — ilovadagi 6 raqamli kod")
     projects: bpy.props.CollectionProperty(type=GesListItem)
     projects_index: bpy.props.IntProperty(default=-1, update=_on_project)
     models: bpy.props.CollectionProperty(type=GesListItem)
@@ -164,7 +162,24 @@ class GesScene(bpy.types.PropertyGroup):
     time_note: bpy.props.StringProperty(default="")
 
 
-CLASSES = (GesListItem, GesSimField, GesScene)
+class GesSecret(bpy.types.PropertyGroup):
+    """Parol va MFA kodi — WindowManager da (faqat ish vaqtida): .blend ga yozilmaydi, login urinishidan keyin
+    (muvaffaqiyatli yoki xato) darhol tozalanadi (CODE-05)."""
+
+    password: bpy.props.StringProperty(name="Parol", subtype="PASSWORD", default="", options={"SKIP_SAVE"})
+    otp: bpy.props.StringProperty(
+        name="MFA kodi",
+        default="",
+        description="Hisobda MFA yoqilgan bo'lsa — ilovadagi 6 raqamli kod",
+        options={"SKIP_SAVE"},
+    )
+
+
+def secret(context=None) -> GesSecret:
+    return (context or bpy.context).window_manager.sath_secret
+
+
+CLASSES = (GesListItem, GesSimField, GesScene, GesSecret)
 
 
 LIST_FIELDS = ("item_id", "name", "col2", "col3", "col4", "guid", "state", "number")
@@ -227,9 +242,11 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.ges = bpy.props.PointerProperty(type=GesScene)
+    bpy.types.WindowManager.sath_secret = bpy.props.PointerProperty(type=GesSecret)
 
 
 def unregister():
+    del bpy.types.WindowManager.sath_secret
     del bpy.types.Scene.ges
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)

@@ -3,7 +3,7 @@
 $blender = if ($env:GES_BLENDER) { $env:GES_BLENDER } else { "$env:USERPROFILE\Tools\blender-5.2\blender.exe" }
 $runner = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "blender_headless.py"
 $tests = @(
-    @("smoke", ""), @("engine", ""), @("ifc_bridge", "--bonsai"), @("objects", "--bonsai"),
+    @("smoke", ""), @("secret_ops", ""), @("engine", ""), @("ifc_bridge", "--bonsai"), @("objects", "--bonsai"),
     @("server_ops", ""), @("review_ops", "--bonsai"), @("sim_ops", ""), @("monitor_ops", "--bonsai"),
     @("import_ops", ""), @("import_guid", ""), @("import_edges", ""), @("import_ezdxf", ""), @("import_ifc", "--bonsai"), @("import_fallback", ""), @("demo_plant", "--bonsai")
 )

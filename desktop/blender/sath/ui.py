@@ -59,8 +59,9 @@ class SATH_PT_server(GesPanel, bpy.types.Panel):
         else:
             col.prop(p, "server")
             col.prop(p, "username")
-            col.prop(s, "password")
-            col.prop(s, "otp")
+            sec = context.window_manager.sath_secret  # .blend ga saqlanmaydi (CODE-05)
+            col.prop(sec, "password")
+            col.prop(sec, "otp")
             col.operator("sath.connect", icon="LINKED")
         if s.status:
             col.label(text=s.status, icon="INFO")

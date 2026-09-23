@@ -28,7 +28,7 @@ def run(ctx):
     p = prefs.prefs()
     p.server, p.username = url, "admin"
     s = bpy.context.scene.ges
-    s.password = "admin123"
+    bpy.context.window_manager.sath_secret.password = "admin123"
     assert bpy.ops.sath.connect() == {"FINISHED"}
     c = session.client()
     proj = c._json("POST", "/api/projects", {"name": f"Twin {os.getpid()}"})

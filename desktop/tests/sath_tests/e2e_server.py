@@ -13,9 +13,9 @@ def run(ctx):
     p = prefs.prefs()
     p.server, p.username = url, "admin"
     s = bpy.context.scene.ges
-    s.password = "admin123"
+    bpy.context.window_manager.sath_secret.password = "admin123"
     assert bpy.ops.sath.connect() == {"FINISHED"}, s.status
-    assert session.is_logged_in() and s.password == ""
+    assert session.is_logged_in() and bpy.context.window_manager.sath_secret.password == ""
     c = session.client()
     proj = c._json("POST", "/api/projects", {"name": f"E2E Blender {os.getpid()}"})
     assert bpy.ops.sath.refresh_projects() == {"FINISHED"}

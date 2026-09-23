@@ -34,11 +34,14 @@ class SATH_OT_connect(bpy.types.Operator):
 
     def execute(self, context):
         p, s = prefs(), context.scene.ges
+        sec = props.secret(context)
 
         def do():
-            u = session.login(p.server, p.username, s.password, s.otp)
-            s.password = ""
-            s.otp = ""
+            try:
+                u = session.login(p.server, p.username, sec.password, sec.otp)
+            finally:  # CODE-05: xato bo'lsa ham parol/MFA kodi xotirada qolmaydi
+                sec.password = ""
+                sec.otp = ""
             s.status = f"{u['username']} sifatida kirildi"
             pkg = flows.newer_package(session.client(), flows.ADDON_VERSION)
             s.update_version = pkg["version"] if pkg else ""
