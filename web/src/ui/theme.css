@@ -717,7 +717,7 @@ tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); 
 .tl-kind { display: inline-flex; gap: var(--sp-1); align-items: center; color: var(--text-muted); font-size: var(--fs-sm); }
 .tl-title { min-width: 0; overflow-wrap: anywhere; }
 .tl-actor { font-size: var(--fs-sm); white-space: nowrap; }
-@media (max-width: 600px) { .tl-item { grid-template-columns: 52px minmax(0, 1fr); } .tl-kind, .tl-actor { grid-column: 2; } }
+@media (max-width: 600px) { .tl-item { grid-template-columns: 52px minmax(0, 1fr); } .tl-title, .tl-actor { grid-column: 1 / -1; } }
 
 /* Versiyalarni taqqoslash (UX-12): yonma-yon yoki slayder */
 .dialog.compare-dialog { width: min(96vw, 1800px); max-width: none; height: min(92vh, 1100px); max-height: none; display: flex; flex-direction: column; padding: var(--sp-3); }
