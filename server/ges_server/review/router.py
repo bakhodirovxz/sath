@@ -449,6 +449,18 @@ def merge_cr(cr_id: int, user: CurrentUser, db: DB):
     cr = _get_cr(db, cr_id, user, Role.approver)
     if cr.status != CRStatus.approved:
         raise HTTPException(status.HTTP_409_CONFLICT, "Avval tasdiqlanishi kerak")
+    # VCS-03: eskirgan CR — undan yangi (yoki o'sha) versiya allaqachon published bo'lsa, merge published ni
+    # orqaga qaytarmaydi (v2 merge → keyin v1 CR merge qilinmaydi)
+    newer = next(
+        (v for v in cr.version.model.versions if v.state == VersionState.published and v.number >= cr.version.number and v.id != cr.version_id),
+        None,
+    )
+    if newer is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"CR eskirgan: v{newer.number} allaqachon tasdiqlangan (v{cr.version.number} undan yangi emas) — "
+            "yangi versiya bilan CR oching yoki bu CR ni yoping",
+        )
     _require_ids(db, cr.version)
     for v in cr.version.model.versions:
         if v.state == VersionState.published:

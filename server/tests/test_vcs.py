@@ -181,3 +181,25 @@ def test_all_paths_set_suitability_and_revision(client, users, mid, tmp_path):
         )
     assert r.status_code == 201, r.text
     assert (r.json()["suitability_code"], r.json()["revision_code"]) == ("S0", "P05")
+
+
+# ---------------------------------------------------------------- VCS-03
+
+
+def _cr(client, users, mid, vid):
+    r = client.post(f"/api/models/{mid}/change-requests", json={"version_id": vid, "title": "T"}, headers=users["engineer"])
+    assert r.status_code == 201, r.text
+    cr = r.json()
+    r = client.post(f"/api/change-requests/{cr['id']}/reviews", json={"decision": "approve"}, headers=users["approver"])
+    assert r.status_code == 201, r.text
+    return cr
+
+
+def test_merge_stale_cr_409(client, users, mid, tmp_path):
+    v1, v2 = _two_versions(client, users, mid, tmp_path)
+    cr1, cr2 = _cr(client, users, mid, v1["id"]), _cr(client, users, mid, v2["id"])
+    assert client.post(f"/api/change-requests/{cr2['id']}/merge", headers=users["approver"]).status_code == 200
+    r = client.post(f"/api/change-requests/{cr1['id']}/merge", headers=users["approver"])
+    assert r.status_code == 409 and "eskirgan" in r.json()["detail"]
+    assert client.get(f"/api/models/{mid}/published", headers=users["viewer"]).json()["id"] == v2["id"]
+    assert client.get(f"/api/versions/{v1['id']}", headers=users["viewer"]).json()["state"] == "shared"
