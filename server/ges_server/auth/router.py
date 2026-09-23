@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -7,15 +8,16 @@ from pydantic import BaseModel, Field
 
 from .. import audit
 from ..config import get_settings
-from ..orm import User, UserSession
+from ..orm import ProjectMember, Role, User, UserSession
 from ..ratelimit import LoginLimit, client_ip
-from . import sessions, totp
-from .deps import DB, AdminUser, CurrentUser, oauth2_scheme
+from . import security, sessions, totp
+from .deps import DB, AdminUser, CurrentUser, has_role, oauth2_scheme
 from .security import (
     create_access_token,
     decode_token,
     hash_password,
     password_problems,
+    privileged_min_length,
     verify_password,
 )
 
@@ -107,14 +109,46 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=1, max_length=128)
 
 
-def _check_policy(password: str, username: str) -> None:
-    problems = password_problems(password, username)
+def _is_privileged(db, user: User | None, *, is_admin: bool = False) -> bool:
+    """Administrator yoki biror loyihada tasdiqlovchi (yoki undan yuqori) — kuchaytirilgan parol siyosati.
+    Noma'lum (yangi) rollar tasdiqlovchidan past hisoblanadi."""
+    if is_admin or (user is not None and user.is_admin):
+        return True
+    if user is None:
+        return False
+    for (role,) in db.query(ProjectMember.role).filter_by(user_id=user.id).all():
+        try:
+            if has_role(role, Role.approver):
+                return True
+        except (KeyError, ValueError):
+            continue
+    return False
+
+
+def _check_policy(password: str, username: str, *, privileged: bool = False) -> None:
+    """AUTH-01: umumiy minimal (NIST, `password_min_length`) + admin/tasdiqlovchi uchun kamida 12 belgi."""
+    problems = password_problems(password, username, privileged_min_length() if privileged else None)
     if problems:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Parol talabga javob bermaydi: " + "; ".join(problems))
 
 
-def _login_failed(db, user: User | None, username: str, reason: str) -> None:
-    """Noto'g'ri urinish: audit (darhol) + hisob hisoblagichi; chegarada bloklash (L1)."""
+# Yangi xato (b): noma'lum login, noto'g'ri parol, nofaol va bloklangan hisob — bir xil javob (login mavjudligini
+# bilib bo'lmasin); noma'lum loginda ham Argon2 tekshiruvi (vaqt farqi bo'lmasin)
+BAD_LOGIN = "Login yoki parol noto'g'ri (yoki hisob vaqtincha bloklangan)"
+_DUMMY_HASH: dict[int, str] = {}
+
+
+def _dummy_hash() -> str:
+    """Joriy xeshlovchi parametrlari bilan soxta xesh (haqiqiy hisob bilan bir xil verify vaqti)."""
+    key = id(security._hasher)
+    h = _DUMMY_HASH.get(key)
+    if h is None:
+        h = _DUMMY_HASH[key] = hash_password(secrets.token_urlsafe(16))
+    return h
+
+
+def _login_failed(db, user: User | None, username: str, reason: str) -> bool:
+    """Noto'g'ri urinish: audit (darhol) + hisob hisoblagichi; chegarada bloklash (L1). True — hozir bloklandi."""
     settings = get_settings()
     locked = False
     if user is not None:
@@ -131,6 +165,7 @@ def _login_failed(db, user: User | None, username: str, reason: str) -> None:
         target_id=user.id if user else None,
         detail={"username": username[:64], "reason": reason, "inactive": bool(user and not user.is_active)},
     )
+    return locked
 
 
 def _lock_remaining(user: User) -> int:
@@ -151,23 +186,22 @@ def login(
     otp: Annotated[str | None, Form(description="TOTP kodi (MFA yoqilgan bo'lsa)")] = None,
     client: Annotated[str, Form(description="web | desktop | gateway")] = "web",
 ):
-    """Kirish. IP bo'yicha tezlik cheklovi (429), hisob bo'yicha bloklash (423, `login_max_failures`),
+    """Kirish. IP bo'yicha tezlik cheklovi (429), hisob bo'yicha bloklash (`login_max_failures`),
     MFA yoqilgan hisobda `otp` majburiy (bo'lmasa 401 + `X-MFA-Required: 1`). Javob: qisqa umrli access
-    token + refresh token (cookie va tanada); `must_change_password` — avval parol almashtirish shart."""
+    token + refresh token (cookie va tanada); `must_change_password` — avval parol almashtirish shart.
+    Noma'lum login, noto'g'ri parol, nofaol yoki bloklangan hisob — bir xil 401 (login sanab bo'lmaydi);
+    parol har holda Argon2 bilan tekshiriladi (noma'lum login — soxta xesh), vaqt farqi yo'q."""
     user = db.query(User).filter_by(username=form.username).one_or_none()
+    pw_ok = verify_password(form.password, user.password_hash if user is not None else _dummy_hash())
     if user is not None and (remaining := _lock_remaining(user)) > 0:
         audit.log_now(
             user_id=user.id, action="auth.login_locked", target_type="user", target_id=user.id,
             detail={"username": form.username[:64], "remaining_s": remaining},
         )
-        raise HTTPException(
-            status.HTTP_423_LOCKED,
-            f"Hisob vaqtincha bloklangan ({-(-remaining // 60)} daqiqa). Administratorga murojaat qiling",
-            headers={"Retry-After": str(remaining)},
-        )
-    if user is None or not user.is_active or not verify_password(form.password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, BAD_LOGIN)
+    if user is None or not user.is_active or not pw_ok:
         _login_failed(db, user, form.username, "password")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Login yoki parol noto'g'ri")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, BAD_LOGIN)
     if user.mfa_enabled:
         if not otp:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "MFA kodi kerak", headers={"X-MFA-Required": "1"})
@@ -207,7 +241,8 @@ def refresh_session(db: DB, request: Request, response: Response, body: RefreshI
 
 @router.post("/auth/logout", status_code=204)
 def logout(user: CurrentUser, db: DB, response: Response, token: Annotated[str, Depends(oauth2_scheme)]):
-    """Joriy sessiyani bekor qiladi (refresh token ishlamaydi; access token muddati tugaguncha ≤ 15 daqiqa)."""
+    """Joriy sessiyani bekor qiladi: refresh token ham, shu sessiyaning access tokeni ham darhol yaroqsiz
+    (AUTH-01: access tokendagi `sn` har so'rovda tekshiriladi; boshqa API jarayonlarida ≤ 5 s)."""
     p = decode_token(token) or {}
     if p.get("sid"):
         sessions.revoke(db, user.id, jti=p["sid"])
@@ -336,15 +371,26 @@ def mfa_disable(body: MfaDisable, user: CurrentUser, db: DB):
 @router.post("/auth/change-password", response_model=Token)
 def change_password(body: PasswordChange, user: CurrentUser, db: DB, request: Request, response: Response):
     """Parolni almashtirish: siyosat tekshiruvi (422), barcha mavjud sessiyalar bekor (token versiyasi
-    oshadi), joriy klientga yangi token juftligi qaytadi."""
+    oshadi), joriy klientga yangi token juftligi qaytadi. AUTH-01: noto'g'ri eski parol login bilan umumiy
+    hisoblagichni oshiradi — chegarada hisob bloklanadi va barcha sessiyalar bekor (o'g'irlangan token bilan
+    parolni terib topish to'xtaydi); bloklangan hisobda 423."""
+    if (remaining := _lock_remaining(user)) > 0:
+        raise HTTPException(
+            status.HTTP_423_LOCKED, "Hisob vaqtincha bloklangan — keyinroq urinib ko'ring", headers={"Retry-After": str(remaining)}
+        )
     if not verify_password(body.old_password, user.password_hash):
+        if _login_failed(db, user, user.username, "change_password"):
+            sessions.revoke_all(db, user.id, reason="password_guess")
+            audit.log(db, user_id=user.id, action="auth.sessions_revoked", target_type="user", target_id=user.id, detail={"reason": "password_guess"})
+            db.commit()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Eski parol noto'g'ri")
-    _check_policy(body.new_password, user.username)
+    _check_policy(body.new_password, user.username, privileged=_is_privileged(db, user))
     if verify_password(body.new_password, user.password_hash):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Yangi parol eskisi bilan bir xil")
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
     user.password_changed_at = datetime.now(timezone.utc)
+    user.failed_logins = 0
     n = sessions.revoke_all(db, user.id, reason="password_change")
     audit.log(
         db, user_id=user.id, action="auth.password_changed", target_type="user", target_id=user.id, detail={"sessions_revoked": n}
@@ -378,7 +424,7 @@ def list_users(
 def create_user(body: UserCreate, admin: AdminUser, db: DB):
     if db.query(User).filter_by(username=body.username).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Bunday login mavjud")
-    _check_policy(body.password, body.username)
+    _check_policy(body.password, body.username, privileged=body.is_admin)
     user = User(
         username=body.username,
         full_name=body.full_name,
@@ -405,7 +451,7 @@ def update_user(user_id: int, body: UserUpdate, admin: AdminUser, db: DB):
         user.email = body.email
     revoke_reason = ""
     if body.password is not None:
-        _check_policy(body.password, user.username)
+        _check_policy(body.password, user.username, privileged=_is_privileged(db, user, is_admin=bool(body.is_admin)))
         user.password_hash = hash_password(body.password)
         user.must_change_password = True
         user.password_changed_at = datetime.now(timezone.utc)

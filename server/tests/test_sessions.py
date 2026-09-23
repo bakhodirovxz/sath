@@ -103,7 +103,8 @@ def test_sessions_list_and_revoke_and_logout_all(client, admin):
     assert other["client"] == "desktop"
     assert client.delete(f"/api/auth/sessions/{other['id']}", headers=_auth(b["access_token"])).status_code == 204
     assert client.post("/api/auth/refresh", json={"refresh_token": a["refresh_token"]}).status_code == 401
-    assert client.get("/api/auth/me", headers=_auth(a["access_token"])).status_code == 200  # access hali muddat ichida
+    # AUTH-01: sessiya bekor qilinsa uning access tokeni ham darhol yaroqsiz (ilgari ≤ 15 daqiqa ishlardi)
+    assert client.get("/api/auth/me", headers=_auth(a["access_token"])).status_code == 401
     assert client.post("/api/auth/logout-all", headers=_auth(b["access_token"])).status_code == 204
     assert client.get("/api/auth/me", headers=_auth(a["access_token"])).status_code == 401
     assert client.get("/api/auth/me", headers=_auth(b["access_token"])).status_code == 401

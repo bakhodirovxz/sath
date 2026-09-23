@@ -8,12 +8,16 @@ belgisi: foydalanuvchining barcha sessiyalari bekor qilinadi (OAuth 2.0 Security
 from __future__ import annotations
 
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from .. import audit
 from ..config import get_settings
+from ..db import SessionLocal
 from ..orm import User, UserSession
 from .security import create_access_token, create_refresh_token, decode_token
 
@@ -47,7 +51,7 @@ def open_session(db: Session, user: User, *, ip: str = "", user_agent: str = "",
     db.add(row)
     db.flush()
     return TokenPair(
-        create_access_token(user.id, ver=user.token_version, sid=jti),
+        create_access_token(user.id, ver=user.token_version, sid=jti, sn=row.id),
         create_refresh_token(user.id, jti, s.refresh_token_hours, ver=user.token_version),
         s.access_token_minutes * 60,
         row.id,
@@ -88,7 +92,7 @@ def refresh(db: Session, refresh_token: str) -> tuple[TokenPair, User] | None:
     row.last_used_at = now
     return (
         TokenPair(
-            create_access_token(user.id, ver=user.token_version, sid=row.jti),
+            create_access_token(user.id, ver=user.token_version, sid=row.jti, sn=row.id),
             create_refresh_token(user.id, row.jti, max(0.0, (_aware(row.expires_at) - now).total_seconds() / 3600), ver=user.token_version),
             s.access_token_minutes * 60,
             row.id,
@@ -103,6 +107,7 @@ def revoke(db: Session, user_id: int, *, jti: str | None = None, session_id: int
     if row is None:
         return False
     row.revoked_at = datetime.now(timezone.utc)
+    _forget_later(db, [row.id])
     return True
 
 
@@ -111,10 +116,13 @@ def revoke_all(db: Session, user_id: int, *, reason: str = "") -> int:
     ham yaroqsiz (parol/rol o'zgarishi, o'chirish, refresh takrori)."""
     now = datetime.now(timezone.utc)
     n = 0
+    ids = []
     for row in db.query(UserSession).filter_by(user_id=user_id, revoked_at=None).all():
         row.revoked_at = now
         row.revoke_reason = reason[:32]
+        ids.append(row.id)
         n += 1
+    _forget_later(db, ids)
     user = db.get(User, user_id)
     if user is not None:
         user.token_version = (user.token_version or 0) + 1
@@ -129,3 +137,65 @@ def purge_expired(db: Session, keep_days: int = 30) -> int:
         .filter((UserSession.expires_at < cutoff) | (UserSession.revoked_at < cutoff))
         .delete(synchronize_session=False)
     )
+
+
+# --------------------------------------------------------------------------- AUTH-01: access token ↔ sessiya
+
+# Faol sessiyalar keshi: sn → (user_id, amal qilish muddati, monotonic). Faqat ijobiy natija keshlanadi —
+# bekor qilingan sessiya har safar DB dan tekshiriladi (faqat eski/o'g'irlangan token egasi uchun narx).
+# Shu jarayonda bekor qilish keshni darhol tozalaydi; boshqa API jarayonlarida ≤ SESSION_CACHE_S kechikish.
+SESSION_CACHE_S = 5.0
+_ALIVE: dict[int, tuple[int, float]] = {}
+_ALIVE_MAX = 20_000
+_alive_lock = threading.Lock()
+_FORGET = "sessions.forget"
+
+
+def _forget(ids) -> None:
+    with _alive_lock:
+        for i in ids:
+            _ALIVE.pop(i, None)
+
+
+def _forget_later(db: Session, ids: list[int]) -> None:
+    """Keshdan hozir va tranzaksiya commit bo'lgach yana olib tashlash (oraliqda qayta keshlanmasin)."""
+    _forget(ids)
+    db.info.setdefault(_FORGET, set()).update(ids)
+
+
+@event.listens_for(SessionLocal, "after_commit")
+def _forget_on_commit(session: Session) -> None:
+    ids = session.info.pop(_FORGET, None)
+    if ids:
+        _forget(ids)
+
+
+@event.listens_for(SessionLocal, "after_rollback")
+def _forget_drop(session: Session) -> None:
+    session.info.pop(_FORGET, None)
+
+
+def session_alive(sn: int, user_id: int) -> bool:
+    """Access token sessiyasi hali faolmi (bekor qilinmagan, muddati o'tmagan, shu foydalanuvchiniki)."""
+    now = time.monotonic()
+    with _alive_lock:
+        hit = _ALIVE.get(sn)
+        if hit is not None and hit[0] == user_id and hit[1] > now:
+            return True
+    with SessionLocal() as db:
+        row = db.get(UserSession, sn)
+        ok = (
+            row is not None
+            and row.user_id == user_id
+            and row.revoked_at is None
+            and _aware(row.expires_at) > datetime.now(timezone.utc)
+        )
+    with _alive_lock:
+        if ok:
+            if len(_ALIVE) >= _ALIVE_MAX:
+                _ALIVE.clear()
+            _ALIVE[sn] = (user_id, now + SESSION_CACHE_S)
+        else:
+            _ALIVE.pop(sn, None)
+    return ok
+

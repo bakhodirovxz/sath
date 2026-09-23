@@ -30,16 +30,17 @@ def test_limiter_sliding_window():
 
 
 def test_account_lockout_after_failures(client, admin, settings):
-    """Qabul mezoni: 20 ta noto'g'ri urinish → hisob bloklanadi; to'g'ri parol ham 423."""
+    """Qabul mezoni: 20 ta noto'g'ri urinish → hisob bloklanadi; to'g'ri parol ham kirmaydi. Yangi xato (b):
+    bloklangan hisob javobi noma'lum login bilan bir xil (401, bir xil matn) — login sanab bo'lmaydi."""
     settings.rate_login_per_min = 0  # IP cheklovi aralashmasin — hisob bloklashning o'zi sinaladi
     settings.login_max_failures = 10
     make_user(client, admin, "victim", "correct-pw-1")
     codes = [client.post("/api/auth/login", data={"username": "victim", "password": "wrong"}).status_code for _ in range(20)]
-    assert codes[:9] == [401] * 9
-    assert 423 in codes[9:]
+    assert codes == [401] * 20
     r = client.post("/api/auth/login", data={"username": "victim", "password": "correct-pw-1"})
-    assert r.status_code == 423, r.text
-    assert "Retry-After" in r.headers
+    unknown = client.post("/api/auth/login", data={"username": "yoq-odam", "password": "correct-pw-1"})
+    assert r.status_code == unknown.status_code == 401, r.text
+    assert r.json() == unknown.json() and "Retry-After" not in r.headers
     # audit: bloklash hodisasi yozilgan
     r = client.get("/api/audit", params={"action": "auth.account_locked"}, headers=admin)
     assert r.status_code == 200 and any(e["action"] == "auth.account_locked" for e in r.json())
