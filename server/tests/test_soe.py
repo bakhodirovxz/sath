@@ -17,7 +17,7 @@ def _key(client, users):
 def test_soe_ms_order_dedup_and_filters(client, users):
     pid = users["project_id"]
     key = _key(client, users)
-    t0 = datetime(2026, 9, 21, 10, 0, 0, tzinfo=timezone.utc)
+    t0 = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=2)  # so'rov oynasi (48 soat) ichida
     # trip ketma-ketligi: PROT 0 ms, CB 12 ms, AGG1.RUN 0 → 15 ms, GATE STUCK 1.5 s (tartibsiz yuboriladi)
     items = [
         {"point": "GATE1", "state": "STUCK", "ts": (t0 + timedelta(milliseconds=1500)).isoformat(timespec="milliseconds")},
