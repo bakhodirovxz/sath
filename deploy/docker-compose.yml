@@ -50,7 +50,7 @@ services:
 
   postgres:
     # TimescaleDB (PG16): readings hypertable (7 kunlik bo'laklar) — migratsiya 0014 avtomatik
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg16@sha256:f495f2bc25ca7596ca8e1606c6241ca250ccc56a0c082b9f2ec0d290e0126cd9  # CI-03: digest pin
     restart: unless-stopped
     environment:
       POSTGRES_DB: ges
@@ -71,7 +71,7 @@ services:
       retries: 5
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e  # CI-03: digest pin
     profiles: ["https"]
     restart: unless-stopped
     ports:

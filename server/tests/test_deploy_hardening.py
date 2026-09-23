@@ -299,3 +299,46 @@ def test_ci_workflow_gates():
     assert any("Dockerfile.cfd" in str(s.get("run", "")) for s in jobs["docker-cfd"]["steps"])
     audit = " ".join(str(s.get("run", "")) for s in jobs["audit"]["steps"])
     assert "pip-audit" in audit and "npm audit" in audit
+
+
+def test_base_images_pinned_by_digest_and_node_consistent():
+    """CI-03: barcha tashqi bazaviy/yordamchi obrazlar @sha256 digest bilan; runtime Node — web build dagi Node 22
+    (Debian apt nodejs emas); pip lok fayl (constraints) bilan."""
+    import re
+
+    for df in ("Dockerfile", "Dockerfile.cfd", "simulator/Dockerfile"):
+        for line in (DEPLOY / df).read_text(encoding="utf-8").splitlines():
+            if line.startswith("FROM "):
+                assert re.match(r"^FROM \S+@sha256:[0-9a-f]{64}( AS \w+)?$", line), (df, line)
+    text = (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY --from=web /usr/local/bin/node /usr/local/bin/node" in text
+    assert not re.search(r"install -y[^\n]*\bnodejs\b", text)
+    assert "-c ./server/requirements.lock" in text
+    assert "-c ./server/requirements.lock" in (DEPLOY / "Dockerfile.cfd").read_text(encoding="utf-8")
+    for fname in ("docker-compose.yml", "docker-compose.ha.yml"):
+        for name, svc in _compose(fname)["services"].items():
+            img = svc.get("image", "")
+            if img and not img.startswith("sath"):
+                assert re.search(r"@sha256:[0-9a-f]{64}$", img), (fname, name, img)
+    for script in ("backup.sh", "restore.sh"):
+        s = (DEPLOY / script).read_text(encoding="utf-8")
+        assert "python:3.12-slim " not in s and " alpine sh" not in s
+        assert re.search(r'PY_IMAGE="python:3\.12-slim-bookworm@sha256:[0-9a-f]{64}"', s)
+
+
+def test_python_lock_files_cover_pyproject():
+    """CI-03: server/sim lok fayllari mavjud va pyproject bog'liqliklarini qamraydi; Bonsai versiya + sha256 pin."""
+    import sys
+
+    root = DEPLOY.parent
+    sys.path.insert(0, str(root / "desktop" / "build"))
+    import gen_lock
+
+    assert gen_lock.main(["--check"]) == 0
+    lock = (root / "server" / "requirements.lock").read_text(encoding="utf-8")
+    assert "fastapi==" in lock and "cryptography==" in lock and "numpy==" in lock
+    bundle = (root / "desktop" / "build" / "build_blender_bundle.py").read_text(encoding="utf-8")
+    import re
+
+    assert re.search(r'^BONSAI_VERSION = "\d+\.\d+\.\d+"', bundle, re.M)
+    assert re.search(r'^BONSAI_SHA256 = "[0-9a-f]{64}"', bundle, re.M) and "_check_bonsai(" in bundle

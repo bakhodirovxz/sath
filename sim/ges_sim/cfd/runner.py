@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .case import RHO, G, GeometryCase, PenstockCase, SpillwayCase
 
-DEFAULT_IMAGE = "opencfd/openfoam-default:2406"
+DEFAULT_IMAGE = "opencfd/openfoam-default:2406@sha256:dd5aa20630a55722663bf83ba0cb74870cba130081303e32e3865007fa2aa35a"  # CI-03: digest pin
 log = logging.getLogger("ges_sim.cfd")
 
 

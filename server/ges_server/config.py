@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # API server solver ishga tushirmaydi); docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
     # local — shu muhitda OpenFOAM bor; off — o'chiq
     cfd_mode: str = "worker"
-    cfd_image: str = "opencfd/openfoam-default:2406"
+    cfd_image: str = "opencfd/openfoam-default:2406@sha256:dd5aa20630a55722663bf83ba0cb74870cba130081303e32e3865007fa2aa35a"  # CI-03: digest pin
     cfd_cpus: float = 2.0
     # docker rejimi: konteyner xotira chegarasi (OPS-05; --memory, swap siz)
     cfd_memory: str = "8g"

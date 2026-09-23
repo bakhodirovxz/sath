@@ -178,3 +178,20 @@ def test_ci_annotate_robust(tmp_path, capsys):
     fail = tmp_path / "fail.xml"
     fail.write_text('<testsuite><testcase classname="a" name="b"><failure message="x">tb</failure></testcase></testsuite>', encoding="utf-8")
     assert ci_annotate.main(str(fail)) == 1
+
+
+def test_bonsai_pinned_sha256(tmp_path, monkeypatch):
+    """CI-03: Bonsai zip qotirilgan sha256 ga mos kelmasa bundle yig'ilmaydi."""
+    import hashlib
+
+    import build_blender_bundle as bb
+    import pytest
+
+    z = tmp_path / f"bonsai-{bb.BONSAI_VERSION}-py313-win64.zip"
+    z.write_bytes(b"soxta")
+    with pytest.raises(SystemExit, match="sha256"):
+        bb.ensure_bonsai(z, "5.2.2")
+    monkeypatch.setattr(bb, "BONSAI_SHA256", hashlib.sha256(b"soxta").hexdigest())
+    assert bb.ensure_bonsai(z, "5.2.2") == z
+    monkeypatch.setattr(bb, "TOOLS", tmp_path)
+    assert bb.ensure_bonsai(None, "5.2.2") == z  # kesh: faqat qotirilgan versiya nomi

@@ -1,6 +1,10 @@
 # Sath server + web (bitta konteyner). Kontekst: repo ildizi.
+# CI-03: bazaviy obrazlar digest bilan qotirilgan (teg — o'qish uchun, digest — haqiqiy manba). Yangilash
+# (renovate uslubi): docker buildx imagetools inspect <obraz:teg> → yangi digest, testdan keyin almashtiring.
+# Node: web build va runtime da BIR XIL Node 22 (glibc) — runtime ga shu bosqichdagi `node` nusxalanadi
+# (Debian apt nodejs boshqa versiya edi; web/tools Node 22 bilan `npm ci` qilingan).
 # 1-bosqich: web build
-FROM node:22-alpine AS web
+FROM node:22-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS web
 # Korporativ proksi (TLS intercept) bo'lsa: --build-arg NPM_STRICT_SSL=false
 ARG NPM_STRICT_SSL=true
 ENV NPM_CONFIG_STRICT_SSL=$NPM_STRICT_SSL NPM_CONFIG_FETCH_RETRIES=5
@@ -14,7 +18,7 @@ RUN cd tools && npm ci --no-audit --no-fund --omit=dev
 
 # 2-bosqich: LibreDWG (dwg2dxf) — Debian da paket YO'Q (CAD-10), shuning uchun GNU manba tarbolidan, sha256
 # tekshiruvi bilan (imzo: libredwg-X.tar.xz.sig — Reini Urban, GNU keyring). WITH_DWG=0 — bosqich bo'sh.
-FROM python:3.12-slim AS dwg
+FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS dwg
 ARG WITH_DWG=1
 ARG LIBREDWG_VERSION=0.13.4
 ARG LIBREDWG_SHA256=7e153ea4dac4cbf3dc9c50b9ef7a5604e09cdd4c5520bcf8017877bbe1422cd5
@@ -34,7 +38,7 @@ RUN mkdir -p /opt/libredwg && if [ "$WITH_DWG" = "1" ]; then \
     fi
 
 # 3-bosqich: Python server
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 # Korporativ proksi (TLS intercept) bo'lsa: --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org"
 ARG PIP_TRUSTED_HOST=""
 ENV PIP_TRUSTED_HOST=$PIP_TRUSTED_HOST
@@ -53,7 +57,9 @@ ARG WITH_BLENDER=0
 ARG WITH_DWG=1
 COPY --from=dwg /opt/libredwg /opt/libredwg
 # bubblewrap — ishonchsiz CAD/IFC parserlari uchun sandbox (L5; foydalanuvchi nom maydoni yopiq bo'lsa rlimit rejimi)
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-utils bubblewrap \
+COPY --from=web /usr/local/bin/node /usr/local/bin/node
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 assimp-utils bubblewrap \
+    && node --version \
     && if [ "$WITH_DWG" = "1" ]; then \
          [ -x /opt/libredwg/bin/dwg2dxf ] && /opt/libredwg/bin/dwg2dxf --version >/dev/null \
          && ln -s /opt/libredwg/bin/dwg2dxf /usr/local/bin/dwg2dxf \
@@ -85,7 +91,8 @@ WORKDIR /app
 COPY sim/ ./sim/
 COPY server/ ./server/
 COPY docs/ids/ ./docs/ids/
-RUN pip install --no-cache-dir ./sim "./server[postgres,mqtt,cad]"  # cad — STEP/IGES (OpenCASCADE)
+# CI-03: versiyalar lok fayldan (constraints) — server/requirements.lock (desktop/build/gen_lock.py)
+RUN pip install --no-cache-dir -c ./server/requirements.lock ./sim "./server[postgres,mqtt,cad]"  # cad — STEP/IGES (OpenCASCADE)
 COPY --from=web /web/dist ./web/dist
 COPY --from=web /web/tools ./web/tools
 # Root siz (L5): sath foydalanuvchisi; /data hajmi shu egaga (named volume birinchi yaratilganda egalikni oladi)

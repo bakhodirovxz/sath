@@ -1,5 +1,6 @@
 # Sath GES simulyatori + gateway (sinov stendi): Modbus TCP 5020, OPC UA 4840, IEC 104 2404 (c104 — GPLv3, server obraziga kirmaydi). Kontekst: repo ildizi.
-FROM python:3.12-slim
+# CI-03: bazaviy obraz digest bilan qotirilgan (yangilash: docker buildx imagetools inspect python:3.12-slim-bookworm)
+FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY sim/ ./sim/

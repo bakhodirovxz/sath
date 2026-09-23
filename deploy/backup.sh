@@ -15,6 +15,9 @@
 #   Konteynerlardan ma'lumot stdout orqali olinadi (bind-mount emas) — masofaviy DOCKER_HOST da ham ishlaydi.
 #   Jadval, tiklash va RTO/RPO: docs/admin.md → «Zaxira va tiklash».
 set -eu
+# CI-03: yordamchi obrazlar digest bilan qotirilgan
+PY_IMAGE="python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e"
+ALPINE_IMAGE="alpine:3@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 cd "$(dirname "$0")"
 PROJECT="${COMPOSE_PROJECT:-sath}"
 VOL="${PROJECT}_ges_data"
@@ -45,7 +48,7 @@ else
   echo "DB: SQLite (.backup API — izchil nusxa, WAL qo'shilgan; yozuvchilarni to'xtatmaydi)..."
   # ges.db yo'q/bo'sh bo'lsa sqlite3.connect yangi bo'sh baza yaratardi — avval tekshiriladi (exit 5);
   # nusxa PRAGMA integrity_check dan o'tmasa zaxira yozilmaydi (exit 6). Skript stdin dan, nusxa stdout ga.
-  docker run --rm -i -v "$VOL":/data python:3.12-slim python - > "$work/db.sqlite" <<'PY'
+  docker run --rm -i -v "$VOL":/data "$PY_IMAGE" python - > "$work/db.sqlite" <<'PY'
 import os, shutil, sqlite3, sys
 src = "/data/ges.db"
 if not os.path.isfile(src) or os.path.getsize(src) == 0:
@@ -70,7 +73,7 @@ fi
 excl="--exclude=./secret.key --exclude=./ges.db --exclude=./ges.db-wal --exclude=./ges.db-shm --exclude=./initial-admin-password.txt --exclude=./sim --exclude=./cfd"
 [ "${BACKUP_WITH_DERIVED:-0}" = "1" ] || excl="$excl --exclude=./derived"
 echo "Fayllar: $VOL → files.tar..."
-docker run --rm -v "$VOL":/data:ro alpine sh -c "cd /data && tar cf - $excl ." > "$work/files.tar"
+docker run --rm -v "$VOL":/data:ro "$ALPINE_IMAGE" sh -c "cd /data && tar cf - $excl ." > "$work/files.tar"
 
 # 3) Manifest
 alembic_head="$(docker compose -p "$PROJECT" exec -T ges alembic current 2>/dev/null | tail -1 || true)"
