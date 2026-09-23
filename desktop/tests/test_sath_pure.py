@@ -175,3 +175,15 @@ def test_reading_at_picks_latest_before_ts():
     assert flows.reading_at(pts, "2026-09-17T11:30:00+00:00") == 2.0
     assert flows.reading_at(pts, "2026-09-17T09:00:00+00:00") is None
     assert flows.reading_at([], "2026-09-17T09:00:00+00:00") is None
+
+
+def test_unassigned_objects_warning_text():
+    objs = [
+        ("FBX_Togon", "MESH", False, False), ("GES_Suv", "MESH", False, True), ("Devor", "MESH", True, False),
+        ("DXF_OQ_chiziq", "CURVE", False, False), ("Kamera", "CAMERA", False, False),
+    ]  # fmt: skip
+    names = flows.unassigned_objects(objs)
+    assert names == ["FBX_Togon", "DXF_OQ_chiziq"]
+    assert flows.unassigned_text(names) == "IFC ga kirmagan obyektlar: 2 — FBX_Togon, DXF_OQ_chiziq"
+    assert flows.unassigned_text([f"o{i}" for i in range(6)], limit=2).endswith("o0, o1 … (+4)")
+    assert flows.unassigned_text([]) == ""

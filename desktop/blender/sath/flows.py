@@ -434,3 +434,20 @@ def reading_at(points: list[dict], ts: str) -> float | None:
         else:
             break
     return val
+
+
+# --- CAD-01: IFC ga kirmagan obyektlar (commit oldidan ogohlantirish) -------------------------------------------
+
+AUX_PROP = "sath_aux"  # yordamchi obyekt (suv tekisligi, sim animatsiyasi) — IFC ga kirishi shart emas
+
+
+def unassigned_objects(objs: list[tuple[str, str, bool, bool]]) -> list[str]:
+    """[(nom, tur, IFC elementmi, yordamchimi)] → commit ga tushmaydigan MESH/CURVE obyekt nomlari."""
+    return [n for n, t, is_ifc, aux in objs if t in ("MESH", "CURVE") and not is_ifc and not aux]
+
+
+def unassigned_text(names: list[str], limit: int = 4) -> str:
+    if not names:
+        return ""
+    head = ", ".join(names[:limit]) + (f" … (+{len(names) - limit})" if len(names) > limit else "")
+    return f"IFC ga kirmagan obyektlar: {len(names)} — {head}"

@@ -9,7 +9,8 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from . import cad_read, converters, fc_engine
+from . import cad_read, converters, fc_engine, flows, ifc
+from .shared import cad_common
 
 
 def _collection(name: str, parent=None):
@@ -64,6 +65,62 @@ ENGINE_ITEMS = [
 ]
 
 
+def assign_imported(objs, report: list | None = None) -> int:
+    """Import qilingan MESH obyektlarni IFC elementga aylantiradi (Bonsai), aks holda commit ga tushmaydi (CAD-01).
+    IFC sinfi nom bo'yicha (to'g'on → IfcWall, quvur → IfcPipeSegment, …; topilmasa IfcBuildingElementProxy).
+    `sath_guid` joriy IFC dagi elementga to'g'ri kelsa — yangi element emas, o'sha element geometriyasi
+    yangilanadi; bo'lmasa yangi element shu GUID ni oladi (CAD-07). Qaytaradi: IFC ga kirgan obyektlar soni."""
+    report = report if report is not None else []
+    meshes = [o for o in objs if o.type == "MESH"]
+    if not meshes:
+        return 0
+    try:
+        ifc._tool()
+    except RuntimeError:
+        report.append(f"Bonsai yoqilmagan — {len(meshes)} obyekt IFC ga biriktirilmadi (commit ga kirmaydi)")
+        return 0
+    n, failed = 0, []
+    for ob in meshes:
+        name = ob.name
+        g = ob.get("sath_guid")
+        existing = ifc.object_for_guid(g) if g else None
+        if existing is not None and existing.type == "MESH" and existing.name != name:
+            # Bonsai representatsiyasi mesh datablock ga bog'langan — joyida yangilaymiz (ges_objects kabi)
+            m = existing.matrix_world.inverted() @ ob.matrix_world
+            verts = [tuple(m @ v.co) for v in ob.data.vertices]
+            faces = [tuple(p.vertices) for p in ob.data.polygons]
+            old = ob.data
+            bpy.data.objects.remove(ob)
+            bpy.data.meshes.remove(old)
+            me = existing.data
+            me.clear_geometry()
+            me.from_pydata(verts, [], faces)
+            me.update()
+            ifc.update_representation(existing)
+            n += 1
+            continue
+        cls = cad_common.classify_name(name.split("_", 1)[-1])[0]
+        e = None
+        for c in dict.fromkeys((cls, "IfcBuildingElementProxy")):
+            try:
+                e = ifc.assign_class(bpy.data.objects[name], c)
+                break
+            except Exception:  # noqa: BLE001 — sxemada yo'q sinf → proxy
+                continue
+        if e is None:
+            failed.append(name)
+            continue
+        if g and existing is None:
+            try:
+                e.GlobalId = g
+            except Exception:  # noqa: BLE001
+                pass
+        n += 1
+    if failed:
+        report.append(flows.unassigned_text(failed))
+    return n
+
+
 def import_dxf(
     context,
     path: Path,
@@ -71,17 +128,24 @@ def import_dxf(
     unit: str = "AUTO",
     report: list | None = None,
     engine: str = "AUTO",
+    assign_ifc: bool = False,
 ) -> int:
     """DWG/DXF → Blender. Qaytaradi: obyekt soni. engine — "AUTO" (FreeCAD bo'lsa FreeCAD, aks holda ezdxf),
-    "EZDXF" (FreeCAD siz), "FREECAD". unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar."""
+    "EZDXF" (FreeCAD siz), "FREECAD". unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar;
+    assign_ifc — 3D yuzalar IFC elementga aylantiriladi (chiziqlar IFC ga kirmaydi, commit da ogohlantiriladi)."""
     use_fc = engine == "FREECAD" or (engine == "AUTO" and fc_engine.available())
+    before = set(bpy.data.objects)
     work = Path(tempfile.mkdtemp(prefix="sath-dxf-"))  # har import o'z papkasida (CAD-06), oxirida o'chiriladi
     try:
         if use_fc:
-            return _import_dxf_fc(fc_engine.load(), Path(path), work, prepare, unit, report)
-        return _import_dxf_ezdxf(Path(path), work, prepare, unit, report)
+            n = _import_dxf_fc(fc_engine.load(), Path(path), work, prepare, unit, report)
+        else:
+            n = _import_dxf_ezdxf(Path(path), work, prepare, unit, report)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+    if assign_ifc:
+        assign_imported([o for o in bpy.data.objects if o not in before], report)
+    return n
 
 
 def _import_dxf_ezdxf(path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
@@ -175,7 +239,12 @@ def _import_dxf_fc(FreeCAD, path: Path, work: Path, prepare: bool, unit: str, re
 
 
 def import_mesh(
-    context, path: Path, unit: str = "AUTO", axis: str = "AUTO", report: list | None = None
+    context,
+    path: Path,
+    unit: str = "AUTO",
+    axis: str = "AUTO",
+    report: list | None = None,
+    assign_ifc: bool = False,
 ) -> int:
     """FBX/3DS/OBJ/... → assimp → mesh. Birlik va yuqori o'q — fayldan (FBX UnitScaleFactor/UpAxis) yoki
     foydalanuvchi tanlovi; aniqlanmasa ogohlantirish (CAD-04)."""
@@ -188,6 +257,7 @@ def import_mesh(
     tag = path.suffix[1:].upper()
     coll = _collection(f"{tag} {path.stem}")
     guids = cad_read.file_guids(path)
+    created = []
     n = 0
     for m in assimp_load.load(str(path)):
         name, guid = cad_read.name_and_guid(str(m["name"]), guids)  # Sath eksporti: "Nom [GUID]" (CAD-07)
@@ -201,7 +271,10 @@ def import_mesh(
         if m.get("color"):
             ob.color = (*[float(c) for c in m["color"][:3]], 1.0)
         coll.objects.link(ob)
+        created.append(ob)
         n += 1
+    if assign_ifc:
+        assign_imported(created, report)
     return n
 
 
@@ -215,6 +288,11 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
     prepare: bpy.props.BoolProperty(name="Tekislash (bloklar, o'lchamlar, shtrix)", default=True)
     unit: bpy.props.EnumProperty(name="Birlik", items=cad_read.UNIT_ITEMS, default="AUTO")
     engine: bpy.props.EnumProperty(name="Importer", items=ENGINE_ITEMS, default="AUTO")
+    assign_ifc: bpy.props.BoolProperty(
+        name="IFC elementga aylantirish",
+        description="3D yuzalar Bonsai orqali IFC elementi bo'ladi (aks holda commit ga kirmaydi)",
+        default=True,
+    )
 
     def execute(self, context):
         warnings: list[str] = []
@@ -222,7 +300,9 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
             self.report({"ERROR"}, "FreeCAD topilmadi — «ezdxf (FreeCAD siz)» importerini tanlang")
             return {"CANCELLED"}
         try:
-            n = import_dxf(context, Path(self.filepath), self.prepare, self.unit, warnings, self.engine)
+            n = import_dxf(
+                context, Path(self.filepath), self.prepare, self.unit, warnings, self.engine, self.assign_ifc
+            )
         except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Import xatosi: {e}")
             return {"CANCELLED"}
@@ -243,11 +323,16 @@ class SATH_OT_import_mesh(bpy.types.Operator, ImportHelper):
     )
     unit: bpy.props.EnumProperty(name="Birlik", items=cad_read.UNIT_ITEMS, default="AUTO")
     axis: bpy.props.EnumProperty(name="Yuqori o'q", items=cad_read.AXIS_ITEMS, default="AUTO")
+    assign_ifc: bpy.props.BoolProperty(
+        name="IFC elementga aylantirish",
+        description="Obyektlar Bonsai orqali IFC elementi bo'ladi (aks holda commit ga kirmaydi)",
+        default=True,
+    )
 
     def execute(self, context):
         warnings: list[str] = []
         try:
-            n = import_mesh(context, Path(self.filepath), self.unit, self.axis, warnings)
+            n = import_mesh(context, Path(self.filepath), self.unit, self.axis, warnings, self.assign_ifc)
         except ImportError:
             self.report({"ERROR"}, "assimp-py o'rnatilmagan (extension wheel)")
             return {"CANCELLED"}

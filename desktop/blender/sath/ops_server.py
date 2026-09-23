@@ -188,11 +188,38 @@ class SATH_OT_open_version(bpy.types.Operator):
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
 
+def unassigned(context) -> list[str]:
+    """Sahnadagi IFC ga kirmagan (commit ga tushmaydigan) MESH/CURVE obyektlar; yordamchilar (suv tekisligi,
+    yer, sim animatsiyasi, `sath_aux`) hisobga olinmaydi (CAD-01)."""
+    from . import demo_plant, sim_anim, water
+
+    rows = []
+    for o in context.scene.objects:
+        if o.type not in ("MESH", "CURVE"):
+            continue
+        aux = (
+            bool(o.get(flows.AUX_PROP))
+            or o.name in water.PLANES
+            or o.name == demo_plant.GROUND
+            or any(c.name == sim_anim.SIM_COLL for c in o.users_collection)
+        )
+        rows.append((o.name, o.type, ifc.entity(o) is not None, aux))
+    return flows.unassigned_objects(rows)
+
+
 class SATH_OT_commit(bpy.types.Operator):
     """Joriy IFC ni serverga yangi versiya sifatida yuklash"""
 
     bl_idname = "sath.commit"
     bl_label = "Commit (yangi versiya)"
+
+    assign_missing: bpy.props.BoolProperty(
+        name="IFC ga kirmagan mesh larni qo'shish",
+        description="IFC elementi bo'lmagan mesh obyektlar IfcBuildingElementProxy (yoki nom bo'yicha GES turi) bo'ladi",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+    unassigned_note: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -208,7 +235,9 @@ class SATH_OT_commit(bpy.types.Operator):
             s.model_id, s.model_name = m.item_id, m.name
             p = _sel(s.projects, s.projects_index)
             s.project_id = p.item_id if p else 0
-        return context.window_manager.invoke_props_dialog(self, width=420)
+        # CAD-01: IFC ga kirmagan obyektlar commit ga tushmaydi — dialogda ogohlantiramiz (davom / bekor qilish)
+        self.unassigned_note = flows.unassigned_text(unassigned(context))
+        return context.window_manager.invoke_props_dialog(self, width=480)
 
     def draw(self, context):
         s = context.scene.ges
@@ -216,6 +245,11 @@ class SATH_OT_commit(bpy.types.Operator):
         self.layout.label(text=f"Model: {s.model_name}{parent}")
         self.layout.prop(s, "commit_message")
         self.layout.prop(s, "submit_after_commit")
+        if self.unassigned_note:
+            box = self.layout.box()
+            box.label(text=self.unassigned_note, icon="ERROR")
+            box.label(text="Ular yangi versiyaga kirmaydi. Davom etish — OK, to'xtatish — Bekor.")
+            box.prop(self, "assign_missing")
 
     def execute(self, context):
         s = context.scene.ges
@@ -224,6 +258,10 @@ class SATH_OT_commit(bpy.types.Operator):
             from . import ges_objects
 
             ges_objects.flush_pending()  # kechiktirilgan qayta qurishlar IFC ga kirsin
+            if self.assign_missing:
+                from .ops_import import assign_imported
+
+                assign_imported([bpy.data.objects[n] for n in unassigned(context) if n in bpy.data.objects])
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
             r = flows.commit(

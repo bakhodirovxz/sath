@@ -12,7 +12,6 @@ Eksport: IFC → glTF/GLB/OBJ/STL (Blender, 3ds Max da ochish uchun) — IfcOpen
 
 from __future__ import annotations
 
-import re
 import shutil
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -37,35 +36,13 @@ UNITS = cad_common.UNITS  # {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254, "f
 MAX_TRIANGLES = 2_000_000
 DXF_UNITS = cad_common.DXF_INSUNITS  # $INSUNITS
 
-# Nom bo'yicha GES turi: (regex, ifc_class, pset nomi, kind)
-NAME_RULES: list[tuple[str, str, str, str]] = [
-    (r"to.?g.?on|\bdam\b|plotina", "IfcWall", "Pset_GES_Dam", "dam"),
-    (r"penstock|quvur|pipe|truba", "IfcPipeSegment", "Pset_GES_Penstock", "penstock"),
-    (r"turbin|agregat|unit\d|generator", "IfcFlowMovingDevice", "Pset_GES_Turbine", "turbine"),
-    (r"spillway|tashlag|vodosbros", "IfcSlab", "Pset_GES_Spillway", "spillway"),
-    (r"transformator|transformer|trafo", "IfcTransformer", "", "transformer"),
-    (
-        r"mashina|powerhouse|zal|building|bino",
-        "IfcBuildingElementProxy",
-        "Pset_GES_Powerhouse",
-        "powerhouse",
-    ),
-    (r"intake|qabul|vodozabor", "IfcBuildingElementProxy", "", "intake"),
-    (r"slab|plita|\bpol\b|floor", "IfcSlab", "", "slab"),
-    (r"wall|devor|stena", "IfcWall", "", "wall"),
-    (r"column|ustun|kolonna", "IfcColumn", "", "column"),
-    (r"beam|balka|to.?sin", "IfcBeam", "", "beam"),
-    (r"roof|\btom\b|krysha", "IfcRoof", "", "roof"),
-]
+# Nom bo'yicha GES turi — umumiy qoidalar (server, Blender addoni bir xil; cad_common.NAME_RULES)
+NAME_RULES = cad_common.NAME_RULES
 
 
 def classify(name: str) -> tuple[str, str, str]:
     """(ifc_class, pset, kind) — obyekt nomi bo'yicha; topilmasa proxy."""
-    n = name.lower()
-    for rx, cls, pset, kind in NAME_RULES:
-        if re.search(rx, n):
-            return cls, pset, kind
-    return "IfcBuildingElementProxy", "", "mesh"
+    return cad_common.classify_name(name)
 
 
 def _find(name: str, extra_dirs: list[Path]) -> str | None:

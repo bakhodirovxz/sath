@@ -83,7 +83,27 @@ def check_mesh_open_units_axis(tmp: Path) -> None:
     FreeCAD.closeDocument(doc.Name)
 
 
-CHECKS = [check_dxf_face_order, check_mesh_open_units_axis]
+def check_meshes_become_shapes_for_ifc(tmp: Path) -> None:
+    """CAD-01: FBX/3DS dan kelgan Mesh::Feature IFC eksportidan oldin Part ga aylanadi (jimgina tushib qolmaydi)."""
+    import FreeCAD
+    import Mesh
+    from ges_workbench import ifc_io, mesh_open
+
+    doc = FreeCAD.newDocument("CadIfc")
+    label = mesh_open.load_into(doc, str(ROOT / "server" / "tests" / "samples" / "box.fbx"))[0].Label
+    bad = doc.addObject("Mesh::Feature", "Bosh")
+    bad.Mesh = Mesh.Mesh()
+    bad.Label = "Bo'sh mesh"
+    made, failed = ifc_io.meshes_to_shapes(doc)
+    assert len(made) == 1 and made[0].Shape.Faces and made[0].Shape.isValid(), made
+    assert made[0].Label == label, (made[0].Label, label)
+    assert len(failed) == 1 and failed[0].startswith("Bo'sh mesh"), failed
+    assert not [o for o in doc.Objects if o.TypeId == "Mesh::Feature" and o.Name != "Bosh"]
+    assert abs(made[0].Shape.BoundBox.ZLength - 406.2) < 2  # o'lcham saqlandi (mm)
+    FreeCAD.closeDocument(doc.Name)
+
+
+CHECKS = [check_dxf_face_order, check_mesh_open_units_axis, check_meshes_become_shapes_for_ifc]
 
 
 def main() -> int:
