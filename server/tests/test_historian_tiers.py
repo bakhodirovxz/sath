@@ -149,3 +149,70 @@ def test_readings_endpoint_uses_tiers(client, users):
     assert r["tier"] == "raw" and 118 <= r["total"] <= 121
     assert historian.tier_for_span(6) == "raw" and historian.tier_for_span(48) == "1m" and historian.tier_for_span(96) == "10m"
     assert engine.dialect.name in ("sqlite", "postgresql")
+
+
+def _import_csv(client, users, sid, start: datetime, n: int, step_s: int, value: float):
+    body = "ts,value\n" + "".join(
+        f"{(start + timedelta(seconds=step_s * i)).isoformat()},{value}\n" for i in range(n)
+    )
+    r = client.post(
+        f"/api/sensors/{sid}/import",
+        files={"file": ("old.csv", body.encode(), "text/csv")},
+        headers=users["engineer"],
+    )
+    assert r.status_code == 200 and r.json()["accepted"] == n, r.text
+
+
+def test_old_import_aggregated_before_purge_no_data_loss(client, users):
+    """SCADA-10: suv belgisidan (lookback dan) eski tarixiy import → rollup qayta yig'adi, purge
+    xomni faqat agregat yozilgandan keyin o'chiradi."""
+    from ges_server.orm import HistorianDirty
+
+    sid = _sensor(client, users, key="OLD.IMPORT")
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    _bulk_raw(sid, now - timedelta(hours=2), 6, 600, value=lambda i: 1.0)
+    with SessionLocal() as db:
+        historian.rollup(db, now)  # suv belgilari `now` ga yetadi, skaner kursori o'rnatiladi
+        assert historian.watermark(db, "1h") == now
+    old_hour = now - timedelta(days=10)
+    _import_csv(client, users, sid, old_hour, 6, 600, 7.0)
+    with SessionLocal() as db:
+        # rollup dan OLDIN purge: hali skanerlanmagan qatorlar o'chirilmaydi
+        historian.purge(db, retention_days=1, now=now)
+        assert db.query(Reading).filter(Reading.sensor_id == sid, Reading.ts < now - timedelta(days=5)).count() == 6
+        historian.rollup(db, now)
+        h = db.query(ReadingHourly).filter_by(sensor_id=sid, hour=old_hour).one()
+        assert h.n == 6 and h.avg == 7.0
+        assert db.query(ReadingAgg).filter_by(sensor_id=sid, tier="10m").filter(ReadingAgg.bucket < now - timedelta(days=5)).count() == 6
+        assert db.query(HistorianDirty).filter_by(sensor_id=sid).count() == 0
+        purged = historian.purge(db, retention_days=1, now=now)
+        assert purged >= 6
+        assert db.query(Reading).filter(Reading.sensor_id == sid, Reading.ts < now - timedelta(days=5)).count() == 0
+        # agregat saqlanib qoldi — ma'lumot yo'qolmadi
+        assert db.query(ReadingHourly).filter_by(sensor_id=sid, hour=old_hour).one().avg == 7.0
+
+
+def test_dirty_range_protected_from_purge_until_processed(client, users):
+    from ges_server.orm import HistorianDirty
+
+    sid = _sensor(client, users, key="OLD.DIRTY")
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    _bulk_raw(sid, now - timedelta(hours=2), 2, 600, value=lambda i: 1.0)
+    with SessionLocal() as db:
+        historian.rollup(db, now)
+    old = now - timedelta(days=20)
+    _bulk_raw(sid, old, 4, 900, value=lambda i: 3.0)
+    with SessionLocal() as db:
+        historian.scan_late(db)  # aniqlaydi, lekin hali qayta yig'maydi
+        assert db.query(HistorianDirty).filter_by(sensor_id=sid, tier="1h").count() == 1
+        historian.purge(db, retention_days=1, now=now)
+        assert db.query(Reading).filter(Reading.sensor_id == sid, Reading.ts < now - timedelta(days=5)).count() == 4
+        historian.process_dirty(db)
+        assert db.query(ReadingHourly).filter_by(sensor_id=sid, hour=old).one().n == 4
+        historian.purge(db, retention_days=1, now=now)
+        assert db.query(Reading).filter(Reading.sensor_id == sid, Reading.ts < now - timedelta(days=5)).count() == 0
+    # mark_dirty — lookback ichidagi ma'lumot uchun belgilanmaydi (oddiy rollup yetarli)
+    with SessionLocal() as db:
+        assert historian.mark_dirty(db, sid, now - timedelta(minutes=30), now - timedelta(minutes=10)) == 0
+        assert historian.mark_dirty(db, sid, now - timedelta(days=3), now - timedelta(days=3)) == 3
+        db.rollback()
