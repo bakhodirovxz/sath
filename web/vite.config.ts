@@ -19,7 +19,9 @@ export default defineConfig({
     proxy: { "/api": { target: process.env.VITE_API_PROXY ?? "http://localhost:8000", ws: true } },
   },
   build: {
-    chunkSizeWarningLimit: 1500,
+    // FE-06: chunkSizeWarningLimit ko'tarilmaydi (standart 500 KB) — ogohlantirish faqat uchinchi tomon 3D
+    // bo'laklarida (three, @thatopen, web-ifc: faqat model sahifasi yuklaydi); ilova bo'laklari byudjeti —
+    // scripts/check-bundle.mjs (har biri ≤ 350 KB, login ≤ 500 KB).
     rollupOptions: {
       output: {
         // Katta kutubxonalar alohida bo'laklarda (F10): faqat model sahifasi yuklaydi

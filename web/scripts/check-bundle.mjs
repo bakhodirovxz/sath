@@ -16,6 +16,11 @@ console.log(`login to'plami: ${entry.join(", ")} = ${(size / 1024).toFixed(0)} K
 let failed = false;
 if (size > 500 * 1024) { console.error("XATO: login to'plami 500 KB dan katta"); failed = true; }
 if (heavy.length < 3) { console.error("XATO: three/thatopen/web-ifc alohida bo'lakda emas"); failed = true; }
+// FE-06: ilova bo'laklari byudjeti — og'ir kutubxonalar faqat vendor bo'laklarida (three/thatopen/web-ifc/react)
+const APP_CHUNK_MAX = 350 * 1024;
+const big = files.filter((f) => !/^(three|thatopen|web-ifc|react)-/.test(f)).map((f) => [f, statSync(join(dir, f)).size]).filter(([, n]) => n > APP_CHUNK_MAX);
+if (big.length) { console.error(`XATO: ilova bo'lagi ${APP_CHUNK_MAX / 1024} KB dan katta: ${big.map(([f, n]) => `${f} ${(n / 1024).toFixed(0)} KB`).join(", ")}`); failed = true; }
+else console.log(`ilova bo'laklari ≤ ${APP_CHUNK_MAX / 1024} KB (eng kattasi: ${files.filter((f) => !/^(three|thatopen|web-ifc|react)-/.test(f)).map((f) => [f, statSync(join(dir, f)).size]).sort((a, b) => b[1] - a[1])[0]?.join(" ")} B)`);
 
 /** dist ichidagi barcha matn fayllari (js/mjs/html/css) — ishchi (worker) fayllari ham. */
 function walk(p, out = []) {

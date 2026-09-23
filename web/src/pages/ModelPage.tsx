@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api, getToken, HEAD_MOVED_TEXT, isHeadMoved, type ChangeRequest, type Diff, type Issue, type Member, type Model, type Project, type Underlay, type Version } from "../api/client";
 import { useViewer } from "../viewer/useViewer";
 import { COMMANDS, type ParsedCommand } from "../viewer/commands";
-import type { Hover, NavMode, Shading, ViewName } from "../viewer/Viewer";
+import type { Hover, ViewName } from "../viewer/Viewer";
 import { useAuth } from "../store/auth";
 import { useLatest } from "../hooks/useLatest";
 import NotificationsBell from "../ui/NotificationsBell";
@@ -37,6 +37,8 @@ import AlarmBanner from "./operator/AlarmBanner";
 import { t } from "../i18n";
 import CommitDialog from "./model/CommitDialog";
 import { commitSummary } from "./model/commitSummary";
+import { useViewportDisplay } from "./model/useViewportDisplay";
+import { useWorkspaceLayout } from "./model/useWorkspaceLayout";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -75,22 +77,11 @@ export default function ModelPage() {
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [diff, setDiff] = useState<Diff | null>(null);
-  const [tab, setTab] = useState<Tab>("versions");
-  const [dockOpen, setDockOpen] = useState(true);
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const [outlinerOpen, setOutlinerOpen] = useState(true);
+  // FE-06: joylashuv va ko'rinish sozlamalari alohida hook larda
+  const { tab, setTab, dockOpen, setDockOpen, toolsOpen, setToolsOpen, outlinerOpen, setOutlinerOpen, sideOpen, setSideOpen, help, setHelp, closeHelp } = useWorkspaceLayout<Tab>("versions");
   const [workspace, setWorkspace] = useState("view");
-  const [shading, setShadingState] = useState<Shading>("solid");
-  const [gridOn, setGridOn] = useState(true);
-  const [labelsOn, setLabelsOn] = useState(false); // element nomlari 3D da
-  const toggleLabels = async () => { const vw = viewer.current; if (!vw) return; await vw.setLabels(!labelsOn); setLabelsOn(!labelsOn); };
-  const [projection, setProjection] = useState<"Perspective" | "Orthographic">("Perspective");
-  const [navMode, setNavMode] = useState<NavMode>("Orbit");
-  const [colorScheme, setColorScheme] = useState<"none" | "type" | "storey">("none");
-  const [legend, setLegend] = useState<{ name: string; color: string }[] | null>(null);
+  const { shading, setShading, gridOn, setGrid, labelsOn, toggleLabels, projection, toggleProjection, navMode, pickNavMode, colorScheme, pickColorScheme, legend } = useViewportDisplay(viewer);
   const [hover, setHover] = useState<(Hover & { name?: string | undefined; category?: string | undefined }) | null>(null);
-  const [help, setHelp] = useState<boolean>(() => { try { return localStorage.getItem("ges_help_seen") !== "1"; } catch { return false; } });
-  const closeHelp = () => { setHelp(false); try { localStorage.setItem("ges_help_seen", "1"); } catch { /* */ } };
   const nav = useNavigate();
   const { user, logout } = useAuth();
   const [log, setLog] = useState("");
@@ -135,7 +126,7 @@ export default function ModelPage() {
     const t = p.get("tab") as Tab | null;
     if (t && TABS.some((x) => x.id === t)) { setTab(t); setDockOpen(true); }
     if (sel) void viewer.current?.selectByGuids([sel], true);
-  }, [loadedKey, latestParams, viewer]);
+  }, [loadedKey, latestParams, viewer, setTab, setDockOpen]);
   useEffect(() => {
     if (loadedKey && (document.activeElement === document.body || document.activeElement == null)) viewportRef.current?.focus({ preventScroll: true });
   }, [loadedKey]);
@@ -145,7 +136,6 @@ export default function ModelPage() {
   const [draftSel, setDraftSel] = useState<Draft | null>(null);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   // Blender: N — viewport yon paneli, Z — shading pie, F3 — operator qidiruvi, Ctrl+Space — maksimal viewport
-  const [sideOpen, setSideOpen] = useState(false);
   const [pie, setPie] = useState<{ x: number; y: number } | null>(null);
   const [search, setSearch] = useState(false);
   const maximized = useRef<{ dock: boolean; tools: boolean; outliner: boolean } | null>(null);
@@ -299,7 +289,7 @@ export default function ModelPage() {
         default: say(`Noma'lum buyruq: ${cmd.args[0]}. HELP — ro'yxat`);
       }
     },
-    [viewer, current, model, latestShowDiff],
+    [viewer, current, model, latestShowDiff, setTab, setDockOpen, setOutlinerOpen],
   );
 
   // Canvas ustida bosish: o'lchash asbobi
@@ -313,9 +303,6 @@ export default function ModelPage() {
 
   const activeCount = { review: crs.filter((c) => c.status === "open" || c.status === "changes_requested").length, issues: issues.filter((i) => i.status === "open" || i.status === "in_progress").length };
 
-  const setShading = (m: Shading) => { setShadingState(m); viewer.current?.setShading(m); };
-  const pickNavMode = (m: NavMode) => { setNavMode(m); viewer.current?.setNavMode(m); };
-  const pickColorScheme = async (m: "none" | "type" | "storey") => { setColorScheme(m); const lg = await viewer.current?.colorScheme(m); setLegend(m === "none" ? null : (lg ?? null)); };
   const render = () => {
     const url = viewer.current?.screenshot(2);
     if (!url) return;
@@ -333,7 +320,6 @@ export default function ModelPage() {
       setHover({ ...h, name: p?.name, category: p?.category });
     });
   }, [ready, viewer]);
-  const toggleProjection = async () => { await viewer.current?.toggleProjection(); setProjection(viewer.current?.world.camera.projection.current ?? "Perspective"); };
 
   // --- Qoralamalar: serverdan yuklash, o'zgarishlarni saqlash (debounce), tanlash ---
   const draftsModelId = model?.id;
@@ -375,7 +361,7 @@ export default function ModelPage() {
       void dm.syncHidden();
     }).catch(() => undefined);
     return () => { offs.forEach((f) => f()); };
-  }, [ready, viewer, draftsModelId, canEdit]);
+  }, [ready, viewer, draftsModelId, canEdit, setTab, setDockOpen]);
 
   const startAdd = (k: DraftKind) => { setAddMenu(null); if (!canEdit) { setLog("Element qo'shish — muhandis/tasdiqlovchi uchun"); return; } viewer.current?.drafts.startPlacing(k.id); setLog(`${k.title}: joylashtirish — model/yer ustiga bosing (Esc — bekor)`); };
   const deleteDraft = async (uid: string) => {
@@ -528,7 +514,7 @@ export default function ModelPage() {
     window.addEventListener("keydown", onKey, true); // capture: buyruqlar qatori fokusidan oldin
     window.addEventListener("mousemove", onMove);
     return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("mousemove", onMove); };
-  }, [shading, viewer, canEdit, labelsOn, keys]);
+  }, [shading, viewer, canEdit, labelsOn, keys, setHelp, setSideOpen, setToolsOpen]);
 
   const menus: Menu[] = [
     { title: "Fayl", items: [
@@ -582,7 +568,7 @@ export default function ModelPage() {
       { label: "Kamera: aylantirish / yurish / plan", onClick: () => pickNavMode(navMode === "Orbit" ? "FirstPerson" : navMode === "FirstPerson" ? "Plan" : "Orbit") },
       { label: "Kesim qutisi (tanlangan atrofida)", hint: "B", onClick: () => void viewer.current?.sectionBox() },
       { label: "Render (rasm)", hint: "F12", onClick: render },
-      { label: gridOn ? "Gridni yashirish" : "Gridni ko'rsatish", onClick: () => { setGridOn(!gridOn); viewer.current?.setGridVisible(!gridOn); } },
+      { label: gridOn ? "Gridni yashirish" : "Gridni ko'rsatish", onClick: () => setGrid(!gridOn) },
       { label: labelsOn ? "Element nomlarini yashirish" : "Element nomlari (yorliqlar)", hint: "L", onClick: () => void toggleLabels() },
       { sep: true, label: "" },
       { label: dockOpen ? "Yon panelni yashirish" : "Yon panel", hint: "N", onClick: () => setDockOpen(!dockOpen) },
@@ -658,7 +644,7 @@ export default function ModelPage() {
       {commitOpen && <CommitDialog summary={commitSummary(drafts, underlays.length)} baseLabel={current ? `v${current.number}` : "yangi model"} busy={draftBusy} onCommit={(m) => void doCommit(m)} onClose={() => setCommitOpen(false)} />}
 
       <ViewportHeader viewer={ready ? viewer.current : null} shading={shading} onShading={setShading} grid={gridOn}
-        onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }} projection={projection} onProjection={() => void toggleProjection()}
+        onGrid={setGrid} projection={projection} onProjection={() => void toggleProjection()}
         navMode={navMode} onNavMode={pickNavMode} colorScheme={colorScheme} onColorScheme={(m) => void pickColorScheme(m)} onSectionBox={() => void viewer.current?.sectionBox()} onRender={render} water={{ on: waterOn, level: npu?.level ?? null, onToggle: () => setWaterOn(!waterOn) }}
         right={<span className="dim small">{model?.name}{current ? ` · v${current.number}` : ""}{current?.meta?.element_count ? ` · ${current.meta.element_count} element` : ""}</span>} />
 
@@ -707,7 +693,7 @@ export default function ModelPage() {
           <ViewportSidebar
             viewer={ready ? viewer.current : null} selection={selection}
             shading={shading} onShading={setShading} projection={projection} onProjection={() => void toggleProjection()}
-            gridOn={gridOn} onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }}
+            gridOn={gridOn} onGrid={setGrid}
             labelsOn={labelsOn} onLabels={() => void toggleLabels()}
             version={current} modelName={model?.name ?? ""} canEdit={canEdit} onAction={sideAction}
           />

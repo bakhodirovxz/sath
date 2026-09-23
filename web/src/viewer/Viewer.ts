@@ -10,6 +10,8 @@ import type { Viewpoint } from "../api/client";
 import { DraftManager } from "./drafts";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { PAL } from "./palette";
+import { makeTextSprite } from "./labels";
+import { buildFieldPlane, buildSectionOverlay, disposeObject3D, type SectionSpec } from "./analysisOverlays";
 
 export interface SelectedItem {
   localId: number;
@@ -1170,32 +1172,7 @@ export class Viewer {
     if (id == null) return;
     const [box] = await this.model.getBoxes([id]);
     if (!box) return;
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    const alongX = size.x >= size.z; // eng uzun gorizontal o'q
-    const w = alongX ? size.x : size.z;
-    const h = size.y;
-    const geo = new THREE.PlaneGeometry(w, h, grid.nx - 1, grid.ny - 1);
-    const colors = new Float32Array(geo.attributes.position.count * 3);
-    // PlaneGeometry vertexlari yuqoridan pastga qatorlar bilan keladi
-    for (let j = 0; j < grid.ny; j++) {
-      for (let i = 0; i < grid.nx; i++) {
-        const v = grid.values[(grid.ny - 1 - j) * grid.nx + i] ?? 0;
-        const [r, g, b] = colorAt(Math.max(0, Math.min(1, v)));
-        const k = (j * grid.nx + i) * 3;
-        colors[k] = r;
-        colors[k + 1] = g;
-        colors[k + 2] = b;
-      }
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false });
-    this.field = new THREE.Mesh(geo, mat);
-    this.field.renderOrder = 10;
-    if (!alongX) this.field.rotation.y = Math.PI / 2;
-    this.field.position.copy(center);
+    this.field = buildFieldPlane(box, grid, colorAt);
     this.world.scene.three.add(this.field);
   }
 
@@ -1204,11 +1181,11 @@ export class Viewer {
    *  to'g'on uzun o'qi bo'ylab, ko'ndalang o'q — qisqa gorizontal tomon, yuqori byef — IFC koordinatasi katta tomon
    *  (conformingWater bilan bir xil). spec null — olib tashlash. */
   private section: THREE.Group | null = null;
-  async showSection(guid: string | null, spec: { profile?: [number, number][] | undefined; h1?: number | undefined; h2?: number | undefined; phreatic?: { x: number[]; y: number[] } | undefined; forces?: { name: string; v_kn: number; h_kn: number; arm_v_m: number; arm_h_m: number }[] | undefined } | null) {
+  async showSection(guid: string | null, spec: SectionSpec | null) {
     if (!this.alive()) return;
     if (this.section) {
       this.world.scene.three.remove(this.section);
-      this.section.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | undefined; if (mat && "map" in mat) ((mat as THREE.SpriteMaterial).map)?.dispose(); mat?.dispose?.(); });
+      disposeObject3D(this.section);
       this.section = null;
     }
     if (!guid || !spec || !this.model) return;
@@ -1216,123 +1193,11 @@ export class Viewer {
     if (id == null) return;
     const [box] = await this.model.getBoxes([id]);
     if (!box || box.isEmpty()) return;
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const alongX = size.x >= size.z; // uzun o'q
-    const H = size.y, base = box.min.y;
-    // kesim koordinatalari: u — yuqori byef tovonidan quyi byef tomon (0..B), v — tagdan yuqoriga
-    // three da: alongX → ko'ndalang o'q Z, yuqori byef = min.z (IFC +y); alongZ → ko'ndalang o'q X, yuqori byef = max.x
-    const B = alongX ? size.z : size.x;
-    const P = (u: number, v: number, t = 0): THREE.Vector3 => alongX
-      ? new THREE.Vector3(center.x + t, base + v, box.min.z + u)
-      : new THREE.Vector3(box.max.x - u, base + v, center.z + t);
-    const g = new THREE.Group();
-    g.name = "section";
-    g.renderOrder = 20;
-    const line = (pts: THREE.Vector3[], color: string, loop = false) => {
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), depthTest: false, transparent: true, opacity: 0.95 });
-      const l = loop ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat);
-      l.renderOrder = 20;
-      g.add(l);
-    };
-    const label = (text: string, at: THREE.Vector3, color: string = PAL.labelInk) => {
-      const c = document.createElement("canvas");
-      c.width = 256; c.height = 64;
-      const ctx = c.getContext("2d")!;
-      ctx.fillStyle = PAL.labelBg; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.font = "bold 26px system-ui, sans-serif"; ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, 10, 32);
-      const tex = new THREE.CanvasTexture(c);
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-      const sc = Math.max(H, 4) * 0.22;
-      sp.scale.set(sc * 4, sc, 1);
-      sp.position.copy(at);
-      sp.renderOrder = 21;
-      g.add(sp);
-    };
-    // hisob profili (poligon) — kesim o'rtasida; masshtab: profil asosi → element asosi
-    const prof = spec.profile ?? [];
-    const profB = prof.length ? Math.max(...prof.map((q) => q[0])) : B;
-    const su = prof.length && profB > 0 ? B / profB : 1;
-    const profH = prof.length ? Math.max(...prof.map((q) => q[1])) : H;
-    const sv = prof.length && profH > 0 ? H / profH : 1;
-    if (prof.length) line(prof.map(([u, v]) => P(u * su, v * sv)), PAL.highlight, true);
-    // suv sathlari (h1 yuqori, h2 quyi byef) — qisqa gorizontal chiziqlar
-    if (spec.h1 != null && spec.h1 > 0) { line([P(-B * 0.6, spec.h1 * sv), P(0, spec.h1 * sv)], PAL.waterLine); label(`h₁ ${spec.h1.toFixed(1)} m`, P(-B * 0.6, spec.h1 * sv + H * 0.06), PAL.labelWater); }
-    if (spec.h2 != null && spec.h2 > 0) { line([P(B, spec.h2 * sv), P(B * 1.6, spec.h2 * sv)], PAL.waterLine); label(`h₂ ${spec.h2.toFixed(1)} m`, P(B * 1.6, spec.h2 * sv + H * 0.06), PAL.labelWater); }
-    // depressiya egri chizig'i — to'g'on bo'ylab yuza (shaffof ko'k)
-    if (spec.phreatic && spec.phreatic.x.length > 1) {
-      const xs = spec.phreatic.x, ys = spec.phreatic.y;
-      const L = xs[xs.length - 1] || 1;
-      const yMax = Math.max(...ys, 1);
-      const sph = Math.min(1, H / yMax); // egri chiziq elementdan baland chiqmasin
-      const len = alongX ? size.x : size.z;
-      const pos: number[] = [];
-      for (let i = 0; i < xs.length; i++) {
-        const a = P((xs[i] / L) * B, ys[i] * sph, -len / 2), b = P((xs[i] / L) * B, ys[i] * sph, len / 2);
-        pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
-      }
-      const idx: number[] = [];
-      for (let i = 0; i < xs.length - 1; i++) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.waterLine), transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthTest: false }));
-      m.renderOrder = 19;
-      g.add(m);
-      line(xs.map((x, i) => P((x / L) * B, ys[i] * sph)), PAL.waterShallow);
-      label("Depressiya egri chizig'i", P(B * 0.45, ys[Math.floor(ys.length / 2)] * sph + H * 0.08), PAL.labelWater);
-    }
-    // kuchlar — strelkalar (uzunlik kattalikka mutanosib), yorliqlar
-    if (spec.forces?.length) {
-      const fmax = Math.max(...spec.forces.map((f) => Math.max(Math.abs(f.v_kn), Math.abs(f.h_kn))), 1);
-      const lenOf = (f: number) => H * (0.15 + 0.45 * Math.abs(f) / fmax);
-      const dirDown = alongX ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-1, 0, 0); // quyi byef tomon
-      for (const f of spec.forces) {
-        const isV = Math.abs(f.v_kn) >= Math.abs(f.h_kn);
-        const mag = isV ? f.v_kn : f.h_kn;
-        if (!mag) continue;
-        const len = lenOf(mag);
-        const color = f.name.startsWith("Og'irlik") ? PAL.forceWeight : f.name.startsWith("Filtratsion") ? PAL.forceSeepage : f.name.startsWith("Inersiya") || f.name.startsWith("Westergaard") ? PAL.forceInertia : PAL.waterLine;
-        let tip: THREE.Vector3, dir: THREE.Vector3;
-        if (isV) {
-          tip = P(B - f.arm_v_m * su, 0); // toe dan masofa → yuqori tovondan u = B − arm
-          dir = new THREE.Vector3(0, mag > 0 ? -1 : 1, 0); // W pastga, U (manfiy) yuqoriga
-          if (mag > 0) tip = P(B - f.arm_v_m * su, H * 0.55); // og'irlik — og'irlik markazi balandligida
-        } else {
-          const up = mag > 0; // yuqori byef tomonidan quyi byefga
-          tip = up ? P(0, f.arm_h_m * sv) : P(B, f.arm_h_m * sv);
-          dir = up ? dirDown.clone() : dirDown.clone().negate();
-        }
-        const origin = tip.clone().sub(dir.clone().multiplyScalar(len));
-        const arrow = new THREE.ArrowHelper(dir, origin, len, new THREE.Color(color), len * 0.25, len * 0.12);
-        arrow.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.Material | undefined; if (mm) { mm.depthTest = false; mm.transparent = true; } o.renderOrder = 21; });
-        g.add(arrow);
-        label(`${f.name.split(" ")[0]} ${Math.abs(mag).toLocaleString("en", { maximumFractionDigits: 0 })} kN/m`, origin.clone().add(new THREE.Vector3(0, H * 0.07, 0)), color);
-      }
-    }
+    const g = buildSectionOverlay(box, spec);
     this.section = g;
     this.world.scene.three.add(g);
   }
 
-  /** Ekran o'lchamidagi matnli sprite (yorliq): matn, rang, fon. */
-  private makeLabel(text: string, color: string = PAL.labelText, bg: string = PAL.labelBg, scale = 0.055): THREE.Sprite {
-    const c = document.createElement("canvas");
-    c.width = 512; c.height = 56;
-    const ctx = c.getContext("2d")!;
-    ctx.font = "600 24px system-ui, sans-serif";
-    const w = Math.min(500, ctx.measureText(text).width + 20);
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, w, 56);
-    ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, 10, 28, 490);
-    const tex = new THREE.CanvasTexture(c);
-    tex.repeat.x = w / 512;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
-    sp.scale.set(scale * (w / 56), scale, 1);
-    sp.center.set(0.5, 0);
-    sp.renderOrder = 30;
-    return sp;
-  }
   private disposeLabelGroup(g: THREE.Group | null) {
     if (!g) return;
     if (this.alive()) this.world.scene.three.remove(g);
@@ -1355,7 +1220,7 @@ export class Viewer {
     valid.forEach((v, i) => {
       const bx = boxes[i];
       if (!bx || bx.isEmpty()) return;
-      const sp = this.makeLabel(v.it.text, PAL.labelInk, v.it.color ? `${v.it.color}cc` : PAL.labelBgStrong, 0.05);
+      const sp = makeTextSprite(v.it.text, PAL.labelInk, v.it.color ? `${v.it.color}cc` : PAL.labelBgStrong, 0.05);
       const sz = bx.getSize(new THREE.Vector3());
       sp.position.set((bx.min.x + bx.max.x) / 2, bx.max.y + Math.max(0.3, sz.y * 0.05), (bx.min.z + bx.max.z) / 2);
       sp.center.set(0.5, this.labels ? -0.25 : 0); // nom yorliqlari yoqiq bo'lsa — ularning ustida
@@ -1518,7 +1383,7 @@ export class Viewer {
       if (Math.max(sz.x, sz.z) > diag * 0.5) return; // relyef/maydon
       const name = attr(data[i], "Name");
       if (!name || n >= 300) return;
-      const sp = this.makeLabel(name);
+      const sp = makeTextSprite(name);
       sp.position.set((bx.min.x + bx.max.x) / 2, bx.max.y + Math.max(0.3, sz.y * 0.05), (bx.min.z + bx.max.z) / 2);
       sp.userData.localId = id;
       g.add(sp);
