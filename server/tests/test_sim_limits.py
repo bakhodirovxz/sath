@@ -79,6 +79,9 @@ def test_viewer_cannot_start_sim_403(client, users, model_id):
             f"/api/models/{model_id}/sim", json={"kind": kind, "params": params}, headers=users["viewer"]
         )
         assert r.status_code == 403, (kind, r.text)
+    # OpenAPI tavsifi ham shuni aytadi (ilgari «analitik turlar — ko'ruvchi ham» deb yozilgan edi)
+    desc = client.get("/openapi.json").json()["paths"]["/api/models/{model_id}/sim"]["post"]["description"]
+    assert "muhandis+" in desc and "ko'ruvchi ham" not in desc and "ko'ruvchi 403" in desc
 
 
 def test_isolated_child_memory_limit():

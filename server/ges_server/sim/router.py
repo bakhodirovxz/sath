@@ -239,8 +239,9 @@ def _hydro_from_site(params: dict, site: dict | None) -> None:
 @router.post("/models/{model_id}/sim", response_model=SimOut, status_code=202)
 def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB):
     """Simulyatsiyani navbatga qo'yadi (L3: DB navbati, restartda yo'qolmaydi; `idempotency_key` bilan takror
-    so'rov shu ishni qaytaradi). Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi; byudjet,
-    vaqt chegarasi va foydalanuvchi/loyiha kvotasi bilan cheklangan); CFD — muhandis+."""
+    so'rov shu ishni qaytaradi). SIM-02: har qanday tur (analitik, maxsus formula, CFD) — faqat muhandis+
+    (ko'ruvchi 403; u ro'yxat, holat va natijani ko'radi). Byudjet, vaqt/xotira chegarasi va
+    foydalanuvchi/loyiha kvotasi bilan cheklangan."""
     ratelimit.check("sim", str(user.id), get_settings().rate_sim_per_min)
     model = get_model_checked(db, model_id, user, Role.engineer)  # SIM-02: har qanday ishga tushirish — muhandis+
     settings = get_settings()
