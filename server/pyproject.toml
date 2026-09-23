@@ -26,6 +26,7 @@ dependencies = [
     "ifctester>=0.8",  # IDS validatsiya (G2)
     "defusedxml>=0.7",
     "pillow>=10",  # rasm asosi, DEM, egizak foto
+    "cryptography>=42",  # desktop paketlari Ed25519 imzosi (SEC-03)
     "ges-sim",
 ]
 

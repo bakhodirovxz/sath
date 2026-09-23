@@ -7,17 +7,23 @@ Talab: Linux server (yoki Windows Server + Docker Desktop), 4+ CPU, 8+ GB RAM, 1
 ```bash
 git clone <repo> sath && cd sath/deploy
 cp .env.example .env            # GES_ADMIN_PASSWORD, GES_PORT, GES_PUBLIC_URL ni to'ldiring
-docker compose up -d --build    # server + web: http://<server>:8000
+docker compose --profile https up -d --build   # server + web: https://<GES_DOMAIN> (8000 — faqat 127.0.0.1)
 docker compose logs ges         # admin paroli bo'sh qoldirilgan bo'lsa — fayl yo'li shu yerda
 ```
+
+Parollar (CODE-08): `POSTGRES_PASSWORD` majburiy (bo'lmasa `docker compose` to'xtaydi; default/zaif parol —
+`ges`, `postgres`, ... — bilan server ishga tushmaydi). `GES_ADMIN_PASSWORD` parol siyosatidan o'tmasa
+(masalan `admin123`) admin birinchi kirishda parolni almashtirishi shart va startda logda ogohlantirish chiqadi.
+Bu tekshiruvlar faqat `GES_DEV_MODE=true` (lokal ishlab chiqish, testlar, CI) da yumshatiladi — ishlab
+chiqarishda yoqmang.
 
 Korporativ TLS proksi bo'lsa: `docker compose build --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org" --build-arg NPM_STRICT_SSL=false`.
 
 Ixtiyoriy profillar:
 - **Sxema migratsiyasi**: Alembic (`server/ges_server/migrations/`). Startda `GES_AUTO_MIGRATE=true` (default) bo'lsa `upgrade head` avtomatik; eski (Alembic siz) DB birinchi startda baseline ga belgilanadi va yangilanadi. Qo'lda: `cd server && alembic upgrade head`; `GES_AUTO_MIGRATE=false` da sxema eskirgan bo'lsa server ishga tushmaydi. Yangilashdan oldin zaxira oling.
 - **Historian qatlamlari**: xom (`GES_READINGS_RETENTION_DAYS=90`) → 1 daqiqa (`GES_AGG_1M_RETENTION_DAYS=400`) → 10 daqiqa (`GES_AGG_10M_RETENTION_DAYS=1100`) → 1 soat (abadiy); alarm hodisasi atrofidagi ±1 soat xom o'chirilmaydi. Sensor `archive_deadband` — o'lik zonali siqish (`archive_max_interval_s` dan keyin majburiy yozuv).
-- **Ma'lumotlar bazasi**: compose defaulti — Postgres 16 + TimescaleDB (`timescale/timescaledb:latest-pg16`, parol `POSTGRES_PASSWORD`); `readings` hypertable (7 kunlik bo'laklar, `sensor_id` bo'yicha 4 bo'lim), ingest `COPY` bilan partiyali. SQLite faqat ishlab chiqish/sinov uchun (`GES_DATABASE_URL=sqlite:////data/ges.db` — u holda postgres servisi kerak emas). Tashqi Postgres da timescaledb bo'lmasa `readings` oddiy jadval bo'lib qoladi (logda ogohlantirish).
-- **CFD** (OpenFOAM worker, ~1.5 GB obraz): `.env` da `GES_CFD_MODE=worker`, `docker compose --profile cfd up -d`. `CFD_CPUS` — worker uchun CPU.
+- **Ma'lumotlar bazasi**: compose defaulti — Postgres 16 + TimescaleDB (`timescale/timescaledb:latest-pg16`, parol `POSTGRES_PASSWORD`); `readings` hypertable (7 kunlik bo'laklar, `sensor_id` bo'yicha 4 bo'lim), ingest `COPY` bilan partiyali. SQLite faqat ishlab chiqish/sinov uchun (`GES_DATABASE_URL=sqlite:////data/ges.db`; compose da `POSTGRES_PASSWORD` baribir talab qilinadi). SQLite bilan server startda ogohlantiradi (SRV-08): bitta yozuvchi qulfi (ko'p foydalanuvchi/SCADA ingest da kutish), LISTEN/NOTIFY backplane va Timescale yo'q, `GES_ROLE=api|worker` (ko'p jarayon) ishonchsiz, CFD worker SQLite bilan ishlamaydi. Obraz yolg'iz (`docker run`) ishga tushsa default SQLite — faqat sinov. Tashqi Postgres da timescaledb bo'lmasa `readings` oddiy jadval bo'lib qoladi (logda ogohlantirish).
+- **CFD** (OpenFOAM worker, ~1.5 GB obraz): `.env` da `GES_CFD_MODE=worker`, `docker compose --profile cfd up -d`. `CFD_CPUS` — worker uchun CPU. Worker server bilan **bir xil DB** ga ulanadi (compose `GES_DATABASE_URL`, default Postgres — SQLite deployda worker navbatni ko'rmaydi va ishga tushmaydi) va faqat `cfd_data` hajmini (`/data/cfd`: case papkalari + `result.json`) ko'radi: `secret.key`, IFC fayllar, `.env` sirlari OpenFOAM konteyneriga berilmaydi (`GES_SECRET_KEY_REQUIRED=false`); solver sirlarsiz muhitda ishlaydi.
 - **Alarm rejimi (ISA-18.2)**: shelving default/maksimal muddati `GES_ALARM_SHELVE_DEFAULT_H=8`, `GES_ALARM_SHELVE_MAX_H=24`; out-of-service — muhandis+, sabab majburiy; `suppress_condition` — interlock ifodasi (masalan `AGG1_RUN == 0`).
 - **MQTT**: `GES_MQTT_URL=mqtts://broker:8883` + `GES_MQTT_CA_FILE` (majburiy), `GES_MQTT_USERNAME`/`GES_MQTT_PASSWORD` (yoki `_PASSWORD_FILE`; parol URL da emas), ixtiyoriy mTLS `GES_MQTT_CERT_FILE`+`_KEY_FILE` — sensorlar `protocol=mqtt` bilan topic ga obuna bo'ladi (paho-mqtt: `pip install "./server[mqtt]"`, Docker obrazida bor). TLS siz `mqtt://` faqat loopback ga; boshqa hostga faqat `GES_MQTT_ALLOW_INSECURE=true` bilan, aks holda server ishga tushmaydi. `GES_MQTT_TOPIC_ALLOW` (masalan `sath/{project_id}/#`) — sensor topigi ro'yxatga mos kelmasa obuna bo'lmaydi. Aloqa uzilsa obuna sensorlari `bad`, qayta ulanishda qayta obuna; xabarlar partiyalab (`GES_MQTT_BATCH_SIZE/_MS`) yoziladi.
 - **Email**: `GES_SMTP_URL=smtp://user:pass@mail.company.uz:587?from=ges@company.uz` — tasdiqlash hodisalari.
@@ -28,6 +34,9 @@ pip install -e ./sim -e "./server[postgres,mqtt]"
 cd web && npm ci && npm run build && cd ..
 GES_DATA_DIR=/srv/ges-data ges-server        # http://0.0.0.0:8000 (web build avtomatik topiladi)
 ```
+Docker siz sozlamalar fayli: `GES_ENV_FILE=/etc/sath/sath.env` (tavsiya) yoki `server/.env` — joriy papkadagi
+`.env` ham (eski xatti-harakat) o'qiladi, lekin startda ogohlantiriladi. CFD rejimi default `worker`
+(`GES_CFD_MODE`; dev da Docker Desktop bilan — `docker`).
 
 ## HTTPS
 
@@ -37,7 +46,7 @@ o'rnating (`docker compose exec caddy cat /data/caddy/pki/authorities/local/root
 domen bo'lsa `tls internal` qatorini olib tashlang (Let's Encrypt). `.env` da `GES_PUBLIC_URL=https://<domen>`,
 `GES_BIND=127.0.0.1` (8000 port tashqariga ochilmaydi — TLS chegarasi aylanib o'tilmaydi) va
 `GES_RATE_TRUST_FORWARDED=true` (klient IP `X-Forwarded-For` dan — tezlik cheklovi uchun; Caddy siz **false**).
-Caddyfile HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi.
+Caddyfile HSTS, CSP (`connect-src 'self' wss://{host}` — boshqa hostga ulanish yo'q), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi; ilova o'zi ham (Caddy siz) xuddi shu sarlavhalarni beradi (HSTS — HTTPS yoki ishonchli proksi `X-Forwarded-Proto: https` bo'lsa). `GES_BIND` default `127.0.0.1`.
 
 ## Ish navbati (simulyatsiya, fragments, geometriya)
 
@@ -373,10 +382,27 @@ dispetcherlarning emailiga.
 
 ## Ma'lumotlar
 
-Hammasi `data/` (Docker: `ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
-`sim/`, `cfd/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring).
+Hammasi `data/` (Docker: `sath_ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
+`sim/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring); CFD case papkalari — alohida
+`sath_cfd_data` (`/data/cfd`). Compose loyiha nomi qat'iy `sath` (`name: sath`) — hajm nomlari papka nomiga
+bog'liq emas. Eski deploy (nomsiz, `deploy_ges_data`) dan o'tish: `docker compose -p deploy down`, so'ng
+ma'lumotni ko'chiring (`docker run --rm -v deploy_ges_data:/from -v sath_ges_data:/to alpine cp -a /from/. /to/`;
+Postgres uchun `deploy_pg_data` → `sath_pg_data`) yoki bir martalik `COMPOSE_PROJECT=deploy ./backup.sh` va
+yangi stendda `./restore.sh`. `backup.sh` hajm topilmasa (exit 3), SQLite `ges.db` yo'q/bo'sh bo'lsa (exit 5)
+yoki `PRAGMA integrity_check` o'tmasa (exit 6) zaxira yozmaydi.
 Zaxira va tiklash — quyidagi bo'lim. Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
 sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
+
+## Log va metrikalar
+
+- Log: `GES_LOG_FORMAT=json` (Loki/ELK — bir qator bitta JSON: `ts`, `level`, `logger`, `msg`, `request_id`,
+  `exc`) yoki `text` (default); daraja `GES_LOG_LEVEL` (INFO). Har HTTP javobda `X-Request-ID` (kiruvchi
+  sarlavha qabul qilinadi) — log yozuvlarida xuddi shu id.
+- Prometheus: `GET /api/metrics` — `sath_http_requests_total{method,status}`, `sath_http_request_duration_seconds`,
+  `sath_ingest_requests_total{result}`, `sath_job_queue_depth{queue,status}`, `sath_build_info`. Himoya:
+  `GES_METRICS_TOKEN` berilsa `Authorization: Bearer <token>`; berilmasa faqat loopback dan. Caddy
+  `/api/metrics` ni tashqariga bermaydi (404) — Prometheus ichki tarmoqdan `ges:8000` ga token bilan ulanadi.
+  Hisoblagichlar replika boshiga (har replikani alohida scrape qiling).
 
 ## Yuqori ishonchlilik (ko'p replika)
 
@@ -431,15 +457,34 @@ Parolni foydalanuvchi o'zi o'zgartira oladi (API `/api/auth/change-password`); a
 
 Windows mashinada (o'rnatilgan FreeCAD 1.1.3, fork `../Sath-FreeCAD`, NSIS — `desktop/README.md`):
 ```bash
-python desktop/build/build_portable.py     # desktop/dist/Sath-<ver>-Windows-x86_64-installer.exe (~600 MB) va .zip
-for f in desktop/dist/Sath-0.1.0-Windows-x86_64-installer.exe desktop/dist/Sath-0.1.0-Windows-x86_64.zip; do
-  curl -X POST -H "Authorization: Bearer <admin token>" -F file=@$f http://<server>:8000/api/desktop/upload
-done
+python desktop/build/build_blender_bundle.py --installer   # yoki build_portable.py (FreeCAD fork)
+# bir martalik: imzo kalit juftligi (private — CI secret / parol menejeri; ochiq — serverga va addonga)
+python desktop/build/publish_desktop.py --gen-key ~/.sath/release-ed25519.pem
+python desktop/build/publish_desktop.py --server https://<server> --user admin --product blender \
+    --signing-key ~/.sath/release-ed25519.pem   # dist dagi eng yangi installer + zip
 ```
+Yangilanish butunligi (SEC-03):
+- Server paketni `.part` ga yozadi va faqat sha256/imzo tekshiruvidan keyin atomik `os.replace` qiladi —
+  uzilgan yuklash «latest» bo'lib ko'rinmaydi. Manifest (`<paket>.manifest.json`): product, version, kind,
+  name, size, sha256, signature, key_id.
+- Imzo — Ed25519, kanonik JSON `{"kind","name","product","sha256","size","version"}` ustidan
+  (`server/ges_server/system/release.py`). Private kalit serverda **yo'q** — server buzilsa ham soxta paket
+  imzolab bo'lmaydi. `GES_DESKTOP_SIGNING_PUBLIC_KEY` (base64) — server yuklashda imzoni tekshiradi;
+  `GES_DESKTOP_REQUIRE_SIGNATURE=true` — imzosiz paket rad etiladi.
+- `GET /api/desktop/latest?product=blender|freecad` (default `blender`) — `sha256`, `size`, `signature`,
+  `key_id`, `product`; FreeCAD va Blender paketlari serverda alohida (`data/desktop/<product>/`) — bir xil
+  nomda to'qnashmaydi. Eski yuklangan paketlar birinchi murojaatda `blender/` ga ko'chiriladi.
+- Blender addoni paketni brauzerda ochmaydi: o'zi yuklab oladi, hajm + sha256 ni, sozlamalarda
+  «Yangilanish kaliti» (yoki `SATH_UPDATE_PUBLIC_KEY`) berilgan bo'lsa Ed25519 imzoni tekshiradi; mos
+  kelmasa o'rnatishni taklif qilmaydi. Addon server manzili default `https://`.
+- Kod imzosi (Authenticode): `.github/workflows/blender-fork.yml` da `SATH_SIGN_CERT_PFX_B64` /
+  `SATH_SIGN_CERT_PASSWORD` secretlari bo'lsa signtool bilan imzolanadi (bo'lmasa qadam o'tkaziladi);
+  lokal NSIS installer — shu sertifikat bilan `signtool sign /fd SHA256 /tr <timestamp> /td SHA256`.
+
 Webda «Loyihalar» sahifasida «Sath x.y.z o'rnatish ↓ / zip ↓» tugmalari chiqadi; desktop kirishda
 `GET /api/desktop/latest` bilan tekshiradi (installer afzal). Versiya `desktop/GesWorkbench/package.xml` da —
 oshirib, `python desktop/build/sync_fork.py` bilan fork ga o'tkazing. Yadro (FreeCAD) o'zgartirilganda
-fork dagi GitHub Actions «Sath build» ishlatiladi — natija bir xil nomdagi fayllar.
+fork dagi GitHub Actions «Sath build» ishlatiladi.
 
 ## SCADA ulanishi
 

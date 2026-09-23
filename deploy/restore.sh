@@ -12,6 +12,10 @@
 #   1) secret.key ni parol menejeridan /data ga qaytaring (yoki GES_SECRET_KEY muhitida bering)
 #   2) ./restore.sh <arxiv>   3) docker compose up -d   4) GET /api/health, GET /api/audit/verify
 set -eu
+# CI-03: yordamchi obrazlar digest bilan qotirilgan
+PY_IMAGE="python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e"
+ALPINE_IMAGE="alpine:3@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
+TSDB_IMAGE="timescale/timescaledb:latest-pg16@sha256:f495f2bc25ca7596ca8e1606c6241ca250ccc56a0c082b9f2ec0d290e0126cd9"
 cd "$(dirname "$0")"
 PROJECT="${COMPOSE_PROJECT:-sath}"
 VOL="${PROJECT}_ges_data"
@@ -51,7 +55,7 @@ db_kind="$(sed -n 's/.*"db": "\([a-z]*\)".*/\1/p' "$work/manifest.json")"
 if [ "$MODE" = "test" ]; then
   # Tiklashni sinash — vaqtinchalik konteyner, ishlab chiqarishga tegmaydi
   if [ "$db_kind" = "postgres" ]; then
-    docker run -d --name "$TESTC" -e POSTGRES_PASSWORD=t -e POSTGRES_USER=ges -e POSTGRES_DB=ges timescale/timescaledb:latest-pg16 >/dev/null
+    docker run -d --name "$TESTC" -e POSTGRES_PASSWORD=t -e POSTGRES_USER=ges -e POSTGRES_DB=ges "$TSDB_IMAGE" >/dev/null
     i=0
     # init skriptlari tugab timescaledb kengaytmasi o'rnatilguncha kutamiz (vaqtinchalik init serveri ham javob beradi)
     until [ "$(docker exec "$TESTC" psql -U ges -tAc "select count(*) from pg_extension where extname='timescaledb'" 2>/dev/null)" = "1" ] && docker logs "$TESTC" 2>&1 | grep -q "database system is ready to accept connections" && [ "$(docker logs "$TESTC" 2>&1 | grep -c 'database system is ready to accept connections')" -ge 2 ]; do
@@ -66,7 +70,7 @@ if [ "$MODE" = "test" ]; then
     done
     echo "Alembic: $(docker exec "$TESTC" psql -U ges -tAc "select version_num from alembic_version")"
   else
-    docker run --rm -i python:3.12-slim sh -c "cat > /tmp/db.sqlite && python -c \"
+    docker run --rm -i "$PY_IMAGE" sh -c "cat > /tmp/db.sqlite && python -c \"
 import sqlite3; c=sqlite3.connect('/tmp/db.sqlite'); print('integrity:', c.execute('pragma integrity_check').fetchone()[0])
 for t in ('users','projects','sensors','readings','audit_log','alembic_version'):
     try: print(' ', t, c.execute('select count(*) from ' + t).fetchone()[0])
@@ -85,6 +89,8 @@ if [ "$YES" != "1" ]; then
   read -r ans; [ "$ans" = "ha" ] || { echo "Bekor qilindi"; exit 1; }
 fi
 docker compose -p "$PROJECT" stop ges cfd 2>/dev/null || true
+# Bo'sh stend: hajmlarni compose o'zi yaratsin (nom/yorliqlar mos — keyingi `up` ogohlantirishsiz)
+docker volume inspect "$VOL" >/dev/null 2>&1 || docker compose -p "$PROJECT" up --no-start
 if [ "$db_kind" = "postgres" ]; then
   docker compose -p "$PROJECT" up -d postgres
   i=0
@@ -98,7 +104,7 @@ if [ "$db_kind" = "postgres" ]; then
   docker compose -p "$PROJECT" exec -T postgres psql -U ges -d postgres -q -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='ges' AND pid <> pg_backend_pid()" -c "ALTER DATABASE ges RENAME TO $old" -c "ALTER DATABASE ges_restore RENAME TO ges" >/dev/null
   echo "Eski DB: $old (tekshirib bo'lgach: DROP DATABASE $old)"
 else
-  docker run --rm -i -v "$VOL":/data alpine sh -c "rm -f /data/ges.db /data/ges.db-wal /data/ges.db-shm && cat > /data/ges.db" < "$work/db.sqlite"
+  docker run --rm -i -v "$VOL":/data "$ALPINE_IMAGE" sh -c "rm -f /data/ges.db /data/ges.db-wal /data/ges.db-shm && cat > /data/ges.db" < "$work/db.sqlite"
 fi
-docker run --rm -i -v "$VOL":/data alpine sh -c "cd /data && tar xf -" < "$work/files.tar"
+docker run --rm -i -v "$VOL":/data "$ALPINE_IMAGE" sh -c "cd /data && tar xf -" < "$work/files.tar"
 echo "Tiklandi. Endi: docker compose -p $PROJECT up -d ; GET /api/health ; GET /api/audit/verify (admin)"

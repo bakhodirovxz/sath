@@ -110,13 +110,75 @@ def test_cfd_status_and_validation(client, users, model_id):
         json={"kind": "cfd", "params": {"kind": "penstock", "diameter_m": -2}},
         headers=users["engineer"],
     )
-    assert bad.status_code == 400 and "musbat" in bad.json()["detail"]
+    assert bad.status_code == 422 and "musbat" in bad.json()["detail"]
     bad = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "boshqa", "params": {}},
         headers=users["engineer"],
     )
     assert bad.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"kind": "penstock", "max_iterations": "1;\nfoo"},
+        {"kind": "spillway", "end_time_s": '#include "/data/secret.key"'},
+        {"kind": "penstock", "max_iterations": 400.5},
+        {"kind": "penstock", "length_m": True},
+        {"kind": "penstock", "nomalum": 1},
+        {"kind": "geometry", "flow_axis": "x; #include"},
+        {"kind": "geometry", "refinement": 9},
+        {"kind": "spillway", "end_time_s": 1e9},
+        {"kind": "#include"},
+    ],
+)
+def test_cfd_params_strict_schema_422(client, users, model_id, params):
+    """SEC-01: satr/bool/kasr/noma'lum maydon/chegaradan tashqari qiymat — 422, ish yaratilmaydi."""
+    r = client.post(
+        f"/api/models/{model_id}/sim", json={"kind": "cfd", "params": params}, headers=users["engineer"]
+    )
+    assert r.status_code == 422, r.text
+    assert "include" not in r.json()["detail"]  # kiritilgan qiymat javobga qaytarilmaydi
+    assert client.get(f"/api/models/{model_id}/sim", headers=users["engineer"]).json() == []
+
+
+def test_cfd_job_error_hides_internal_text(client, users, model_id, monkeypatch):
+    """SEC-01: CFD ish xatosi job.error ga ichki matn (yo'l, solver chiqishi) sifatida tushmaydi."""
+    from ges_server import config
+    from ges_server.orm import SimJob, SimStatus
+    from ges_server.sim import router as sim_router
+
+    monkeypatch.setattr(config.get_settings(), "cfd_mode", "worker")
+    r = client.post(
+        f"/api/models/{model_id}/sim", json={"kind": "cfd", "params": {"kind": "penstock"}}, headers=users["engineer"]
+    )
+    jid = r.json()["id"]
+
+    def boom(*a, **k):
+        raise RuntimeError("/data/secret.key: GES_DATABASE_URL=postgresql://ges:parol@db")
+
+    monkeypatch.setattr(sim_router, "run_case", boom)
+    with sim_router.SessionLocal() as db:
+        db.get(SimJob, jid).status = SimStatus.running
+        db.commit()
+    sim_router.run_job(jid, cfd_mode="local")
+    j = client.get(f"/api/sim/{jid}", headers=users["engineer"]).json()
+    assert j["status"] == "failed" and f"#{jid}" in j["error"]
+    assert "secret" not in j["error"] and "parol" not in j["error"]
+    # xavfsiz (CfdError) xabar esa ko'rsatiladi
+    from ges_sim.cfd.runner import CfdError
+
+    def timeout(*a, **k):
+        raise CfdError("CFD vaqt chegarasidan oshdi (10s)")
+
+    monkeypatch.setattr(sim_router, "run_case", timeout)
+    with sim_router.SessionLocal() as db:
+        db.get(SimJob, jid).status = SimStatus.running
+        db.commit()
+    sim_router.run_job(jid, cfd_mode="local")
+    j = client.get(f"/api/sim/{jid}", headers=users["engineer"]).json()
+    assert "vaqt chegarasidan oshdi" in j["error"]
 
 
 def test_cfd_worker_mode_leaves_job_queued(client, users, model_id, monkeypatch):

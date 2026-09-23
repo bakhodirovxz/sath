@@ -1,7 +1,8 @@
 # Sath — kompaniya ichki server.
 #   cp .env.example .env   (parollarni o'zgartiring)
 #   docker compose up -d --build
-# Brauzer: http://<server>:8000
+# Brauzer: https://<GES_DOMAIN> (--profile https). 8000 port default faqat shu hostda (127.0.0.1, OPS-01) —
+#   Caddy siz tarmoqqa ochish kerak bo'lsa (faqat sinov/ichki): .env da GES_BIND=0.0.0.0
 #
 # Default: Postgres + TimescaleDB (historian uchun; D1). SQLite faqat ishlab chiqish/sinov uchun —
 #   .env da GES_DATABASE_URL=sqlite:////data/ges.db bersangiz postgres servisi kerak emas.
@@ -9,6 +10,10 @@
 # HTTPS kerak bo'lsa: docker compose --profile https up -d  (Caddy: GES_DOMAIN uchun avtomatik sertifikat,
 #   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen> va
 #   .env da GES_BIND=127.0.0.1 — to'g'ridan-to'g'ri 8000 port faqat shu hostdan (TLS chegarasi aylanib o'tilmaydi, L1)
+#
+# Loyiha nomi qat'iy `sath` (SEC-02): hajmlar sath_ges_data, sath_pg_data, ... — backup.sh/restore.sh shu
+# nomlarni kutadi (papka nomi `deploy` bo'lsa ham deploy_ges_data emas).
+name: sath
 services:
   ges:
     build:
@@ -17,15 +22,17 @@ services:
     image: sath:latest
     restart: unless-stopped
     ports:
-      - "${GES_BIND:-0.0.0.0}:${GES_PORT:-8000}:8000"
+      - "${GES_BIND:-127.0.0.1}:${GES_PORT:-8000}:8000"
     env_file: .env
     environment:
       # .env dagi GES_DATABASE_URL ustun; berilmasa — compose dagi Postgres
-      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
       # Caddy ortida klient IP X-Forwarded-For dan (tezlik cheklovi uchun); to'g'ridan-to'g'ri ochiq bo'lsa false
       GES_RATE_TRUST_FORWARDED: ${GES_RATE_TRUST_FORWARDED:-false}
     volumes:
       - ges_data:/data
+      # CFD case papkalari alohida hajmda — cfd worker faqat shuni ko'radi (secret.key, IFC fayllar emas)
+      - cfd_data:/data/cfd
     # Qattiqlashtirish (L5): imtiyozsiz, faqat o'qiladigan ildiz FS (/data va /tmp yoziladi), PID/xotira chegarasi
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -43,14 +50,20 @@ services:
 
   postgres:
     # TimescaleDB (PG16): readings hypertable (7 kunlik bo'laklar) — migratsiya 0014 avtomatik
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg16@sha256:f495f2bc25ca7596ca8e1606c6241ca250ccc56a0c082b9f2ec0d290e0126cd9  # CI-03: digest pin
     restart: unless-stopped
     environment:
       POSTGRES_DB: ges
       POSTGRES_USER: ges
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+      # CODE-08: default parol yo'q — .env da POSTGRES_PASSWORD bo'lmasa compose to'xtaydi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    # OPS-02: entrypoint root sifatida boshlanib gosu bilan postgres ga o'tadi — faqat shunga kerakli qobiliyatlar
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ges"]
       interval: 10s
@@ -58,7 +71,7 @@ services:
       retries: 5
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e  # CI-03: digest pin
     profiles: ["https"]
     restart: unless-stopped
     ports:
@@ -71,6 +84,13 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [ges]
+    # OPS-02: faqat 80/443 ni ochish qobiliyati; ildiz FS faqat o'qish (sertifikatlar — /data, /config hajmlari)
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
   cfd:
     build:
@@ -79,14 +99,26 @@ services:
     image: sath-cfd:latest
     profiles: ["cfd"]
     restart: unless-stopped
-    env_file: .env
+    # .env to'liq berilmaydi (SEC-01): worker ga faqat DB manzili kerak — JWT kaliti, admin/SMTP/MQTT
+    # parollari OpenFOAM konteyneriga tushmaydi. DB — server bilan AYNAN bir xil (default Postgres).
     environment:
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
       GES_CFD_MODE: local
+      GES_SECRET_KEY_REQUIRED: "false"
+      GES_CFD_TIMEOUT_S: ${GES_CFD_TIMEOUT_S:-10800}
+    # Faqat case papkalari (ges servisi bilan umumiy) — butun /data (secret.key, ges.db, fayllar) emas
     volumes:
-      - ges_data:/data
+      - cfd_data:/data/cfd
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     cpus: "${CFD_CPUS:-4}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    # OPS-02: faqat o'qiladigan ildiz FS — yoziladi: /data/cfd (hajm), /tmp va $HOME (OpenFOAM foydalanuvchi sozlamalari)
+    read_only: true
+    tmpfs: ["/tmp:size=1g", "/home/sath:size=64m"]
     pids_limit: 1024
     mem_limit: "${CFD_MEM_LIMIT:-8g}"
 
@@ -102,6 +134,11 @@ services:
     restart: unless-stopped
     command: ["python", "ges_simulator.py", "--scenario", "${SIM_SCENARIO:-normal}", "--modbus", "0.0.0.0:5020", "--opcua", "opc.tcp://0.0.0.0:4840/sath-sim/", "--speed", "${SIM_SPEED:-1}"]
     ports: ["5020:5020", "4840:4840"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
   sim-gateway:
     image: sath-simulator:latest
@@ -114,10 +151,17 @@ services:
       GES_GATEWAY_INGEST_KEY: "${GES_GATEWAY_INGEST_KEY:-}"
       GES_GATEWAY_COMMAND_KEY: "${GES_GATEWAY_COMMAND_KEY:-}"
       GES_GATEWAY_COMMANDS: "${GES_GATEWAY_COMMANDS:-false}"
-    command: ["sh", "-c", "python ges_simulator.py --print-gateway-config --modbus simulator:5020 --opcua opc.tcp://simulator:4840/sath-sim/ > /tmp/gw.json && python ges_gateway.py /tmp/gw.json"]
+    # ish papkasi /tmp — gateway spool (gateway_spool.db) yoziladigan joyda (ildiz FS faqat o'qish)
+    command: ["sh", "-c", "cd /tmp && python /app/ges_simulator.py --print-gateway-config --modbus simulator:5020 --opcua opc.tcp://simulator:4840/sath-sim/ > /tmp/gw.json && python /app/ges_gateway.py /tmp/gw.json"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
 volumes:
   ges_data:
+  cfd_data:
   pg_data:
   caddy_data:
   caddy_config:

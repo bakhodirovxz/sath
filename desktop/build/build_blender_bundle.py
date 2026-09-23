@@ -69,13 +69,38 @@ def build_addon_zip(blender: Path) -> Path:
     return DIST / f"sath-{version()}.zip"
 
 
+# CI-03: Bonsai versiyasi va sha256 qotirilgan (eng oxirgisi emas). Yangilash: yangi zip ni sinab, ikkalasini
+# birga o'zgartiring (sha256sum bonsai-<ver>-py313-win64.zip).
+BONSAI_VERSION = "0.8.5"
+BONSAI_SHA256 = "81c0cfc9a6204e13fdd4391daef6e91ed8033488fde69ca5933b3535f490514f"
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _check_bonsai(path: Path) -> Path:
+    digest = _sha256(path)
+    if digest != BONSAI_SHA256:
+        path_note = f"{path} sha256={digest}"
+        raise SystemExit(f"Bonsai zip sha256 qotirilgan qiymatga mos emas ({BONSAI_VERSION}): {path_note}")
+    return path
+
+
 def ensure_bonsai(explicit: Path | None, blender_version: str) -> Path:
-    """Bonsai extension zip: berilgan yo'l, ~/Tools dagi nusxa yoki extensions.blender.org dan yuklab olish."""
+    """Bonsai extension zip (BONSAI_VERSION, sha256 tekshiruvi bilan): berilgan yo'l, ~/Tools dagi nusxa yoki
+    extensions.blender.org dan (faqat API dagi versiya qotirilganga teng bo'lsa) yuklab olish."""
     if explicit and explicit.exists():
-        return explicit
-    cached = sorted(TOOLS.glob("bonsai-*py313*.zip")) + sorted(TOOLS.glob("add-on-bonsai-*.zip"))
-    if cached:
-        return cached[-1]
+        return _check_bonsai(explicit)
+    cached = TOOLS / f"bonsai-{BONSAI_VERSION}-py313-win64.zip"
+    if cached.exists():
+        return _check_bonsai(cached)
     api = (
         "https://extensions.blender.org/api/v1/extensions/"
         f"?blender_version={blender_version}&platform=windows-x64"
@@ -83,9 +108,21 @@ def ensure_bonsai(explicit: Path | None, blender_version: str) -> Path:
     with urllib.request.urlopen(api, timeout=60) as r:  # noqa: S310
         data = json.load(r)
     ext = next(e for e in data["data"] if e["id"] == "bonsai")
-    dest = TOOLS / f"bonsai-{ext['version']}-py313-win64.zip"
+    if ext["version"] != BONSAI_VERSION:
+        raise SystemExit(
+            f"extensions.blender.org da Bonsai {ext['version']}, qotirilgani {BONSAI_VERSION} — --bonsai <zip> bering "
+            "yoki BONSAI_VERSION/BONSAI_SHA256 ni yangilang"
+        )
+    dest = TOOLS / f"bonsai-{BONSAI_VERSION}-py313-win64.zip"
+    part = dest.with_name(dest.name + ".part")
     print("  Bonsai yuklab olinmoqda:", ext["archive_url"], flush=True)
-    urllib.request.urlretrieve(ext["archive_url"], dest)  # noqa: S310
+    urllib.request.urlretrieve(ext["archive_url"], part)  # noqa: S310
+    try:
+        _check_bonsai(part)
+    except SystemExit:
+        part.unlink(missing_ok=True)
+        raise
+    os.replace(part, dest)
     return dest
 
 

@@ -8,6 +8,7 @@
 #   load balancer da yopishqoq sessiya shart emas. Tezlik cheklovi replika boshiga.
 # - Postgres: bitta primary + oqimli replika (postgres-replica, docs/admin.md «Yuqori ishonchlilik»);
 #   failover qo'lda (promote + GES_DATABASE_URL) — RTO ≈ 5 daqiqa.
+name: sath  # asosiy compose bilan bir xil (SEC-02: hajm nomlari sath_*)
 services:
   ges:
     ports: !reset []
@@ -28,9 +29,10 @@ services:
     env_file: .env
     environment:
       GES_ROLE: worker
-      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
     volumes:
       - ges_data:/data
+      - cfd_data:/data/cfd
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true
@@ -55,19 +57,23 @@ services:
   # Oqimli replika (ixtiyoriy): birinchi startda pg_basebackup, keyin standby. Primary da replikatsiya
   # foydalanuvchisi kerak — deploy/pg-replica/README.md
   postgres-replica:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg16@sha256:f495f2bc25ca7596ca8e1606c6241ca250ccc56a0c082b9f2ec0d290e0126cd9  # CI-03: digest pin
     profiles: ["pg-replica"]
     restart: unless-stopped
     environment:
       PRIMARY_HOST: postgres
       REPL_USER: repl
-      REPL_PASSWORD: ${PG_REPL_PASSWORD:-repl}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+      REPL_PASSWORD: ${PG_REPL_PASSWORD:?PG_REPL_PASSWORD .env da berilishi shart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}
     volumes:
       - pg_replica_data:/var/lib/postgresql/data
       - ./pg-replica/entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
     depends_on: [postgres]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
 
 volumes:
   pg_replica_data:

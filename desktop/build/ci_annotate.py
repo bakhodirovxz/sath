@@ -1,6 +1,10 @@
 """pytest junit XML dagi xatolarni GitHub annotatsiyasi (::error::) qilib chiqaradi — loglarsiz ham ko'rinadi.
 
 pytest --junitxml=report.xml ... ; python desktop/build/ci_annotate.py report.xml
+
+CI-01: pytest qadamining o'zi xato bilan tugaydi (continue-on-error yo'q); bu skript `if: always()` bilan faqat
+annotatsiya qiladi. report.xml yo'q/buzilgan bo'lsa traceback emas — `::error::` va exit 2 (pytest yig'ishda
+yiqilgan). Xatolar bo'lsa exit 1, hammasi o'tgan bo'lsa 0.
 """
 
 from __future__ import annotations
@@ -20,7 +24,14 @@ def _clean(text: str) -> str:
 
 
 def main(path: str) -> int:
-    root = ET.parse(path).getroot()
+    try:
+        root = ET.parse(path).getroot()
+    except FileNotFoundError:
+        print(f"::error title=pytest::{_clean(path)} topilmadi — pytest hisobot yozmadi (yig'ish/import xatosi?)")
+        return 2
+    except Exception as e:  # noqa: BLE001 — buzilgan XML (masalan pytest o'ldirilgan)
+        print(f"::error title=pytest::{_clean(path)} o'qib bo'lmadi: {_clean(str(e))}")
+        return 2
     n = 0
     for tc in root.iter("testcase"):
         for kind in ("failure", "error"):
@@ -39,4 +50,4 @@ def main(path: str) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "report.xml"))

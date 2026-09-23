@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
@@ -17,9 +17,10 @@ from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
     jobs,
 )
 from .auth.router import router as auth_router
-from .auth.security import hash_password
-from .config import get_settings, write_private
+from .auth.security import hash_password, password_problems, verify_password
+from .config import SERVER_ENV_FILE, get_settings, legacy_cwd_env, write_private
 from .db import SessionLocal, assert_at_head, migrate
+from .http_security import SecurityHeadersMiddleware
 from .models.drafts_router import router as drafts_router
 from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
@@ -33,6 +34,7 @@ from .monitoring.router import router as monitoring_router
 from .monitoring.twin_router import router as twin_router
 from .monitoring.workorders import router as workorders_router
 from .notifications import router as notifications_router
+from .observability import RequestContextMiddleware, configure_logging, render_metrics
 from .orm import User
 from .projects.router import router as projects_router
 from .review.router import router as review_router
@@ -54,7 +56,14 @@ def init_db() -> None:
         migrate()
     else:
         assert_at_head()
+    weak = admin_password_problems()
     with SessionLocal() as db:
+        if weak and not settings.dev_mode:
+            # Muhitdagi zaif parol bilan yaratilgan (mavjud) admin — almashtirish majburiy (CODE-08)
+            u = db.query(User).filter_by(username=settings.admin_username, is_admin=True).one_or_none()
+            if u is not None and not u.must_change_password and verify_password(settings.admin_password, u.password_hash):
+                u.must_change_password = True
+                db.commit()
         if db.query(User).filter_by(is_admin=True).first() is None:
             password = settings.admin_password
             if not password:
@@ -73,15 +82,98 @@ def init_db() -> None:
                     full_name="Administrator",
                     password_hash=hash_password(password),
                     is_admin=True,
-                    # Muhitdan berilgan parol — ma'lum siyosat; fayldagi tasodifiy parol birinchi kirishda almashtiriladi
-                    must_change_password=not settings.admin_password,
+                    # Fayldagi tasodifiy parol va siyosatdan o'tmagan muhit paroli (CODE-08, dev rejimidan
+                    # tashqari) — birinchi kirishda almashtiriladi
+                    must_change_password=not settings.admin_password or (bool(weak) and not settings.dev_mode),
                 )
             )
             db.commit()
 
 
+_DWG: dict[str, float | bool] = {}
+
+
+def dwg_available(ttl_s: float = 300.0) -> bool:
+    """DWG konverteri mavjudmi (mesh_import.tools: dwg2dxf yoki ODAFileConverter) — 5 daqiqa keshlanadi."""
+    import time
+
+    from .models import mesh_import
+
+    now = time.monotonic()
+    if not _DWG or now - float(_DWG["at"]) > ttl_s:
+        t = mesh_import.tools()
+        _DWG.update(at=now, ok=bool(t.get("dwg2dxf") or t.get("oda")))
+    return bool(_DWG["ok"])
+
+
+def admin_password_problems() -> list[str]:
+    """GES_ADMIN_PASSWORD parol siyosatidan (uzunlik, bloklash ro'yxati, ...) o'tmasa — muammolar ro'yxati."""
+    s = get_settings()
+    if not s.admin_password:
+        return []
+    return password_problems(s.admin_password, s.admin_username)
+
+
+# Postgres uchun rad etiladigan (default/namuna) parollar — compose/.env.example dagi eski default "ges" ham
+WEAK_DB_PASSWORDS = frozenset({"", "ges", "postgres", "password", "changeme", "admin", "sath", "secret"})
+
+
+def production_problems() -> list[str]:
+    """Ishlab chiqarishda (GES_DEV_MODE=false) serverni to'xtatadigan xatolar (CODE-08)."""
+    from sqlalchemy.engine import make_url
+
+    s = get_settings()
+    out = []
+    try:
+        url = make_url(s.database_url)
+    except Exception:  # noqa: BLE001 — noto'g'ri URL ni SQLAlchemy o'zi keyinroq aytadi
+        return out
+    if url.get_backend_name() == "postgresql" and (url.password or "").lower() in WEAK_DB_PASSWORDS:
+        out.append(
+            "Postgres paroli default/zaif (masalan 'ges') — .env da kuchli POSTGRES_PASSWORD bering "
+            "(yoki faqat ishlab chiqish/sinovda GES_DEV_MODE=true)"
+        )
+    return out
+
+
+def startup_warnings() -> list[str]:
+    """Konfiguratsiya ogohlantirishlari (logga; testda tekshiriladi)."""
+    s = get_settings()
+    out = []
+    weak = admin_password_problems()
+    if weak:
+        out.append(
+            "!!! GES_ADMIN_PASSWORD parol siyosatidan o'tmaydi (" + "; ".join(weak) + ") — "
+            + ("GES_DEV_MODE: faqat sinov uchun qabul qilindi" if s.dev_mode else
+               "admin birinchi kirishda parolni almashtirishi SHART; .env dan GES_ADMIN_PASSWORD ni olib tashlang")
+        )
+    if s.dev_mode:
+        out.extend("GES_DEV_MODE: " + p for p in production_problems())
+    if s.database_url.startswith("sqlite") and not s.dev_mode:
+        # SRV-08: SQLite — bitta yozuvchi qulfi, LISTEN/NOTIFY yo'q, historian hypertable yo'q
+        out.append(
+            "SQLite ishlatilyapti — ko'p foydalanuvchi, SCADA ingest va ko'p replika uchun tavsiya etilmaydi "
+            "(yozuv qulfi, backplane/Timescale yo'q). Ishlab chiqarishda Postgres: GES_DATABASE_URL=postgresql+psycopg://..."
+            + (f" | GES_ROLE={s.role}: ko'p jarayonli rejim SQLite bilan ishonchli emas" if s.role != "all" else "")
+        )
+    legacy = legacy_cwd_env()
+    if legacy is not None:
+        out.append(
+            f"Joriy papkadagi .env o'qildi ({legacy}) — ishga tushirish joyiga bog'liq. "
+            f"GES_ENV_FILE=<yo'l> yoki {SERVER_ENV_FILE} ishlating (CODE-06)"
+        )
+    return out
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    for w in startup_warnings():
+        log.warning(w)
+    problems = [] if get_settings().dev_mode else production_problems()
+    if problems:
+        for p in problems:
+            log.error(p)
+        raise RuntimeError("Xavfsiz bo'lmagan konfiguratsiya: " + " | ".join(problems))
     init_db()
     stop = asyncio.Event()
     tasks: list[asyncio.Task] = []
@@ -131,10 +223,14 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    configure_logging(settings.log_format, settings.log_level)  # SRV-06: JSON/matn, request_id
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     app.add_exception_handler(RequestValidationError, _validation_error)
     # L5: Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413 (multipart sarlavhalari uchun +1 MB)
     app.add_middleware(MaxBodyMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024 + (1 << 20))
+    # OPS-01: CSP, nosniff, X-Frame-Options, Referrer-Policy, HSTS (https) — Caddy siz ham
+    app.add_middleware(SecurityHeadersMiddleware, trust_forwarded=settings.rate_trust_forwarded)
+    app.add_middleware(RequestContextMiddleware)  # eng tashqi: so'rov id + metrikalar (413/xato javoblar ham)
 
     app.include_router(auth_router)
     app.include_router(projects_router)
@@ -165,8 +261,22 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", tags=["system"])
     def health():
-        # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»)
-        return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role()}
+        # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»);
+        # dwg: DWG import konverteri (LibreDWG dwg2dxf yoki ODA) bormi (CAD-10 — jimgina yo'qolmasin)
+        return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role(), "dwg": dwg_available()}
+
+    @app.get("/api/metrics", tags=["system"], include_in_schema=False)
+    def prometheus_metrics(request: Request):
+        """Prometheus (SRV-06). GES_METRICS_TOKEN bo'lsa Bearer token; bo'lmasa faqat loopback dan (Caddy
+        orqali tashqariga berilmaydi)."""
+        token = get_settings().metrics_token
+        if token:
+            auth = request.headers.get("authorization", "")
+            if not secrets.compare_digest(auth, f"Bearer {token}"):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Metrika tokeni kerak")
+        elif (request.client.host if request.client else "") not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Metrikalar faqat loopback dan (yoki GES_METRICS_TOKEN)")
+        return PlainTextResponse(render_metrics(__version__), media_type="text/plain; version=0.0.4")
 
     @app.get("/api/ready", tags=["system"])
     def ready():

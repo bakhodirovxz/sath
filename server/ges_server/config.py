@@ -14,14 +14,39 @@ def write_private(path: Path, text: str) -> None:
         fh.write(text)
 
 
-class Settings(BaseSettings):
-    """Muhit o'zgaruvchilari orqali sozlanadi (GES_ prefiksi), masalan GES_DATABASE_URL."""
+# Barqaror .env joyi (CODE-06): server/ papkasi (pyproject yonida) — ishga tushirilgan joriy papkaga bog'liq emas
+SERVER_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
-    model_config = SettingsConfigDict(env_prefix="GES_", env_file=".env", extra="ignore")
+
+def env_files() -> tuple[Path, ...]:
+    """O'qiladigan .env fayllari (keyingisi ustun). GES_ENV_FILE berilsa — faqat u. Aks holda barqaror
+    `server/.env`, keyin eski xatti-harakat uchun joriy papkadagi `.env` (bo'lsa, startda ogohlantirish)."""
+    explicit = os.environ.get("GES_ENV_FILE")
+    if explicit:
+        return (Path(explicit),)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.resolve() == SERVER_ENV_FILE:
+        return (SERVER_ENV_FILE,)
+    return (SERVER_ENV_FILE, cwd_env)
+
+
+def legacy_cwd_env() -> Path | None:
+    """Joriy papkadagi .env ishlatilyaptimi (GES_ENV_FILE siz, server/.env emas) — ogohlantirish uchun."""
+    files = env_files()
+    return files[-1] if len(files) > 1 and files[-1].is_file() else None
+
+
+class Settings(BaseSettings):
+    """Muhit o'zgaruvchilari orqali sozlanadi (GES_ prefiksi), masalan GES_DATABASE_URL. .env — env_files()."""
+
+    model_config = SettingsConfigDict(env_prefix="GES_", env_file=None, extra="ignore")
 
     app_name: str = "Sath"
     # Berilmasa data_dir/secret.key dan o'qiladi yoki yaratiladi (pastga qarang)
     secret_key: str = ""
+    # false — JWT kaliti umuman o'qilmaydi/yaratilmaydi (CFD worker: token chiqarmaydi, /data/secret.key ni
+    # ko'rmaydi — faqat case papkasi mount qilinadi)
+    secret_key_required: bool = True
     # L2: access token qisqa umrli, refresh token sessiya muddati (aylantiriladi); WS da qayta avtorizatsiya davri
     access_token_minutes: int = 15
     refresh_token_hours: float = 12
@@ -42,17 +67,28 @@ class Settings(BaseSettings):
     # Bo'sh bo'lsa birinchi ishga tushishda tasodifiy parol yaratilib
     # data_dir/initial-admin-password.txt ga yoziladi va logga chiqariladi
     admin_password: str = ""
+    # CODE-08: ishlab chiqish/sinov rejimi — zaif (siyosatdan o'tmaydigan) admin paroli va default DB paroli
+    # faqat ogohlantirish beradi. Ishlab chiqarishda (false, default): zaif muhit admin paroli → birinchi
+    # kirishda almashtirish majburiy; Postgres default/zaif paroli bilan server ishga TUSHMAYDI.
+    dev_mode: bool = False
     # Web build shu papkadan tarqatiladi (bo'sh bo'lsa faqat API)
     web_dist: Path | None = None
     max_upload_mb: int = 2048
+    # SEC-03: desktop paketlari imzosi — nashr qiluvchining Ed25519 ochiq kaliti (base64, 32 bayt; bo'sh —
+    # server imzoni tekshirmaydi, faqat saqlab beradi). require — imzosiz/noto'g'ri imzoli paket rad etiladi.
+    desktop_signing_public_key: str = ""
+    desktop_require_signature: bool = False
     # L5: kichik yuklashlar chegarasi (CSV import, BCF) MB; parser sandbox rejimi: auto | bwrap | rlimit | off
     small_upload_mb: int = 50
     sandbox: str = "auto"
-    # CFD (OpenFOAM): docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
-    # local — shu muhitda OpenFOAM bor; worker — alohida ges-worker konteyneri bajaradi; off — o'chiq
-    cfd_mode: str = "docker"
-    cfd_image: str = "opencfd/openfoam-default:2406"
+    # CFD (OpenFOAM): worker (default, deploy/.env.example bilan bir xil — alohida `cfd` konteyneri bajaradi,
+    # API server solver ishga tushirmaydi); docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
+    # local — shu muhitda OpenFOAM bor; off — o'chiq
+    cfd_mode: str = "worker"
+    cfd_image: str = "opencfd/openfoam-default:2406@sha256:dd5aa20630a55722663bf83ba0cb74870cba130081303e32e3865007fa2aa35a"  # CI-03: digest pin
     cfd_cpus: float = 2.0
+    # docker rejimi: konteyner xotira chegarasi (OPS-05; --memory, swap siz)
+    cfd_memory: str = "8g"
     # Analitik simulyatsiya: alohida jarayonda (spawn) vaqt chegarasi bilan; testlarda o'chiriladi
     sim_isolate: bool = True
     sim_timeout_s: int = 300
@@ -115,6 +151,11 @@ class Settings(BaseSettings):
     # ichki ko'zgu (dem_tile_url) yoki o'chirish (dem_enabled=false); ruxsat etilgan chiquvchi kanal — security-zones.md
     dem_enabled: bool = True
     dem_tile_url: str = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+    # SRV-06: log formati json | text, darajasi; Prometheus /api/metrics — token berilsa Bearer shart, aks holda
+    # faqat loopback (127.0.0.1/::1) dan
+    log_format: str = "text"
+    log_level: str = "INFO"
+    metrics_token: str = ""
     # Fon tekshiruv davri (stale sensorlar, agregat), soniya
     monitor_interval_s: int = 30
     # Alarm shelving (ISA-18.2): default va maksimal muddat, soat
@@ -156,8 +197,14 @@ class Settings(BaseSettings):
         return self.secret_key
 
 
+def load_settings() -> Settings:
+    """Muhitdan yangi Settings (keshsiz); JWT kaliti kerak bo'lsa (default) o'qiladi/yaratiladi."""
+    settings = Settings(_env_file=env_files())
+    if settings.secret_key_required:
+        settings.ensure_secret_key()
+    return settings
+
+
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
-    settings.ensure_secret_key()
-    return settings
+    return load_settings()

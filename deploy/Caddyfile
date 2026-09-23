@@ -10,16 +10,18 @@
         max_size 2GB
     }
     # Xavfsizlik sarlavhalari (L1). CSP: SPA o'z manbasidan; inline style — three.js/React uslublari uchun;
-    # blob:/data: — 3D viewer (web-ifc wasm, fragmentlar) va ma'lumot eksporti; ws(s) — jonli tasma.
+    # blob:/data: — 3D viewer (web-ifc wasm, fragmentlar) va ma'lumot eksporti; wss — jonli tasma, faqat shu host (OPS-01).
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: blob: data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://{host} blob: data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         -Server
     }
+    # Prometheus metrikalari tashqariga berilmaydi (SRV-06) — ichki tarmoqdan ges:8000/api/metrics + token
+    respond /api/metrics 404
     reverse_proxy ges:8000 {
         flush_interval -1
     }

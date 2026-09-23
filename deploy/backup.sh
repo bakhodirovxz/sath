@@ -15,6 +15,9 @@
 #   Konteynerlardan ma'lumot stdout orqali olinadi (bind-mount emas) — masofaviy DOCKER_HOST da ham ishlaydi.
 #   Jadval, tiklash va RTO/RPO: docs/admin.md → «Zaxira va tiklash».
 set -eu
+# CI-03: yordamchi obrazlar digest bilan qotirilgan
+PY_IMAGE="python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e"
+ALPINE_IMAGE="alpine:3@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 cd "$(dirname "$0")"
 PROJECT="${COMPOSE_PROJECT:-sath}"
 VOL="${PROJECT}_ges_data"
@@ -22,6 +25,12 @@ OUT="${BACKUP_DIR:-$(pwd)/backups}"
 KEEP="${BACKUP_KEEP_DAYS:-30}"
 ENCRYPT=1
 [ "${1:-}" = "--no-encrypt" ] && ENCRYPT=0
+# SEC-02: hajm mavjudligi — yo'q bo'lsa `docker run -v` jimgina YANGI BO'SH hajm yaratib, bo'sh zaxira olardi
+if ! docker volume inspect "$VOL" >/dev/null 2>&1; then
+  echo "XATO: $VOL hajmi topilmadi. Compose loyiha nomi '$PROJECT' mi? (docker volume ls | grep ges_data;" >&2
+  echo "      kerak bo'lsa COMPOSE_PROJECT=<nom> ./backup.sh)" >&2
+  exit 3
+fi
 mkdir -p "$OUT"
 stamp="$(date +%Y%m%d-%H%M)"
 name="sath-$stamp"
@@ -34,17 +43,37 @@ if docker compose -p "$PROJECT" ps --status running --services 2>/dev/null | gre
   db_kind="postgres"
   echo "DB: Postgres pg_dump (custom format)..."
   docker compose -p "$PROJECT" exec -T postgres pg_dump -U ges -Fc ges > "$work/db.pgdump"
+  [ -s "$work/db.pgdump" ] || { echo "XATO: pg_dump bo'sh natija berdi" >&2; exit 4; }
 else
   echo "DB: SQLite (.backup API — izchil nusxa, WAL qo'shilgan; yozuvchilarni to'xtatmaydi)..."
-  docker run --rm -v "$VOL":/data python:3.12-slim \
-    python -c "import sqlite3,sys,shutil; s=sqlite3.connect('/data/ges.db'); d=sqlite3.connect('/tmp/db.sqlite'); s.backup(d); d.close(); shutil.copyfileobj(open('/tmp/db.sqlite','rb'), sys.stdout.buffer)" > "$work/db.sqlite"
+  # ges.db yo'q/bo'sh bo'lsa sqlite3.connect yangi bo'sh baza yaratardi — avval tekshiriladi (exit 5);
+  # nusxa PRAGMA integrity_check dan o'tmasa zaxira yozilmaydi (exit 6). Skript stdin dan, nusxa stdout ga.
+  docker run --rm -i -v "$VOL":/data "$PY_IMAGE" python - > "$work/db.sqlite" <<'PY'
+import os, shutil, sqlite3, sys
+src = "/data/ges.db"
+if not os.path.isfile(src) or os.path.getsize(src) == 0:
+    sys.stderr.write("XATO: /data/ges.db topilmadi yoki bo'sh (Postgres rejimimi? postgres servisi ishlayaptimi?)\n")
+    sys.exit(5)
+s = sqlite3.connect(src)
+d = sqlite3.connect("/tmp/db.sqlite")
+s.backup(d)
+ok = d.execute("pragma integrity_check").fetchone()[0]
+d.close()
+if ok != "ok":
+    sys.stderr.write("XATO: integrity_check: %s\n" % ok)
+    sys.exit(6)
+with open("/tmp/db.sqlite", "rb") as fh:
+    shutil.copyfileobj(fh, sys.stdout.buffer)
+PY
+  [ -s "$work/db.sqlite" ] || { echo "XATO: SQLite nusxasi bo'sh" >&2; exit 5; }
+  echo "SQLite integrity_check: ok"
 fi
 
 # 2) Fayllar (content-addressed IFC/mesh; secret.key va vaqtinchalik keshlar chiqarib tashlanadi)
 excl="--exclude=./secret.key --exclude=./ges.db --exclude=./ges.db-wal --exclude=./ges.db-shm --exclude=./initial-admin-password.txt --exclude=./sim --exclude=./cfd"
 [ "${BACKUP_WITH_DERIVED:-0}" = "1" ] || excl="$excl --exclude=./derived"
 echo "Fayllar: $VOL → files.tar..."
-docker run --rm -v "$VOL":/data:ro alpine sh -c "cd /data && tar cf - $excl ." > "$work/files.tar"
+docker run --rm -v "$VOL":/data:ro "$ALPINE_IMAGE" sh -c "cd /data && tar cf - $excl ." > "$work/files.tar"
 
 # 3) Manifest
 alembic_head="$(docker compose -p "$PROJECT" exec -T ges alembic current 2>/dev/null | tail -1 || true)"

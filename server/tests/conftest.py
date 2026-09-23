@@ -10,6 +10,7 @@ os.environ["GES_DATABASE_URL"] = os.environ.get("GES_TEST_DATABASE_URL") or f"sq
 os.environ["GES_DATA_DIR"] = str(_TMP)
 os.environ["GES_SECRET_KEY"] = "test-secret-key-that-is-at-least-32-bytes-long"
 os.environ["GES_ADMIN_PASSWORD"] = "admin123"
+os.environ["GES_DEV_MODE"] = "true"  # CODE-08: zaif admin123 va CI Postgres ges:ges — faqat sinov rejimida
 os.environ["GES_SIM_ISOLATE"] = "false"  # testlarda simulyatsiya shu jarayonda (tezlik); izolyatsiya test_sim_limits da
 
 import pytest

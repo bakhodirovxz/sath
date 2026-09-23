@@ -19,6 +19,7 @@ os.environ["GES_DATABASE_URL"] = f"sqlite:///{(_TMP / 'test.db').as_posix()}"
 os.environ["GES_DATA_DIR"] = str(_TMP)
 os.environ["GES_SECRET_KEY"] = "desktop-test-secret-key-at-least-32-bytes"
 os.environ["GES_ADMIN_PASSWORD"] = "admin123"
+os.environ["GES_DEV_MODE"] = "true"  # CODE-08: zaif sinov paroli faqat dev rejimida
 
 import uvicorn  # noqa: E402
 from conftest import make_ifc  # noqa: E402  (server/tests/conftest.py)

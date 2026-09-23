@@ -19,6 +19,10 @@ jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 350
+    env:
+      # Kod imzosi (SEC-03, ixtiyoriy): repo secretlari SATH_SIGN_CERT_PFX_B64 (PFX, base64) va
+      # SATH_SIGN_CERT_PASSWORD berilsa blender.exe/sath.exe signtool bilan imzolanadi; bo'lmasa qadam o'tkaziladi
+      HAS_SIGN_CERT: ${{ secrets.SATH_SIGN_CERT_PFX_B64 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -61,6 +65,27 @@ jobs:
       - name: Build (MSVC, Release, INSTALL)
         shell: pwsh
         run: cmake --build D:\build --config Release --target INSTALL -- /m /v:m
+
+      - name: Kod imzosi (signtool, sertifikat secret bo'lsa)
+        if: env.HAS_SIGN_CERT == 'true'
+        shell: pwsh
+        env:
+          SIGN_CERT_B64: ${{ secrets.SATH_SIGN_CERT_PFX_B64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.SATH_SIGN_CERT_PASSWORD }}
+          SIGN_TIMESTAMP_URL: ${{ vars.SATH_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "sath-sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_CERT_B64))
+          try {
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+            $targets = Get-ChildItem "D:\build\bin\Release" -Filter *.exe | Where-Object { $_.Name -in @('blender.exe','sath.exe','blender-launcher.exe') }
+            foreach ($t in $targets) {
+              & $signtool.FullName sign /f $pfx /p $env:SIGN_CERT_PASSWORD /fd SHA256 /tr $env:SIGN_TIMESTAMP_URL /td SHA256 /d "Sath" $t.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool sign: $($t.Name)" }
+              & $signtool.FullName verify /pa $t.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool verify: $($t.Name)" }
+            }
+          } finally { Remove-Item $pfx -Force -ErrorAction SilentlyContinue }
 
       - name: Tekshirish va zip
         shell: pwsh

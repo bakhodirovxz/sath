@@ -161,3 +161,139 @@ def test_spa_fallback_does_not_shadow_api(tmp_path, monkeypatch):
         assert r.status_code == 404 and r.headers["content-type"].startswith("application/json")
         assert c.get("/api").status_code == 404
         assert "GES" in c.get("/..%2f..%2fetc/passwd").text  # traversal → index.html
+
+
+@pytest.fixture
+def clean_desktop():
+    """data_dir test sessiyasi bo'yicha umumiy — oldingi testlarning paketlari aralashmasin."""
+    import shutil
+
+    from ges_server import config
+
+    shutil.rmtree(config.get_settings().data_dir / "desktop", ignore_errors=True)
+    yield
+
+
+def _keypair():
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    sk = Ed25519PrivateKey.generate()
+    raw = sk.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
+    pub = sk.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return raw, pub, base64.b64encode(pub).decode()
+
+
+def test_desktop_manifest_sha256_and_signature(client, users, admin, monkeypatch, clean_desktop):
+    """SEC-03: latest da sha256/hajm/imzo; imzo server ochiq kaliti bilan tekshiriladi; sha256 mos kelmasa rad."""
+    import hashlib
+
+    from ges_server import config
+    from ges_server.system import release
+
+    raw, pub, pub_b64 = _keypair()
+    s = config.get_settings()
+    monkeypatch.setattr(s, "desktop_signing_public_key", pub_b64)
+    body = b"blender-bundle-0.4.0"
+    man = {"product": "blender", "version": "0.4.0", "kind": "zip", "name": "Sath-0.4.0-Windows-x86_64.zip",
+           "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+    sig = release.sign(raw, man)
+    # sha256 mos emas — rad, fayl qolmaydi
+    r = client.post("/api/desktop/upload", data={"product": "blender", "sha256": "0" * 64},
+                    files={"file": (man["name"], body)}, headers=admin)
+    assert r.status_code == 400 and "sha256" in r.json()["detail"]
+    # soxta imzo — rad
+    bad = release.sign(raw, {**man, "sha256": "f" * 64})
+    r = client.post("/api/desktop/upload", data={"product": "blender", "signature": bad},
+                    files={"file": (man["name"], body)}, headers=admin)
+    assert r.status_code == 400 and "Imzo" in r.json()["detail"]
+    assert client.get("/api/desktop/latest", headers=users["viewer"]).status_code == 404
+    # to'g'ri imzo
+    r = client.post("/api/desktop/upload", data={"product": "blender", "sha256": man["sha256"], "signature": sig},
+                    files={"file": (man["name"], body)}, headers=admin)
+    assert r.status_code == 201 and r.json()["verified"] is True, r.text
+    latest = client.get("/api/desktop/latest", headers=users["viewer"]).json()
+    assert latest["product"] == "blender" and latest["sha256"] == man["sha256"] and latest["size"] == len(body)
+    assert latest["signature"] == sig and latest["key_id"] == release.key_id(pub)
+    f = latest["files"][0]
+    assert release.verify(pub, f, f["signature"])  # klient xuddi shu maydonlardan kanonik xabar tuzadi
+    assert client.get(latest["url"], headers=users["viewer"]).content == body
+    # imzo majburiy — imzosiz rad
+    monkeypatch.setattr(s, "desktop_require_signature", True)
+    r = client.post("/api/desktop/upload", files={"file": ("Sath-0.5.0-Windows-x86_64.zip", b"x")}, headers=admin)
+    assert r.status_code == 400 and "Imzo talab" in r.json()["detail"]
+    assert client.get("/api/desktop/latest", headers=users["viewer"]).json()["version"] == "0.4.0"
+
+
+def test_desktop_partial_upload_never_latest(client, users, admin, monkeypatch, clean_desktop):
+    """SEC-03: yuklash .part ga, faqat oxirida os.replace — uzilgan/katta yuklash «latest» bo'lmaydi."""
+    from ges_server import config
+
+    s = config.get_settings()
+    r = client.post("/api/desktop/upload", files={"file": ("Sath-1.0.0-Windows-x86_64.zip", b"ok")}, headers=admin)
+    assert r.status_code == 201
+    monkeypatch.setattr(s, "max_upload_mb", 1)
+    big = b"x" * (2 * 1024 * 1024)
+    r = client.post("/api/desktop/upload", files={"file": ("Sath-2.0.0-Windows-x86_64.zip", big)}, headers=admin)
+    assert r.status_code == 413
+    d = s.data_dir / "desktop" / "blender"
+    assert not (d / "Sath-2.0.0-Windows-x86_64.zip").exists()
+    assert not list(d.glob("*.part"))  # vaqtinchalik fayl o'chirilgan
+    # parallel yuklanayotgan (.part) fayl ro'yxatga tushmaydi
+    (d / ".Sath-3.0.0-Windows-x86_64.zip.abc.part").write_bytes(b"yarim")
+    latest = client.get("/api/desktop/latest", headers=users["viewer"]).json()
+    assert latest["version"] == "1.0.0" and latest["sha256"]
+
+
+def test_desktop_products_do_not_collide(client, users, admin, clean_desktop):
+    """CODE-03/SEC-03: FreeCAD va Blender paketlari bir xil nomda — alohida mahsulot papkalarida."""
+    name = "Sath-0.9.0-Windows-x86_64.zip"
+    for prod, body in (("blender", b"B"), ("freecad", b"F")):
+        r = client.post("/api/desktop/upload", data={"product": prod}, files={"file": (name, body)}, headers=admin)
+        assert r.status_code == 201 and r.json()["product"] == prod
+    b = client.get("/api/desktop/latest", headers=users["viewer"]).json()  # default — blender
+    f = client.get("/api/desktop/latest?product=freecad", headers=users["viewer"]).json()
+    assert b["product"] == "blender" and f["product"] == "freecad" and b["sha256"] != f["sha256"]
+    assert client.get(b["url"], headers=users["viewer"]).content == b"B"
+    assert client.get(f["url"], headers=users["viewer"]).content == b"F"
+    assert client.get("/api/desktop/latest?product=boshqa", headers=users["viewer"]).status_code == 400
+    r = client.post("/api/desktop/upload", data={"product": "freecad"},
+                    files={"file": ("Sath-Blender-1.0.0-Windows-x86_64.zip", b"x")}, headers=admin)
+    assert r.status_code == 400  # nomdagi mahsulot bilan mos emas
+
+
+def test_security_headers_on_api_and_spa(client, tmp_path, monkeypatch):
+    """OPS-01: ilovaning o'zi CSP (script-src 'self', connect-src faqat shu host), nosniff, X-Frame-Options,
+    Referrer-Policy beradi; HSTS faqat HTTPS (yoki ishonchli proksi) da."""
+    r = client.get("/api/health")
+    h = r.headers
+    assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
+    assert h["referrer-policy"] == "strict-origin-when-cross-origin"
+    csp = h["content-security-policy"]
+    assert "script-src 'self' 'wasm-unsafe-eval';" in csp and "frame-ancestors 'none'" in csp
+    connect = next(p for p in csp.split(";") if p.strip().startswith("connect-src")).split()[1:]
+    assert connect == ["'self'", "ws://testserver", "wss://testserver", "blob:", "data:"]  # boshqa host yo'q
+    assert "ws:" not in connect and "wss:" not in connect and "*" not in csp
+    assert "strict-transport-security" not in h  # http
+    r = client.get("https://testserver/api/health")
+    assert r.headers["strict-transport-security"].startswith("max-age=")
+    # soxta Host sarlavhasi CSP ga tushmaydi
+    r = client.get("/api/health", headers={"Host": "evil.uz; script-src *"})
+    assert "evil" not in r.headers["content-security-policy"]
+    # xato javoblarda ham (404)
+    assert client.get("/api/nomalum-yol").headers["x-frame-options"] == "DENY"
+
+
+def test_hsts_behind_trusted_proxy_only():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from ges_server.http_security import SecurityHeadersMiddleware
+
+    for trust, expect in ((False, False), (True, True)):
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, trust_forwarded=trust)
+        app.get("/x")(lambda: {"ok": 1})
+        r = TestClient(app).get("/x", headers={"X-Forwarded-Proto": "https"})
+        assert ("strict-transport-security" in r.headers) is expect

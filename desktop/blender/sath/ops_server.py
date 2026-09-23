@@ -7,7 +7,7 @@ import webbrowser
 
 import bpy
 
-from . import flows, ifc, props, session, viewpoint
+from . import flows, ifc, props, session, update, viewpoint
 from .prefs import prefs
 from .shared.server_client import ServerError
 
@@ -54,7 +54,7 @@ class SATH_OT_connect(bpy.types.Operator):
 
 
 class SATH_OT_download_update(bpy.types.Operator):
-    """Serverdagi yangi Sath paketini brauzerda yuklab olish (installer yoki zip)"""
+    """Serverdagi yangi Sath paketini yuklab olish va tekshirish (hajm, sha256, imzo) — installer yoki zip"""
 
     bl_idname = "sath.download_update"
     bl_label = "Yangilanishni yuklab olish"
@@ -66,12 +66,32 @@ class SATH_OT_download_update(bpy.types.Operator):
 
     def execute(self, context):
         def do():
-            latest = session.client().desktop_latest()
+            # SEC-03: paket brauzerda ochilmaydi — addon o'zi yuklab, hajm/sha256/imzoni tekshiradi;
+            # faqat tekshiruvdan o'tgan fayl papkasi ochiladi (o'rnatishni foydalanuvchi boshlaydi)
+            client = session.client()
+            latest = update.latest(client)
             if not latest:
                 raise RuntimeError("Serverda desktop paketi yo'q")
-            pkg = next((f for f in latest.get("files", []) if f["kind"] == self.kind), latest)
-            webbrowser.open(flows.download_url(session.client(), prefs().server, pkg))
-            self.report({"INFO"}, f"Yuklab olinmoqda: {pkg.get('name', latest['version'])}")
+            pkg = next((f for f in latest.get("files", []) if f["kind"] == self.kind), None)
+            if pkg is None:
+                raise RuntimeError(f"Serverda {self.kind} paketi yo'q")
+            wm = context.window_manager
+            wm.progress_begin(0, 100)
+            try:
+                path = update.download_and_verify(
+                    client,
+                    pkg,
+                    flows.cache_dir() / "updates",
+                    prefs().update_public_key,
+                    progress=lambda got, total: wm.progress_update(int(got * 100 / total) if total else 0),
+                )
+            except update.UpdateError as e:
+                raise RuntimeError(str(e)) from None
+            finally:
+                wm.progress_end()
+            bpy.ops.wm.path_open(filepath=str(path.parent))
+            signed = "imzo ✓" if prefs().update_public_key.strip() else "imzo tekshirilmadi (kalit sozlanmagan)"
+            self.report({"INFO"}, f"Tekshirildi (hajm, sha256 ✓, {signed}): {path} — o'rnatish uchun ishga tushiring")
 
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 

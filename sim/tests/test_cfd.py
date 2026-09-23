@@ -39,7 +39,7 @@ def test_penstock_case_files(tmp_path):
     ):
         assert (tmp_path / f).exists(), f
     bm = (tmp_path / "system/blockMeshDict").read_text()
-    assert "type wedge" in bm and "type empty" in bm and "(10 0 0)" in bm
+    assert "type wedge" in bm and "type empty" in bm and "(10.0 0 0)" in bm
     assert "nutkRoughWallFunction" in (tmp_path / "0/nut").read_text()
     assert "simpleFoam" in (tmp_path / "system/controlDict").read_text()
     assert "\r" not in (tmp_path / "Allrun").read_bytes().decode()  # Linux uchun LF
@@ -154,3 +154,151 @@ def test_geometry_case_files(tmp_path):
         build_case({"kind": "geometry", "bbox": [[0, 0, 0], [0, 1, 1]]}, tmp_path)
     with pytest.raises(ValueError):
         build_case({"kind": "geometry", "bbox": [[0, 0, 0], [1, 1, 1]], "flow_axis": "z"}, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"kind": "penstock", "max_iterations": "1;\nfoo"},
+        {"kind": "spillway", "end_time_s": '#include "/data/secret.key"'},
+        {"kind": "geometry", "refinement": "2; #include"},
+        {"kind": "geometry", "flow_axis": "x;"},
+        {"kind": "penstock", "extra": 1},
+        {"kind": "spillway", "end_time_s": float("inf")},
+    ],
+)
+def test_build_case_rejects_raw_strings(tmp_path, params):
+    """SEC-01: build_case (worker yo'li) ham qat'iy sxemadan o'tadi — hech narsa yozilmaydi."""
+    with pytest.raises(ValueError):
+        build_case(params, tmp_path)
+    assert not any(tmp_path.iterdir())
+
+
+def test_case_objects_coerce_numbers(tmp_path):
+    """Sxemasiz (qo'lda) yaratilgan case ham xom satrni dictionary ga yoza olmaydi."""
+    with pytest.raises(ValueError):
+        SpillwayCase(end_time_s="1;\nfoo")
+    with pytest.raises(ValueError):
+        PenstockCase(max_iterations="400")
+    case = build_case({"kind": "spillway", "end_time_s": 12}, tmp_path)
+    cd = (tmp_path / "system/controlDict").read_text()
+    assert "endTime         12;" in cd and "writeInterval   12;" in cd
+    assert isinstance(case.end_time_s, float)
+
+
+# ---------- OPS-05: timeout solverni haqiqatan to'xtatadi ----------
+
+_CHILD = """
+import os, subprocess, sys, time
+hb = sys.argv[1]
+if len(sys.argv) > 2:  # nevara: yurak urishini faylga yozadi
+    while True:
+        with open(hb, "a") as fh:
+            fh.write("x")
+        time.sleep(0.05)
+subprocess.Popen([sys.executable, __file__, hb, "child"])
+time.sleep(60)
+"""
+
+
+def _heartbeat_stopped(path, wait=1.0) -> bool:
+    import time
+
+    time.sleep(wait)  # o'ldirilgan jarayon oxirgi yozuvni tugatsin
+    a = path.stat().st_size if path.exists() else 0
+    time.sleep(wait)
+    b = path.stat().st_size if path.exists() else 0
+    return a == b
+
+
+def test_local_timeout_kills_whole_process_tree(tmp_path, monkeypatch):
+    import sys
+
+    from ges_sim.cfd import runner
+
+    script = tmp_path / "solver.py"
+    script.write_text(_CHILD, encoding="utf-8")
+    hb = tmp_path / "hb.txt"
+    monkeypatch.setattr(runner, "LOCAL_CMD", [sys.executable, str(script), str(hb)])
+    import time
+
+    t0 = time.time()
+    with pytest.raises(runner.CfdError, match="vaqt chegarasidan"):
+        runner.run_case(tmp_path, 100, mode="local", timeout_s=1, poll_s=0.2)
+    assert time.time() - t0 < 30
+    assert hb.exists() and _heartbeat_stopped(hb)  # nevara jarayon ham o'ldirilgan
+
+
+def test_docker_timeout_kills_named_container(tmp_path, monkeypatch):
+    import json
+    import sys
+
+    from ges_sim.cfd import runner
+
+    calls = tmp_path / "calls.jsonl"
+    fake = tmp_path / "fake_docker.py"
+    fake.write_text(
+        "import json, sys, time\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+        "if sys.argv[1] == 'run':\n    time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runner, "DOCKER", [sys.executable, str(fake)])
+    case = tmp_path / "case7"
+    case.mkdir()
+    with pytest.raises(runner.CfdError):
+        runner.run_case(case, 100, mode="docker", timeout_s=1, poll_s=0.2, cpus=3, memory="4g", user="1000:1000")
+    lines = [json.loads(x) for x in calls.read_text(encoding="utf-8").splitlines()]
+    run = next(c for c in lines if c[0] == "run")
+    name = run[run.index("--name") + 1]
+    assert name.startswith("sath-cfd-case7-")
+    assert run[run.index("--network") + 1] == "none" and run[run.index("--memory") + 1] == "4g"
+    assert "--cpus=3.0" in run and run[run.index("--user") + 1] == "1000:1000"
+    assert ["kill", name] in lines  # CLI emas — konteynerning o'zi to'xtatildi
+
+
+def test_docker_command_defaults():
+    from ges_sim.cfd import runner
+
+    cmd = runner.docker_command(Path("/tmp/c"), "sath-cfd-x", image="img", cpus=2, memory="8g", user=None)
+    assert "--user" not in cmd and cmd[cmd.index("--pids-limit") + 1] == "2048" and "no-new-privileges" in cmd
+
+
+def test_spillway_is_turbulent_komega_sst(tmp_path):
+    """SIM-07: suv tashlagich — laminar emas, RAS k-omega SST (prototip Re ~ 10^6), devor funksiyalari bilan."""
+    case = build_case({"kind": "spillway", "crest_height_m": 3, "head_m": 1.2}, tmp_path)
+    tp = (tmp_path / "constant/turbulenceProperties").read_text()
+    assert "simulationType RAS;" in tp and "RASModel kOmegaSST;" in tp and "laminar" not in tp
+    k, omega, nut = ((tmp_path / f"0/{n}").read_text() for n in ("k", "omega", "nut"))
+    assert "kqRWallFunction" in k and "omegaWallFunction" in omega and "nutkWallFunction" in nut
+    for text in (k, omega, nut):
+        for patch in ("inlet", "outlet", "atmosphere", "bottom", "weir", "frontAndBack"):
+            assert patch in text
+    assert "dimensions [0 2 -2 0 0 0 0];" in k and "dimensions [0 0 -1 0 0 0 0];" in omega
+    u_in = case.q / (3 + 1.2)
+    k0 = 1.5 * (0.05 * u_in) ** 2
+    assert f"uniform {k0:.6g};" in k
+    fs = (tmp_path / "system/fvSchemes").read_text()
+    assert "div(phi,k)" in fs and "div(phi,omega)" in fs and "wallDist { method meshWave; }" in fs
+    sol = (tmp_path / "system/fvSolution").read_text()
+    assert '"(U|k|omega)"' in sol and '"(U|k|omega)Final"' in sol
+
+
+def test_geometry_params_with_server_metadata(tmp_path):
+    """SEC-01: server qo'shgan metama'lumot (bbox, stl_elements — nomsiz element ham, element_guid) bilan
+    saqlangan ish parametrlari worker da build_case dan o'tadi."""
+    params = {
+        "kind": "geometry",
+        "velocity_ms": 2,
+        "flow_axis": "x",
+        "refinement": 2,
+        "resolution": 1,
+        "max_iterations": 300,
+        "element_guids": ["2O2Fr$t4X7Zf8NOew3FLOH"],
+        "element_guid": None,
+        "bbox": [[10.0, -17.0, 12.0], [22.0, -7.0, 13.0]],
+        "stl_elements": [{"guid": "2O2Fr$t4X7Zf8NOew3FLOH", "name": None, "type": "IfcWall"}],
+        "stl_triangles": 12,
+    }
+    case = build_case(params, tmp_path)
+    assert case.size == [12.0, 10.0, 1.0]
