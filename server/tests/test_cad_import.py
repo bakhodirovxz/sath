@@ -216,3 +216,27 @@ def test_import_api_units_uncertain_and_override(client, users, model_id, tmp_pa
     r = _post(client, users, model_id, dxf, unit="m", unit_override=True)
     assert r.status_code == 201, r.text
     assert r.json()["units_uncertain"] is False and r.json()["import_info"]["unit"] == "m"
+
+
+# --- CAD-08: .blend — xavfsiz Blender buyrug'i --------------------------------------------------------------------
+
+
+def test_blender_cmd_disables_autoexec_and_user_startup(tmp_path, monkeypatch):
+    cmd = mesh_import.blender_cmd("blender", tmp_path / "x.blend", tmp_path / "exp.py", tmp_path / "x.glb")
+    blend_i = cmd.index(str(tmp_path / "x.blend"))
+    assert cmd[1] == "-b"
+    assert "--factory-startup" in cmd[:blend_i] and "--disable-autoexec" in cmd[:blend_i]
+    assert cmd[blend_i + 1 : blend_i + 3] == ["--python", str(tmp_path / "exp.py")] and cmd[-2:] == ["--", str(tmp_path / "x.glb")]
+    # _convert_external haqiqatan shu buyruqni sandbox ga beradi (timeout bilan)
+    seen = {}
+
+    def fake_run(cmd, *, cwd, timeout_s, **kw):
+        seen.update(cmd=cmd, timeout=timeout_s)
+        Path(cmd[-1]).write_bytes(b"glTF")
+
+    monkeypatch.setattr(mesh_import, "tools", lambda: {"blender": "blender", "assimp": None, "dwg2dxf": None, "oda": None})
+    monkeypatch.setattr(mesh_import.sandbox, "run", fake_run)
+    blend = tmp_path / "x.blend"
+    blend.write_bytes(b"BLENDER")
+    out = mesh_import._convert_external(blend, tmp_path)
+    assert out.suffix == ".glb" and "--disable-autoexec" in seen["cmd"] and seen["timeout"] <= 600

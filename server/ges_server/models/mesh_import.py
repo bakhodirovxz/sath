@@ -104,6 +104,16 @@ def tools() -> dict[str, str | None]:
     }
 
 
+def blender_cmd(blender: str, blend: Path, script: Path, out: Path) -> list[str]:
+    """Ishonchsiz .blend ni glb ga eksport qilish buyrug'i (CAD-08): --factory-startup — foydalanuvchi
+    sozlamalari/addonlari yuklanmaydi; --disable-autoexec — fayl ichidagi skriptlar (driver, Text autorun)
+    ishga tushmaydi. Ikkalasi .blend fayl nomidan OLDIN turishi shart."""
+    return [
+        blender, "-b", "--factory-startup", "--disable-autoexec", str(blend),
+        "--python", str(script), "--", str(out),
+    ]  # fmt: skip
+
+
 def _convert_external(path: Path, tmp: Path) -> Path:
     ext = path.suffix.lower()
     t = tools()
@@ -147,9 +157,9 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             "bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=True, export_yup=False)\n",
             encoding="utf-8",
         )
-        # Ishonchsiz .blend + --python: faqat sandbox ichida (tarmoqsiz, faqat tmp ga yozadi)
+        # Ishonchsiz .blend + --python: faqat sandbox ichida (tarmoqsiz, faqat tmp ga yozadi), timeout bilan
         sandbox.run(
-            [t["blender"], "-b", str(path), "--python", str(script), "--", str(out)],
+            blender_cmd(t["blender"], path, script, out),
             cwd=tmp, timeout_s=600, check=True, ro_paths=(path,),
         )
         return out
