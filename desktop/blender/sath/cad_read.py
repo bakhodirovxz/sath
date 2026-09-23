@@ -70,3 +70,43 @@ def transform_vertices(verts, scale: float, y_up: bool) -> list[tuple[float, flo
         x, y, z = float(v[0]) * scale, float(v[1]) * scale, float(v[2]) * scale
         out.append((x, -z, y) if y_up else (x, y, z))
     return out
+
+
+def file_guids(path: str | Path) -> dict[str, str]:
+    """Obyekt nomi → GUID: FBX Custom Properties (sath_guid) yoki glTF extras (CAD-07)."""
+    ext = Path(path).suffix.lower()
+    if ext == ".fbx":
+        out = {}
+        for name, props in cad_common.fbx_info(path)["models"].items():
+            g = cad_common.guid_from_props(props)
+            if g:
+                out[name] = g
+        return out
+    if ext in cad_common.GLTF_EXTS:
+        return cad_common.gltf_node_guids(path)
+    if ext == ".obj":
+        return _obj_guids(Path(path))
+    return {}
+
+
+def _obj_guids(path: Path) -> dict[str, str]:
+    """OBJ: assimp obyekt nomini birinchi bo'shliqgacha kesadi ("Devor [GUID]" → "Devor") — GUID ni `o`/`g`
+    qatorlaridan olamiz; bir xil qisqa nomli bir nechta obyekt bo'lsa (noaniq) — olinmaydi."""
+    found: dict[str, set[str]] = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line[:2] in ("o ", "g "):
+                    full = line[2:].strip()
+                    clean, g = cad_common.split_guid(full)
+                    if g and full.split():
+                        found.setdefault(full.split()[0], set()).add(g)
+    except OSError:
+        return {}
+    return {k: next(iter(v)) for k, v in found.items() if len(v) == 1}
+
+
+def name_and_guid(name: str, guids: dict[str, str]) -> tuple[str, str | None]:
+    """Sath eksportidagi "Nom [GUID]" → ("Nom", GUID); nomda bo'lmasa fayl xususiyatlaridan."""
+    clean, g = cad_common.split_guid(name)
+    return clean, g or guids.get(name) or guids.get(clean)

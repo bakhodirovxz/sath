@@ -273,3 +273,60 @@ def test_dwg_converter_return_code_is_checked(tmp_path, monkeypatch, tool):
     assert mesh_import._convert_external(dwg, work2).name == "plan.dxf"
     if tool == "oda":
         assert Path(calls["cmd"][1]).parent == work2  # foydalanuvchi papkasi emas — nusxa turgan yangi papka
+
+
+# --- CAD-07: eksport → qayta import GUID ni saqlaydi (ikki barobar bo'lmaydi) ----------------------------------------
+
+
+def _products(client, users, version_id):
+    import ifcopenshell
+    from ges_server.models import storage
+
+    r = client.get(f"/api/versions/{version_id}", headers=users["viewer"])
+    f = ifcopenshell.open(str(storage.resolve(r.json()["file_sha256"])))
+    return {el.GlobalId: el for el in f.by_type("IfcElement")}
+
+
+@pytest.mark.parametrize("fmt", ["glb", "obj"])
+def test_export_reimport_keeps_guids(client, users, model_id, tmp_path, fmt):
+    import numpy as np
+
+    obj = tmp_path / "gs.obj"
+    obj.write_text(
+        "o Togon\nv 0 0 0\nv 40 0 0\nv 40 10 0\nv 0 10 0\nv 0 0 30\nv 40 0 30\nv 40 10 30\nv 0 10 30\n"
+        "f 1 2 3 4\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n"
+        "o Quvur_1\nv 50 0 0\nv 60 0 0\nv 60 3 0\nv 50 3 3\nf 9 10 11\nf 9 11 12\n"
+    )
+    r = _post(client, users, model_id, obj, unit="m", unit_override=True)
+    assert r.status_code == 201, r.text
+    v1 = r.json()["id"]
+    before = _products(client, users, v1)
+    assert len(before) == 2
+    r = client.get(f"/api/versions/{v1}/export", params={"fmt": fmt}, headers=users["viewer"])
+    assert r.status_code == 200
+    exported = tmp_path / f"eksport.{fmt}"
+    exported.write_bytes(r.content)
+    objs, info = mesh_import.load_objects_ex(exported)
+    assert {o["name"] for o in objs} == {"Togon", "Quvur_1"}  # "[GUID]" nomdan olib tashlandi
+    assert {o.get("guid") for o in objs} == set(before)
+    if fmt == "glb":  # glb Y-up (spetsifikatsiya) → importda Z-up ga qaytadi: to'g'on balandligi 30 m Z bo'yicha
+        togon = next(o for o in objs if o["name"] == "Togon")
+        assert info.y_up and abs(float(np.ptp(np.asarray(togon["mesh"]["vertices"])[:, 2])) - 30) < 1e-6
+    r = _post(client, users, model_id, exported, unit="m", unit_override=True)  # joriy versiya ustiga
+    assert r.status_code == 201, r.text
+    after = _products(client, users, r.json()["id"])
+    assert set(after) == set(before)  # elementlar ikki barobar bo'lmadi, GUID lar saqlandi
+    assert {el.Name for el in after.values()} == {"Togon", "Quvur_1"}
+
+
+def test_gltf_extras_guid_is_read(tmp_path):
+    import trimesh
+
+    s = trimesh.Scene()
+    m = trimesh.creation.box()
+    m.metadata["sath_guid"] = "2O2Fr$t4X7Zf8NOew3FLOH"  # Blender custom property → mesh extras
+    s.add_geometry(m, node_name="Devor", geom_name="Devor")
+    glb = tmp_path / "e.glb"
+    glb.write_bytes(s.export(file_type="glb"))
+    objs = mesh_import.load_objects(glb)
+    assert objs[0]["guid"] == "2O2Fr$t4X7Zf8NOew3FLOH" and objs[0]["name"] == "Devor"

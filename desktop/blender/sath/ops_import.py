@@ -113,13 +113,17 @@ def import_mesh(
         report.extend(res.warnings)
     tag = path.suffix[1:].upper()
     coll = _collection(f"{tag} {path.stem}")
+    guids = cad_read.file_guids(path)
     n = 0
     for m in assimp_load.load(str(path)):
-        me = bpy.data.meshes.new(m["name"])
+        name, guid = cad_read.name_and_guid(str(m["name"]), guids)  # Sath eksporti: "Nom [GUID]" (CAD-07)
+        me = bpy.data.meshes.new(name)
         verts = cad_read.transform_vertices(m["vertices"], res.scale, res.y_up)
         me.from_pydata(verts, [], [tuple(int(i) for i in f) for f in m["faces"]])
         me.update()
-        ob = bpy.data.objects.new(f"{tag}_{m['name']}", me)
+        ob = bpy.data.objects.new(f"{tag}_{name}", me)
+        if guid:
+            ob["sath_guid"] = guid
         if m.get("color"):
             ob.color = (*[float(c) for c in m["color"][:3]], 1.0)
         coll.objects.link(ob)

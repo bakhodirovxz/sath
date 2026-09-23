@@ -145,3 +145,31 @@ def test_no_converter(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="topilmadi"):
         converters.dwg_to_dxf(_user_dwg(tmp_path), tmp_path / "w")
     assert list((tmp_path / "w").iterdir()) == []
+
+
+# --- CAD-07: GUID nomdan / fayl xususiyatlaridan -----------------------------------------------------------------
+
+
+def test_name_and_guid():
+    g = "2O2Fr$t4X7Zf8NOew3FLOH"
+    assert cad_read.name_and_guid(f"Devor [{g}]", {}) == ("Devor", g)
+    assert cad_read.name_and_guid("Devor", {"Devor": g}) == ("Devor", g)
+    assert cad_read.name_and_guid("Devor [qisqa]", {}) == ("Devor [qisqa]", None)
+
+
+def test_file_guids_from_fbx_user_props(tmp_path):
+    fbx = tmp_path / "a.fbx"
+    fbx.write_text(
+        'Objects:  {\n\tModel: 1, "Model::Quvur", "Mesh" {\n\t\tProperties70:  {\n'
+        '\t\t\tP: "sath_guid", "KString", "", "U", "0K7w7JLKn3sgmPz7rVkzq1"\n\t\t}\n\t}\n}\n',
+        encoding="utf-8",
+    )
+    assert cad_read.file_guids(fbx) == {"Quvur": "0K7w7JLKn3sgmPz7rVkzq1"}
+
+
+def test_file_guids_obj_names_truncated_by_assimp(tmp_path):
+    obj = tmp_path / "e.obj"
+    obj.write_text(
+        "o Togon [2O2Fr$t4X7Zf8NOew3FLOH]\nv 0 0 0\no Devor [0K7w7JLKn3sgmPz7rVkzq1]\no Devor [1K7w7JLKn3sgmPz7rVkzq1]\n"
+    )
+    assert cad_read.file_guids(obj) == {"Togon": "2O2Fr$t4X7Zf8NOew3FLOH"}  # Devor — noaniq, olinmaydi

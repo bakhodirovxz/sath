@@ -642,6 +642,7 @@ def load_objects_ex(
 
     info = ImportInfo()
     dxf_info: DxfInfo | None = None
+    guids: dict[str, str] = {}  # obyekt nomi → GUID (glTF extras / FBX user props; CAD-07)
 
     with tempfile.TemporaryDirectory(prefix="ges-conv-") as tmp:
         if path.suffix.lower() == ".zip":
@@ -692,6 +693,11 @@ def load_objects_ex(
         elif src.suffix.lower() in VIA_ASSIMP:
             from . import assimp_load
 
+            if src.suffix.lower() == ".fbx":  # FBX Custom Properties (Blender: sath_guid)
+                for mname, props in cad_common.fbx_info(src)["models"].items():
+                    g = cad_common.guid_from_props(props)
+                    if g:
+                        guids[mname] = g
             for o in assimp_load.load(src):
                 meshes.append(
                     (
@@ -723,6 +729,8 @@ def load_objects_ex(
                 info.warnings.append(info.unit_note)
         else:
             loaded = trimesh.load(str(src), force="scene" if not merge else "mesh", process=False)
+            if src.suffix.lower() in cad_common.GLTF_EXTS:
+                guids.update(cad_common.gltf_node_guids(src))
         if isinstance(loaded, trimesh.Scene):
             for name, geom in loaded.geometry.items():
                 if not isinstance(geom, trimesh.Trimesh) or geom.faces.shape[0] == 0:
@@ -735,6 +743,9 @@ def load_objects_ex(
                     if node is not None:
                         m.apply_transform(loaded.graph[node][0])
                     label = (node or name) if len(nodes) == 1 else f"{name}_{i + 1}"
+                    g = cad_common.guid_from_props(geom.metadata) if len(nodes) == 1 else None
+                    if g and str(label) not in guids:
+                        guids[str(label)] = g
                     meshes.append((str(label), m, _color_of(geom)))
         elif isinstance(loaded, trimesh.Trimesh):
             meshes.append((path.stem, loaded, _color_of(loaded)))
@@ -748,7 +759,15 @@ def load_objects_ex(
             f"Juda ko'p uchburchak: {total} > {MAX_TRIANGLES} — Blender da Decimate qiling"
         )
     out = []
-    for name, m, col in meshes:
+    seen_guids: set[str] = set()
+    for label, m, col in meshes:
+        # CAD-07: eksportdagi "Nom [GUID]" / sath_guid → mavjud element yangilanadi (drafts.build obj["guid"])
+        name, guid = cad_common.split_guid(label)
+        guid = guid or guids.get(label)
+        if guid in seen_guids:  # bir GUID ikki marta (nusxa obyekt) — ikkinchisi yangi element
+            guid = None
+        if guid:
+            seen_guids.add(guid)
         v = np.asarray(m.vertices, dtype=float) * scale
         if y_up:  # Y yuqoriga → Z yuqoriga: (x, y, z) → (x, −z, y)
             v = np.column_stack([v[:, 0], -v[:, 2], v[:, 1]])
@@ -791,6 +810,7 @@ def load_objects_ex(
             psets[pset] = {}
         out.append(
             {
+                **({"guid": guid} if guid else {}),
                 "kind": kind,
                 "name": str(name)[:120] or "Mesh",
                 "ifc_class": cls,
@@ -805,9 +825,13 @@ def load_objects_ex(
 
 
 # --- IFC → glTF / OBJ / STL (Blender, 3ds Max uchun) ---
+_Z_UP_TO_Y_UP = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=float)  # (x, z, −y)
+
+
 def export_ifc(path: Path, fmt: str = "glb") -> bytes:
     """IFC dan barcha elementlar geometriyasi (dunyo koordinatalari, metr, ranglar) → glb/obj/stl baytlar;
-    element nomi va GUID saqlanadi (Blender da obyekt nomi = "Nom [GUID]")."""
+    element nomi va GUID saqlanadi (Blender da obyekt nomi = "Nom [GUID]", glTF mesh extras da sath_guid) —
+    qayta importda GUID o'qiladi va element yangilanadi (CAD-07). glb — glTF spetsifikatsiyasi bo'yicha Y-up."""
     import ifcopenshell
     import ifcopenshell.geom
     import trimesh
@@ -834,6 +858,9 @@ def export_ifc(path: Path, fmt: str = "glb") -> bytes:
                             int(max(min(float(x), 1), 0) * 255) for x in rgb
                         ] + [255]
                     name = f"{el.Name or el.is_a()} [{el.GlobalId}]"
+                    m.metadata["sath_guid"] = el.GlobalId  # glTF mesh extras → Blender custom property
+                    if fmt == "glb":
+                        m.apply_transform(_Z_UP_TO_Y_UP)
                     scene.add_geometry(m, node_name=name, geom_name=name)
             except Exception:  # noqa: BLE001 — bitta element xatosi eksportni to'xtatmasin
                 pass

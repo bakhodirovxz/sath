@@ -224,6 +224,7 @@ class SATH_OT_commit(bpy.types.Operator):
             from . import ges_objects
 
             ges_objects.flush_pending()  # kechiktirilgan qayta qurishlar IFC ga kirsin
+            ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
             r = flows.commit(
                 session.client(),
