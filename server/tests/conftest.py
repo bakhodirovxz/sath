@@ -153,3 +153,17 @@ def upload(client, headers, model_id, path: Path, message="", parent_id=None):
             data=data,
             headers=headers,
         )
+
+
+def get_ready(client, url: str, headers: dict, timeout_s: float = 180.0):
+    """OPS-03: og'ir hosilaviy natija (qto, clashes, fragments) navbatda bo'lsa 202 — tayyor bo'lguncha kutadi."""
+    import time
+
+    t0 = time.monotonic()
+    while True:
+        r = client.get(url, headers=headers)
+        if r.status_code != 202:
+            return r
+        assert set(r.json()) == {"job_id", "status"}, r.text
+        assert time.monotonic() - t0 < timeout_s, f"hosilaviy ish tugamadi: {url} {r.text}"
+        time.sleep(0.2)

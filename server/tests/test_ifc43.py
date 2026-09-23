@@ -58,7 +58,9 @@ def test_ifc43_sample_loads_ids_and_classification(client, users):
     mid = client.post(f"/api/projects/{pid}/models", json={"name": "M43"}, headers=users["engineer"]).json()["id"]
     v = upload(client, users["engineer"], mid, SAMPLE43, "v1").json()
     assert v["meta"]["schema"].startswith("IFC4X3") and v["meta"]["type_counts"]["IfcPipeSegment"] == 2
-    assert client.get(f"/api/versions/{v['id']}/qto", headers=users["viewer"]).status_code == 200
+    from conftest import get_ready
+
+    assert get_ready(client, f"/api/versions/{v['id']}/qto", users["viewer"]).status_code == 200  # OPS-03
     # IFC4 model ham o'qilishda davom etadi
     v4 = upload(client, users["engineer"], mid, SAMPLE4, "v4").json()
     assert v4["meta"]["schema"] == "IFC4"

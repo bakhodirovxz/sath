@@ -2,7 +2,7 @@ import functools
 import random
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from .. import audit, ratelimit
+from .. import audit, jobs, ratelimit
 from ..auth.deps import (
     DB,
     AdminUser,
@@ -23,7 +23,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..downloads import content_disposition
-from ..orm import Federation, Model, Project, Role, Version, VersionState, utcnow
+from ..orm import Federation, Job, JobStatus, Model, Project, Role, Version, VersionState, utcnow
 from . import classification, cobie, derived, federation, ifc_meta, ifc_schema, iso19650, storage
 from . import crs as crs_mod
 
@@ -231,7 +231,7 @@ def create_version(
             db.rollback()
             raise
     db.refresh(version)
-    derived.enqueue_for(db, file_sha256)
+    derived.enqueue_for(db, file_sha256, meta_pending=bool((meta or {}).get("pending")))
     return version
 
 
@@ -440,12 +440,13 @@ def upload_version(
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
 
     try:
-        meta = ifc_meta.extract(storage.resolve(sha))
+        # OPS-03: katta fayl so'rov ichida to'liq parse qilinmaydi (faqat sarlavha) — to'liq metadata navbatda
+        meta = ifc_meta.extract_bounded(storage.resolve(sha))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if naming_warning:
         meta["warnings"] = [*meta.get("warnings", []), naming_warning]
-    if crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
+    if not meta.get("pending") and crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
         # G3: loyihada CRS bor, faylda IfcMapConversion yo'q — ogohlantirish (POST /models/{id}/georeference qo'shadi)
         meta["warnings"] = [*meta.get("warnings", []), "Georeferensiya yo'q: IfcMapConversion topilmadi — loyiha CRS bilan mos kelmasligi mumkin"]
 
@@ -503,21 +504,28 @@ def version_ids_run(version_id: int, user: CurrentUser, db: DB):
 
 @router.get("/versions/{version_id}/fragments")
 def version_fragments(version_id: int, user: CurrentUser, db: DB):
-    """Tayyor fragments (.frag) — brauzer IFC o'rniga shuni yuklaydi (tez). Hali yo'q bo'lsa 404;
-    konvertatsiya mumkin bo'lsa shu so'rovda bajariladi (kesh)."""
+    """Tayyor fragments (.frag) — brauzer IFC o'rniga shuni yuklaydi (tez). OPS-03: konvertatsiya (1800 s gacha)
+    so'rov ichida emas — navbatda: hali tayyor bo'lmasa 202 `{job_id, status}` (klient IFC ni ochadi yoki
+    keyinroq qayta so'raydi); vosita yo'q yoki konvertatsiya yiqilgan — 404. Yangi konvertatsiya — rate limit."""
     from . import fragments
 
     version = get_version_checked(db, version_id, user, Role.viewer)
     if not get_settings().fragments_enabled:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments o'chirilgan")
-    out = fragments.frag_path(version.file_sha256)
+    sha = version.file_sha256
+    out = fragments.frag_path(sha)
     if not out.exists():
+        if not fragments.available():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments tayyor emas (Node/tool yo'q)")
         try:
-            path = storage.resolve(version.file_sha256)
+            storage.resolve(sha)
         except FileNotFoundError:
             raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
-        if fragments.convert(path, version.file_sha256) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments tayyor emas (Node/tool yo'q)")
+        job = _derived_job(
+            db, user, kind="fragments", payload={"sha": sha}, key=f"fragments:{sha}",
+            project_id=version.model.project_id, failed_status=status.HTTP_404_NOT_FOUND,
+        )
+        return _accepted(job)
     return FileResponse(
         out,
         media_type="application/octet-stream",
@@ -649,6 +657,39 @@ def _derived_rate(user) -> None:
     ratelimit.check("derived", f"user:{user.id}", int(getattr(get_settings(), "rate_derived_per_min", DERIVED_RATE_PER_MIN)))
 
 
+DERIVED_FAILED_RETRY_S = 600  # yiqilgan hisob shuncha vaqt ichida qayta navbatga qo'yilmaydi (xato qaytadi)
+
+
+def _derived_job(db, user, *, kind: str, payload: dict, key: str, project_id: int, failed_status: int = 422) -> Job:
+    """OPS-03: og'ir hosilaviy hisob — DB navbati (jobs.py). Navbatda/ishlayotgan bo'lsa o'sha ish qaytadi
+    (takror yo'q, cheklanmaydi); yangi (yoki natijasi yo'qolgan) hisob — foydalanuvchi bo'yicha rate limit.
+    Yaqinda yiqilgan ish — `failed_status` bilan xato (so'rov har safar og'ir ishni qayta boshlamasin)."""
+    row = db.query(Job).filter_by(idempotency_key=key).one_or_none()
+    if row is not None and row.status in (JobStatus.queued, JobStatus.running):
+        return row
+    if row is not None and row.status == JobStatus.failed and row.finished_at is not None:
+        fin = row.finished_at if row.finished_at.tzinfo else row.finished_at.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - fin).total_seconds() < DERIVED_FAILED_RETRY_S:
+            raise HTTPException(failed_status, f"Hisoblab bo'lmadi: {(row.error or '?')[:300]}")
+    _derived_rate(user)
+    row = jobs.enqueue(db, kind, payload, idempotency_key=key, project_id=project_id, user_id=user.id)
+    if row.status in (JobStatus.done, JobStatus.failed):  # natija (kesh) yo'qolgan yoki eski xato — qayta
+        row.status, row.attempts, row.error = JobStatus.queued, 0, ""
+        row.finished_at = row.worker_id = row.lease_until = None
+    db.commit()
+    jobs.kick()
+    return row
+
+
+def _accepted(job: Job) -> JSONResponse:
+    """202 — hisob navbatda: klient shu URL ni `Retry-After` dan keyin qayta so'raydi (200 — natija)."""
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"job_id": job.id, "status": job.status.value},
+        headers={"Retry-After": "2", "Cache-Control": "no-store"},
+    )
+
+
 def _version_path(db, version_id: int, user):
     version = get_version_checked(db, version_id, user, Role.viewer)
     try:
@@ -665,14 +706,17 @@ def version_qto(
     format: str = "json",
 ):
     """Hajm-miqdor hisobi (IfcOpenShell geometriyasidan): har element hajmi/sirti/o'lchamlari,
-    tur va qavat bo'yicha jamlanma; ?format=csv — Excel uchun. Natija fayl bo'yicha keshlanadi."""
+    tur va qavat bo'yicha jamlanma; ?format=csv — Excel uchun. Natija fayl bo'yicha keshlanadi.
+    OPS-03: keshda bo'lmasa navbatga qo'yiladi — 202 `{job_id, status}`, tayyor bo'lgach shu URL 200."""
     from . import geometry
 
-    version, path = _version_path(db, version_id, user)
+    version, _path = _version_path(db, version_id, user)
     data = geometry.peek(version.file_sha256, "qto")
     if data is None:
-        _derived_rate(user)
-        data = geometry.cached(version.file_sha256, "qto", lambda: geometry.compute_qto(path))
+        sha = version.file_sha256
+        return _accepted(
+            _derived_job(db, user, kind="qto", payload={"sha": sha}, key=f"qto:{sha}", project_id=version.model.project_id)
+        )
     if format == "csv":
         import csv
         import io
@@ -747,13 +791,16 @@ def version_clashes(
         ta, tb = geometry.normalize_types(types_a), geometry.normalize_types(types_b)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
-    version, path = _version_path(db, version_id, user)
+    version, _path = _version_path(db, version_id, user)
     key = geometry.clash_kind(ta, tb)
     data = geometry.peek(version.file_sha256, key)
-    if data is None:
-        _derived_rate(user)
-        data = geometry.cached(
-            version.file_sha256, key, lambda: geometry.compute_clashes(path, 0.0, ta, tb)
+    if data is None:  # OPS-03: navbatda — 202, tayyor bo'lgach 200
+        sha = version.file_sha256
+        return _accepted(
+            _derived_job(
+                db, user, kind="clash", payload={"sha": sha, "types_a": ta, "types_b": tb},
+                key=f"clash:{sha}:{key}", project_id=version.model.project_id,
+            )
         )
     if kind:
         data = {**data, "clashes": [c for c in data["clashes"] if c["kind"] == kind]}
@@ -827,7 +874,7 @@ def classify_version(version_id: int, body: ClassifyIn, user: CurrentUser, db: D
         f.write(str(out))
         with open(out, "rb") as fh:
             sha, size = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
-    meta = ifc_meta.extract(storage.resolve(sha))
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
     v = create_version(
         db,
         model_id=model.id,

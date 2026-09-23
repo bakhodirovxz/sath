@@ -105,7 +105,7 @@ def test_qto_and_clashes(client, users):
     """BIM tekshiruvlar: namuna GES modeli (docs/samples) — hajmlar, turlar, to'qnashuvlar."""
     from pathlib import Path
 
-    from conftest import upload
+    from conftest import get_ready, upload
 
     sample = Path(__file__).resolve().parents[2] / "docs" / "samples" / "namuna_ges_v2.ifc"
     pid = users["project_id"]
@@ -113,14 +113,15 @@ def test_qto_and_clashes(client, users):
         f"/api/projects/{pid}/models", json={"name": "GES"}, headers=users["engineer"]
     ).json()["id"]
     v = upload(client, users["engineer"], mid, sample, "namuna").json()
-    q = client.get(f"/api/versions/{v['id']}/qto", headers=users["viewer"]).json()
+    # OPS-03: og'ir hisob navbatda — 202, tayyor bo'lgach 200
+    q = get_ready(client, f"/api/versions/{v['id']}/qto", users["viewer"]).json()
     assert q["element_count"] >= 10 and q["total_volume_m3"] > 1000
     dam = next(e for e in q["elements"] if e["name"] == "To'g'on")
     assert dam["type"] == "IfcWall" and abs(dam["volume_m3"] - 10560) < 1 and dam["height_m"] == 22
     assert "IfcWall" in q["by_type"] and q["by_type"]["IfcWall"]["count"] == 5
     csv = client.get(f"/api/versions/{v['id']}/qto?format=csv", headers=users["viewer"])
     assert csv.status_code == 200 and "To'g'on" in csv.text
-    c = client.get(f"/api/versions/{v['id']}/clashes", headers=users["viewer"]).json()
+    c = get_ready(client, f"/api/versions/{v['id']}/clashes", users["viewer"]).json()
     assert c["exact"] and c["hard"] >= 2 and c["touch"] >= 5
     hard = [x for x in c["clashes"] if x["kind"] == "hard"]
     # quvur devorni teshib o'tadi — haqiqiy to'qnashuv; pol devorga tegib turadi — touch
@@ -128,9 +129,10 @@ def test_qto_and_clashes(client, users):
     assert all(len(x["point"]) == 3 and x["triangle_hits"] > 0 for x in hard)
     only = client.get(f"/api/versions/{v['id']}/clashes?kind=hard", headers=users["viewer"]).json()
     assert all(x["kind"] == "hard" for x in only["clashes"]) and len(only["clashes"]) == c["hard"]
-    f = client.get(
+    f = get_ready(
+        client,
         f"/api/versions/{v['id']}/clashes?types_a=IfcWall&types_b=IfcPipeSegment",
-        headers=users["viewer"],
+        users["viewer"],
     ).json()
     assert f["clashes"] and all(
         {x["a"]["type"], x["b"]["type"]} == {"IfcWall", "IfcPipeSegment"} for x in f["clashes"]
@@ -147,8 +149,10 @@ def test_fragments_endpoint(client, users, ifc_file, monkeypatch):
     mid = client.post(
         f"/api/projects/{pid}/models", json={"name": "M"}, headers=users["engineer"]
     ).json()["id"]
+    from conftest import get_ready
+
     v = upload(client, users["engineer"], mid, ifc_file, "v1").json()
-    r = client.get(f"/api/versions/{v['id']}/fragments", headers=users["viewer"])
+    r = get_ready(client, f"/api/versions/{v['id']}/fragments", users["viewer"])  # OPS-03: navbatda — 202
     if fragments.available():
         assert r.status_code == 200 and len(r.content) > 100
         assert fragments.frag_path(v["file_sha256"]).exists()

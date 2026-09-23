@@ -197,7 +197,9 @@ def test_cfd_geometry_job_writes_stl(client, users, monkeypatch):
         f"/api/projects/{pid}/models", json={"name": "GES"}, headers=users["engineer"]
     ).json()["id"]
     v = upload(client, users["engineer"], mid, sample, "namuna").json()
-    q = client.get(f"/api/versions/{v['id']}/qto", headers=users["viewer"]).json()
+    from conftest import get_ready
+
+    q = get_ready(client, f"/api/versions/{v['id']}/qto", users["viewer"]).json()  # OPS-03: navbat (202)
     guid = next(e["guid"] for e in q["elements"] if e["name"] == "Suv tashlagich")
     # element tanlanmagan — 400
     bad = client.post(

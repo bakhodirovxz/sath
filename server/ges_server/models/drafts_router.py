@@ -267,7 +267,7 @@ def commit_drafts(
     with open(tmp, "rb") as fh:
         sha, size = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
     tmp.unlink(missing_ok=True)
-    meta = ifc_meta.extract(storage.resolve(sha))
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
     names = ", ".join((d.name or d.kind) for d in rows[:5]) + (" …" if len(rows) > 5 else "")
     n_del, n_edit = len(remove_guids), sum(1 for o in objects if o["guid"])
     n_new = len(objects) - n_edit
@@ -374,7 +374,7 @@ def _version_from_import(
 ):
     """Saqlangan IFC (sha) dan yangi versiya yozuvi, audit, fon vazifalar; javob JSON.
     `onto` — joriy oxirgi versiya ustiga: yozish paytida u hali oxirgi bo'lishi shart (aks holda 409)."""
-    meta = ifc_meta.extract(storage.resolve(sha))
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
     v = create_version(
         db,
         model_id=model.id,
