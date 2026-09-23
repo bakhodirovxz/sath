@@ -126,6 +126,18 @@ Bitta oila (`Inter`, `Segoe UI`, tizim sans), raqamlar `tabular-nums`; kalit/teg
 | Operator navigatsiya aktiv — to'q kulrang | HP-HMI | ko'k — P4 alarm | ko'k tugma bilan past alarm chalkashmasin |
 | Dispetcher tablari ikki zonaga | audit UX-07 | Operator / Muhandislik | 12 tekis yorliq — yo'qolish |
 | Hex faqat token fayllarida | color.md "no random hex" | test + stylelint | tema almashishi va kontrast nazorati |
+| Mimika viewBox 1260 birlik, konteyner min-width 1260 px | HP-HMI tipografiyasi | 6 agregat × ≥ 83 birlik | 1000 birlikda agregat qiymatlari ustma-ust tushardi (skrinshot bilan tekshirildi) |
+| Yosh qiymat katagi ichida (o'ngda), alarm belgisi + kod yorliq qatorida | ISA-101 sifat | chap — yorliq, o'ng — alarm | belgi katak chegarasini yopmasin |
+| SCADA alarm qatori faqat kvitlanmagan faol alarmda; kvitlangan — oddiy qator | ISA-18.2 | `tr.alarm-active` | butun jadval pushti bo'lib ketardi |
+| Ovoz kvitlanguncha (kritik 5 s, yuqori 10 s, o'rta 20 s); toshqinda bitta taymer | ISA-18.2, EEMUA 191 | eng yuqori ustuvorlik davri | 45 ta kvitlanmagan — 45 ta signal bo'lmasin |
+| Me'yorga qaytgan, lekin kvitlanmagan alarm ham signal beradi | ISA-18.2 (RTN unack) | ack → sukut | audit: "kvitlanguncha" |
+| Aloqa banneri 8 s ulanish muhlatidan keyin | craft-details (yolg'on signal yo'q) | avval ulangan bo'lsa — darhol | sahifa ochilganda yolg'on "aloqa yo'q" |
+| Banner neytral panel, chap chiziq — eng yuqori ustuvorlik rangi | HP-HMI | rang — belgida | banner o'zi alarmdek "qichqirmasin" |
+| Admin havolasi "Sozlamalar" | audit UX-07 | "Boshqaruv" — faqat SCADA bo'limi | ikki xil ma'no bir so'zda edi |
+| Versiya taqqoslash — yonma-yon va slayder, kamera IFC koordinatasida sinxron | audit UX-12, Speckle/ACC diff | farq ranglari ikkala tomonda | bitta viewport ranglari "nima edi"ni ko'rsatmaydi |
+| Commit oynasi: qo'shilgan/o'zgargan/o'chirilgan soni + IFC ga kirmaydiganlar | audit UX-12, CAD-01 | ogohlantirish — "e'tibor" uslubi | "N ta element qo'shildi" noto'g'ri edi |
+| Loyiha vaqt chizig'i — kun bo'yicha, BIM va SCADA bitta o'qda, filtr | audit UX-12 | nuqta rangi — tur (nashr yashil, rad qizil) | muhandis sahifasi (muhandis temasi) |
+| Mesh import: birlik shubhali — so'rov dialogi, ogohlantirish — bildirishnoma | CAD-04 | jimgina taxmin yo'q | 1000× xato masshtab |
 
 ## 4. Rad etilganlar
 
@@ -138,4 +150,5 @@ Bitta oila (`Inter`, `Segoe UI`, tizim sans), raqamlar `tabular-nums`; kalit/teg
 ## 5. Tekshiruv (validatsiya)
 
 `web/src/ui/tokens.test.ts` — barcha tema juftliklari kontrasti; `design.test.ts` — hex/inline-style cheklovi.
+`design.test.ts` yana: alarm rangi inline emas (AlarmMark), `alarm-active` faqat alarm ro'yxatlarida, muvaffaqiyat xato kanalida emas, theme.css dagi har bir `var(--…)` tokens.css da aniqlangan. `scheme.test.tsx` — mimikada animatsiya/rang atributi yo'q, 1–12 agregat ustma-ust tushmaydi. `e2e/scada.spec.ts` — banner, kvitlash, buyruq, qayta ulanish.
 Skrinshotlar (oldin/keyin, 1440 va 390 px, ikkala tema): hisobot ilovasi. Og'ish topilsa — shu hujjat yangilanadi.
