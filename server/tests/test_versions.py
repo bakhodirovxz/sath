@@ -60,9 +60,13 @@ def test_version_chain_and_dedup(client, users, model_id, ifc_file, tmp_path):
     other = make_ifc(tmp_path / "other.ifc", wall_names=("A", "B"))
     v2 = upload(client, users["engineer"], model_id, other, "v2").json()
     assert v2["number"] == 2 and v2["parent_id"] == v1["id"]
-    # aniq parent ko'rsatish (v1 dan tarmoq)
-    v3 = upload(client, users["engineer"], model_id, ifc_file, "v3", parent_id=v1["id"]).json()
-    assert v3["number"] == 3 and v3["parent_id"] == v1["id"]
+    # VCS-01: eski versiyadan (v1) jimgina tarmoqlanish yo'q — 409 + oxirgi versiya id si
+    r = upload(client, users["engineer"], model_id, ifc_file, "v3", parent_id=v1["id"])
+    assert r.status_code == 409, r.text
+    assert r.json()["head_id"] == v2["id"] and "yangilang" in r.json()["detail"]
+    # aniq parent = oxirgi versiya — qabul
+    v3 = upload(client, users["engineer"], model_id, ifc_file, "v3", parent_id=v2["id"]).json()
+    assert v3["number"] == 3 and v3["parent_id"] == v2["id"]
     # bir xil fayl — bir xil sha, dedup
     assert v3["file_sha256"] == v1["file_sha256"]
     assert v3["file_sha256"] != v2["file_sha256"]

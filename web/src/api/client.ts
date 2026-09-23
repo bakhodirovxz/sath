@@ -549,10 +549,18 @@ export class ApiError extends Error {
     message: string,
     /** 401 + `X-MFA-Required` — parol to'g'ri, TOTP kodi kerak (L1) */
     public mfaRequired = false,
+    /** 409 `{detail, head_id}` — model boshqa versiya bilan yangilangan (VCS-01): avval yangilash kerak */
+    public headId: number | null = null,
   ) {
     super(message);
   }
 }
+
+/** Optimistic concurrency (VCS-01): commit eski versiya ustiga — ro'yxatni yangilab, qayta urinish kerak */
+export function isHeadMoved(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.status === 409 && e.headId !== null;
+}
+export const HEAD_MOVED_TEXT = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oching), keyin qayta urinib ko'ring";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) {
@@ -575,13 +583,15 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   if (!res.ok) {
     let detail = res.statusText;
+    let headId: number | null = null;
     try {
       const j = await res.json();
       detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      if (res.status === 409 && typeof j.head_id === "number") headId = j.head_id;
     } catch {
       /* matn emas */
     }
-    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"));
+    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"), headId);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -730,7 +740,7 @@ export const api = {
   importDem: (modelId: number, body: { lat: number; lon: number; width_m: number; height_m: number; rotation_deg: number; zoom: number; nx: number; z_offset_m: number; message?: string; onto_current?: boolean }) => request<Version & { imported: number; dem: Record<string, unknown> }>(`/api/models/${modelId}/versions/import-dem`, { method: "POST", body: json(body) }),
   versionFileUrl: (id: number) => `/api/versions/${id}/file`,
   updateVersion: (id: number, body: { message?: string; tag?: string; suitability_code?: string; revision_code?: string }) => request<Version>(`/api/versions/${id}`, { method: "PATCH", body: json(body) }),
-  restoreVersion: (id: number) => request<Version>(`/api/versions/${id}/restore`, { method: "POST" }),
+  restoreVersion: (id: number, expectedHeadId?: number | null) => request<Version>(`/api/versions/${id}/restore${expectedHeadId ? `?expected_head_id=${expectedHeadId}` : ""}`, { method: "POST" }),
   /** Server tomonida tayyorlangan fragments (.frag); yo'q bo'lsa null — IFC yuklanadi */
   async versionFragments(id: number): Promise<Uint8Array | null> {
     // no-cache: ETag bilan qayta tekshiriladi (fayl yangilangan bo'lsa eskisi qolmasin)

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { dialogs } from "../../ui/dialogs";
 import Icon from "../../ui/Icon";
-import { api, type Diff, type Model, type Version } from "../../api/client";
+import { api, HEAD_MOVED_TEXT, isHeadMoved, type Diff, type Model, type Version } from "../../api/client";
 import { fmtDate, fmtSize, ifcLabel, label } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { BBadge, BList, BOps, BPanel, BRow } from "../../ui/BlenderUI";
@@ -53,7 +53,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
       setMessage("");
       onUploaded(v);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Yuklash amalga oshmadi");
+      setError(isHeadMoved(err) ? HEAD_MOVED_TEXT : err instanceof Error ? err.message : "Yuklash amalga oshmadi");
     } finally {
       setBusy(false);
     }
@@ -100,7 +100,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
             {current?.id !== selected.id && <button className="btn sm primary" onClick={() => onOpen(selected)}><Icon name="eye" size={12} /> Ochish</button>}
             <button className="btn sm" onClick={() => void download(selected)} title="IFC faylini yuklab olish"><Icon name="download" size={12} /> IFC</button>
             <button className="btn sm" title="Blender / 3ds Max uchun (glTF, nom va GUID saqlanadi)" onClick={() => api.downloadCsv(`/api/versions/${selected.id}/export?fmt=glb`, `${model.name}_v${selected.number}.glb`).catch((er) => setError(er.message))}><Icon name="download" size={12} /> glb</button>
-            {canEdit && versions[0]?.id !== selected.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => void dialogs.confirm("Versiyani qayta tiklash", { text: `v${selected.number} dan yangi (oxirgi) versiya yaratiladi`, ok: "Qayta tiklash" }).then((ok) => { if (ok) api.restoreVersion(selected.id).then(onUploaded).catch((e) => dialogs.alert("Xato", e.message)); })}><Icon name="history" size={12} /> Qayta tiklash</button>}
+            {canEdit && versions[0]?.id !== selected.id && <button className="btn sm" title="Shu versiya faylidan yangi (oxirgi) versiya yaratiladi — tarix saqlanadi" onClick={() => void dialogs.confirm("Versiyani qayta tiklash", { text: `v${selected.number} dan yangi (oxirgi) versiya yaratiladi`, ok: "Qayta tiklash" }).then((ok) => { if (ok) api.restoreVersion(selected.id, versions[0]?.id).then(onUploaded).catch((e) => dialogs.alert("Xato", isHeadMoved(e) ? HEAD_MOVED_TEXT : e.message)); })}><Icon name="history" size={12} /> Qayta tiklash</button>}
             {canEdit && versions[0]?.id === selected.id && <button className="btn sm" title="GES turi bo'yicha IfcClassificationReference (SATH-KSI yoki Uniclass 2015) — yangi versiya" data-testid="classify-btn" onClick={() => void (async () => { const sys = await dialogs.prompt("Klassifikator", "SATH-KSI", { text: "SATH-KSI (mahalliy) yoki Uniclass2015" }); if (!sys) return; api.classifyVersion(selected.id, sys).then(onUploaded).catch((e) => dialogs.alert("Klassifikatsiya", e.message)); })()}><Icon name="tag" size={12} /> Klassifikatsiya</button>}
             {canEdit && versions[0]?.id === selected.id && !selected.meta.georef?.epsg && <button className="btn sm" title="Loyiha CRS (EPSG, origin) dan IfcMapConversion/IfcProjectedCRS qo'shib yangi versiya yozadi" data-testid="georef-btn" onClick={() => api.georeference(model.id).then(onUploaded).catch((e) => dialogs.alert("Georeferensiya", e.message))}><Icon name="map" size={12} /> Georeferensiyalash</button>}
             {canEdit && <button className="btn sm" title="ISO 19650 yaroqlilik va reviziya kodi (tasdiqlovchi): wip → S0, shared → S1–S7, published → A1–An/B1–Bn/CR/PR; P01…/C01…" data-testid="iso-codes" onClick={() => void (async () => { const suitability_code = await dialogs.prompt("Yaroqlilik kodi (S0–S7, A1–An, B1–Bn, CR, PR)", selected.suitability_code ?? ""); if (suitability_code == null) return; const revision_code = await dialogs.prompt("Reviziya kodi (P01… / C01…)", selected.revision_code ?? ""); if (revision_code == null) return; api.updateVersion(selected.id, { suitability_code, revision_code }).then(() => onUploaded(selected)).catch((e) => dialogs.alert("ISO 19650", e.message)); })()}><Icon name="check" size={12} /> ISO 19650</button>}
