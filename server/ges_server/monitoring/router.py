@@ -58,6 +58,8 @@ OperatorProject = Annotated[Project, Depends(require_project_role(Role.operator)
 
 
 class SensorIn(BaseModel):
+    model_config = {"allow_inf_nan": False}  # SCADA-02: NaN/inf chegaralar 422
+
     key: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.\-/:]+$")
     kks_code: str | None = Field(default=None, max_length=32)  # H1: KKS/RDS-PP (tekshiriladi)
     name: str = Field(min_length=1, max_length=128)
@@ -114,6 +116,8 @@ class SensorIn(BaseModel):
 
 
 class SensorPatch(BaseModel):
+    model_config = {"allow_inf_nan": False}
+
     name: str | None = None
     kks_code: str | None = None  # H1; "" — o'chirish
     kind: Kind | None = None
@@ -269,6 +273,23 @@ CONTROL_FIELDS = (
 )
 
 
+def validate_control(writable: bool, lo: float | None, hi: float | None, rate: float | None) -> None:
+    """SCADA-02: boshqariladigan (writable) nuqtada buyruq diapazoni majburiy, chekli va min <= max.
+    Buzilsa 422."""
+    for name, v in (("min_setpoint", lo), ("max_setpoint", hi), ("max_rate_per_min", rate)):
+        if v is not None and not math.isfinite(v):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{name} chekli son bo'lishi kerak")
+    if rate is not None and rate <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "max_rate_per_min musbat bo'lishi kerak")
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "min_setpoint max_setpoint dan katta bo'lmasin")
+    if writable and (lo is None or hi is None):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Boshqariladigan (writable) nuqtaga buyruq diapazoni majburiy: min_setpoint va max_setpoint",
+        )
+
+
 def _control_snapshot(s: Sensor) -> dict:
     return {k: getattr(s, k) for k in CONTROL_FIELDS}
 
@@ -320,6 +341,7 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
     if body.writable:
         check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
+    validate_control(body.writable, body.min_setpoint, body.max_setpoint, body.max_rate_per_min)
     sensor = Sensor(project_id=project.id, **data)
     db.add(sensor)
     db.flush()
@@ -518,6 +540,12 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
         s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
+    if _control_snapshot(s) != before:  # boshqaruv sozlamasi o'zgargan bo'lsa to'liq tekshiruv
+        try:
+            validate_control(bool(s.writable), s.min_setpoint, s.max_setpoint, s.max_rate_per_min)
+        except HTTPException:
+            db.rollback()
+            raise
     _audit_configure(db, user.id, s, before)
     if s.last_value is not None and not s.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)

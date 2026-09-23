@@ -4,8 +4,10 @@ import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
@@ -111,9 +113,25 @@ async def lifespan(_: FastAPI):
         mqtt_bridge.bridge.stop()
 
 
+def _json_safe(v):
+    """422 javobidagi `input` da NaN/Infinity bo'lsa JSON ga yozib bo'lmaydi (500 bo'lardi) — matnga."""
+    if isinstance(v, float) and (v != v or v in (float("inf"), float("-inf"))):
+        return str(v)
+    if isinstance(v, dict):
+        return {k: _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    return v
+
+
+async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))})
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
+    app.add_exception_handler(RequestValidationError, _validation_error)
     # L5: Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413 (multipart sarlavhalari uchun +1 MB)
     app.add_middleware(MaxBodyMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024 + (1 << 20))
 

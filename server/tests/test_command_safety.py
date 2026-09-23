@@ -66,9 +66,9 @@ def _key(client, users):
 def test_out_of_range_and_non_finite_rejected(client, users, gate):
     assert gate["min_setpoint"] == 0 and gate["max_setpoint"] == 100 and gate["command_ttl_s"] == 60
     r = _cmd(client, users, gate["id"], 150)
-    assert r.status_code == 400 and "maksimum" in r.json()["detail"]
+    assert r.status_code == 422 and "maksimum" in r.json()["detail"]
     r = _cmd(client, users, gate["id"], -5)
-    assert r.status_code == 400 and "minimum" in r.json()["detail"]
+    assert r.status_code == 422 and "minimum" in r.json()["detail"]
     for bad in ("nan", "inf", "1e400"):
         assert _cmd(client, users, gate["id"], bad).status_code == 422
     r = _cmd(client, users, gate["id"], 50)
@@ -83,7 +83,7 @@ def test_rate_limit_against_last_command(client, users, gate):
         db.commit()
     # 1 daqiqada 20 %/min → 10 → 50 (40 birlik) rad, 10 → 25 ruxsat
     r = _cmd(client, users, gate["id"], 50)
-    assert r.status_code == 400 and "tezligi" in r.json()["detail"]
+    assert r.status_code == 422 and "tezligi" in r.json()["detail"]
     assert _cmd(client, users, gate["id"], 25).status_code == 201
 
 
@@ -155,3 +155,42 @@ def test_watchdog_frees_sensor_stuck_in_sent(client, users, gate, monkeypatch):
     # audit
     acts = [a["action"] for a in client.get("/api/audit", headers=users["approver"], params={"project_id": users["project_id"]}).json()]
     assert "command.failed" in acts and "command.expired" not in acts
+
+
+def test_writable_sensor_requires_finite_ordered_range(client, users):
+    """SCADA-02: writable nuqta — min/max_setpoint majburiy, chekli, min <= max (create va update)."""
+    pid = users["project_id"]
+    url = f"/api/projects/{pid}/sensors"
+    base = {"name": "Zatvor 2", "kind": "position", "unit": "%", "writable": True}
+    assert client.post(url, json={**base, "key": "G2.SP"}, headers=users["engineer"]).status_code == 422
+    assert client.post(url, json={**base, "key": "G2.SP", "min_setpoint": 0}, headers=users["engineer"]).status_code == 422
+    r = client.post(url, json={**base, "key": "G2.SP", "min_setpoint": 10, "max_setpoint": 5}, headers=users["engineer"])
+    assert r.status_code == 422 and "katta" in r.text
+    for bad in ("Infinity", "NaN"):
+        r = client.post(
+            url, content=f'{{"key": "G2.SP", "name": "x", "writable": true, "min_setpoint": 0, "max_setpoint": {bad}}}',
+            headers={**users["engineer"], "Content-Type": "application/json"},
+        )
+        assert r.status_code == 422, (bad, r.text)
+    r = client.post(url, json={**base, "key": "G2.SP", "min_setpoint": 0, "max_setpoint": 100}, headers=users["engineer"])
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+    # update: diapazonni olib tashlash yoki teskari qilish — 422, sensor o'zgarmaydi
+    assert client.patch(f"/api/sensors/{sid}", json={"clear_setpoint_range": True}, headers=users["engineer"]).status_code == 422
+    assert client.patch(f"/api/sensors/{sid}", json={"min_setpoint": 200}, headers=users["engineer"]).status_code == 422
+    s = next(x for x in client.get(url, headers=users["viewer"]).json() if x["id"] == sid)
+    assert s["min_setpoint"] == 0 and s["max_setpoint"] == 100
+    # read-only nuqta: diapazonsiz ham mumkin; writable ga o'tkazish — diapazon bilan
+    r = client.post(url, json={"key": "G3.SP", "name": "x"}, headers=users["engineer"])
+    assert client.patch(f"/api/sensors/{r.json()['id']}", json={"writable": True}, headers=users["engineer"]).status_code == 422
+
+
+def test_legacy_writable_without_range_cannot_be_commanded(client, users, gate):
+    with SessionLocal() as db:
+        from ges_server.orm import Sensor
+
+        s = db.get(Sensor, gate["id"])
+        s.min_setpoint = s.max_setpoint = None
+        db.commit()
+    r = _cmd(client, users, gate["id"], 10)
+    assert r.status_code == 422 and "diapazon" in r.json()["detail"]

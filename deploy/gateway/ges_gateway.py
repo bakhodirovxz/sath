@@ -495,7 +495,11 @@ SOURCES = {"sim": SimSource, "modbus": ModbusSource, "opcua": OpcUaSource, "csv"
 
 class Commander:
     """Supervisory control: serverdagi kutayotgan buyruqlarni olib, manbaga yozadi (modbus/opcua/sim)
-    va natijani qaytaradi. Teg konfiguratsiyasi kalit bo'yicha topiladi (writable teglar)."""
+    va natijani qaytaradi.
+
+    SCADA-02: faqat konfiguratsiyada `writable: true` deb belgilangan teglar (IEC 104 da `commands`
+    ro'yxati) yoziladi; har yozuvda qiymat chekli va `cmd_min`…`cmd_max` ichida bo'lishi shart (chegara
+    sozlanmagan teg — yozilmaydi). Server tekshiruvidan mustaqil ikkinchi himoya qatlami."""
 
     def __init__(self, cfg: dict, sources: list, source_cfgs: list[dict]):
         base = cfg["server"].rstrip("/")
@@ -511,7 +515,33 @@ class Commander:
         self.tags: dict[str, tuple[object, dict]] = {}
         for src, scfg in zip(sources, source_cfgs, strict=False):
             for tag in scfg.get("tags", []):
+                if tag.get("writable") is True:
+                    self.tags[tag["key"]] = (src, tag)
+            for tag in scfg.get("commands", []):  # IEC 104 buyruq nuqtalari — aniq e'lon qilingan
                 self.tags[tag["key"]] = (src, tag)
+        for key, (_src, tag) in self.tags.items():
+            if tag.get("cmd_min") is None or tag.get("cmd_max") is None:
+                log.warning("buyruq tegi %s: cmd_min/cmd_max yo'q — unga yozish rad etiladi", key)
+
+    def check_write(self, key: str, value) -> tuple[object, dict, float]:
+        """Yozishdan oldingi tekshiruv: teg writable, qiymat chekli va cmd_min…cmd_max ichida.
+        Buzilsa RuntimeError (natija serverga failed bo'lib qaytadi)."""
+        src_tag = self.tags.get(key)
+        if src_tag is None:
+            raise RuntimeError(f"{key}: gateway konfiguratsiyasida yozish mumkin (writable) teg emas")
+        src, tag = src_tag
+        try:
+            v = float(value)
+        except (TypeError, ValueError) as e:
+            raise RuntimeError(f"{key}: qiymat son emas") from e
+        if not math.isfinite(v):
+            raise RuntimeError(f"{key}: qiymat chekli son emas")
+        lo, hi = tag.get("cmd_min"), tag.get("cmd_max")
+        if lo is None or hi is None:
+            raise RuntimeError(f"{key}: cmd_min/cmd_max sozlanmagan — yozish taqiqlangan")
+        if not float(lo) <= v <= float(hi):
+            raise RuntimeError(f"{key}: {v:g} ruxsat etilgan {lo}…{hi} diapazonidan tashqarida")
+        return src, tag, v
 
     def run_once(self) -> None:
         try:
@@ -523,13 +553,11 @@ class Commander:
             status, result = "acked", ""
             src_tag = self.tags.get(c["key"])
             try:
-                if src_tag is None:
-                    raise RuntimeError("gateway konfiguratsiyasida bunday teg yo'q")
-                src, tag = src_tag
+                src, tag, value = self.check_write(c["key"], c["value"])
                 if hasattr(src, "write"):
-                    src.write(tag, float(c["value"]))
+                    src.write(tag, value)
                 elif isinstance(src, SimSource):
-                    tag["base"] = float(c["value"])  # simulyatorda qiymatni o'rnatamiz
+                    tag["base"] = value  # simulyatorda qiymatni o'rnatamiz
                 else:
                     raise RuntimeError(f"{type(src).__name__} yozishni qo'llamaydi")
                 result = f"{c['key']} = {c['value']}"

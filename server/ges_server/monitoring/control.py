@@ -246,19 +246,27 @@ def _out(c: Command) -> CommandOut:
     )
 
 
-def check_envelope(db, s: Sensor, value: float) -> None:
-    """B1: diapazon va o'zgarish tezligi — sensor konverti. Buzilsa HTTPException 400."""
-    if s.min_setpoint is not None and value < s.min_setpoint:
+def check_envelope(db, s: Sensor, value: float, check_rate: bool = True) -> None:
+    """B1/SCADA-02: diapazon va o'zgarish tezligi — sensor konverti. Buzilsa HTTPException 422.
+    Diapazoni sozlanmagan (eski) boshqaruv nuqtasiga buyruq berilmaydi."""
+    if not math.isfinite(value):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "qiymat chekli son bo'lishi kerak")
+    if s.min_setpoint is None or s.max_setpoint is None:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nuqtaning buyruq diapazoni (min/max_setpoint) sozlanmagan — muhandis sozlashi kerak",
+        )
+    if value < s.min_setpoint:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Qiymat {value:g} ruxsat etilgan minimum {s.min_setpoint:g} {s.unit} dan kichik",
         )
-    if s.max_setpoint is not None and value > s.max_setpoint:
+    if value > s.max_setpoint:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Qiymat {value:g} ruxsat etilgan maksimum {s.max_setpoint:g} {s.unit} dan katta",
         )
-    if s.max_rate_per_min is not None and s.max_rate_per_min > 0:
+    if check_rate and s.max_rate_per_min is not None and s.max_rate_per_min > 0:
         # Oxirgi bajarilgan/yuborilgan buyruq (yoki o'lchov) ga nisbatan tezlik
         last = (
             db.query(Command)
@@ -275,7 +283,7 @@ def check_envelope(db, s: Sensor, value: float) -> None:
             rate = abs(value - ref_value) / minutes
             if rate > s.max_rate_per_min:
                 raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
                     f"O'zgarish tezligi {rate:.3g} {s.unit}/min > ruxsat {s.max_rate_per_min:g} "
                     f"(oxirgi qiymat {ref_value:g}) — bosqichma-bosqich o'zgartiring",
                 )
