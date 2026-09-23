@@ -269,7 +269,7 @@ def sim_safety_check(model_id: int, user: CurrentUser, db: DB, version_id: int |
     from . import safety
     from .router import _result_path
 
-    model = get_model_checked(db, model_id, user, Role.viewer)
+    model = get_model_checked(db, model_id, user, Role.engineer)  # SIM-02: ishga tushirish va SimJob saqlash — muhandis+
     project = model.project
     if not project.site:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Maydon pasporti to'ldirilmagan")

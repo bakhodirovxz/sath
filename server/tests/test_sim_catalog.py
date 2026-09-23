@@ -274,6 +274,8 @@ def test_safety_check_runs_all_scenarios(client, users):
     assert r.status_code == 201, r.text
     mid = r.json()["model_id"]
     r = client.post(f"/api/models/{mid}/sim/safety-check", headers=users["viewer"])
+    assert r.status_code == 403, r.text  # SIM-02: ko'ruvchi ssenariylarni ishga tushirmaydi
+    r = client.post(f"/api/models/{mid}/sim/safety-check", headers=users["engineer"])
     assert r.status_code == 200, r.text
     d = r.json()
     ids = {row["id"] for row in d["rows"]}
