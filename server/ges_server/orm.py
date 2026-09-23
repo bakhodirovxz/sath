@@ -1224,6 +1224,8 @@ class AuditLog(Base):
     # Hash zanjiri (audit.py): prev_hash — oldingi qatorning row_hash i ("" birinchisi uchun)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # AUTH-05: hash sxemasi — NULL/"v1" sha256 (eski), "v2" HMAC-SHA256 audit kaliti bilan
+    hash_alg: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
 
 class ShiftHandover(Base):

@@ -19,8 +19,15 @@ router = APIRouter(prefix="/api/audit", tags=["system"])
 
 @router.get("/verify")
 def verify(_: AdminUser, db: DB):
-    """Hash zanjirini boshidan tekshiradi: {ok, checked, first_bad_id, head}."""
+    """Hash zanjirini boshidan tekshiradi: {ok, checked, first_bad_id, head, schemes, keyed, write_failures}
+    — v1 (sha256, eski) va v2 (HMAC, audit kaliti) qatorlar birga tekshiriladi."""
     return audit.verify_chain(db)
+
+
+@router.get("/status")
+def status_(_: AdminUser):
+    """AUTH-05: audit yozish xatolari metrikasi (jarayon bo'yicha) — monitoring/alarm uchun."""
+    return {**audit.STATS, "hash_alg": audit.HASH_ALG}
 
 
 @router.get("/export")
