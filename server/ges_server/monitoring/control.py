@@ -452,6 +452,31 @@ def _interlock_results(db, s: Sensor, value: float) -> list[InterlockResult]:
     ]
 
 
+def recheck_command(db, c: Command, check_rate: bool = True) -> str | None:
+    """Tasdiq (approve) va gateway ga berish (claim) paytidagi qayta tekshiruv — select/execute dan keyin
+    sharoit o'zgargan bo'lishi mumkin: nuqta writable/enabled, manzil snapshoti bilan mos, konvert
+    (diapazon, tezlik), LOTO (hech qachon chetlab o'tilmaydi), blokirovkalar (select da override
+    qilinmagan bo'lsa). Qaytaradi: rad etish sababi yoki None."""
+    s = c.sensor
+    if not s.writable:
+        return "nuqta boshqaruvga yopilgan (writable emas)"
+    if not s.enabled:
+        return "sensor o'chirilgan"
+    if c.address is not None and (c.address != (s.address or {}) or c.protocol != s.protocol):
+        return "nuqta manzili buyruq yaratilgandan keyin o'zgardi — qayta tanlang"
+    try:
+        check_envelope(db, s, c.value, check_rate=check_rate)
+    except HTTPException as e:
+        return str(e.detail)
+    blocked = [r for r in _interlock_results(db, s, c.value) if not r.ok]
+    loto = [r for r in blocked if r.interlock_id == 0]
+    if loto:
+        return "; ".join(r.message for r in loto)
+    if blocked and not c.interlock_override:
+        return "Blokirovka: " + "; ".join(f"{r.name} — {r.message}" for r in blocked)
+    return None
+
+
 @router.post("/projects/{project_id}/commands/select", response_model=SelectOut)
 def select_command(
     body: CommandIn,
@@ -652,6 +677,13 @@ def approve_command(command_id: int, user: CurrentUser, db: DB):
         db.commit()
         for x in expired:
             _publish(x)
+    if not can_transition(c.status, CommandStatus.pending):
+        set_status(c, CommandStatus.pending)  # 409 (tasdiq kutilmayapti / muddati o'tgan)
+    # Tasdiq paytida blokirovka, LOTO va konvert qayta tekshiriladi (execute dan keyin o'zgargan bo'lishi mumkin)
+    reason = recheck_command(db, c)
+    if reason is not None:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Tasdiqlab bo'lmaydi: {reason}")
     set_status(c, CommandStatus.pending)
     now = c.updated_at
     c.approved_by, c.approved_at = user.id, now
@@ -727,7 +759,32 @@ def claim_commands(
         .all()
     )
     out = []
+    blocked = []
     for c in rows:
+        # Gateway ga berishdan oldin oxirgi tekshiruv: tasdiqdan keyin LOTO/blokirovka paydo bo'lishi mumkin
+        reason = recheck_command(db, c, check_rate=False)
+        if reason is not None:
+            set_status(c, CommandStatus.cancelled)
+            c.result = f"gateway ga berilmadi: {reason}"[:400]
+            audit.log(
+                db,
+                user_id=None,
+                action="command.blocked",
+                target_type="command",
+                target_id=c.id,
+                project_id=c.project_id,
+                detail={"reason": reason},
+            )
+            notifications.push(
+                db,
+                [c.created_by],
+                "alarm",
+                f"Buyruq bekor qilindi: {c.sensor.name} → {c.value:g}",
+                c.result,
+                f"/projects/{c.project_id}/dashboard",
+            )
+            blocked.append(c)
+            continue
         set_status(c, CommandStatus.sent)
         c.sent_at = c.updated_at
         out.append(

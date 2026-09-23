@@ -271,10 +271,78 @@ def test_pending_approval_expires(client, users, gate, monkeypatch):
     assert _cmd(client, users, gate["id"], 21).status_code == 201  # sensor bo'sh
 
 
-def test_address_snapshot_used_at_dispatch(client, users, gate):
-    """SCADA-03: pending paytida manzil o'zgarsa ham gateway ga yaratilgandagi manzil beriladi."""
+def test_address_change_while_pending_blocks_dispatch(client, users, gate):
+    """SCADA-03: manzil snapshoti — pending paytida sensor manzili o'zgarsa buyruq gateway ga berilmaydi."""
+    key = _key(client, users)
     cid = _cmd(client, users, gate["id"], 30).json()["id"]
     r = client.patch(f"/api/sensors/{gate['id']}", json={"address": {"register": 99}}, headers=users["engineer"])
     assert r.status_code == 200
-    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": _key(client, users)}).json()
-    assert [(g["id"], g["address"], g["protocol"]) for g in got] == [(cid, {"register": 10}, "modbus")]
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": key}).json()
+    assert got == [] and _status(cid) == CommandStatus.cancelled
+    # o'zgarmagan manzil — snapshot beriladi
+    cid2 = _cmd(client, users, gate["id"], 31).json()["id"]
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": key}).json()
+    assert [(g["id"], g["address"], g["protocol"]) for g in got] == [(cid2, {"register": 99}, "modbus")]
+
+
+def _dual(client, users, gate):
+    from conftest import add_member
+
+    client.patch(f"/api/sensors/{gate['id']}", json={"requires_dual_approval": True}, headers=users["engineer"])
+    sup = add_member(client, users["admin"], users["project_id"], "sup", "shift_supervisor")
+    r = _cmd(client, users, gate["id"], 20)
+    assert r.json()["status"] == "pending_approval"
+    return sup, r.json()["id"]
+
+
+def test_approve_rechecks_interlocks(client, users, gate):
+    """Yangi xato: approve blokirovkani qayta tekshirmas edi — endi execute dan keyin paydo bo'lgan
+    blokirovka tasdiqni 409 bilan rad etadi, buyruq tasdiq kutishda qoladi."""
+    sup, cid = _dual(client, users, gate)
+    r = client.post(
+        f"/api/projects/{users['project_id']}/interlocks",
+        json={"sensor_id": gate["id"], "name": "Taqiq", "condition": "value < 0", "message": "sinov taqiqi"},
+        headers=users["engineer"],
+    )
+    assert r.status_code == 201
+    il = r.json()["id"]
+    r = client.post(f"/api/commands/{cid}/approve", headers=sup)
+    assert r.status_code == 409 and "sinov taqiqi" in r.json()["detail"]
+    assert _status(cid) == CommandStatus.pending_approval
+    client.patch(f"/api/interlocks/{il}", json={"enabled": False}, headers=users["engineer"])
+    assert client.post(f"/api/commands/{cid}/approve", headers=sup).status_code == 200
+
+
+def test_approve_rechecks_range_and_loto(client, users, gate):
+    sup, cid = _dual(client, users, gate)
+    # diapazon toraytirildi — 20 endi ruxsat etilmagan
+    assert client.patch(f"/api/sensors/{gate['id']}", json={"max_setpoint": 10}, headers=users["engineer"]).status_code == 200
+    r = client.post(f"/api/commands/{cid}/approve", headers=sup)
+    assert r.status_code == 409 and "maksimum" in r.json()["detail"]
+    client.patch(f"/api/sensors/{gate['id']}", json={"max_setpoint": 100}, headers=users["engineer"])
+    # LOTO — chetlab o'tilmaydi
+    from ges_server.monitoring import cmms
+
+    orig = cmms.loto_blocks
+    cmms.loto_blocks = lambda db, s: ["LOTO faol: sinov"]
+    try:
+        r = client.post(f"/api/commands/{cid}/approve", headers=sup)
+        assert r.status_code == 409 and "LOTO" in r.json()["detail"]
+    finally:
+        cmms.loto_blocks = orig
+    assert client.post(f"/api/commands/{cid}/approve", headers=sup).status_code == 200
+
+
+def test_claim_rechecks_interlocks(client, users, gate):
+    """Tasdiq/execute dan keyin paydo bo'lgan blokirovka — gateway ga berilmaydi (cancelled + alarm)."""
+    key = _key(client, users)
+    cid = _cmd(client, users, gate["id"], 30).json()["id"]
+    client.post(
+        f"/api/projects/{users['project_id']}/interlocks",
+        json={"sensor_id": gate["id"], "name": "Taqiq", "condition": "value < 0", "message": "sinov taqiqi"},
+        headers=users["engineer"],
+    )
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": key}).json()
+    assert got == [] and _status(cid) == CommandStatus.cancelled
+    n = client.get("/api/notifications", headers=users["op"]).json()
+    assert any(x["kind"] == "alarm" and "bekor qilindi" in x["title"] for x in n)
