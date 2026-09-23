@@ -3,7 +3,10 @@
 Kuchlar (kN/m), momentlar quyi byef tovoni (toe) atrofida:
   Og'irlik           W = γ_c·A_profil                         (ushlab turadi)
   Gidrostatik        P_w = γ_w·h²/2,  h/3 balandlikda          (ag'daradi; quyi byef — ushlab turadi)
-  Qiya yuzadagi suv  W_v = γ_w·m·h²/2                          (ushlab turadi)
+                     h₁ > H (ustidan oqish): trapetsiya γ_w·(h₁² − (h₁−H)²)/2 — `upstream_water_force`
+  Qiya yuzadagi suv  W_v = γ_w·m·h²/2 (+ γ_w·(h₁−H)·m·H, h₁ > H)  (ushlab turadi)
+  Gerb ustidagi oqim (nappe) vertikal yuki va quyi yuzadagi oqim bosimi hisobga olinmaydi — ular
+  ushlab turuvchi (barqarorlashtiruvchi) yuk, e'tiborsiz qoldirish konservativ.
   Filtratsion bosim  U = ∫p(x)dx,  p: tovon h₁ → drenaj h₃ → toe h₂,  h₃ = h₂ + (1−E)(h₁−h₂)(B−x_d)/B  (USACE EM 1110-2-2200)
   Loyqa bosimi       P_s = γ_s'·h_s²/2                          (γ_s' ≈ 8.5 kN/m³ ekvivalent suyuqlik, USBR)
   Zilzila            k_h·W (og'irlik markazida), k_v·W (vertikal), Westergaard P_e = (7/12)·k_h·γ_w·h₁² (0.4h₁)
@@ -280,6 +283,39 @@ def uplift(
     return U, (MU / U if U > 0 else 0.0), pts
 
 
+def upstream_water_force(h1: float, H: float) -> tuple[float, float]:
+    """Yuqori (vertikal) yuzaga gidrostatik kuch, kN/m, va uning tagdan yelkasi, m.
+
+    Yuza faqat 0…H balandlikda: p(y) = γ_w·(h₁ − y), y ∈ [0, min(h₁, H)].
+      h₁ ≤ H:  P = γ_w·h₁²/2,  y = h₁/3 (uchburchak)
+      h₁ > H (to'g'on ustidan oqish): trapetsiya  P = γ_w·(h₁² − (h₁ − H)²)/2 = γ_w·H·(h₁ − H/2),
+               y = H·(3h₁ − 2H) / (3·(2h₁ − H))  (∫p·y dy / ∫p dy).
+    Gerb ustidagi oqim tezligi yuza yaqinidagi bosimni kamaytiradi — gidrostatik epyura konservativ
+    (USBR, "Design of Gravity Dams", 1976; USACE EM 1110-2-2200, 3-bob: suv tashlagich kesimlari)."""
+    if h1 <= 0:
+        return 0.0, 0.0
+    if h1 <= H:
+        return GAMMA_W * h1**2 / 2, h1 / 3
+    f = GAMMA_W * H * (h1 - H / 2)
+    return f, H * (3 * h1 - 2 * H) / (3 * (2 * h1 - H))
+
+
+def upstream_face_water_weight(h1: float, H: float, mu: float) -> tuple[float, float]:
+    """Qiya yuqori yuza ustidagi suv og'irligi, kN/m, va markazining yuqori tovondan masofasi, m.
+
+    Yuza (0,0) → (m·H, H); suv ustuni x nuqtada h₁ − x/m. hh = min(h₁, H):
+      uchburchak  γ_w·m·hh²/2,         markaz x = m·hh/3
+      to'rtburchak (h₁ > H)  γ_w·(h₁ − H)·m·H,  markaz x = m·H/2  (avval xato m·hh/3 olingan edi)."""
+    if mu <= 0 or h1 <= 0:
+        return 0.0, 0.0
+    hh = min(h1, H)
+    f_tri, x_tri = GAMMA_W * mu * hh**2 / 2, mu * hh / 3
+    f_rect = GAMMA_W * (h1 - hh) * mu * hh if h1 > hh else 0.0
+    x_rect = mu * hh / 2
+    f = f_tri + f_rect
+    return f, (f_tri * x_tri + f_rect * x_rect) / f
+
+
 def principal_stress(sigma_z: float, slope: float, p_water: float) -> float:
     """Qiya yuzadagi bosh kuchlanish (USBR Design of Gravity Dams, gravitatsion usul):
     σ_p = σ_z·(1 + m²) − p·m², m — yuza qiyaligi (gorizontal/vertikal), p — yuzadagi suv bosimi."""
@@ -306,12 +342,11 @@ def analyze(p: dict, headwater: float | None = None, kh: float | None = None) ->
     forces = []  # (nom, V kN, H kN, arm_V (toe dan), arm_H (tagdan)) — V yuqoriga musbat, H quyi byef tomon musbat
     forces.append(("Og'irlik W", W * (1 - kv), 0.0, B - xg, 0.0))
     # Suv (yuqori byef)
-    pw1 = GAMMA_W * h1**2 / 2
-    forces.append(("Gidrostatik P_w1", 0.0, pw1, 0.0, h1 / 3))
+    pw1, arm_pw1 = upstream_water_force(h1, H)
+    forces.append(("Gidrostatik P_w1", 0.0, pw1, 0.0, arm_pw1))
     if mu > 0:
-        hh = min(h1, H)
-        wv1 = GAMMA_W * mu * hh**2 / 2 + (GAMMA_W * (h1 - hh) * mu * hh if h1 > hh else 0.0)
-        forces.append(("Qiya yuzadagi suv W_v1", wv1, 0.0, B - mu * hh / 3, 0.0))
+        wv1, x_wv1 = upstream_face_water_weight(h1, H, mu)
+        forces.append(("Qiya yuzadagi suv W_v1", wv1, 0.0, B - x_wv1, 0.0))
     # Quyi byef
     pw2 = GAMMA_W * h2**2 / 2
     forces.append(("Quyi byef P_w2", 0.0, -pw2, 0.0, h2 / 3))
@@ -467,6 +502,10 @@ def run(p: dict) -> dict:
         )
     if r["overtopped"]:
         problems.append("suv gerbdan oshib o'tadi")
+        warnings.append(
+            "suv gerbdan oshib o'tadi: yuqori yuzaga trapetsiya epyura (γ_w·(h₁² − (h₁−H)²)/2) olindi; "
+            "gerb ustidagi oqim (nappe) va quyi yuzadagi oqim yuki hisobga olinmadi (konservativ)"
+        )
     # Sath bo'yicha skanerlash (tagdan gerb+3 m gacha)
     levels, fs_o_l, fs_s_l, s_toe_l = [], [], [], []
     for i in range(41):

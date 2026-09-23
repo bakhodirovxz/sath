@@ -397,3 +397,45 @@ def test_transformer_iec60076_thermal():
         },
     )
     assert len(prof["series"]["t"]) == 96 and max(prof["series"]["load_factor"]) > 1.0
+
+
+def test_dam_overtopping_trapezoid_and_face_water_hand_calc():
+    """SIM-06: h₁ > H — yuqori yuza faqat H baland: trapetsiya kuch va yelka; W_v1 to'rtburchak qismi
+    m·H/2 yelkada (qo'lda hisob, H = 10, h₁ = 12, m = 0.2, gerb 2, quyi qiyalik 0.8 → B = 12)."""
+    p = {f.key: f.default for f in dam_stability.FIELDS}
+    p.update(
+        {
+            "height_m": 10,
+            "crest_width_m": 2,
+            "upstream_slope": 0.2,
+            "downstream_slope": 0.8,
+            "base_elev_m": 0,
+            "headwater_m": 12,
+            "tailwater_m": 0,
+            "silt_m": 0,
+            "ice_kn_m": 0,
+            "kh": 0.0,
+        }
+    )
+    r = dam_stability.analyze(p)
+    f = {x[0]: x for x in r["forces"]}
+    # P = γ(h₁² − (h₁−H)²)/2 = 9.81·(144 − 4)/2 = 686.7; y = ∫γ(h₁−y)y dy / P = (h₁H²/2 − H³/3)/(H(h₁−H/2))
+    pw = f["Gidrostatik P_w1"]
+    assert pw[2] == pytest.approx(9.81 * 140 / 2)
+    assert pw[4] == pytest.approx((12 * 100 / 2 - 1000 / 3) / (10 * 7))  # 3.8095 m
+    assert pw[4] == pytest.approx(10 * (36 - 20) / (3 * (24 - 10)))
+    # W_v1: uchburchak γ·0.2·100/2 = 98.1 (x = 0.667) + to'rtburchak γ·2·0.2·10 = 39.24 (x = 1.0)
+    wv = f["Qiya yuzadagi suv W_v1"]
+    assert wv[1] == pytest.approx(9.81 * (10 + 4))
+    x_c = (98.1 * (0.2 * 10 / 3) + 39.24 * (0.2 * 10 / 2)) / (98.1 + 39.24)
+    assert wv[3] == pytest.approx(12 - x_c)
+    # h₁ ≤ H — eski uchburchak formulalar o'zgarmaydi
+    p["headwater_m"] = 8
+    f2 = {x[0]: x for x in dam_stability.analyze(p)["forces"]}
+    assert f2["Gidrostatik P_w1"][2] == pytest.approx(9.81 * 64 / 2)
+    assert f2["Gidrostatik P_w1"][4] == pytest.approx(8 / 3)
+    assert f2["Qiya yuzadagi suv W_v1"][3] == pytest.approx(12 - 0.2 * 8 / 3)
+    # ustidan oqish — ogohlantirish
+    p["headwater_m"] = 12
+    out = dam_stability.run(p)
+    assert any("nappe" in w for w in out["summary"]["warnings"])
