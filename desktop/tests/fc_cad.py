@@ -66,6 +66,40 @@ def check_dxf_face_order(tmp: Path) -> None:
     FreeCAD.closeDocument(fc.Name)
 
 
+def check_dxf_insunits_scale(tmp: Path) -> None:
+    """CAD-04: tahrirlanadigan DXF import `$INSUNITS` ni hisobga oladi (metr → ×1000 mm); birliksiz — mm + ogohlantirish."""
+    import ezdxf
+    import FreeCAD
+    from ges_workbench import dxf_edit
+
+    def make(name: str, insunits: int) -> Path:
+        d = ezdxf.new("R2018")
+        d.header["$INSUNITS"] = insunits
+        msp = d.modelspace()
+        msp.add_line((0, 0), (2, 0), dxfattribs={"layer": "L"})
+        msp.add_circle((5, 5), 1.5, dxfattribs={"layer": "C"})
+        msp.add_lwpolyline([(0, 0), (0, 3), (4, 3)], dxfattribs={"layer": "P"})
+        p = tmp / name
+        d.saveas(p)
+        return p
+
+    cases = {"m.dxf": (6, 1000.0), "mm.dxf": (4, 1.0), "cm.dxf": (5, 10.0), "none.dxf": (0, 1.0)}
+    for name, (code, factor) in cases.items():
+        path = make(name, code)
+        scale, warn = dxf_edit.unit_scale(str(path))
+        assert abs(scale - factor) < 1e-9 and bool(warn) == (code == 0), (name, scale, warn)
+        doc, stats = dxf_edit.import_file(str(path))
+        line = next(o for o in doc.Objects if o.Label == "Chiziq")
+        circle = next(o for o in doc.Objects if o.Label == "Aylana")
+        wire = next(o for o in doc.Objects if o.Label == "Polilinya")
+        assert abs(line.Shape.Length - 2 * factor) < 1e-6, (name, line.Shape.Length)
+        assert abs(float(circle.Radius) - 1.5 * factor) < 1e-6, (name, circle.Radius)
+        assert abs(wire.Shape.Length - 7 * factor) < 1e-6, (name, wire.Shape.Length)
+        assert stats.get("birlik_mm", 1.0) == factor, stats
+        FreeCAD.closeDocument(doc.Name)
+    assert dxf_edit._scale == 1.0  # build() dan keyin tiklanadi
+
+
 def check_mesh_open_units_axis(tmp: Path) -> None:
     """CAD-04: FBX (Blender eksporti, UnitScaleFactor=100 → metr, UpAxis=Y) → FreeCAD mm, Z yuqoriga."""
     import FreeCAD
@@ -103,7 +137,7 @@ def check_meshes_become_shapes_for_ifc(tmp: Path) -> None:
     FreeCAD.closeDocument(doc.Name)
 
 
-CHECKS = [check_dxf_face_order, check_mesh_open_units_axis, check_meshes_become_shapes_for_ifc]
+CHECKS = [check_dxf_face_order, check_dxf_insunits_scale, check_mesh_open_units_axis, check_meshes_become_shapes_for_ifc]
 
 
 def main() -> int:

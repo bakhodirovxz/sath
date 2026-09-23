@@ -13,6 +13,8 @@ Har DXF elementi — alohida FreeCAD obyekti, o'z rangi va qatlami bilan:
   * MIRROR dan qolgan teskari OCS (extrusion 0,0,-1) → to'g'rilanadi;  rasm/OLE/VIEWPORT/POINT — kirmaydi
 
 ezdxf (paket ichida, Mod/Ges/vendor) bilan o'qiladi; FreeCAD ning importDXF ishlatilmaydi.
+Birlik (CAD-04): `$INSUNITS` umumiy cad_common.detect_units_and_axis orqali → FreeCAD mm ga keltiriladi
+(masalan metrli chizma ×1000); birlik ko'rsatilmagan bo'lsa xom qiymat mm deb olinadi va ogohlantiriladi.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ DROP = {
     "ATTDEF",
 }
 MAX_DEPTH = 8
+_scale = 1.0  # CAD-04: chizma birligi → mm (build() davomida; _vec va o'lcham/matn kattaliklariga)
 
 
 def _gui() -> bool:
@@ -168,8 +171,28 @@ class _Ctx:
 # ---------- geometriya ----------
 
 
+def unit_scale(filename, dxf_doc=None) -> tuple[float, str]:
+    """(chizma birligi → mm ko'paytuvchisi, ogohlantirish) — umumiy cad_common.detect_units_and_axis
+    (`$INSUNITS`). Matnli sarlavhada topilmasa (DWG konvertatsiyasi, binar DXF) ezdxf hujjati sarlavhasidan.
+    Birlik ko'rsatilmagan bo'lsa 1.0 (xom qiymat mm — FreeCAD odati) va ogohlantirish matni."""
+    from ges_workbench import cad_common
+
+    info = cad_common.detect_units_and_axis(filename)
+    if info.scale and not info.uncertain:
+        return info.scale * 1000.0, ""
+    if dxf_doc is not None:
+        try:
+            unit = cad_common.DXF_INSUNITS.get(int(dxf_doc.header.get("$INSUNITS", 0) or 0))
+        except (TypeError, ValueError):
+            unit = None
+        if unit:
+            return cad_common.UNITS[unit] * 1000.0, ""
+    return 1.0, f"{info.note or 'birlik aniqlanmadi'} — qiymatlar mm deb olindi"
+
+
 def _vec(p) -> FreeCAD.Vector:
-    return V(float(p[0]), float(p[1]), float(p[2]) if len(p) > 2 else 0.0)
+    s = _scale
+    return V(float(p[0]) * s, float(p[1]) * s, (float(p[2]) if len(p) > 2 else 0.0) * s)
 
 
 def _placement(pt, rotation_deg: float = 0.0) -> FreeCAD.Placement:
@@ -235,7 +258,7 @@ def _add_polyline(ctx: _Ctx, e):
         return _add_part(ctx, e, "Polilinya")
     if t == "LWPOLYLINE":
         z = float(e.dxf.elevation or 0.0)
-        pts = [V(float(x), float(y), z) for x, y, *_ in e.get_points()]
+        pts = [_vec((x, y, z)) for x, y, *_ in e.get_points()]
         closed = bool(e.closed)
     else:
         pts = [_vec(v.dxf.location) for v in e.vertices]
@@ -256,7 +279,7 @@ def _add_circle(ctx: _Ctx, e):
     import Draft
 
     c = e.dxf.center
-    r = float(e.dxf.radius)
+    r = float(e.dxf.radius) * _scale
     if r <= 0:
         return
     if e.dxftype() == "ARC":
@@ -302,7 +325,7 @@ def _add_text(ctx: _Ctx, e):
         # matn blokining yuqori chetigacha masofa → bazaga: birinchi satr = yuqoridan bir balandlik pastda
         dy = -height + top_rows * height * spacing
         a = math.radians(rot)
-        base = V(float(ins.x) - dy * math.sin(a), float(ins.y) + dy * math.cos(a), float(ins.z))
+        base = _vec((float(ins.x) - dy * math.sin(a), float(ins.y) + dy * math.cos(a), float(ins.z)))
         just = {1: "Left", 4: "Left", 7: "Left", 2: "Center", 5: "Center", 8: "Center"}.get(
             att, "Right"
         )
@@ -310,7 +333,10 @@ def _add_text(ctx: _Ctx, e):
             # markaz/o'ng tekislangan MTEXT: Draft Text Justification bilan
             pass
         obj = Draft.make_text(
-            lines, placement=_placement(base, rot), height=height, line_spacing=spacing / 1.67
+            lines,
+            placement=FreeCAD.Placement(base, FreeCAD.Rotation(V(0, 0, 1), rot)),
+            height=height * _scale,
+            line_spacing=spacing / 1.67,
         )
     else:  # TEXT / ATTRIB
         text = e.dxf.text or ""
@@ -329,7 +355,7 @@ def _add_text(ctx: _Ctx, e):
                     ins = ap
         except Exception:  # noqa: BLE001
             pass
-        obj = Draft.make_text([text], placement=_placement(ins, rot), height=height)
+        obj = Draft.make_text([text], placement=_placement(ins, rot), height=height * _scale)
         halign = int(e.dxf.get("halign", 0) or 0)
         just = {0: "Left", 1: "Center", 2: "Right", 4: "Center"}.get(halign, "Left")
     if _gui() and getattr(obj, "ViewObject", None) is not None:
@@ -384,7 +410,7 @@ def _add_dimension(ctx: _Ctx, dim, msp) -> None:
         except Exception:  # noqa: BLE001
             return default
 
-    scale = sty("dimscale", 1.0) or 1.0  # 0 — «chizma masshtabi» → 1
+    scale = (sty("dimscale", 1.0) or 1.0) * _scale  # 0 — «chizma masshtabi» → 1; chizma birligi → mm
     text = _dim_text(dim)
     if _gui() and getattr(obj, "ViewObject", None) is not None:
         vo = obj.ViewObject
@@ -525,8 +551,20 @@ def _upright_all(msp) -> None:
                 pass
 
 
-def build(fc_doc, dxf_doc) -> dict:
-    """ezdxf hujjati → FreeCAD obyektlari. Statistika qaytaradi."""
+def build(fc_doc, dxf_doc, scale: float = 1.0) -> dict:
+    """ezdxf hujjati → FreeCAD obyektlari; scale — chizma birligi → mm (`unit_scale`). Statistika qaytaradi."""
+    global _scale
+    _scale = float(scale) if scale and scale > 0 else 1.0
+    try:
+        stats = _build(fc_doc, dxf_doc)
+    finally:
+        _scale = 1.0
+    if scale and scale != 1.0:
+        stats["birlik_mm"] = scale
+    return stats
+
+
+def _build(fc_doc, dxf_doc) -> dict:
     ctx = _Ctx(fc_doc, dxf_doc)
     msp = dxf_doc.modelspace()
     # 1) tashlanadiganlar, bloklar/chiqish yozuvlari (rekursiv)
@@ -640,7 +678,10 @@ def import_file(filename: str, doc=None):
     dxf_doc = dxf_prepare._read(Path(filename))
     if doc is None:
         doc = FreeCAD.newDocument(Path(filename).stem)
-    stats = build(doc, dxf_doc)
+    scale, warn = unit_scale(filename, dxf_doc)
+    if warn:
+        FreeCAD.Console.PrintWarning(f"Sath: {Path(filename).name}: {warn}\n")
+    stats = build(doc, dxf_doc, scale)
     _flatten_z(doc, stats)
     doc.recompute()
     stats["sekund"] = round(time.time() - t0, 1)
