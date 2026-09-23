@@ -283,3 +283,19 @@ def test_blender_is_official_pinned_tarball():
     assert "sha256sum -c -" in cmd and "download.blender.org" in cmd
     r = subprocess.run(["sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
+
+
+def test_ci_workflow_gates():
+    """CI-01/02: pytest xatosi CI ni yiqitadi; Dockerfile.cfd yig'iladi; pip-audit/npm audit (hisobot) va qamrov."""
+    import yaml
+
+    wf = yaml.safe_load((DEPLOY.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    jobs = wf["jobs"]
+    steps = jobs["server"]["steps"]
+    pytest_step = next(s for s in steps if "pytest" in str(s.get("run", "")) and "--junitxml" in s["run"])
+    assert "continue-on-error" not in pytest_step and "--cov=ges_server" in pytest_step["run"]
+    annotate = next(s for s in steps if "ci_annotate" in str(s.get("run", "")))
+    assert annotate.get("if") == "always()"
+    assert any("Dockerfile.cfd" in str(s.get("run", "")) for s in jobs["docker-cfd"]["steps"])
+    audit = " ".join(str(s.get("run", "")) for s in jobs["audit"]["steps"])
+    assert "pip-audit" in audit and "npm audit" in audit

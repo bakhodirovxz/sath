@@ -10,13 +10,39 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - run: npm ci --prefix web/tools  # ifc2frag (fragments testi)
-      - run: pip install -e "./sim[dev]" -e "./server[dev]"
+      - run: pip install -e "./sim[dev]" -e "./server[dev]" pytest-cov
       - run: python desktop/build/sync_blender.py --check
       - run: ruff check server sim desktop
       # CI-01: pytest xatosi ishni yiqitadi (continue-on-error yo'q); annotatsiya har holda (if: always())
-      - run: pytest -q sim/tests server/tests desktop/tests --junitxml=report.xml
+      # CI-02: qamrov (coverage) hisoboti — terminal + coverage.xml artefakt
+      - run: >-
+          pytest -q sim/tests server/tests desktop/tests --junitxml=report.xml
+          --cov=ges_server --cov=ges_sim --cov-report=term:skip-covered --cov-report=xml:coverage.xml
       - if: always()
         run: python desktop/build/ci_annotate.py report.xml
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: coverage, path: coverage.xml, if-no-files-found: ignore, retention-days: 14 }
+  audit:
+    # CI-02: bog'liqliklar zaifliklari — HISOBOT rejimi (continue-on-error: bloklamaydi, natija logda va
+    # annotatsiyada). Bloklovchiga o'tkazish: continue-on-error ni olib tashlang.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: pip install pip-audit -e ./sim -e "./server[postgres,mqtt]"
+      - name: pip-audit (hisobot)
+        continue-on-error: true
+        run: pip-audit --skip-editable --progress-spinner off
+      - name: npm audit web (hisobot)
+        continue-on-error: true
+        run: npm audit --prefix web --omit=dev --audit-level=high
+      - name: npm audit web/tools (hisobot)
+        continue-on-error: true
+        run: npm audit --prefix web/tools --omit=dev --audit-level=high
   postgres:
     # Butun server to'plami Postgres + TimescaleDB da (D1): hypertable migratsiyasi, COPY ingest, yuk testi
     runs-on: ubuntu-latest
@@ -52,6 +78,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f deploy/Dockerfile -t sath:ci .
+  docker-cfd:
+    # CI-02: CFD worker obrazi ham yig'iladi (OpenFOAM + ges-worker) — Dockerfile.cfd buzilsa CI da ko'rinadi
+    runs-on: ubuntu-latest
+    needs: [server]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/Dockerfile.cfd -t sath-cfd:ci .
+      - run: docker run --rm --entrypoint /venv/bin/python sath-cfd:ci -c "import ges_server.sim.worker, ges_sim.cfd; print('ok')"
   e2e:
     # To'liq oqim brauzerda: server (web build ni tarqatadi) + Playwright chromium
     runs-on: ubuntu-latest
