@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import audit
 from ..auth.deps import (
     DB,
+    AdminUser,
     CurrentUser,
     check_project_role,
     get_project_role,
@@ -670,6 +671,31 @@ def version_clashes(
     if kind:
         data = {**data, "clashes": [c for c in data["clashes"] if c["kind"] == kind]}
     return data
+
+
+# --------------------------------------------------------------------------- SRV-05: fayl ombori tozalash
+
+
+class StorageGcIn(BaseModel):
+    dry_run: bool = True
+    # Kamida 1 soat: yangi saqlangan, lekin hali commit bo'lmagan fayl o'chirilmasin
+    grace_hours: float = Field(default=24.0, ge=1.0, le=24 * 365)
+
+
+@router.post("/admin/storage/gc")
+def storage_gc(body: StorageGcIn, admin: AdminUser, db: DB):
+    """Murojaatsiz content-addressed fayllar, ularning hosilaviy keshi va eskirgan vaqtinchalik (`tmp*`,
+    `*.part`) fayllar: `dry_run` (default) — faqat hisobot; aks holda o'chiradi (audit)."""
+    from . import blob_gc
+
+    rep = blob_gc.collect(db, dry_run=body.dry_run, grace_s=body.grace_hours * 3600)
+    if not body.dry_run:
+        audit.log(
+            db, user_id=admin.id, action="storage.gc", target_type="storage",
+            detail={k: rep[k] for k in ("blobs", "derived", "temp", "bytes", "kept_recent", "errors", "grace_s")},
+        )
+        db.commit()
+    return rep
 
 
 # --------------------------------------------------------------------------- G5: klassifikatsiya

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import jobs
 from ..config import get_settings
-from . import storage
+from . import blob_gc, storage
 
 
 def _fragments(payload: dict) -> None:
@@ -41,5 +41,6 @@ def enqueue_for(db: Session, sha: str) -> None:
     if s.precompute_geometry:
         jobs.enqueue(db, "geometry", {"sha": sha}, idempotency_key=f"geometry:{sha}")
     jobs.enqueue(db, "ids", {"sha": sha}, idempotency_key=f"ids:{sha}")  # G2: IDS tekshiruvi har yuklashda
+    blob_gc.enqueue_daily(db)  # SRV-05: fayl ombori tozalash — faollik bo'lgan kuni bir marta
     db.commit()
     jobs.kick()
