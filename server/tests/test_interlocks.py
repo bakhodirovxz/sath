@@ -1,7 +1,7 @@
 """B4: blokirovkalar — shart bajarilmasa 409 (sabab bilan), bad/stale sensor → taqiq, chetlab o'tish."""
 
 import pytest
-from conftest import login, make_user, send_command
+from conftest import ingest_headers, login, make_user, send_command
 from ges_server.monitoring import interlock
 
 
@@ -34,7 +34,7 @@ def plant(client, users):
 
 
 def _push(client, users, items):
-    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"])
+    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users))
     assert r.status_code == 200, r.text
 
 

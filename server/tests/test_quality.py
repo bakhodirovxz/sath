@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import ws_ticket
+from conftest import ingest_headers, ws_ticket
 from ges_server.db import SessionLocal
 from ges_server.monitoring import historian, twin
 from ges_server.orm import Reading, ReadingHourly, Sensor
@@ -27,7 +27,7 @@ def _sensor(client, users, key):
 
 def _push(client, users, items):
     r = client.post(
-        f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"]
+        f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users)
     )
     assert r.status_code == 200, r.text
     return r.json()

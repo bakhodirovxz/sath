@@ -277,8 +277,8 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                   <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
-              {canEdit && (
-                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }}>
+              {role === "shift_supervisor" && (
+                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }} title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
                   <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
                   <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>

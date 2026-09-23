@@ -29,10 +29,12 @@ from .. import audit, ratelimit, uploads
 from ..auth.deps import (
     DB,
     P_GATEWAY_KEYS,
+    P_SCADA_MANUAL_ENTRY,
     P_SENSOR_CONFIGURE,
     CurrentUser,
     check_project_permission,
     get_project_role,
+    has_permission,
     has_role,
     require_project_permission,
     require_project_role,
@@ -656,38 +658,29 @@ def push_readings(
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """O'lchovlarni yuborish: yoki X-Ingest-Key (gateway), yoki foydalanuvchi tokeni (muhandis+).
+    """O'lchovlarni yuborish (SCADA-07): jonli oqim — faqat gateway X-Ingest-Key bilan. Foydalanuvchi
+    tokeni — faqat `scada.manual_entry` ruxsati bilan (smena boshlig'i) qo'lda kiritish: yozuvlar
+    `quality=manual` (bad bo'lsa bad), `source=manual`, har kiritish qiymatlari bilan auditda.
     Loyiha bo'yicha tezlik cheklovi (`rate_ingest_per_min` so'rov/daqiqa) — 429."""
-    ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    ok = False
-    if x_ingest_key:
-        keys.verify(db, project, "ingest", x_ingest_key)  # 401/403 tashlaydi
-        ok = True
-    auth_kind, actor_id = ("key", None) if ok else (None, None)
-    if not ok and authorization and authorization.lower().startswith("bearer "):
-        user = user_from_token(db, authorization[7:])
-        ok = (
-            user is not None
-            and user.is_active
-            and has_role(get_project_role(db, project_id, user), Role.engineer)
-        )
-        if ok:
-            auth_kind, actor_id = "token", user.id
-    if not ok:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
+    auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
         )
+    items = [b.model_dump() for b in body]
+    if auth_kind == "manual":
+        items = _as_manual(items)
     out = live.ingest(
         db,
         project_id,
-        [b.model_dump() for b in body],
+        items,
+        source="manual" if auth_kind == "manual" else "http",
         max_age=timedelta(days=get_settings().ingest_max_age_days),
     )
+    if auth_kind == "manual":
+        _audit_manual(db, actor_id, "project", project_id, project_id, items, out)
+        db.commit()
+        return out
     # Partiya bo'yicha bitta jamlangan yozuv (har o'lchov emas)
     audit.log(
         db,
@@ -710,6 +703,37 @@ def push_readings(
     return out
 
 
+def _as_manual(items: list[dict]) -> list[dict]:
+    """Qo'lda kiritilgan yozuvlar: sifat `manual` (bad bo'lsa bad — holatga ta'sir qilmasin)."""
+    return [{**it, "quality": "bad" if str(it.get("quality") or "").lower() == "bad" else "manual"} for it in items]
+
+
+def _audit_item(it: dict) -> dict:
+    v = it.get("value")
+    if isinstance(v, float) and not math.isfinite(v):
+        v = str(v)  # audit JSON ga NaN/inf yozilmaydi
+    ts = it.get("ts")
+    return {"key": it.get("key"), "sensor_id": it.get("sensor_id"), "value": v, "ts": None if ts is None else str(ts), "quality": it.get("quality")}
+
+
+def _audit_manual(db, user_id: int, target_type: str, target_id: int, project_id: int, items: list[dict], out: dict) -> None:
+    audit.log(
+        db,
+        user_id=user_id,
+        action="readings.manual",
+        target_type=target_type,
+        target_id=target_id,
+        project_id=project_id,
+        detail={
+            "source": "manual",
+            "count": len(items),
+            "accepted": out["accepted"],
+            "rejected": len(out["rejected"]),
+            "items": [_audit_item(it) for it in items[:50]],
+        },
+    )
+
+
 def _parse_csv(text: str, sensor_id: int) -> list[dict]:
     items = []
     for row in csv.reader(io.StringIO(text)):
@@ -728,9 +752,11 @@ def _parse_csv(text: str, sensor_id: int) -> list[dict]:
 
 @router.post("/sensors/{sensor_id}/import")
 async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB):
-    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya; quality — QUALITIES.
-    Hajm chegarasi `small_upload_mb` (413, oqimda); parse va ingest thread hovuzida (event loop bloklanmaydi, L5)."""
-    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya. SCADA-07: qo'lda
+    kiritish — `scada.manual_entry` ruxsati, yozuvlar `quality=manual` (bad qatorlar bad), `source=manual`,
+    audit. Hajm chegarasi `small_upload_mb` (413, oqimda); parse va ingest thread hovuzida (L5)."""
+    s = _get_sensor(db, sensor_id, user, Role.viewer)
+    check_project_permission(db, s.project_id, user, P_SCADA_MANUAL_ENTRY)
     raw = await uploads.read_limited(file, get_settings().small_upload_mb * 1024 * 1024)
     text = raw.decode("utf-8-sig", errors="replace")
     items = await run_in_threadpool(_parse_csv, text, s.id)
@@ -738,16 +764,9 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
     if len(items) > 200_000:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir CSV da 200 000 tagacha qator — bo'lib yuklang")
-    out = await run_in_threadpool(live.ingest, db, s.project_id, items, "csv")
-    audit.log(
-        db,
-        user_id=user.id,
-        action="readings.ingest",
-        target_type="sensor",
-        target_id=s.id,
-        project_id=s.project_id,
-        detail={"count": len(items), "accepted": out["accepted"], "bad": out["bad"], "auth": "csv"},
-    )
+    items = _as_manual(items)
+    out = await run_in_threadpool(live.ingest, db, s.project_id, items, "manual")
+    _audit_manual(db, user.id, "sensor", s.id, s.project_id, items, {**out, "csv": True})
     db.commit()
     return out
 
@@ -765,7 +784,8 @@ class SoeIn(BaseModel):
 
 
 def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: str | None) -> tuple[str, int | None]:
-    """Ingest kaliti yoki muhandis+ tokeni → (auth turi, foydalanuvchi id)."""
+    """SCADA-07: gateway ingest kaliti → ("key", None); foydalanuvchi tokeni faqat `scada.manual_entry`
+    ruxsati bilan → ("manual", user id), ruxsatsiz → 403; hech biri → 401."""
     ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
     project = db.get(Project, project_id)
     if project is None:
@@ -775,8 +795,13 @@ def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: s
         return "key", None
     if authorization and authorization.lower().startswith("bearer "):
         user = user_from_token(db, authorization[7:])
-        if user is not None and has_role(get_project_role(db, project_id, user), Role.engineer):
-            return "token", user.id
+        if user is not None:
+            if not has_permission(db, project_id, user, P_SCADA_MANUAL_ENTRY):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Jonli o'lchov faqat gateway ingest kaliti bilan; qo'lda kiritish — scada.manual_entry ruxsati",
+                )
+            return "manual", user.id
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
 
 
@@ -788,15 +813,19 @@ def push_soe(
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """SOE hodisalarini yuborish (ingest kaliti yoki muhandis+): partiyali, ms aniqlik, takror tashlanadi."""
+    """SOE hodisalarini yuborish (ingest kaliti; qo'lda — `scada.manual_entry`, source=manual): partiyali,
+    ms aniqlik, takror tashlanadi."""
     auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
-    out = soe.ingest(db, project_id, [b.model_dump() for b in body], max_age=timedelta(days=get_settings().ingest_max_age_days))
+    events = [b.model_dump() for b in body]
+    if auth_kind == "manual":
+        events = [{**e, "source": "manual"} for e in events]
+    out = soe.ingest(db, project_id, events, max_age=timedelta(days=get_settings().ingest_max_age_days))
     audit.log(
         db,
         user_id=actor_id,
-        action="soe.ingest",
+        action="soe.manual" if auth_kind == "manual" else "soe.ingest",
         target_type="project",
         target_id=project_id,
         project_id=project_id,

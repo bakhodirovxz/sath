@@ -1,4 +1,4 @@
-from conftest import ws_ticket
+from conftest import ingest_headers, ws_ticket
 
 """F4: aloqa holati (stale) alarm holatidan ajratilgan — yuqori alarmdagi sensor aloqani yo'qotsa alarm yashirinmaydi;
 aloqa qaytsa stale hodisasi yopiladi; WebSocket xabarida stale/age_s; heartbeat ping."""
@@ -15,7 +15,7 @@ def test_high_alarm_survives_comm_loss_and_stale_event_closes_on_return(client, 
     r = client.post(f"/api/projects/{pid}/sensors", json={"key": "RES.H", "name": "Sath", "kind": "level", "unit": "m", "high_alarm": 900, "stale_after_s": 60, "priority": "critical"}, headers=users["engineer"])
     sid = r.json()["id"]
     assert r.json()["stale"] is True and r.json()["alarm"] == "ok"
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 905}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 905}], headers=ingest_headers(client, users))
     s = next(x for x in client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json() if x["id"] == sid)
     assert s["alarm"] == "high" and s["stale"] is False
     with SessionLocal() as db:  # aloqa uziladi
@@ -31,12 +31,12 @@ def test_high_alarm_survives_comm_loss_and_stale_event_closes_on_return(client, 
         evs = db.query(AlarmEvent).filter_by(sensor_id=sid).order_by(AlarmEvent.id).all()
         assert [(e.state.value, e.ended_at is None) for e in evs] == [("high", True), ("stale", True)]  # ikkalasi ochiq
     # aloqa qaytdi: stale hodisasi yopiladi, high davom etadi; qiymat past bo'lsa high ham yopiladi
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 906}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 906}], headers=ingest_headers(client, users))
     with SessionLocal() as db:
         evs = db.query(AlarmEvent).filter_by(sensor_id=sid).order_by(AlarmEvent.id).all()
         assert [(e.state.value, e.ended_at is None) for e in evs] == [("high", True), ("stale", False)]
         assert db.get(Sensor, sid).stale is False
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 890}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 890}], headers=ingest_headers(client, users))
     with SessionLocal() as db:
         assert db.get(Sensor, sid).alarm.value == "ok"
         msg = live.sensor_message(db.get(Sensor, sid))

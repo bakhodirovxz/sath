@@ -1,5 +1,7 @@
 """C3: ISA-18.2 §10 ratsionalizatsiya maydonlari, tasdiqlash, chegara o'zgarsa bekor, hisobot."""
 
+from conftest import ingest_headers
+
 
 def _sensor(client, users, key, **kw):
     r = client.post(
@@ -44,7 +46,7 @@ def test_rationalization_report_and_confirm(client, users):
     rep = client.get(f"/api/projects/{pid}/alarms/rationalization", headers=users["viewer"]).json()
     assert rep["rationalized"] == 1 and [x["key"] for x in rep["unrationalized"]] == ["AGG1.P"]
     # alarm hodisasi ratsionalizatsiya matnlarini olib yuradi
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 906}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 906}], headers=ingest_headers(client, users))
     ev = client.get(f"/api/projects/{pid}/alarm-events?active=true", headers=users["viewer"]).json()
     assert ev[0]["corrective_action"] == RAT["corrective_action"] and ev[0]["response_time_s"] == 600
     # chegara o'zgarsa tasdiq bekor (qayta ko'rib chiqish), matnlar qoladi

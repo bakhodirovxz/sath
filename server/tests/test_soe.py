@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+from conftest import ingest_headers
 from ges_server.db import SessionLocal
 from ges_server.monitoring import soe
 from ges_server.orm import SequenceEvent
@@ -34,10 +35,14 @@ def test_soe_ms_order_dedup_and_filters(client, users):
     # qayta yuborish (spool retry) — hammasi takror
     r = client.post(f"/api/projects/{pid}/soe", json=items[:4], headers={"X-Ingest-Key": key})
     assert r.json() == {"accepted": 0, "duplicates": 4, "rejected": []}
-    # kalitsiz / buyruq kaliti bilan emas; muhandis tokeni bilan mumkin, viewer emas
+    # kalitsiz — 401; SCADA-07: muhandis/ko'ruvchi tokeni — 403, qo'lda kiritish faqat smena boshlig'i
     assert client.post(f"/api/projects/{pid}/soe", json=items[:1]).status_code == 401
-    assert client.post(f"/api/projects/{pid}/soe", json=[{"point": "M", "state": "1", "ts": t0.isoformat()}], headers=users["viewer"]).status_code == 401
-    r = client.post(f"/api/projects/{pid}/soe", json=[{"point": "M", "state": "1", "ts": t0.isoformat(), "source": "manual"}], headers=users["engineer"])
+    for who in ("viewer", "engineer"):
+        assert client.post(f"/api/projects/{pid}/soe", json=[{"point": "M", "state": "1", "ts": t0.isoformat()}], headers=users[who]).status_code == 403
+    from conftest import add_member
+
+    sup = add_member(client, users["admin"], pid, "sup", "shift_supervisor")
+    r = client.post(f"/api/projects/{pid}/soe", json=[{"point": "M", "state": "1", "ts": t0.isoformat(), "source": "manual"}], headers=sup)
     assert r.status_code == 200 and r.json()["accepted"] == 1
     # ro'yxat: ms tartibi (eng yangisi birinchi), 1 ms aniqlik saqlangan
     rows = client.get(f"/api/projects/{pid}/soe?hours=48", headers=users["viewer"]).json()
@@ -64,11 +69,11 @@ def test_timeline_merges_soe_and_alarms(client, users):
     r = client.post(f"/api/projects/{pid}/sensors", json={"key": "AGG1.VIB", "name": "Vib", "kind": "vibration", "unit": "mm/s", "high_alarm": 5}, headers=users["engineer"])
     assert r.status_code == 201
     now = datetime.now(timezone.utc)
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.VIB", "value": 9}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.VIB", "value": 9}], headers=ingest_headers(client, users))
     client.post(
         f"/api/projects/{pid}/soe",
         json=[{"point": "AGG1.PROT", "state": "TRIP", "ts": (now - timedelta(seconds=2)).isoformat(timespec="milliseconds"), "source": "iec104"}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     tl = client.get(f"/api/projects/{pid}/timeline?hours=1", headers=users["viewer"]).json()
     assert [x["type"] for x in tl] == ["alarm", "soe"]  # alarm (hozir) yangiroq, trip 2 s oldin

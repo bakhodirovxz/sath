@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import ws_ticket
+from conftest import ingest_headers, manual_headers, ws_ticket
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
 def test_ingest_with_user_token(client, users, sensor):
     pid = users["project_id"]
     now = datetime.now(timezone.utc)
-    # muhandis tokeni bilan ham yuborsa bo'ladi, ko'ruvchi — yo'q
+    # SCADA-07: jonli o'lchov — gateway kaliti bilan; ko'ruvchi tokeni — 403
     r = client.post(
         f"/api/projects/{pid}/readings",
         json=[
@@ -161,7 +161,7 @@ def test_ingest_with_user_token(client, users, sensor):
                 "ts": (now - timedelta(days=1)).isoformat(),
             }
         ],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     assert r.status_code == 200 and r.json()["accepted"] == 1
     assert (
@@ -170,13 +170,13 @@ def test_ingest_with_user_token(client, users, sensor):
             json=[{"key": "AGG1.P", "value": 1}],
             headers=users["viewer"],
         ).status_code
-        == 401
+        == 403
     )
     # eski vaqtli o'lchov last_value ni o'zgartirmaydi
     client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "AGG1.P", "value": 99, "ts": (now - timedelta(days=2)).isoformat()}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     s = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]
     assert s["last_value"] == 12.5
@@ -190,7 +190,7 @@ def test_csv_import_and_history_downsampling(client, users, sensor):
     r = client.post(
         f"/api/sensors/{sensor['id']}/import",
         files={"file": ("data.csv", "\n".join(lines).encode(), "text/csv")},
-        headers=users["engineer"],
+        headers=manual_headers(client, users),
     )
     assert r.status_code == 200, r.text
     assert r.json()["accepted"] == 600
@@ -212,7 +212,7 @@ def test_csv_import_and_history_downsampling(client, users, sensor):
     r = client.post(
         f"/api/sensors/{sensor['id']}/import",
         files={"file": ("x.csv", b"a,b\n", "text/csv")},
-        headers=users["engineer"],
+        headers=manual_headers(client, users),
     )
     assert r.status_code == 400
 
@@ -226,7 +226,7 @@ def test_stale_detection(client, users, sensor):
     client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "AGG1.P", "value": 10, "ts": old}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     # stale faqat fon vazifasida aniqlanadi (C5) — so'rov yo'li alarm/email bermaydi
     assert client.get(f"/api/projects/{pid}/alarms", headers=users["viewer"]).json() == []
@@ -246,7 +246,7 @@ def test_websocket_snapshot_and_live(client, users, sensor):
         r = client.post(
             f"/api/projects/{pid}/readings",
             json=[{"key": "AGG1.P", "value": 21.5}],
-            headers=users["engineer"],
+            headers=ingest_headers(client, users),
         )
         assert r.status_code == 200
         msg = ws.receive_json()

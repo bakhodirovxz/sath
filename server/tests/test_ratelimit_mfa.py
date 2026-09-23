@@ -1,7 +1,7 @@
 """L1: tezlik cheklovi, hisobni bloklash (lockout), TOTP MFA."""
 
 import pytest
-from conftest import login, make_user
+from conftest import ingest_headers, login, make_user
 from ges_server import ratelimit
 from ges_server.auth import totp
 from ges_server.config import get_settings
@@ -77,12 +77,13 @@ def test_ingest_rate_limit(client, users, settings):
     settings.rate_ingest_per_min = 3
     r = client.post(f"/api/projects/{pid}/sensors", json={"key": "T1", "name": "T", "kind": "value"}, headers=users["engineer"])
     assert r.status_code == 201
-    codes = [client.post(f"/api/projects/{pid}/readings", json=[{"key": "T1", "value": 1.0}], headers=users["engineer"]).status_code for _ in range(4)]
+    codes = [client.post(f"/api/projects/{pid}/readings", json=[{"key": "T1", "value": 1.0}], headers=ingest_headers(client, users)).status_code for _ in range(4)]
     assert codes == [200, 200, 200, 429]
     # boshqa loyiha — alohida hisob
     r = client.post("/api/projects", json={"name": "Ikkinchi"}, headers=users["admin"])
     p2 = r.json()["id"]
-    assert client.post(f"/api/projects/{p2}/readings", json=[], headers=users["admin"]).status_code == 200
+    k2 = client.post(f"/api/projects/{p2}/keys/ingest", headers=users["admin"]).json()["key"]
+    assert client.post(f"/api/projects/{p2}/readings", json=[], headers={"X-Ingest-Key": k2}).status_code == 200
 
 
 def test_commands_and_sim_rate_limit(client, users, settings):

@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import ingest_headers
 from ges_server.db import SessionLocal
 from ges_server.monitoring import live
 from ges_server.orm import AlarmEvent, AlarmState, Sensor
@@ -20,7 +21,7 @@ def sensor(client, users):
 
 
 def _push(client, users, items):
-    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"])
+    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users))
     assert r.status_code == 200, r.text
     return r.json()
 

@@ -1,4 +1,4 @@
-from conftest import ws_ticket
+from conftest import ingest_headers, ws_ticket
 
 """C5: WebSocket ulanishi alarm/email bermaydi; email navbati (cheklangan, jamlangan); fon holati DB da."""
 
@@ -20,7 +20,7 @@ def test_50_ws_connections_send_no_email_and_no_stale_events(client, users, monk
         headers=users["engineer"],
     )
     sid = r.json()["id"]
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 900}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 900}], headers=ingest_headers(client, users))
     with SessionLocal() as db:  # o'lchov eskirgan — stale bo'lishi kerak, lekin faqat fon vazifasi buni aniqlaydi
         s = db.get(Sensor, sid)
         s.last_ts = datetime.now(timezone.utc) - timedelta(minutes=10)

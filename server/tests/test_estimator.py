@@ -4,7 +4,7 @@ o'rnini bosish, quvvat/sarf manbalari orasidagi kelishmovchilik."""
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from conftest import upload
+from conftest import ingest_headers, upload
 from ges_server.db import SessionLocal
 from ges_server.monitoring import estimator
 from ges_server.orm import Project, Sensor
@@ -24,7 +24,7 @@ def _sensor(client, users, key, name, kind, unit, **kw):
 
 def _push(client, users, items):
     r = client.post(
-        f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"]
+        f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users)
     )
     assert r.status_code == 200, r.text
     return r.json()

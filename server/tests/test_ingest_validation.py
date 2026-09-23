@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import manual_headers
 from ges_server.db import SessionLocal
 from ges_server.monitoring import live
 from ges_server.orm import Reading
@@ -20,7 +21,9 @@ def power(client, users):
 
 
 def _hdr(client, users):
-    return users["engineer"]
+    from conftest import ingest_headers
+
+    return ingest_headers(client, users)
 
 
 def _post(client, users, items):
@@ -68,7 +71,7 @@ def test_mixed_batch_accepts_good_items(client, users, power):
     body = r.json()
     assert body["accepted"] == 2 and body["unknown"] == ["YOQ"]
     assert [x["reason"] for x in body["rejected"]] == ["value_not_finite", "value_not_finite", "value_invalid", "ts_future"]
-    assert _sensor(client, users, "AGG1.P")["last_value"] == 12
+    assert _sensor(client, users, "AGG1.P")["last_value"] == 10  # ts siz yozuv — server vaqti (eng yangi)
     with SessionLocal() as db:
         assert sorted(x.value for x in db.query(Reading).all()) == [10, 12]
 
@@ -112,7 +115,7 @@ def test_csv_import_allows_old_history(client, users, power):
     r = client.post(
         f"/api/sensors/{power['id']}/import",
         files={"file": ("h.csv", csv, "text/csv")},
-        headers=users["engineer"],
+        headers=manual_headers(client, users),
     )
     assert r.status_code == 200, r.text
     assert r.json()["accepted"] == 2 and r.json()["bad"] == 1 and r.json()["rejected"] == []

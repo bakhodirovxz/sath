@@ -4,6 +4,7 @@ hisobot, audit ko'rish."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from conftest import ingest_headers
 from ges_server.db import SessionLocal
 from ges_server.monitoring import background, historian
 from ges_server.orm import Reading, ReadingHourly, Sensor
@@ -30,7 +31,7 @@ def power(client, users):
 
 def _push(client, users, items):
     r = client.post(
-        f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"]
+        f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users)
     )
     assert r.status_code == 200, r.text
     return r.json()
