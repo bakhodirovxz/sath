@@ -216,6 +216,10 @@ class Model(Base):
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # VCS-06: yumshoq o'chirish — tarix (versiyalar, CR, issue) saqlanadi; ro'yxat va olishda ko'rinmaydi,
+    # administrator tiklaydi yoki butunlay tozalaydi (fayllar GC bilan)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="models")
     versions: Mapped[list[Version]] = relationship(

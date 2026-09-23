@@ -77,7 +77,7 @@ def _out(db, project: Project, user: User, role: Role | None = None, model_count
         description=project.description,
         location=project.location,
         my_role=role if model_count is not None else get_project_role(db, project.id, user),
-        model_count=model_count if model_count is not None else len(project.models),
+        model_count=model_count if model_count is not None else sum(1 for m in project.models if m.deleted_at is None),
         ids_required=bool(project.ids_required),
         naming_template=project.naming_template or "",
         naming_required=bool(project.naming_required),
@@ -110,7 +110,10 @@ def list_projects(
     if not ids:
         return []
     counts = dict(
-        db.query(Model.project_id, func.count(Model.id)).filter(Model.project_id.in_(ids)).group_by(Model.project_id).all()
+        db.query(Model.project_id, func.count(Model.id))
+        .filter(Model.project_id.in_(ids), Model.deleted_at.is_(None))
+        .group_by(Model.project_id)
+        .all()
     )
     if user.is_admin:
         roles = {pid: Role.approver for pid in ids}

@@ -261,3 +261,50 @@ def test_commit_without_ids_commits_only_own_drafts(client, users, mid, tmp_path
     # muhandisda o'z qoralamasi yo'q — 400
     assert client.post(f"/api/models/{mid}/drafts/commit", json={}, headers=users["engineer"]).status_code == 400
     assert client.post(f"/api/models/{mid}/drafts/commit", json={"draft_ids": [theirs]}, headers=users["approver"]).status_code == 201
+
+
+# ---------------------------------------------------------------- VCS-06
+
+
+def test_soft_delete_restore_and_purge(client, users, mid, tmp_path, admin, monkeypatch):
+    from ges_server import jobs
+    from ges_server.models import router as mr
+    from ges_server.models import storage
+
+    monkeypatch.setitem(jobs.HANDLERS, "blob_gc", lambda payload: None)
+    v1, v2 = _two_versions(client, users, mid, tmp_path)
+    cr = _cr(client, users, mid, v1["id"])
+    pid = users["project_id"]
+    # muhandis o'chira olmaydi; tasdiqlovchi — yumshoq
+    assert client.delete(f"/api/models/{mid}", headers=users["engineer"]).status_code == 403
+    assert client.delete(f"/api/models/{mid}", headers=users["approver"]).status_code == 204
+    # ro'yxat/olishda yo'q; versiya, CR, qoralama endpointlari ham 404
+    assert all(m["id"] != mid for m in client.get(f"/api/projects/{pid}/models", headers=users["viewer"]).json())
+    assert client.get(f"/api/projects/{pid}", headers=users["viewer"]).json()["model_count"] == 0
+    for url in (f"/api/models/{mid}", f"/api/versions/{v1['id']}", f"/api/change-requests/{cr['id']}", f"/api/models/{mid}/drafts"):
+        assert client.get(url, headers=users["viewer"]).status_code == 404, url
+    assert upload(client, users["engineer"], mid, make_ifc(tmp_path / "z.ifc")).status_code == 404
+    # nom band — aniq xabar
+    r = client.post(f"/api/projects/{pid}/models", json={"name": "M"}, headers=users["engineer"])
+    assert r.status_code == 409 and "o'chirilgan" in r.json()["detail"]
+    # tiklash/tozalash — faqat admin
+    assert client.get("/api/admin/models/deleted", headers=users["approver"]).status_code == 403
+    assert client.post(f"/api/admin/models/{mid}/restore", headers=users["approver"]).status_code == 403
+    deleted = client.get("/api/admin/models/deleted", headers=admin).json()
+    assert [d["id"] for d in deleted] == [mid] and deleted[0]["version_count"] == 2
+    r = client.post(f"/api/admin/models/{mid}/restore", headers=admin)
+    assert r.status_code == 200 and r.json()["version_count"] == 2
+    assert client.get(f"/api/change-requests/{cr['id']}", headers=users["viewer"]).status_code == 200  # tarix joyida
+    # purge: faqat savatdagi model
+    assert client.delete(f"/api/admin/models/{mid}/purge", headers=admin).status_code == 404
+    assert client.delete(f"/api/models/{mid}", headers=users["approver"]).status_code == 204
+    paths = [storage.resolve(v["file_sha256"]) for v in (v1, v2)]
+    t = __import__("time").time() - 3600
+    for p in paths:
+        __import__("os").utime(p, (t, t))
+    monkeypatch.setattr(mr, "PURGE_GRACE_S", 60)
+    assert client.delete(f"/api/admin/models/{mid}/purge", headers=admin).status_code == 204
+    assert client.get("/api/admin/models/deleted", headers=admin).json() == []
+    assert not any(p.exists() for p in paths)  # fayllar GC bilan o'chirildi
+    acts = [a["action"] for a in client.get("/api/audit", params={"action": "model."}, headers=admin).json()]
+    assert {"model.delete", "model.restore", "model.purge"} <= set(acts)

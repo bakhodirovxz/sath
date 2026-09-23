@@ -23,7 +23,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..downloads import content_disposition
-from ..orm import Federation, Model, Project, Role, Version, VersionState
+from ..orm import Federation, Model, Project, Role, Version, VersionState, utcnow
 from . import classification, cobie, derived, federation, ifc_meta, ifc_schema, iso19650, storage
 from . import crs as crs_mod
 
@@ -108,6 +108,7 @@ def _next_number(db, model_id: int) -> int:
 
 # --- Versiya yaratish: yagona yo'l (VCS-01/02) ---
 
+PURGE_GRACE_S = 600  # VCS-06: tozalangan model fayllari — shundan eski bo'lsa darhol o'chiriladi
 HEAD = object()  # parent_id = joriy oxirgi versiya (yozish paytida o'qiladi)
 ANY = object()  # expected_head tekshirilmaydi
 HEAD_MOVED_MSG = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oling)"
@@ -181,7 +182,7 @@ def create_version(
     for attempt in range(_VERSION_RETRIES):
         try:
             model = db.get(Model, model_id)
-            if model is None:
+            if model is None or model.deleted_at is not None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Model topilmadi")
             if expected_head is not ANY:
                 check_head(db, model_id, expected_head)
@@ -259,7 +260,7 @@ def version_out(v: Version) -> VersionOut:
 
 def get_model_checked(db, model_id: int, user, required: Role) -> Model:
     model = db.get(Model, model_id)
-    if model is None:
+    if model is None or model.deleted_at is not None:  # VCS-06: o'chirilgan (savatdagi) model ko'rinmaydi
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model topilmadi")
     check_project_role(db, model.project_id, user, required)
     return model
@@ -267,7 +268,7 @@ def get_model_checked(db, model_id: int, user, required: Role) -> Model:
 
 def get_version_checked(db, version_id: int, user, required: Role) -> Version:
     version = db.get(Version, version_id)
-    if version is None:
+    if version is None or version.model.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Versiya topilmadi")
     check_project_role(db, version.model.project_id, user, required)
     return version
@@ -278,12 +279,18 @@ def get_version_checked(db, version_id: int, user, required: Role) -> Version:
 
 @router.get("/projects/{project_id}/models", response_model=list[ModelOut])
 def list_models(project: ViewerProject):
-    return [_model_out(m) for m in project.models]
+    return [_model_out(m) for m in project.models if m.deleted_at is None]
 
 
 @router.post("/projects/{project_id}/models", response_model=ModelOut, status_code=201)
 def create_model(body: ModelCreate, project: EngineerProject, user: CurrentUser, db: DB):
-    if any(m.name == body.name for m in project.models):
+    same = next((m for m in project.models if m.name == body.name), None)
+    if same is not None:
+        if same.deleted_at is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Bu nom o'chirilgan (savatdagi) modelniki — administrator tiklashi yoki butunlay tozalashi kerak",
+            )
         raise HTTPException(status.HTTP_409_CONFLICT, "Bu loyihada shunday model mavjud")
     model = Model(project_id=project.id, **body.model_dump())
     db.add(model)
@@ -308,7 +315,11 @@ def get_model(model_id: int, user: CurrentUser, db: DB):
 
 @router.delete("/models/{model_id}", status_code=204)
 def delete_model(model_id: int, user: CurrentUser, db: DB):
+    """VCS-06: yumshoq o'chirish (tasdiqlovchi) — model va butun tarixi saqlanadi, ro'yxatlardan yo'qoladi.
+    Tiklash va butunlay tozalash — faqat administrator (`/api/admin/models/...`)."""
     model = get_model_checked(db, model_id, user, Role.approver)
+    model.deleted_at = utcnow()
+    model.deleted_by = user.id
     audit.log(
         db,
         user_id=user.id,
@@ -316,11 +327,64 @@ def delete_model(model_id: int, user: CurrentUser, db: DB):
         target_type="model",
         target_id=model.id,
         project_id=model.project_id,
-        detail={"name": model.name},
+        detail={"name": model.name, "soft": True, "versions": len(model.versions)},
+    )
+    db.commit()
+
+
+# --- VCS-06: o'chirilgan modellar (administrator) ---
+
+
+class DeletedModelOut(ModelOut):
+    deleted_at: datetime
+    deleted_by: int | None = None
+
+
+def _deleted_model(db, model_id: int) -> Model:
+    model = db.get(Model, model_id)
+    if model is None or model.deleted_at is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "O'chirilgan model topilmadi")
+    return model
+
+
+@router.get("/admin/models/deleted", response_model=list[DeletedModelOut])
+def list_deleted_models(_: AdminUser, db: DB, project_id: int | None = None):
+    q = db.query(Model).filter(Model.deleted_at.isnot(None))
+    if project_id is not None:
+        q = q.filter(Model.project_id == project_id)
+    return [
+        DeletedModelOut(**_model_out(m).model_dump(), deleted_at=m.deleted_at, deleted_by=m.deleted_by)
+        for m in q.order_by(Model.deleted_at.desc()).all()
+    ]
+
+
+@router.post("/admin/models/{model_id}/restore", response_model=ModelOut)
+def restore_deleted_model(model_id: int, admin: AdminUser, db: DB):
+    model = _deleted_model(db, model_id)
+    model.deleted_at = None
+    model.deleted_by = None
+    audit.log(
+        db, user_id=admin.id, action="model.restore", target_type="model", target_id=model.id,
+        project_id=model.project_id, detail={"name": model.name},
+    )
+    db.commit()
+    return _model_out(model)
+
+
+@router.delete("/admin/models/{model_id}/purge", status_code=204)
+def purge_deleted_model(model_id: int, admin: AdminUser, db: DB):
+    """Savatdagi modelni butunlay o'chirish: versiyalar, CR, issue, sim ishlari; boshqa hech kim murojaat
+    qilmaydigan fayllar (va hosilaviy kesh) darhol GC bilan o'chiriladi (SRV-05)."""
+    from ..orm import ChangeRequest, Issue, SimJob
+    from . import blob_gc
+
+    model = _deleted_model(db, model_id)
+    shas = {v.file_sha256 for v in model.versions}
+    audit.log(
+        db, user_id=admin.id, action="model.purge", target_type="model", target_id=model.id,
+        project_id=model.project_id, detail={"name": model.name, "versions": len(model.versions), "files": len(shas)},
     )
     # Versiyalarga bog'liq yozuvlar (FK cascade siz): sim vazifalari, issue lar, tasdiqlash so'rovlari — avval
-    from ..orm import ChangeRequest, Issue, SimJob
-
     for cls in (SimJob, Issue, ChangeRequest):
         for row in db.query(cls).filter_by(model_id=model.id).all():
             db.delete(row)
@@ -329,6 +393,9 @@ def delete_model(model_id: int, user: CurrentUser, db: DB):
     db.flush()
     db.delete(model)
     db.commit()
+    # Fayllar: faqat shu model sha lari, boshqa yozuv murojaat qilmasa; 10 daqiqalik oyna — parallel yuklash
+    # (xuddi shu fayl dedup bo'lib, hali commit bo'lmagan) himoyasi
+    blob_gc.collect(db, dry_run=False, grace_s=PURGE_GRACE_S, only_shas=shas)
 
 
 # --- Versiyalar ---
@@ -809,7 +876,7 @@ def _check_members(db, project: Project, members: list[FedMember]) -> list[dict]
     raw = [m.model_dump() for m in members]
     for m in raw:
         model = db.get(Model, m["model_id"])
-        if model is None or model.project_id != project.id:
+        if model is None or model.project_id != project.id or model.deleted_at is not None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Model {m['model_id']} shu loyihaniki emas")
     try:
         federation.resolve_members(db, raw)
