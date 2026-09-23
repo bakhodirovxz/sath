@@ -35,6 +35,8 @@ import type { SearchItem } from "../ui/blender";
 import { notify } from "../ui/notice";
 import AlarmBanner from "./operator/AlarmBanner";
 import { t } from "../i18n";
+import CommitDialog from "./model/CommitDialog";
+import { commitSummary } from "./model/commitSummary";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -409,10 +411,11 @@ export default function ModelPage() {
     setLog(`«${p.name || p.category}» o'chirishga belgilandi — «IFC ga qo'shish» bilan yangi versiya`);
   };
   const duplicateDraft = (uid: string) => viewer.current?.drafts.duplicate(uid);
-  const commitDrafts = async () => {
+  // UX-12: commit oynasi — qo'shilgan/o'zgargan/o'chirilgan soni, IFC ga kirmaydiganlar ogohlantirishi
+  const [commitOpen, setCommitOpen] = useState(false);
+  const commitDrafts = async () => { if (model && viewer.current && drafts.length) setCommitOpen(true); };
+  const doCommit = async (msg: string) => {
     if (!model || !viewer.current) return;
-    const msg = await dialogs.prompt("Versiya izohi (commit)", `Web 3D: ${drafts.length} ta element qo'shildi`);
-    if (msg === null) return;
     setDraftBusy(true);
     try {
       // saqlanmagan o'zgarishlarni avval yuborish
@@ -423,7 +426,8 @@ export default function ModelPage() {
       const vs = await reload();
       const nv = vs.find((x) => x.id === v.id);
       if (nv) await openVersion(nv);
-      setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga qo'shildi`);
+      setCommitOpen(false);
+      setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga yozildi`);
     } catch (e) {
       // VCS-01: model boshqa versiya bilan yangilangan — ro'yxatni yangilaymiz, qoralamalar saqlanadi
       if (isHeadMoved(e)) { notify(HEAD_MOVED_TEXT, "warning"); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
@@ -651,6 +655,7 @@ export default function ModelPage() {
         <span className="muted small">{user?.full_name || user?.username}</span>
       </div>
       {project && <AlarmBanner pid={project.id} role={role} />}
+      {commitOpen && <CommitDialog summary={commitSummary(drafts, underlays.length)} baseLabel={current ? `v${current.number}` : "yangi model"} busy={draftBusy} onCommit={(m) => void doCommit(m)} onClose={() => setCommitOpen(false)} />}
 
       <ViewportHeader viewer={ready ? viewer.current : null} shading={shading} onShading={setShading} grid={gridOn}
         onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }} projection={projection} onProjection={() => void toggleProjection()}

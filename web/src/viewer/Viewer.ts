@@ -1700,6 +1700,22 @@ export class Viewer {
   }
 
   // --- Diff ranglari ---
+  /** Kamera harakati (taqqoslash: ikki viewport sinxron, UX-12). Qaytaradi — obunani bekor qilish. */
+  onViewChange(cb: () => void): () => void {
+    const c = this.world.camera.controls;
+    c.addEventListener("update", cb);
+    return () => c.removeEventListener("update", cb);
+  }
+  /** Boshqa viewer kamerasini IFC koordinatasida ko'chirish (har versiya o'z markazlashuviga ega bo'lishi mumkin). */
+  lookAtFrom(other: Viewer) {
+    const p = new THREE.Vector3();
+    const t = new THREE.Vector3();
+    other.world.camera.controls.getPosition(p);
+    other.world.camera.controls.getTarget(t);
+    const a = this.ifcToThree(other.threeToIfc(p));
+    const b = this.ifcToThree(other.threeToIfc(t));
+    void this.world.camera.controls.setLookAt(a.x, a.y, a.z, b.x, b.y, b.z, false);
+  }
   async applyDiff(diff: { added: { guid: string }[]; deleted: { guid: string }[]; changed: { guid: string }[] }) {
     if (!this.model) return;
     await this.clearDiff();

@@ -366,6 +366,17 @@ export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
 /** SCADA-04: `key` faqat yaratilganda/almashtirilganda (bir marta), aks holda null — `key_prefix` ko'rsatiladi. */
+/** UX-12: "Mening vazifalarim" (`GET /api/me/tasks`) */
+export interface TaskCR { id: number; title: string; status: string; project_id: number; project_name: string; model_id: number; model_name: string; version_id: number; version_number: number; author: string; created_at: string }
+export interface TaskIssue { id: number; title: string; status: string; priority: string; project_id: number; project_name: string; model_id: number; model_name: string; updated_at: string }
+export interface TaskWorkOrder { id: number; title: string; status: string; priority: string; project_id: number; project_name: string; due_at: string | null; loto_active: boolean }
+export interface TaskCommand { id: number; project_id: number; project_name: string; sensor_id: number; sensor_name: string; sensor_key: string; unit: string; value: number; author: string; created_at: string }
+export interface MyTasks { reviews: TaskCR[]; my_change_requests: TaskCR[]; issues: TaskIssue[]; work_orders: TaskWorkOrder[]; command_approvals: TaskCommand[]; total: number }
+/** UX-12: loyiha vaqt chizig'i (`GET /api/projects/{id}/history`) */
+export type HistoryKind = "version" | "cr" | "publish" | "cr_rejected" | "issue" | "work_order" | "alarm";
+export interface HistoryItem { ts: string; kind: HistoryKind; title: string; detail: string; actor: string; severity: string | null; model_id: number | null; version_id: number | null; change_request_id: number | null; issue_id: number | null; work_order_id: number | null; sensor_id: number | null }
+export interface ProjectHistory { project_id: number; since: string; items: HistoryItem[]; truncated: boolean }
+
 export interface MeshImportOptions {
   message?: string;
   unit?: string;
@@ -1014,6 +1025,8 @@ export const api = {
   createDraft: (modelId: number, body: DraftBody) => request<DraftRow>(`/api/models/${modelId}/drafts`, { method: "POST", body: json(body) }),
   updateDraft: (id: number, body: Partial<DraftBody>) => request<DraftRow>(`/api/drafts/${id}`, { method: "PATCH", body: json(body) }),
   deleteDraft: (id: number) => request<void>(`/api/drafts/${id}`, { method: "DELETE" }),
+  myTasks: () => request<MyTasks>("/api/me/tasks"),
+  projectHistory: (projectId: number, days = 90, alarms: "all" | "high" | "none" = "high") => request<ProjectHistory>(`/api/projects/${projectId}/history?days=${days}&alarms=${alarms}`),
   commitDrafts: (modelId: number, body: { message?: string; base_version_id?: number | null; draft_ids?: number[]; keep_drafts?: boolean }) => request<Version & { guids: string[] }>(`/api/models/${modelId}/drafts/commit`, { method: "POST", body: json(body) }),
   simCatalog: () => request<SimCatalog>("/api/sim/catalog"),
   materials: () => request<MaterialsCatalog>("/api/sim/materials"),

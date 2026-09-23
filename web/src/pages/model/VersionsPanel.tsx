@@ -7,6 +7,7 @@ import Dialog from "../../ui/Dialog";
 import { BBadge, BList, BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { notify } from "../../ui/notice";
 import MeshUnitCheck from "./MeshUnitCheck";
+import CompareView from "./CompareView";
 import { MESH_UNITS, meshFollowUp, type MeshFollowUp } from "./meshImport";
 
 interface Props {
@@ -38,6 +39,10 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
   const [meshOpts, setMeshOpts] = useState<{ unit: string; axis: "auto" | "y" | "z"; unit_override: boolean; merge: boolean; onto_current: boolean; extrude_m: number }>({ unit: "m", axis: "auto", unit_override: false, merge: false, onto_current: true, extrude_m: 0 });
   const [unitCheck, setUnitCheck] = useState<{ file: File; opts: MeshImportOptions; version: Version; baseHeadId: number | null; follow: MeshFollowUp } | null>(null);
   const [reimporting, setReimporting] = useState(false);
+  // UX-12: farq ochiq bo'lsa — ikki viewport (yonma-yon / slayder)
+  const [compareOpen, setCompareOpen] = useState(false);
+  const cmpFrom = diff ? versions.find((v) => v.id === diff.from_version_id) ?? null : null;
+  const cmpTo = diff ? versions.find((v) => v.id === diff.to_version_id) ?? null : null;
   const isCad = !!file && /\.(dxf|dwg)$/i.test(file.name);
   const isImage = !!file && /\.(png|jpe?g|tiff?|bmp|webp)$/i.test(file.name);
   const isMesh = !!file && !isImage && !file.name.toLowerCase().endsWith(".ifc");
@@ -94,6 +99,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
 
   return (
     <div>
+      {compareOpen && cmpFrom && cmpTo && <CompareView modelName={model.name} from={cmpFrom} to={cmpTo} diff={diff} onClose={() => setCompareOpen(false)} />}
       {unitCheck && (
         <MeshUnitCheck fileName={unitCheck.file.name} info={unitCheck.follow.info} warnings={unitCheck.follow.warnings} busy={reimporting}
           onAccept={() => { reportMesh({ ...unitCheck.follow, uncertain: false }); setUnitCheck(null); }} onReimport={(u) => void reimport(u)} />
@@ -152,6 +158,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
                 {versions.filter((o) => o.id !== selected.id).map((o) => <option key={o.id} value={o.id}>v{o.number}</option>)}
               </select>
             )}
+            {diff && cmpFrom && cmpTo && <button className="btn sm primary" onClick={() => setCompareOpen(true)} title="Ikki versiya yonma-yon yoki slayder bilan, kamera sinxron" data-testid="compare-open"><Icon name="columns" size={12} /> Yonma-yon</button>}
             {diff && <button className="btn sm" onClick={onClearDiff}><Icon name="x" size={12} /> Farqni yopish</button>}
           </BOps>
         </BPanel>

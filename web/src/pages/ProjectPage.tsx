@@ -5,6 +5,7 @@ import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { fmtDate, fmtDay, label } from "../ui/format";
+import ProjectTimeline from "./ProjectTimeline";
 
 const ROLES: Role[] = ["viewer", "operator", "shift_supervisor", "engineer", "approver"];
 
@@ -100,6 +101,8 @@ export default function ProjectPage() {
             </tbody>
           </table>
         )}
+
+        <ProjectTimeline pid={pid} />
 
         <CrsSettings project={project} canManage={canManage} onSaved={load} onError={setError} />
         <NamingSettings project={project} canManage={canManage} onSaved={load} onError={setError} />

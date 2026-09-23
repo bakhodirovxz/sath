@@ -74,3 +74,14 @@ describe("yagona alarm uslubi (UX-02)", () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe("tokenlar mavjud (UX-12)", () => {
+  it("theme.css dagi har bir var(--…) tokens.css da aniqlangan", () => {
+    const css = readFileSync("src/ui/theme.css", "utf8");
+    const tok = readFileSync("src/ui/tokens.css", "utf8");
+    const defined = new Set([...tok.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+    const local = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+    const used = new Set([...css.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]));
+    expect([...used].filter((v) => !defined.has(v) && !local.has(v))).toEqual([]);
+  });
+});

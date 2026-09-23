@@ -47,6 +47,7 @@ export default function TopBar({ crumbs = [], children, alarms }: { crumbs?: Cru
       <div className="spacer" />
       {children}
       <ThemeToggle />
+      <Link to="/tasks" className="small" title={t("nav.myTasksTitle")} data-testid="nav-tasks">{t("nav.myTasks")}</Link>
       <NotificationsBell />
       {user?.is_admin && <Link to="/admin" className="small" title={t("nav.adminTitle")}>{t("nav.admin")}</Link>}
       <button className={`btn sm ${user?.mfa_required ? "warn" : ""}`} title={user?.mfa_required ? t("nav.mfaRequired") : t("nav.profile")} onClick={() => setProfile(true)} data-testid="profile-btn">{user?.full_name || user?.username}{user?.mfa_required ? " ⚠" : ""}</button>

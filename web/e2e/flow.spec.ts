@@ -270,8 +270,12 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".draft-list:not(.underlay-list)")).toContainText("E2E transformator");
     // Commit → yangi versiya
     await page.locator(".draft-list:not(.underlay-list) button", { hasText: "IFC ga qo'shish" }).click();
-    await page.getByTestId("dlg-prompt").fill("e2e: web 3D element"); // Dialog (F8: prompt() emas)
-    await page.getByTestId("dlg-confirm").click();
+    // UX-12: commit oynasi — o'zgarishlar soni (1 ta qo'shildi) va izoh
+    await expect(page.getByTestId("commit-added")).toHaveText("1");
+    await expect(page.getByTestId("commit-deleted")).toHaveText("0");
+    await expect(page.getByTestId("commit-message")).toHaveValue(/1 ta qo'shildi/);
+    await page.getByTestId("commit-message").fill("e2e: web 3D element");
+    await page.getByTestId("commit-ok").click();
     await expect(page.locator(".ws-status .msg")).toContainText("Namuna v2", { timeout: 90_000 });
     await expect(page.locator(".ws-status")).toContainText("Elementlar: 21");
     await expect(page.locator(".draft-list:not(.underlay-list)")).toHaveCount(0);

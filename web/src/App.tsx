@@ -13,6 +13,7 @@ const Projects = lazy(() => import("./pages/Projects"));
 const ProjectPage = lazy(() => import("./pages/ProjectPage"));
 const ModelPage = lazy(() => import("./pages/ModelPage"));
 const Admin = lazy(() => import("./pages/Admin"));
+const MyTasksPage = lazy(() => import("./pages/MyTasksPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SitePage = lazy(() => import("./pages/SitePage"));
 const FederationPage = lazy(() => import("./pages/FederationPage"));
@@ -79,6 +80,7 @@ export default function App() {
       <Route path="/models/:modelId" element={<RequireAuth><ModelPage /></RequireAuth>} />
       <Route path="/federations/:fedId" element={<RequireAuth><FederationPage /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
+      <Route path="/tasks" element={<RequireAuth><MyTasksPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>

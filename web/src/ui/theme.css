@@ -702,6 +702,39 @@ tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); 
   .ab-state { display: none; }
 }
 
+/* Vazifalarim va vaqt chizig'i (UX-12) */
+.count-pill { display: inline-block; min-width: 20px; padding: 0 var(--sp-1-5); border-radius: 999px; background: var(--chrome-2); color: var(--text); font-size: var(--fs-sm); text-align: center; vertical-align: middle; }
+.task-section { margin-top: var(--sp-6); }
+.task-list { margin: 0; padding-left: var(--sp-4); }
+.timeline { margin-top: var(--sp-6); }
+.tl-day { margin-top: var(--sp-3); }
+.tl-date { font-size: var(--fs-sm); color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase; margin: 0 0 var(--sp-1); }
+.tl-list { list-style: none; margin: 0; padding: 0 0 0 var(--sp-3); border-left: 2px solid var(--line-strong); }
+.tl-item { display: grid; grid-template-columns: 52px 150px minmax(0, 1fr) auto; gap: var(--sp-2); align-items: baseline; padding: var(--sp-1) 0; position: relative; }
+.tl-item::before { content: ""; position: absolute; left: calc(-1 * var(--sp-3) - 5px); top: 11px; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.tl-item.k-publish::before { background: var(--ok); } .tl-item.k-cr_rejected::before { background: var(--danger); }
+.tl-item.k-alarm::before { background: var(--alarm-high); } .tl-item.k-version::before { background: var(--accent); }
+.tl-kind { display: inline-flex; gap: var(--sp-1); align-items: center; color: var(--text-muted); font-size: var(--fs-sm); }
+.tl-title { min-width: 0; overflow-wrap: anywhere; }
+.tl-actor { font-size: var(--fs-sm); white-space: nowrap; }
+@media (max-width: 600px) { .tl-item { grid-template-columns: 52px minmax(0, 1fr); } .tl-kind, .tl-actor { grid-column: 2; } }
+
+/* Versiyalarni taqqoslash (UX-12): yonma-yon yoki slayder */
+.dialog.compare-dialog { width: min(96vw, 1800px); max-width: none; height: min(92vh, 1100px); max-height: none; display: flex; flex-direction: column; padding: var(--sp-3); }
+.cmp-bar { gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.cmp-stage { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); background: var(--canvas); }
+.cmp-stage.slider { grid-template-columns: 1fr; }
+.cmp-stage.slider .cmp-pane { grid-area: 1 / 1; }
+.cmp-pane { position: relative; min-width: 0; min-height: 0; border: 1px solid var(--line); }
+.cmp-canvas { position: absolute; inset: 0; }
+.cmp-tag { position: absolute; top: var(--sp-2); padding: 0 var(--sp-2); background: var(--overlay-strong); color: var(--text); font: 600 var(--fs-sm) var(--mono); border-radius: var(--radius); pointer-events: none; }
+.cmp-left .cmp-tag { left: var(--sp-2); } .cmp-right .cmp-tag { right: var(--sp-2); }
+.cmp-divider { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 2; }
+.cmp-range { position: absolute; left: var(--sp-4); right: var(--sp-4); bottom: var(--sp-3); z-index: 3; width: auto; }
+.cmp-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 var(--sp-1) 0 var(--sp-2); vertical-align: middle; }
+.cmp-legend .lg-added { background: var(--diff-add); } .cmp-legend .lg-changed { background: var(--diff-change); } .cmp-legend .lg-deleted { background: var(--diff-del); }
+@media (max-width: 600px) { .cmp-stage.side { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+
 /* Bildirishnomalar (UX-02): xatodan alohida; neytral panel + belgi (operator ekranida alarm rangini olmaydi) */
 .notice-host { position: fixed; right: var(--sp-4); bottom: var(--sp-4); z-index: 60; display: flex; flex-direction: column; gap: var(--sp-2); max-width: min(440px, calc(100vw - 2 * var(--sp-4))); pointer-events: none; }
 .notice { pointer-events: auto; display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-2) var(--sp-2-5); background: var(--menu-bg); color: var(--text); border: 1px solid var(--line-strong); border-left-width: 4px; border-radius: var(--radius); box-shadow: var(--shadow-pop); font-size: var(--fs-body); }
