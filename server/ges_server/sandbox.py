@@ -113,6 +113,8 @@ def run(
     elif m == "rlimit":
         kw["preexec_fn"] = _rlimit_preexec(mem_mb, cpu_s or min(DEFAULT_CPU_S, timeout_s * 2))
     env = {"PATH": os.environ.get("PATH", ""), "HOME": str(cwd), "TMPDIR": str(cwd), "LANG": "C.UTF-8"}
+    # Blender (--factory-startup) haqiqiy foydalanuvchi profiliga (APPDATA / ~/.config) tegmasin — profil ish papkasida
+    env["BLENDER_USER_RESOURCES"] = str(cwd / ".blender-user")
     for k in ("SYSTEMROOT", "TEMP", "TMP", "WINDIR", "LD_LIBRARY_PATH", "FOAM_INST_DIR", "WM_PROJECT_DIR"):
         if k in os.environ:
             env[k] = os.environ[k]

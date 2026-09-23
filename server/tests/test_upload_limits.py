@@ -91,6 +91,12 @@ def test_sandbox_runs_and_times_out(tmp_path: Path):
         sandbox.run(["/yoq/bunday/dastur"], cwd=tmp_path, timeout_s=10)
 
 
+def test_sandbox_isolates_blender_profile(tmp_path: Path):
+    """CAD-08: konverter (Blender --factory-startup) foydalanuvchi profiliga emas, ish papkasiga yo'naltiriladi."""
+    r = sandbox.run([sys.executable, "-c", "import os; print(os.environ['BLENDER_USER_RESOURCES'])"], cwd=tmp_path, timeout_s=30)
+    assert Path(r.stdout.decode().strip()).parent == tmp_path
+
+
 def test_sandbox_mode_selection(monkeypatch):
     s = get_settings()
     sandbox.mode.cache_clear()
