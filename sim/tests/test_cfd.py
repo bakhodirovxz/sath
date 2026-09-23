@@ -39,7 +39,7 @@ def test_penstock_case_files(tmp_path):
     ):
         assert (tmp_path / f).exists(), f
     bm = (tmp_path / "system/blockMeshDict").read_text()
-    assert "type wedge" in bm and "type empty" in bm and "(10 0 0)" in bm
+    assert "type wedge" in bm and "type empty" in bm and "(10.0 0 0)" in bm
     assert "nutkRoughWallFunction" in (tmp_path / "0/nut").read_text()
     assert "simpleFoam" in (tmp_path / "system/controlDict").read_text()
     assert "\r" not in (tmp_path / "Allrun").read_bytes().decode()  # Linux uchun LF
@@ -154,3 +154,33 @@ def test_geometry_case_files(tmp_path):
         build_case({"kind": "geometry", "bbox": [[0, 0, 0], [0, 1, 1]]}, tmp_path)
     with pytest.raises(ValueError):
         build_case({"kind": "geometry", "bbox": [[0, 0, 0], [1, 1, 1]], "flow_axis": "z"}, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"kind": "penstock", "max_iterations": "1;\nfoo"},
+        {"kind": "spillway", "end_time_s": '#include "/data/secret.key"'},
+        {"kind": "geometry", "refinement": "2; #include"},
+        {"kind": "geometry", "flow_axis": "x;"},
+        {"kind": "penstock", "extra": 1},
+        {"kind": "spillway", "end_time_s": float("inf")},
+    ],
+)
+def test_build_case_rejects_raw_strings(tmp_path, params):
+    """SEC-01: build_case (worker yo'li) ham qat'iy sxemadan o'tadi — hech narsa yozilmaydi."""
+    with pytest.raises(ValueError):
+        build_case(params, tmp_path)
+    assert not any(tmp_path.iterdir())
+
+
+def test_case_objects_coerce_numbers(tmp_path):
+    """Sxemasiz (qo'lda) yaratilgan case ham xom satrni dictionary ga yoza olmaydi."""
+    with pytest.raises(ValueError):
+        SpillwayCase(end_time_s="1;\nfoo")
+    with pytest.raises(ValueError):
+        PenstockCase(max_iterations="400")
+    case = build_case({"kind": "spillway", "end_time_s": 12}, tmp_path)
+    cd = (tmp_path / "system/controlDict").read_text()
+    assert "endTime         12;" in cd and "writeInterval   12;" in cd
+    assert isinstance(case.end_time_s, float)

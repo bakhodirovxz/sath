@@ -27,6 +27,24 @@ def _dict(cls: str, obj: str, body: str) -> str:
     return HEADER.format(cls=cls, obj=obj) + body.strip() + "\n"
 
 
+def _f(v) -> float:
+    """OpenFOAM fayliga yoziladigan haqiqiy son (SEC-01): faqat int/float, chekli; satr/bool — xato.
+    Case obyekti qo'lda (sxemasiz) yaratilsa ham xom satr dictionary ga tushmaydi."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f"son kerak, berilgan: {type(v).__name__}")
+    out = float(v)
+    if not math.isfinite(out):
+        raise ValueError("chekli son kerak")
+    return out
+
+
+def _i(v) -> int:
+    """Butun son (iteratsiyalar, darajalar): faqat int (bool emas)."""
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise ValueError(f"butun son kerak, berilgan: {type(v).__name__}")
+    return int(v)
+
+
 @dataclass
 class PenstockCase:
     """Bosimli quvur: o'q-simmetrik wedge, simpleFoam, k-epsilon. Uzunlik x o'qi bo'ylab."""
@@ -39,6 +57,11 @@ class PenstockCase:
     max_iterations: int = 400
 
     kind: str = field(default="penstock", init=False)
+
+    def __post_init__(self) -> None:
+        for name in ("length_m", "diameter_m", "flow_m3s", "roughness_mm", "resolution"):
+            setattr(self, name, _f(getattr(self, name)))
+        self.max_iterations = _i(self.max_iterations)
 
     @property
     def inlet_velocity(self) -> float:
@@ -262,6 +285,20 @@ class SpillwayCase:
 
     kind: str = field(default="spillway", init=False)
 
+    def __post_init__(self) -> None:
+        for name in (
+            "crest_height_m",
+            "head_m",
+            "crest_length_m",
+            "upstream_m",
+            "downstream_m",
+            "resolution",
+            "end_time_s",
+        ):
+            setattr(self, name, _f(getattr(self, name)))
+        if self.unit_discharge_m2s is not None:
+            self.unit_discharge_m2s = _f(self.unit_discharge_m2s)
+
     @property
     def q(self) -> float:
         if self.unit_discharge_m2s is not None:
@@ -335,10 +372,10 @@ application     interFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         {self.end_time_s};
+endTime         {_f(self.end_time_s):g};
 deltaT          0.001;
 writeControl    adjustable;
-writeInterval   {self.end_time_s};
+writeInterval   {_f(self.end_time_s):g};
 purgeWrite      2;
 writeFormat     ascii;
 writePrecision  6;
@@ -563,6 +600,18 @@ class GeometryCase:
 
     kind: str = field(default="geometry", init=False)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.bbox, (list, tuple)) or len(self.bbox) != 2:
+            raise ValueError("Geometriya: bbox [[x0,y0,z0],[x1,y1,z1]] bo'lishi kerak")
+        self.bbox = [[_f(c) for c in corner] for corner in self.bbox]
+        self.velocity_ms = _f(self.velocity_ms)
+        self.resolution = _f(self.resolution)
+        self.refinement = _i(self.refinement)
+        self.max_iterations = _i(self.max_iterations)
+        if self.flow_axis not in ("x", "y"):  # faylga ta'sir qiladigan yagona matn — faqat ro'yxatdan
+            raise ValueError("Geometriya: oqim o'qi x yoki y")
+        self.submerged = bool(self.submerged)
+
     @property
     def size(self) -> list[float]:
         lo, hi = self.bbox
@@ -706,7 +755,7 @@ functions
     {{
         type forces; libs (forces); patches (body); rho rhoInf; rhoInf {RHO};
         CofR ({(float(lo[0]) + float(hi[0])) / 2} {(float(lo[1]) + float(hi[1])) / 2} {(float(lo[2]) + float(hi[2])) / 2});
-        writeControl timeStep; writeInterval {self.max_iterations};
+        writeControl timeStep; writeInterval {_i(self.max_iterations)};
     }}
 }}
 """,
@@ -831,6 +880,7 @@ touch DONE
 
 
 def _write_common_incompressible(case: Path, iterations: int) -> None:
+    iterations = _i(iterations)
     _w(
         case / "system/controlDict",
         _dict(
@@ -920,12 +970,17 @@ def _w(path: Path, text: str, executable: bool = False) -> None:
 
 
 def build_case(params: dict, case_dir: Path):
-    """JSON parametrlardan case obyekti yaratib, papkaga yozadi. Qaytaradi: case obyekti."""
-    kind = params.get("kind", "penstock")
-    cls = {"penstock": PenstockCase, "spillway": SpillwayCase, "geometry": GeometryCase}.get(kind)
-    if cls is None:
-        raise ValueError(f"Noma'lum CFD turi: {kind} (penstock|spillway|geometry)")
-    fields = {k: v for k, v in params.items() if k in cls.__dataclass_fields__ and k != "kind"}
+    """JSON parametrlardan case obyekti yaratib, papkaga yozadi. Qaytaradi: case obyekti.
+
+    Parametrlar avval qat'iy sxemadan o'tadi (SEC-01, `params.parse_params`) — API dan tashqari yo'l
+    (DB dagi eski ish, worker) ham tur/chegara tekshiruvisiz case yoza olmaydi. Xato — ValueError
+    (pydantic.ValidationError ham ValueError avlodi)."""
+    from .params import parse_params
+
+    parsed = parse_params(params)
+    cls = {"penstock": PenstockCase, "spillway": SpillwayCase, "geometry": GeometryCase}[parsed.kind]
+    data = parsed.model_dump()
+    fields = {k: v for k, v in data.items() if k in cls.__dataclass_fields__ and k != "kind"}
     case = cls(**fields)
     _validate(case)
     case.write(case_dir)

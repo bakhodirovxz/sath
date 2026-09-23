@@ -13,7 +13,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from ges_sim import catalog, custom, scenario
 from ges_sim.cfd import build_case, run_case
-from ges_sim.cfd.runner import collect_results
+from ges_sim.cfd.params import ValidationError as CfdValidationError
+from ges_sim.cfd.params import format_errors, parse_params
+from ges_sim.cfd.runner import CfdError, collect_results
 from pydantic import BaseModel, Field
 
 from .. import audit, jobs, ratelimit
@@ -113,7 +115,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
         if kind == "cfd":
             mode = cfd_mode or settings.cfd_mode
             if mode == "off":
-                raise ValueError("CFD o'chirilgan (GES_CFD_MODE=off)")
+                raise CfdError("CFD o'chirilgan (GES_CFD_MODE=off)")
             case_dir = _case_dir(job_id)
             case = build_case(params, case_dir)
             total = case.max_iterations if hasattr(case, "max_iterations") else case.end_time_s
@@ -136,7 +138,7 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
         ok, summary, err = True, result["summary"], ""
     except Exception as e:  # noqa: BLE001 — foydalanuvchiga xato matni ko'rsatiladi
         log.exception("sim job %s failed", job_id)
-        ok, summary, err = False, {}, str(e)[:4000]
+        ok, summary, err = False, {}, _job_error(kind, job_id, e)
     finally:
         lease.set()
     with SessionLocal() as db:
@@ -150,6 +152,17 @@ def run_job(job_id: int, cfd_mode: str | None = None) -> None:
         job.finished_at = utcnow()
         job.lease_until = None
         db.commit()
+
+
+def _job_error(kind: str, job_id: int, e: Exception) -> str:
+    """Foydalanuvchiga ko'rsatiladigan xato matni. CFD (SEC-01): ichki istisno matni (fayl yo'llari, solver
+    chiqishi, muhit) `job.error` ga tushmaydi — faqat xavfsiz `CfdError` xabari yoki umumiy matn + ish id;
+    tafsilot server jurnalida (`log.exception`) va `/sim/{id}/log` da."""
+    if kind != "cfd":
+        return str(e)[:4000]
+    if isinstance(e, CfdError):
+        return f"{e} (ish #{job_id})"
+    return f"CFD hisobi xato bilan tugadi (ish #{job_id}) — tafsilot: solver jurnali yoki server logi"
 
 
 @router.get("/sim/cfd-status")
@@ -251,6 +264,16 @@ def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Versiya shu modelga tegishli emas")
     params = dict(body.params)
     stl_info = None
+    if body.kind == "cfd":
+        # SEC-01: qat'iy sxema (tur, chegara, noma'lum maydon yo'q) — xato 422, case yozishdan oldin
+        try:
+            parse_params(params)
+        except CfdValidationError as e:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"CFD parametrlari xato: {format_errors(e)}"
+            ) from None
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
     try:  # tez validatsiya — xato bo'lsa darhol 400
         if body.kind == "hydro":
             _hydro_from_site(params, model.project.site)

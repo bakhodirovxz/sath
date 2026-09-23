@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import re
 import shutil
@@ -14,6 +15,11 @@ from pathlib import Path
 from .case import RHO, G, GeometryCase, PenstockCase, SpillwayCase
 
 DEFAULT_IMAGE = "opencfd/openfoam-default:2406"
+log = logging.getLogger("ges_sim.cfd")
+
+
+class CfdError(RuntimeError):
+    """Foydalanuvchiga ko'rsatsa bo'ladigan CFD xatosi (ichki yo'l, solver chiqishi, muhit matnisiz)."""
 
 
 def openfoam_available() -> str | None:
@@ -39,7 +45,7 @@ def run_case(
     Log dan "Time = X" o'qib on_progress(x/total, satr) chaqiradi. Xato — RuntimeError."""
     mode = mode or openfoam_available()
     if mode is None:
-        raise RuntimeError("OpenFOAM topilmadi: docker yoki lokal o'rnatma kerak")
+        raise CfdError("OpenFOAM topilmadi: docker yoki lokal o'rnatma kerak")
     case_dir = case_dir.resolve()
     if mode == "docker":
         cmd = [
@@ -67,14 +73,15 @@ def run_case(
             time.sleep(2)
             if time.time() - start > timeout_s:
                 proc.kill()
-                raise RuntimeError(f"CFD vaqt chegarasidan oshdi ({timeout_s}s)")
+                raise CfdError(f"CFD vaqt chegarasidan oshdi ({timeout_s}s)")
             p = _progress(case_dir, total)
             if on_progress and p > last:
                 on_progress(p, _last_time_line(case_dir))
                 last = p
     if not (case_dir / "DONE").exists():
-        tail = _tail(log_path)
-        raise RuntimeError("OpenFOAM xato bilan tugadi:\n" + tail)
+        # solver chiqishi foydalanuvchiga emas — server jurnaliga (u /sim/{id}/log da ham ko'rinadi)
+        log.error("OpenFOAM xato bilan tugadi (%s):\n%s", case_dir.name, _tail(log_path))
+        raise CfdError("OpenFOAM xato bilan tugadi — solver jurnaliga qarang")
     if on_progress:
         on_progress(1.0, "tugadi")
 
