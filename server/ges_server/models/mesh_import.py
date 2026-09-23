@@ -337,6 +337,9 @@ class DxfInfo:
     offset: tuple[float, float] | None = None
     extent: float | None = None
     linework: bool = False
+    inserts: int = 0  # yoyilgan INSERT (blok) lar soni (CAD-03)
+    skipped_2d: int = 0  # 3D faylda import qilinmagan 2D elementlar (chiziq, matn, o'lcham …)
+    skipped_types: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -359,15 +362,22 @@ def _load_dxf(
 ) -> tuple[list[tuple[str, np.ndarray, np.ndarray, tuple | None]], DxfInfo]:
     """DXF (AutoCAD): 3DFACE, POLYLINE (polyface/polymesh), MESH, SOLID → uchburchaklar; yopiq 2D konturlar
     (LWPOLYLINE/POLYLINE/CIRCLE) extrude_m > 0 bo'lsa balandlikka ko'tariladi. Qatlam (layer) = obyekt nomi;
-    3DSOLID/REGION (ACIS) o'qilmaydi — AutoCAD da 3DSOLID ni MESH ga aylantiring (MESHSMOOTH / EXPORT → FBX/OBJ)."""
+    3DSOLID/REGION (ACIS) o'qilmaydi — AutoCAD da 3DSOLID ni MESH ga aylantiring (MESHSMOOTH / EXPORT → FBX/OBJ).
+    INSERT (blok) lar rekursiv yoyiladi (transformatsiya bilan, CAD-03). 3D yuzali faylda 2D elementlar import
+    qilinmaydi, lekin soni DxfInfo.skipped_2d da qaytadi (jimgina yo'qolmaydi)."""
     from ezdxf import colors as dxfcolors
 
     doc = _read_dxf(path)
     msp = doc.modelspace()
     layers: dict[str, list[list[list[float]]]] = {}  # layer → [triangles (3 nuqta)]
     acis = 0
+    walk: dict = {}
+    skipped: dict[str, int] = {}
 
-    for e in msp:
+    def skip2d(t: str) -> None:
+        skipped[t] = skipped.get(t, 0) + 1
+
+    for e in cad_common.iter_dxf_entities(msp, stats=walk):
         t = e.dxftype()
         try:
             # 3DFACE (0-1-2-3), SOLID/TRACE (DXF da 0-1-3-2), MESH, polyface/polymesh → uchburchaklar (CAD-02)
@@ -386,20 +396,27 @@ def _load_dxf(
                     ]
                 elif t == "LWPOLYLINE":
                     if not e.closed:
+                        skip2d(t)
                         continue
                     z = e.dxf.elevation
                     ring = [(x, y, z) for x, y, *_ in e.get_points()]
                 else:
                     if not e.is_closed:
+                        skip2d(t)
                         continue
                     ring = [tuple(v.dxf.location) for v in e.vertices]
                 if len(ring) < 3:
                     continue
                 _extrude(layers.setdefault(e.dxf.layer, []), ring, extrude_m)
-            elif t in ("3DSOLID", "REGION", "BODY", "SURFACE"):
+            elif t in cad_common.DXF_ACIS_TYPES:
                 acis += 1
+            elif t in cad_common.DXF_2D_TYPES:
+                skip2d(t)
         except Exception:  # noqa: BLE001 — bitta buzuq element importni to'xtatmasin
             continue
+    info = DxfInfo(inserts=walk.get("insert", 0))
+    if layers and skipped:  # aralash fayl: 3D yuzalar olindi, 2D chiziqlar olinmadi — xabar beramiz
+        info.skipped_2d, info.skipped_types = sum(skipped.values()), dict(sorted(skipped.items()))
     if not layers:
         if acis:
             raise ValueError(
@@ -443,7 +460,6 @@ def _load_dxf(
         except Exception:  # noqa: BLE001
             col = None
         out.append((name, v, f, col))
-    info = DxfInfo()
     if offset is not None:
         info.offset, info.extent, info.linework = (offset[0], offset[1]), offset[2], True
     return out, info
@@ -668,6 +684,13 @@ def load_objects_ex(
             loaded_dxf, dxf_info = _load_dxf(src, extrude_m / scale)  # ko'tarish metrda → chizma birligi
             for name, v, f, col in loaded_dxf:
                 meshes.append((name, trimesh.Trimesh(vertices=v, faces=f, process=False), col))
+            if dxf_info.skipped_2d:
+                kinds = ", ".join(f"{k} {n}" for k, n in dxf_info.skipped_types.items())
+                info.warnings.append(
+                    f"DXF: 3D yuzalar bilan birga {dxf_info.skipped_2d} ta 2D element bor ({kinds}) — ular import "
+                    "qilinmadi. 2D chizmani alohida DXF qilib yuklang yoki yopiq konturlar uchun «balandlikka "
+                    "ko'tarish» ni kiriting"
+                )
             if dxf_info.linework and auto_unit and unit == "mm":
                 # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi: varaq (ramka) 200 mm dan
                 # kichik bo'lishi mumkin emas → bu metr

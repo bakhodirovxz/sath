@@ -337,7 +337,7 @@ def import_mesh_version(
                     raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Fayl juda katta")
                 fh.write(chunk)
         try:
-            objects = mesh_import.load_objects(tp, unit, y_up, merge, extrude_m=extrude_m)
+            objects, imp = mesh_import.load_objects_ex(tp, unit, y_up, merge, extrude_m=extrude_m)
             out = Path(tmp) / "import.ifc"
             info = drafts.build(src, objects, out, crs=crs_mod.from_project(model.project))
         except (ValueError, OSError) as e:
@@ -348,9 +348,12 @@ def import_mesh_version(
             ) from e
         with open(out, "rb") as fh:
             sha, fsize = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
-    return _version_from_import(
-        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": unit}
+    res = _version_from_import(
+        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": imp.unit}
     )
+    res["import_info"] = imp.to_dict()  # CAD-03/04: birlik manbasi, tashlab ketilgan 2D, ogohlantirishlar
+    res["warnings"] = imp.warnings
+    return res
 
 
 def _version_from_import(
