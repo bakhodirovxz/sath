@@ -203,3 +203,25 @@ def test_merge_stale_cr_409(client, users, mid, tmp_path):
     assert r.status_code == 409 and "eskirgan" in r.json()["detail"]
     assert client.get(f"/api/models/{mid}/published", headers=users["viewer"]).json()["id"] == v2["id"]
     assert client.get(f"/api/versions/{v1['id']}", headers=users["viewer"]).json()["state"] == "shared"
+
+
+# ---------------------------------------------------------------- VCS-05
+
+
+def test_published_and_archived_versions_immutable(client, users, mid, tmp_path):
+    v1, v2 = _two_versions(client, users, mid, tmp_path)
+    cr1 = _cr(client, users, mid, v1["id"])
+    assert client.post(f"/api/change-requests/{cr1['id']}/merge", headers=users["approver"]).status_code == 200
+    for body in ({"message": "boshqa"}, {"revision_code": "C05"}):
+        r = client.patch(f"/api/versions/{v1['id']}", json=body, headers=users["approver"])
+        assert r.status_code == 409, (body, r.text)
+    # yorliq (tag) va yaroqlilik kodi o'zgaruvchan
+    r = client.patch(f"/api/versions/{v1['id']}", json={"tag": "release-1", "suitability_code": "A2"}, headers=users["approver"])
+    assert r.status_code == 200 and r.json()["tag"] == "release-1" and r.json()["suitability_code"] == "A2"
+    cr2 = _cr(client, users, mid, v2["id"])
+    assert client.post(f"/api/change-requests/{cr2['id']}/merge", headers=users["approver"]).status_code == 200
+    assert client.get(f"/api/versions/{v1['id']}", headers=users["viewer"]).json()["state"] == "archived"
+    assert client.patch(f"/api/versions/{v1['id']}", json={"message": "x"}, headers=users["engineer"]).status_code == 409
+    # wip versiya izohi hali o'zgaradi
+    v3 = upload(client, users["engineer"], mid, make_ifc(tmp_path / "c.ifc", wall_names=("C",)), "v3").json()
+    assert client.patch(f"/api/versions/{v3['id']}", json={"message": "tuzatildi"}, headers=users["engineer"]).status_code == 200

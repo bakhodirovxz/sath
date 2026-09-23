@@ -475,10 +475,19 @@ class VersionPatch(BaseModel):
 
 @router.patch("/versions/{version_id}", response_model=VersionOut)
 def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: DB):
-    """Izoh (muallif yoki tasdiqlovchi) va yorliq/teg (tasdiqlovchi) — fayl o'zgarmaydi."""
+    """Izoh (muallif yoki tasdiqlovchi) va yorliq/teg (tasdiqlovchi) — fayl o'zgarmaydi.
+    VCS-05: published/archived versiya o'zgarmas — izoh va reviziya kodi 409 (yorliq/teg va yaroqlilik kodi
+    tasdiqlovchi uchun o'zgaruvchan qoladi)."""
     v = get_version_checked(db, version_id, user, Role.viewer)
     project_id = v.model.project_id
     approver = has_role(get_project_role(db, project_id, user), Role.approver)
+    if v.state in (VersionState.published, VersionState.archived):
+        frozen = [k for k in ("message", "revision_code") if getattr(body, k) is not None]
+        if frozen:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"v{v.number} {v.state.value} — o'zgarmas ({', '.join(frozen)} o'zgartirilmaydi); yorliq qo'yish mumkin",
+            )
     if body.message is not None:
         if v.author_id != user.id and not approver:
             raise HTTPException(
