@@ -37,8 +37,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-u
          && command -v dwg2dxf >/dev/null \
          || { echo "XATO: WITH_DWG=1, lekin LibreDWG (dwg2dxf) o'rnatilmadi — DWG siz obraz uchun WITH_DWG=0" >&2; exit 1; }; \
        fi \
-    && (if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender; fi) \
     && rm -rf /var/lib/apt/lists/*
+# WITH_BLENDER=1 — rasmiy Blender (CAD-08): Debian apt dagi blender eski (3.4) va 5.x .blend ni ochmaydi.
+# Versiya va sha256 pin qilingan; sha256 mos kelmasa build to'xtaydi. Yangilash: BLENDER_VERSION va
+# BLENDER_SHA256 ni birga o'zgartiring (https://download.blender.org/release/BlenderX.Y/blender-X.Y.Z.sha256,
+# qator `blender-X.Y.Z-linux-x64.tar.xz`). Korporativ TLS proksi: --build-arg BLENDER_CURL_OPTS=-k
+# (butunlikni sha256 kafolatlaydi). Ishonchsiz .blend `--factory-startup --disable-autoexec` bilan ochiladi
+# (mesh_import.py).
+ARG BLENDER_VERSION=5.2.2
+ARG BLENDER_SHA256=84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168
+ARG BLENDER_CURL_OPTS=""
+RUN if [ "$WITH_BLENDER" = "1" ]; then \
+      [ -n "$BLENDER_SHA256" ] || { echo "XATO: WITH_BLENDER=1 uchun BLENDER_SHA256 kerak" >&2; exit 1; }; \
+      apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils \
+        libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 libsm6 libgl1 libegl1 \
+      && curl -fsSL $BLENDER_CURL_OPTS -o /tmp/blender.tar.xz \
+         "https://download.blender.org/release/Blender${BLENDER_VERSION%.*}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
+      && echo "${BLENDER_SHA256}  /tmp/blender.tar.xz" | sha256sum -c - \
+      && mkdir -p /opt/blender && tar -xJf /tmp/blender.tar.xz -C /opt/blender --strip-components=1 \
+      && ln -s /opt/blender/blender /usr/local/bin/blender \
+      && blender -b --factory-startup --version | head -1 \
+      && rm -f /tmp/blender.tar.xz && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
+    fi
 WORKDIR /app
 COPY sim/ ./sim/
 COPY server/ ./server/

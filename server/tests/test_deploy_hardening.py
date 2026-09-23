@@ -226,16 +226,17 @@ def test_config_env_file_location_and_cfd_default(monkeypatch, tmp_path):
 
 
 def _run_block(dockerfile: str, marker: str) -> str:
-    """Dockerfile dagi `marker` li RUN buyrug'i (satr davomi `\` birlashtirilgan)."""
-    lines, block, inside = dockerfile.splitlines(), [], False
-    for ln in lines:
-        if ln.startswith("RUN ") and marker in "\n".join(lines[lines.index(ln):lines.index(ln) + 12]):
-            inside = True
-        if inside:
-            block.append(ln.rstrip().removesuffix("\\"))
+    """Dockerfile dagi `marker` li birinchi RUN buyrug'i (satr davomlari birlashtirilgan, `RUN ` siz)."""
+    blocks, cur = [], None
+    for ln in dockerfile.splitlines():
+        if cur is None and ln.startswith("RUN "):
+            cur = []
+        if cur is not None:
+            cur.append(ln.rstrip().removesuffix("\\"))
             if not ln.rstrip().endswith("\\"):
-                break
-    return " ".join(block)[4:]
+                blocks.append(" ".join(cur)[4:])
+                cur = None
+    return next(b for b in blocks if marker in b)
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="sh yo'q")
@@ -260,3 +261,19 @@ def test_health_reports_dwg(client, monkeypatch):
     main._DWG.clear()
     monkeypatch.setattr(mesh_import, "tools", lambda: {"dwg2dxf": "/usr/bin/dwg2dxf", "oda": None})
     assert client.get("/api/health").json()["dwg"] is True
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh yo'q")
+def test_blender_is_official_pinned_tarball():
+    """CAD-08: WITH_BLENDER=1 — apt dagi eski blender emas, rasmiy 5.2.x tarball, sha256 tekshiruvi bilan."""
+    text = (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
+    assert "install -y --no-install-recommends blender" not in text
+    import re
+
+    ver = re.search(r"^ARG BLENDER_VERSION=(\d+)\.(\d+)\.(\d+)$", text, re.M)
+    sha = re.search(r"^ARG BLENDER_SHA256=([0-9a-f]{64})$", text, re.M)
+    assert ver and (int(ver[1]), int(ver[2])) >= (5, 2) and sha
+    cmd = _run_block(text, "BLENDER_SHA256")
+    assert "sha256sum -c -" in cmd and "download.blender.org" in cmd
+    r = subprocess.run(["sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
