@@ -244,3 +244,22 @@ def test_binaries_in_git_lfs_and_no_local_user_paths():
         p = ROOT / f
         if p.is_file() and bad.search(p.read_text(encoding="utf-8", errors="replace")):
             raise AssertionError(f"lokal foydalanuvchi yo'li: {f}")
+
+
+def test_desktop_tests_have_no_hardcoded_admin_password(monkeypatch):
+    """Desktop testlari admin parolini muhitdan oladi (GES_TEST_PASSWORD), yo'q bo'lsa tushunarli xato."""
+    import importlib
+
+    import pytest
+
+    for p in (ROOT / "desktop" / "tests").rglob("*"):
+        if p.suffix in (".py", ".ps1") and p.name != "test_sath_pure.py":
+            assert "admin123" not in p.read_text(encoding="utf-8-sig"), p
+    sys.path.insert(0, str(ROOT / "desktop" / "tests" / "sath_tests"))
+    creds = importlib.import_module("creds")
+    monkeypatch.delenv("GES_TEST_PASSWORD", raising=False)
+    monkeypatch.delenv("GES_ADMIN_PASSWORD", raising=False)
+    with pytest.raises(RuntimeError, match="GES_TEST_PASSWORD"):
+        creds.admin_password()
+    monkeypatch.setenv("GES_TEST_PASSWORD", "x-parol")
+    assert creds.admin_password() == "x-parol"

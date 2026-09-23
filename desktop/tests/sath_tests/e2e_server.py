@@ -4,6 +4,7 @@ issue + ko'rinish, taqriz ro'yxati, sim katalogi, monitoring tick. Bonsai + Free
 import os
 
 import bpy
+from creds import admin_password
 
 
 def run(ctx):
@@ -13,7 +14,7 @@ def run(ctx):
     p = prefs.prefs()
     p.server, p.username = url, "admin"
     s = bpy.context.scene.ges
-    bpy.context.window_manager.sath_secret.password = "admin123"
+    bpy.context.window_manager.sath_secret.password = admin_password()
     assert bpy.ops.sath.connect() == {"FINISHED"}, s.status
     assert session.is_logged_in() and bpy.context.window_manager.sath_secret.password == ""
     c = session.client()
