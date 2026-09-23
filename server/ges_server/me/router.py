@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..orm import (
     AlarmEvent,
+    AlarmState,
     ChangeRequest,
     Command,
     CommandStatus,
@@ -295,7 +296,7 @@ def project_timeline(
     alarms: Literal["all", "high", "none"] = "high",
 ):
     """Versiyalar, CR (ochildi / nashr / rad), muammolar, ish buyruqlari, alarmlar — bitta o'qda. `alarms=high` —
-    faqat kritik va yuqori ustuvorlik (toshqin vaqt chizig'ini bosib ketmasin), `all` — hammasi."""
+    faqat kritik va yuqori ustuvorlik (stale siz) (toshqin vaqt chizig'ini bosib ketmasin), `all` — hammasi."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
@@ -401,8 +402,8 @@ def project_timeline(
             .filter(AlarmEvent.project_id == project_id, AlarmEvent.started_at >= since)
             .filter(AlarmEvent.suppressed.is_(None))
         )
-        if alarms == "high":
-            q = q.filter(Sensor.priority.in_(("critical", "high")))
+        if alarms == "high":  # muhim: kritik/yuqori, aloqa yo'qligi (stale) emas — vaqt chizig'ini bosib ketmasin
+            q = q.filter(Sensor.priority.in_(("critical", "high")), AlarmEvent.state != AlarmState.stale)
         for e, s in q.order_by(AlarmEvent.started_at.desc()).limit(limit):
             items.append(
                 TimelineItem(

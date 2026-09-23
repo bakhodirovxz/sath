@@ -84,7 +84,14 @@ def test_work_order_and_command_approval_tasks(client, users, operator):
     assert tasks(client, operator)["command_approvals"] == []
     assert tasks(client, users["viewer"])["command_approvals"] == []
     # ro'yxatdagi foydalanuvchi haqiqatan tasdiqlay oladi (ruxsatlar serverdagi qoidaga mos)
-    who = [h for h in (users["engineer"], users["approver"], users["admin"]) if any(c["id"] == cid for c in tasks(client, h)["command_approvals"])]
+    candidates = [users["engineer"], users["approver"], users["admin"]]
+    # SCADA-01 (asosiy tarmoq): ikkinchi imzo — smena boshlig'i (rol bo'lmagan tarmoqda PUT 422 qaytaradi)
+    from conftest import login, make_user
+
+    sid = make_user(client, users["admin"], "supervisor")
+    if client.put(f"/api/projects/{pid}/members", json={"user_id": sid, "role": "shift_supervisor"}, headers=users["admin"]).status_code == 200:
+        candidates.insert(0, login(client, "supervisor", "pass1234"))
+    who = [h for h in candidates if any(c["id"] == cid for c in tasks(client, h)["command_approvals"])]
     assert who, "tasdiqlay oladigan hech kim ro'yxatda yo'q"
     item = next(c for c in tasks(client, who[0])["command_approvals"] if c["id"] == cid)
     assert item["sensor_key"] == "GATE1.SP" and item["value"] == 55 and item["unit"] == "%"
@@ -117,3 +124,27 @@ def test_timeline(client, users, model_id, ifc_file, operator):
     assert len(client.get(f"/api/projects/{pid}/history", params={"limit": 2}, headers=users["viewer"]).json()["items"]) == 2
     assert client.get(f"/api/projects/{pid}/history", headers=users["outsider"]).status_code == 403
     assert client.get("/api/projects/9999/history", headers=users["viewer"]).status_code == 404
+
+
+def test_timeline_alarm_filter(client, users):
+    """alarms=high — faqat kritik/yuqori va aloqa yo'qligi (stale) emas; all — hammasi; none — alarmsiz."""
+    from ges_server.db import SessionLocal
+    from ges_server.orm import AlarmEvent, AlarmState
+
+    pid = users["project_id"]
+    mk = lambda key, prio: client.post(  # noqa: E731
+        f"/api/projects/{pid}/sensors", json={"key": key, "name": key, "kind": "level", "unit": "m", "priority": prio}, headers=users["engineer"]
+    ).json()["id"]
+    crit, low = mk("RES.H", "critical"), mk("AUX.T", "low")
+    with SessionLocal() as db:
+        db.add_all([
+            AlarmEvent(project_id=pid, sensor_id=crit, state=AlarmState.highhigh, value=906.0),
+            AlarmEvent(project_id=pid, sensor_id=crit, state=AlarmState.stale, value=None),
+            AlarmEvent(project_id=pid, sensor_id=low, state=AlarmState.high, value=1.0),
+        ])
+        db.commit()
+    get = lambda mode: [i for i in client.get(f"/api/projects/{pid}/history", params={"alarms": mode}, headers=users["viewer"]).json()["items"] if i["kind"] == "alarm"]  # noqa: E731
+    high = get("high")
+    assert [(i["title"], i["severity"], i["detail"]) for i in high] == [("RES.H: highhigh", "critical", "906 m")]
+    assert len(get("all")) == 3
+    assert get("none") == []
