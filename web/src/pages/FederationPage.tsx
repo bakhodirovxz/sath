@@ -33,7 +33,12 @@ export default function FederationPage() {
     api.federationIfc(id).then((bytes) => { if (!dead) return v.loadIfc(bytes, fed.name); }).catch((e) => setError(e instanceof Error ? e.message : "Xato")).finally(() => setBusy(false));
     return () => { dead = true; };
   }, [ready, viewer, fed, id]);
-  const load = useCallback(() => api.federationClashes(id).then(setRep).catch((e) => setError(e.message)), [id]);
+  // Og'ir hisob serverda navbatda (202) — "hisoblanmoqda…" holati, xato emas
+  const [waiting, setWaiting] = useState<number | null>(null);
+  const load = useCallback(() => {
+    setWaiting(0);
+    return api.federationClashes(id, 0, true, (p) => setWaiting(p.waitingMs)).then(setRep).catch((e: Error) => setError(e.message)).finally(() => setWaiting(null));
+  }, [id]);
   useEffect(() => { void load(); }, [load]);
 
   const rows = useMemo(() => (rep?.clashes ?? []).filter((c) => !kind || c.kind === kind), [rep, kind]);
@@ -57,6 +62,7 @@ export default function FederationPage() {
         <ErrorBoundary name="Federatsiya to'qnashuvlari">
           <div className="dock-body overflow-auto p-8" data-testid="fed-panel">
             {error && <p className="error">{error}</p>}
+            {waiting != null && <p className="muted small" role="status" data-testid="fed-clash-progress">To'qnashuvlar hisoblanmoqda…{waiting > 0 ? ` (navbatda, ${Math.round(waiting / 1000)} s)` : ""}</p>}
             {fed && (
               <div className="panel">
                 <b>{fed.name}</b> {fed.description && <span className="dim small">{fed.description}</span>}

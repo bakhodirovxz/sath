@@ -871,7 +871,8 @@ export const api = {
   createFederation: (projectId: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/projects/${projectId}/federations`, { method: "POST", body: json(body) }),
   updateFederation: (id: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/federations/${id}`, { method: "PUT", body: json(body) }),
   deleteFederation: (id: number) => request<void>(`/api/federations/${id}`, { method: "DELETE" }),
-  federationClashes: (id: number, tolerance = 0, crossOnly = true) => request<ClashReport>(`/api/federations/${id}/clashes?tolerance=${tolerance}&cross_only=${crossOnly}`),
+  /** 202 {job_id} + Retry-After — navbatda hisoblanmoqda (kutish holati, xato emas); 409 — a'zo fayl yo'q / hisob xatosi */
+  federationClashes: (id: number, tolerance = 0, crossOnly = true, onProgress?: ReadyProgress) => requestReady<ClashReport>(`/api/federations/${id}/clashes?tolerance=${tolerance}&cross_only=${crossOnly}`, onProgress),
   async federationIfc(id: number): Promise<Uint8Array> {
     const res = await fetch(`/api/federations/${id}/ifc`, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
     if (!res.ok) throw new ApiError(res.status, "Federatsiya IFC yuklab bo'lmadi");

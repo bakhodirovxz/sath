@@ -29,6 +29,18 @@ describe("OPS-03: og'ir hisob navbatda (202)", () => {
     await expect(p).resolves.toMatchObject({ element_count: 5 });
     expect(progress).toEqual([7, 7]);
   });
+  it("federatsiya to'qnashuvlari: 202 + Retry-After → kutish, keyin natija; 409 — xato", async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(() => (++n < 2 ? json(202, { job_id: 3, status: "queued" }) : json(200, { clashes: [], hard: 0 }))));
+    const seen: (number | null)[] = [];
+    const p = api.federationClashes(5, 0, true, (x) => seen.push(x.jobId));
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(p).resolves.toMatchObject({ hard: 0 });
+    expect(seen).toEqual([3]);
+    vi.stubGlobal("fetch", vi.fn(() => json(409, { detail: "A'zo model fayli topilmadi" })));
+    await expect(api.federationClashes(5)).rejects.toMatchObject({ status: 409 });
+  });
   it("429 — kutib qayta so'raydi", async () => {
     vi.useFakeTimers();
     let n = 0;
