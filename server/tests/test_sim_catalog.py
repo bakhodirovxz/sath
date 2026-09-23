@@ -37,7 +37,7 @@ def test_generic_kind_job_runs(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "water_hammer", "params": {"close_s": 3, "sim_s": 10}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 202, r.text
     job = r.json()
@@ -52,11 +52,11 @@ def test_generic_kind_job_runs(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "water_hammer", "params": {"length_m": -5}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 400 and "kamida" in r.json()["detail"]
     r = client.post(
-        f"/api/models/{model_id}/sim", json={"kind": "nope", "params": {}}, headers=users["viewer"]
+        f"/api/models/{model_id}/sim", json={"kind": "nope", "params": {}}, headers=users["engineer"]
     )
     assert r.status_code == 400
 
@@ -166,7 +166,7 @@ def test_custom_template_crud_and_job(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "custom", "params": {"template_id": tid, "inputs": {"Q_in": 200}}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 202, r.text
     job = r.json()
@@ -178,14 +178,14 @@ def test_custom_template_crud_and_job(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "custom", "params": {"template": ex}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 202
     assert (
         client.post(
             f"/api/models/{model_id}/sim",
             json={"kind": "custom", "params": {}},
-            headers=users["viewer"],
+            headers=users["engineer"],
         ).status_code
         == 400
     )

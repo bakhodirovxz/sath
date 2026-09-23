@@ -20,7 +20,7 @@ def test_budget_exceeded_is_400_with_advice(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "water_hammer", "params": {"length_m": 20, "reaches": 200, "sim_s": 120}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 400, r.text
     assert "chegara" in r.json()["detail"] and "reaches" in r.json()["detail"]
@@ -31,7 +31,7 @@ def test_budget_exceeded_is_400_with_advice(client, users, model_id):
         ("transformer", {"days": 3}),
     ):
         r = client.post(
-            f"/api/models/{model_id}/sim", json={"kind": kind, "params": params}, headers=users["viewer"]
+            f"/api/models/{model_id}/sim", json={"kind": kind, "params": params}, headers=users["engineer"]
         )
         assert r.status_code == 202, (kind, r.text)  # oddiy diapazon byudjetga sig'adi
 
@@ -44,16 +44,16 @@ def test_per_user_active_quota_429(client, users, model_id, monkeypatch):
     monkeypatch.setattr(jobs.runner, "_run_sim", lambda job_id: None)
     for _ in range(2):
         r = client.post(
-            f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["viewer"]
+            f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["engineer"]
         )
         assert r.status_code == 202, r.text
     r = client.post(
-        f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["viewer"]
+        f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["engineer"]
     )
     assert r.status_code == 429
     # boshqa foydalanuvchi kvotasi alohida
     r = client.post(
-        f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["engineer"]
+        f"/api/models/{model_id}/sim", json={"kind": "seismic", "params": {}}, headers=users["approver"]
     )
     assert r.status_code == 202
 
@@ -67,3 +67,23 @@ def test_isolated_run_returns_result_and_times_out():
     assert time.time() - t < 20  # jarayon o'ldirildi, 30 s kutilmadi
     with pytest.raises(RuntimeError, match="ValueError"):
         compute.run_isolated("seismic", {"ground": "Z"}, timeout_s=60)
+
+
+def test_viewer_cannot_start_sim_403(client, users, model_id):
+    """SIM-02: ishga tushirish (analitik, maxsus, CFD) — muhandis+; ko'ruvchi faqat natijani ko'radi."""
+    for kind, params in (
+        ("seismic", {}),
+        ("custom", {"template": {"steps": 1, "step": [{"target": "x", "expr": "1"}]}}),
+    ):
+        r = client.post(
+            f"/api/models/{model_id}/sim", json={"kind": kind, "params": params}, headers=users["viewer"]
+        )
+        assert r.status_code == 403, (kind, r.text)
+
+
+def test_isolated_child_memory_limit():
+    """SIM-02: bola jarayonga xotira chegarasi (POSIX RLIMIT_AS / Windows Job Object)."""
+    out = compute.run_isolated("_alloc", {"mb": 16}, timeout_s=120, mem_mb=512)
+    assert out["summary"]["bytes"] == 16 * 1024 * 1024
+    with pytest.raises(RuntimeError, match="MemoryError|xotira"):
+        compute.run_isolated("_alloc", {"mb": 2048}, timeout_s=120, mem_mb=512)

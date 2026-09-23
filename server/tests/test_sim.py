@@ -30,7 +30,7 @@ def test_example_params_and_run(client, users, model_id):
     r = client.post(
         f"/api/models/{model_id}/sim",
         json={"name": "Sinov", "params": params},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert r.status_code == 202, r.text
     job = r.json()
@@ -55,10 +55,10 @@ def test_example_params_and_run(client, users, model_id):
 def test_invalid_params_rejected_immediately(client, users, model_id):
     params = client.get("/api/sim/example", headers=users["viewer"]).json()
     params["units"] = []
-    r = client.post(f"/api/models/{model_id}/sim", json={"params": params}, headers=users["viewer"])
+    r = client.post(f"/api/models/{model_id}/sim", json={"params": params}, headers=users["engineer"])
     assert r.status_code == 400
     assert "agregat" in r.json()["detail"].lower()
-    r = client.post(f"/api/models/{model_id}/sim", json={"params": {}}, headers=users["viewer"])
+    r = client.post(f"/api/models/{model_id}/sim", json={"params": {}}, headers=users["engineer"])
     assert r.status_code == 400
 
 
@@ -114,7 +114,7 @@ def test_cfd_status_and_validation(client, users, model_id):
     bad = client.post(
         f"/api/models/{model_id}/sim",
         json={"kind": "boshqa", "params": {}},
-        headers=users["viewer"],
+        headers=users["engineer"],
     )
     assert bad.status_code == 400
 
