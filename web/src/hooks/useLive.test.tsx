@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveMessage, Sensor } from "../api/client";
-import { NO_RETRY_CODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, applyLiveMessage, backoffMs, liveState, useLive, type LiveState } from "./useLive";
+import { NO_RETRY_CODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, applyLiveMessage, backoffMs, liveState, liveStats, parseLiveFrame, useLive, type LiveState } from "./useLive";
 
 /** Soxta WebSocket: ochish/xabar/yopishni test boshqaradi. */
 class FakeWS {
@@ -16,6 +16,7 @@ class FakeWS {
   constructor() { FakeWS.instances.push(this); }
   open() { this.onopen?.(); }
   send(m: object) { this.onmessage?.({ data: JSON.stringify(m) }); }
+  raw(data: string) { this.onmessage?.({ data }); }
   close(code = 1006) { if (this.closed) return; this.closed = true; this.onclose?.({ code }); }
 }
 
@@ -47,6 +48,21 @@ describe("liveState / backoff (F4)", () => {
     const b = applyLiveMessage(a, { type: "reading", sensor_id: 2, value: 7, ts: "t2", alarm: "ok", stale: false });
     expect(b[1]).toMatchObject({ last_value: 7, stale: false });
     expect(applyLiveMessage(b, { type: "ping" })).toBe(b);
+  });
+});
+
+describe("parseLiveFrame (FE-02)", () => {
+  it("JSON emas / noma'lum tur — null va hisoblanadi; to'g'ri kadr o'tadi", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const before = liveStats.badFrames;
+    expect(parseLiveFrame("{buzuq")).toBeNull();
+    expect(parseLiveFrame('{"type":"nimadir"}')).toBeNull();
+    expect(parseLiveFrame("null")).toBeNull();
+    expect(parseLiveFrame(new ArrayBuffer(2))).toBeNull();
+    expect(liveStats.badFrames - before).toBe(4);
+    expect(warn).toHaveBeenCalledTimes(1); // jurnal cheklangan (10 s da bir marta)
+    expect(parseLiveFrame('{"type":"ping"}')).toEqual({ type: "ping" });
+    warn.mockRestore();
   });
 });
 
@@ -85,6 +101,22 @@ describe("useLive hook", () => {
     expect(FakeWS.instances.length).toBe(2);
     act(() => { FakeWS.instances[1].open(); FakeWS.instances[1].send({ type: "ping" }); });
     expect(last()).toBe("LIVE");
+  });
+
+  it("buzuq kadr oqimni to'xtatmaydi: keyingi xabarlar qo'llanadi (FE-02)", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const seen: LiveMessage[] = [];
+    function P2() {
+      const [sensors, setSensors] = useState<Sensor[]>([mk(1)]);
+      useLive(1, setSensors, (m) => seen.push(m), { socket: () => new FakeWS() as unknown as WebSocket, tickMs: 500 });
+      return <span data-v={String(sensors[0].last_value)} />;
+    }
+    act(() => { root.render(<P2 />); });
+    const ws = FakeWS.instances[0];
+    act(() => { ws.open(); ws.raw("<html>502 Bad Gateway"); ws.send({ type: "reading", sensor_id: 1, value: 9, ts: "t", alarm: "ok" }); ws.send({ type: "command", command: { id: 1 } }); });
+    expect(el.querySelector("span")!.getAttribute("data-v")).toBe("9");
+    expect(seen.map((m) => m.type)).toEqual(["reading", "command"]);
+    expect(ws.closed).toBe(false);
   });
 
   it("ping xabari LIVE ni saqlaydi; 4401 yopilishida qayta urinmaydi", () => {

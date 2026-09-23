@@ -26,6 +26,29 @@ export function backoffMs(attempt: number, rnd: () => number = Math.random): num
   return Math.round(base * jitter);
 }
 
+/** Buzuq kadrlar hisoblagichi (FE-02): diagnostika (L4) va testlar uchun. */
+export const liveStats = { badFrames: 0, lastBadAt: 0 };
+const LIVE_TYPES = new Set(["snapshot", "reading", "alarm", "command", "journal", "ping"]);
+
+/** Kadrni xavfsiz tahlil qilish: JSON emas yoki `type` noma'lum — null (hisoblanadi, jurnalga — 10 s da bir marta).
+ * Bitta buzuq kadr butun oqimni (onmessage istisnosi) to'xtatib qo'ymaydi. */
+export function parseLiveFrame(data: unknown): LiveMessage | null {
+  let m: unknown;
+  try {
+    m = typeof data === "string" ? JSON.parse(data) : null;
+  } catch {
+    m = null;
+  }
+  if (m && typeof m === "object" && LIVE_TYPES.has((m as { type?: string }).type ?? "")) return m as LiveMessage;
+  liveStats.badFrames++;
+  const now = Date.now();
+  if (now - liveStats.lastBadAt > 10_000) {
+    liveStats.lastBadAt = now;
+    console.warn(`[live] buzuq kadr tashlab yuborildi (jami ${liveStats.badFrames}):`, typeof data === "string" ? data.slice(0, 120) : typeof data);
+  }
+  return null;
+}
+
 /** Xabarni sensor ro'yxatiga qo'llash (snapshot/reading): value, ts, alarm, stale, quality. */
 export function applyLiveMessage(prev: Sensor[], m: LiveMessage): Sensor[] {
   if (m.type === "snapshot" && m.sensors) {
@@ -81,8 +104,9 @@ export function useLive(
       ws = sock;
       ws.onopen = () => { open = true; lastMsgAt = Date.now(); attempt = 0; update(); };
       ws.onmessage = (ev) => {
-        lastMsgAt = Date.now();
-        const m = JSON.parse(ev.data) as LiveMessage;
+        lastMsgAt = Date.now(); // buzuq kadr ham "aloqa bor" belgisi — lekin qo'llanmaydi
+        const m = parseLiveFrame(ev.data);
+        if (!m) { update(); return; }
         if (m.type === "snapshot" || m.type === "reading") setSensors((prev) => applyLiveMessage(prev, m));
         if (m.type === "ping") { try { ws?.send("pong"); } catch { /* yopilmoqda */ } } // L4: bo'sh turish chegarasi uchun javob
         else cb.current?.(m);
