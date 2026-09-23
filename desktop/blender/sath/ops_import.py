@@ -251,6 +251,8 @@ def import_mesh(
     from .shared import assimp_load
 
     path = Path(path)
+    if not assimp_load.available():  # CAD-09: assimp-py wheel faqat Windows uchun — boshqa platformada
+        return _import_mesh_native(context, path, report, assign_ifc)
     res = cad_read.resolve(path, unit, axis, default_unit="m")
     if report is not None:
         report.extend(res.warnings)
@@ -276,6 +278,35 @@ def import_mesh(
     if assign_ifc:
         assign_imported(created, report)
     return n
+
+
+NATIVE_IMPORTERS = {".fbx": "import_scene.fbx", ".obj": "wm.obj_import"}
+
+
+def _import_mesh_native(context, path: Path, report: list | None, assign_ifc: bool) -> int:
+    """assimp-py yo'q (Linux/macOS): FBX/OBJ — Blender ning o'z importeri (birlik/o'qni o'zi hisoblaydi), nomdagi
+    "[GUID]" → sath_guid; boshqa formatlar — tushunarli xato."""
+    op = NATIVE_IMPORTERS.get(path.suffix.lower())
+    if op is None:
+        raise ImportError(
+            f"assimp-py bu platformada yo'q — {path.suffix.upper()} ni FBX/OBJ/glTF ga eksport qilib oching"
+        )
+    before = set(bpy.data.objects)
+    mod, name = op.split(".")
+    getattr(getattr(bpy.ops, mod), name)(filepath=str(path))
+    guids = cad_read.file_guids(path)
+    created = []
+    for ob in [o for o in bpy.data.objects if o not in before]:
+        clean, guid = cad_read.name_and_guid(ob.name, guids)
+        if guid:
+            ob["sath_guid"] = guid
+            ob.name = clean
+        created.append(ob)
+    if report is not None:
+        report.append("assimp-py yo'q — Blender importeri ishlatildi")
+    if assign_ifc:
+        assign_imported(created, report)
+    return len([o for o in created if o.type == "MESH"])
 
 
 class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
@@ -333,8 +364,8 @@ class SATH_OT_import_mesh(bpy.types.Operator, ImportHelper):
         warnings: list[str] = []
         try:
             n = import_mesh(context, Path(self.filepath), self.unit, self.axis, warnings, self.assign_ifc)
-        except ImportError:
-            self.report({"ERROR"}, "assimp-py o'rnatilmagan (extension wheel)")
+        except ImportError as e:
+            self.report({"ERROR"}, str(e) or "assimp-py o'rnatilmagan (extension wheel)")
             return {"CANCELLED"}
         except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Import xatosi: {e}")

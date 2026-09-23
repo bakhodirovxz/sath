@@ -8,9 +8,16 @@ type = "add-on"
 blender_version_min = "5.2.0"
 license = ["SPDX:MIT"]
 tags = ["Import-Export", "Object"]
+# DXF (ezdxf, sof Python) — barcha platformalarda; assimp-py (FBX/3DS/LWO …) hozircha faqat Windows —
+# boshqa platformada FBX/OBJ Blender ning o'z importeri bilan ochiladi (ops_import). FreeCAD dvigateli ixtiyoriy.
+platforms = ["windows-x64", "linux-x64", "macos-arm64"]
 wheels = [
-  "./wheels/ezdxf-1.4.4-cp313-cp313-win_amd64.whl",
+  "./wheels/ezdxf-1.4.4-py3-none-any.whl",
   "./wheels/pyparsing-3.3.2-py3-none-any.whl",
   "./wheels/typing_extensions-4.16.0-py3-none-any.whl",
   "./wheels/assimp_py-1.2.0-cp313-cp313-win_amd64.whl",
 ]
+
+[permissions]
+files = "DXF, DWG, FBX va IFC fayllarini o'qish va yozish, lokal kesh"
+network = "Sath serveriga ulanish: versiyalar, taqriz, monitoring"

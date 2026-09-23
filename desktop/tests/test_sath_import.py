@@ -204,3 +204,50 @@ def test_read_dxf_without_freecad(tmp_path):
     assert sc.colors["TOGON"] == (1.0, 0.0, 0.0) and sc.stats["insert"] == 1
     assert not sc.warnings
     assert sorted(p.name for p in tmp_path.iterdir()) == ["plan.dxf", "w"]  # foydalanuvchi papkasiga yozilmadi
+
+
+# --- CAD-09: extension manifest --------------------------------------------------------------------------------
+
+ADDON = ROOT / "desktop" / "blender" / "sath"
+
+
+def _manifest() -> dict:
+    try:
+        import tomllib
+    except ImportError:  # Python 3.10
+        tomllib = pytest.importorskip("tomli")
+    return tomllib.loads((ADDON / "blender_manifest.toml").read_text(encoding="utf-8"))
+
+
+def test_manifest_platforms_wheels_permissions():
+    m = _manifest()
+    assert set(m["platforms"]) == {"windows-x64", "linux-x64", "macos-arm64"}
+    perms = m["permissions"]
+    assert set(perms) == {"files", "network"}
+    for reason in perms.values():  # Blender qoidasi: ≤ 64 belgi, nuqta bilan tugamaydi
+        assert 0 < len(reason) <= 64 and not reason.endswith(".")
+    names = [Path(w).name for w in m["wheels"]]
+    for w in m["wheels"]:
+        assert (ADDON / w).is_file(), w
+    # DXF hamma platformada: ezdxf sof Python wheel; platformaga bog'liq wheel lar faqat ixtiyoriy (assimp)
+    assert any(n.startswith("ezdxf-") and n.endswith("-py3-none-any.whl") for n in names)
+    for n in names:
+        if not n.endswith("-none-any.whl"):
+            assert n.startswith("assimp_py-") and n.endswith("win_amd64.whl"), n
+    # wheels/ papkasida manifestga kirmagan ortiqcha fayl yo'q
+    assert sorted(p.name for p in (ADDON / "wheels").glob("*.whl")) == sorted(names)
+
+
+def test_manifest_validates_with_blender(tmp_path):
+    import os
+    import subprocess
+
+    blender = Path(os.environ.get("GES_BLENDER") or Path.home() / "Tools" / "blender-5.2" / "blender.exe")
+    if not blender.is_file():
+        pytest.skip("Blender yo'q (GES_BLENDER)")
+    r = subprocess.run(
+        [str(blender), "--command", "extension", "validate", str(ADDON)],
+        capture_output=True, text=True, timeout=300,
+        env={**os.environ, "BLENDER_USER_RESOURCES": str(tmp_path)},  # foydalanuvchi profiliga tegmaydi
+    )  # fmt: skip
+    assert "Success parsing TOML" in r.stdout + r.stderr, r.stdout[-2000:] + r.stderr[-2000:]
