@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     live_backplane: str = "auto"
     # Parol siyosati (NIST 800-63B): minimal uzunlik; bloklash ro'yxati va login tekshiruvi doimiy
     password_min_length: int = 8
+    password_min_length_privileged: int = 12  # AUTH-01: administrator va tasdiqlovchi uchun
     database_url: str = "sqlite:///./data/ges.db"
     # Startda `alembic upgrade head` avtomatik; false bo'lsa sxema head da emasligi xato beradi
     auto_migrate: bool = True
@@ -172,6 +173,7 @@ class Settings(BaseSettings):
     rate_ingest_per_min: int = 600  # loyiha bo'yicha (POST readings/soe so'rovlar soni, qatorlar emas)
     rate_commands_per_min: int = 60  # foydalanuvchi bo'yicha (select/execute)
     rate_sim_per_min: int = 20  # foydalanuvchi bo'yicha (sim ishlarini yaratish)
+    rate_derived_per_min: int = 10  # foydalanuvchi bo'yicha (qto/clash/fragments yangi hisoblari, OPS-03)
     # Teskari proksi (Caddy) ortida X-Forwarded-For dan klient IP olinadi; to'g'ridan-to'g'ri ochiq serverda false!
     rate_trust_forwarded: bool = False
     # Hisobni bloklash: shuncha ketma-ket noto'g'ri parol/MFA → shuncha daqiqa kirish yo'q (DB da, umumiy)

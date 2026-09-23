@@ -651,6 +651,7 @@ def asset_document_upload(asset_id: int, file: UploadFile, user: CurrentUser, db
 def asset_document_file(asset_id: int, doc_id: int, user: CurrentUser, db: DB):
     from fastapi.responses import FileResponse
 
+    from ..downloads import content_disposition
     from ..models import storage
 
     _asset_checked(db, asset_id, user, Role.viewer)
@@ -658,7 +659,9 @@ def asset_document_file(asset_id: int, doc_id: int, user: CurrentUser, db: DB):
     if d is None or d.asset_id != asset_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Hujjat topilmadi")
     try:
-        return FileResponse(storage.resolve(d.file_sha256, ext=d.ext), filename=d.file_name)
+        return FileResponse(
+            storage.resolve(d.file_sha256, ext=d.ext), headers={"Content-Disposition": content_disposition(d.file_name)}
+        )
     except FileNotFoundError:
         raise HTTPException(status.HTTP_410_GONE, "Fayl topilmadi") from None
 

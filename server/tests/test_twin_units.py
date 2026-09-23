@@ -131,3 +131,16 @@ def test_split_flow_weights_by_rating():
     assert s[1] == pytest.approx(72.0) and s[2] == pytest.approx(18.0)
     assert twin.split_flow(None, {1: (1.0, big)}, {}) == {}
     assert twin.split_flow(10.0, {1: (1.0, big), 2: (1.0, small)}, {1: 12.0}) == {}
+
+
+def test_soft_deleted_model_excluded_from_twin(client, users):
+    """VCS-06: o'chirilgan (soft delete) model versiyasi egizak parametrlariga kirmaydi."""
+    pid = users["project_id"]
+    mid = client.post(f"/api/projects/{pid}/models", json={"name": "GES"}, headers=users["engineer"]).json()["id"]
+    upload(client, users["engineer"], mid, SAMPLE, "v1")
+    with SessionLocal() as db:
+        assert twin.model_params(db, pid) is not None
+    r = client.delete(f"/api/models/{mid}", headers=users["approver"])
+    assert r.status_code in (200, 204), r.text
+    with SessionLocal() as db:
+        assert twin.model_params(db, pid) is None

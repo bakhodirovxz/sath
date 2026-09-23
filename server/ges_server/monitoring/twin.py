@@ -124,7 +124,7 @@ def model_params(db: Session, project_id: int) -> dict | None:
     versions = (
         db.query(Version)
         .join(Model, Model.id == Version.model_id)
-        .filter(Model.project_id == project_id)
+        .filter(Model.project_id == project_id, Model.deleted_at.is_(None))  # VCS-06: o'chirilgan modellar egizakka kirmaydi
         .order_by(Version.id.desc())
         .all()
     )

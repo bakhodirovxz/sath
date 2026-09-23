@@ -1,7 +1,7 @@
 """model_soft_delete (VCS-06): modelni yumshoq o'chirish — deleted_at / deleted_by
 
 Revision ID: 0037
-Revises: 0031
+Revises: 0034
 Create Date: 2026-09-23
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = '0037'
-down_revision = '0031'
+down_revision = '0034'
 branch_labels = None
 depends_on = None
 
