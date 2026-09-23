@@ -394,7 +394,7 @@ def test_health_index_vibration_temperature_trend(client, users):
     assert it["bearing_temp"]["value"] == 66 and it["bearing_temp"]["days_to_alarm"] is not None
     assert it["score"] < 80 and any("C zona" in p for p in it["problems"])
     assert health.vib_zone(1.0, 1) == "A" and health.vib_zone(6.5, 2) == "D"
-    assert 0.06 < health.thoma_critical("Francis", 380) < 0.07
+    assert 0.61 < health.thoma_critical("Francis", 380) < 0.63  # SIM-01: 0.625·(n_s/380.78)²
     # publish → HEALTH.<id> virtual sensor
     r = client.post(f"/api/projects/{pid}/health/run", headers=users["engineer"])
     assert r.status_code == 200

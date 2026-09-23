@@ -11,8 +11,6 @@ Tashxis qismlari: kavitatsiya (Toma soni), FIK og'ishi (egizak), transformator i
 
 from __future__ import annotations
 
-import math
-
 from sqlalchemy.orm import Session
 
 from ...orm import Asset, Project
@@ -37,18 +35,18 @@ ZONE_B_DEDUCT = 8  # B zona — ogohlantirish emas, lekin yangi mashina darajasi
 
 
 def thoma_critical(turbine_type: str, ns: float) -> float:
-    """Kritik Toma soni (Krivchenko / USBR): Francis σ_c = 0.0625·(n_s/380)²,
-    Kaplan σ_c = 0.28 + (n_s/380)³; Pelton — erkin oqim, σ bilan baholanmaydi."""
-    t = (turbine_type or "Francis").lower()
-    if "kaplan" in t or "propeller" in t or "bulb" in t:
-        return 0.28 + (ns / 380) ** 3
-    if "pelton" in t:
-        return 0.0
-    return 0.0625 * (ns / 380) ** 2
+    """Kritik Toma soni — yagona manba `ges_sim.cavitation.sigma_critical` (formulalar va manbalar
+    o'sha modulda; Blender addoni ham shu faylning nusxasini ishlatadi)."""
+    from ges_sim.cavitation import sigma_critical
+
+    return sigma_critical(turbine_type, ns)
 
 
 def specific_speed(n_rpm: float, p_kw: float, h_m: float) -> float:
-    return n_rpm * math.sqrt(max(p_kw, 0.0)) / max(h_m, 0.1) ** 1.25
+    """n_s = n·√P/H^1.25 [m-kVt] — `ges_sim.cavitation.specific_speed`."""
+    from ges_sim.cavitation import specific_speed as _ns
+
+    return _ns(n_rpm, max(p_kw, 0.0), max(h_m, 0.1))
 
 
 def cavitation(acq: dict) -> dict | None:

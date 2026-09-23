@@ -1,4 +1,5 @@
-"""GesWorkbench dagi FreeCAD siz modullarni Blender addoniga nusxalaydi (yagona manba — workbench).
+"""GesWorkbench dagi FreeCAD siz modullarni (va sim/ges_sim dagi sof formulalarni) Blender addoniga
+nusxalaydi (yagona manba — workbench / ges_sim).
 
 python desktop/build/sync_blender.py          # nusxalash
 python desktop/build/sync_blender.py --check  # CI: farq bo'lsa exit 1
@@ -15,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "desktop" / "GesWorkbench" / "ges_workbench"
 DST = ROOT / "desktop" / "blender" / "sath" / "shared"
 FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py"]
+# sim/ges_sim dagi sof (faqat math) modullar — server bilan bir xil formula (SIM-01)
+SIM_SRC = ROOT / "sim" / "ges_sim"
+SIM_FILES = ["cavitation.py"]
 WB_FILES = ["ges_objects.py"]  # fc_engine uchun: sath/wb/
 WB_DST = ROOT / "desktop" / "blender" / "sath" / "wb"
 INIT = '"""GesWorkbench dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'
@@ -24,6 +28,9 @@ def check() -> list[str]:
     """Farq qilgan yoki yo'q fayllar."""
     bad = [
         f for f in FILES if not (DST / f).exists() or not filecmp.cmp(SRC / f, DST / f, shallow=False)
+    ]
+    bad += [
+        f for f in SIM_FILES if not (DST / f).exists() or not filecmp.cmp(SIM_SRC / f, DST / f, shallow=False)
     ]
     bad += [
         "wb/" + f
@@ -39,6 +46,8 @@ def sync() -> None:
         (dst / "__init__.py").write_text(INIT, encoding="utf-8")
         for f in files:
             shutil.copyfile(SRC / f, dst / f)
+    for f in SIM_FILES:
+        shutil.copyfile(SIM_SRC / f, DST / f)
 
 
 if __name__ == "__main__":
@@ -50,4 +59,4 @@ if __name__ == "__main__":
         print("sath/shared va wb sinxron")
     else:
         sync()
-        print("nusxalandi:", ", ".join(FILES + WB_FILES))
+        print("nusxalandi:", ", ".join(FILES + SIM_FILES + WB_FILES))
