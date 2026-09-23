@@ -70,10 +70,12 @@ def test_water_hammer_instant_closure_matches_joukowsky():
             "sim_s": 6,
             "roughness_mm": 0.001,
             "reaches": 40,
+            # SIM-05: gorizontal quvur — manfiy to'lqinda ustun uzilmaydi (aks holda DVCM cho'qqisi)
+            "profile_z": [0, 0],
         },
     )
     s = r["summary"]
-    assert s["closure"].startswith("tez")
+    assert s["closure"].startswith("tez") and not s["column_separation"]
     assert abs(s["dh_max_m"] - s["dh_joukowsky_m"]) / s["dh_joukowsky_m"] < 0.05
     # Halqa kuchlanish = p·D/(2e)
     p_pa = 998.2 * G * s["h_max_m"]

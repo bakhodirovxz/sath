@@ -25,7 +25,10 @@ def test_water_hammer_square_wave_dalembert():
             "sim_s": 8,
             "roughness_mm": 0.001,
             "reaches": 50,
-            "intake_elev_m": 200,
+            # SIM-05: gorizontal quvur — H₀ − ΔH_J > H_v, ustun uzilmaydi (elastik yechim amal qiladi).
+            # Avval intake_elev_m = 200 (suv olish ombor sathida) edi — u holda manfiy to'lqinda quvur
+            # yuqori qismida bosim bug' bosimidan pastga tushadi va d'Alember yechimi fizik emas.
+            "profile_z": [0, 0],
         },
     )
     s = r["summary"]
@@ -41,7 +44,7 @@ def test_water_hammer_square_wave_dalembert():
     assert abs(at(0.5 * period) - (h0 + dh)) < 0.03 * dh
     assert abs(at(1.5 * period) - (h0 - dh)) < 0.03 * dh
     assert abs(at(2.5 * period) - (h0 + dh)) < 0.05 * dh
-    assert 900 < a < 1400
+    assert 900 < a < 1400 and not s["column_separation"]
 
 
 def test_scs_runoff_tr55_worked_values():
