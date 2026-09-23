@@ -11,6 +11,7 @@ import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import CfdPanel from "./CfdPanel";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import { fmtDate } from "../../ui/format";
+import { DateField } from "../../ui/DateField";
 
 interface Props {
   modelId: number;
@@ -314,7 +315,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         </div>
         <label className="field"><span>yoki qadamma-qadam qiymatlar (CSV/bo'shliq bilan; bo'sh — doimiy)</span><textarea className="textarea" style={{ minHeight: 44 }} value={inflowText} onChange={(e) => setInflowText(e.target.value)} placeholder="120 130 150 210 300 280 …" /></label>
         <div className="row">
-          <label className="field grow"><span>Boshlanish sanasi</span><input className="input" type="date" value={params.start_date ?? ""} onChange={(e) => upd({ start_date: e.target.value || undefined })} /></label>
+          <label className="field grow"><span>Boshlanish sanasi</span><DateField aria-label="Boshlanish sanasi" value={params.start_date ?? ""} onChange={(d) => upd({ start_date: d || undefined })} /></label>
         </div>
 
         <h3>Suv ombori</h3>

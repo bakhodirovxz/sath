@@ -8,7 +8,8 @@ import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPo
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
-import { fmtDate, isAlarm } from "../../ui/format";
+import { fmtDate, fmtDay, fmtShort, isAlarm } from "../../ui/format";
+import { alarmLabel, keyKindLabel, sensorKindLabel } from "../../i18n/labels";
 import { useLive } from "../../hooks/useLive";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
 
@@ -20,18 +21,17 @@ interface Props {
   selection: SelectedItem[];
 }
 
-const KINDS: { id: SensorKind; title: string; unit: string }[] = [
-  { id: "level", title: "Suv sathi", unit: "m" },
-  { id: "flow", title: "Sarf", unit: "m³/s" },
-  { id: "power", title: "Quvvat", unit: "MW" },
-  { id: "pressure", title: "Bosim", unit: "bar" },
-  { id: "temperature", title: "Harorat", unit: "°C" },
-  { id: "vibration", title: "Tebranish", unit: "mm/s" },
-  { id: "status", title: "Holat (0/1)", unit: "" },
-  { id: "position", title: "Ochilish (darvoza, zatvor)", unit: "%" },
-  { id: "value", title: "Boshqa", unit: "" },
+const KINDS: { id: SensorKind; unit: string }[] = [
+  { id: "level", unit: "m" },
+  { id: "flow", unit: "m³/s" },
+  { id: "power", unit: "MW" },
+  { id: "pressure", unit: "bar" },
+  { id: "temperature", unit: "°C" },
+  { id: "vibration", unit: "mm/s" },
+  { id: "status", unit: "" },
+  { id: "position", unit: "%" },
+  { id: "value", unit: "" },
 ];
-const ALARM_LABEL: Record<AlarmState, string> = { ok: "normal", low: "past", high: "yuqori", stale: "uzilgan", lowlow: "juda past", highhigh: "juda yuqori", roc: "tez o'zgarish", deviation: "og'ish" };
 /** 3D bo'yash uchun haqiqiy hex (viewer CSS o'zgaruvchini o'qimaydi) — tokenlardan, joriy tema bo'yicha (F1) */
 function hexOf(token: string): string {
   return THEMES[currentTheme()][token] ?? THEMES.engineer[token];
@@ -223,9 +223,9 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
           {gwKeys.map((k) => (
             <div key={k.kind} style={{ marginTop: 6 }}>
               <div className="row wrap" style={{ gap: 6, alignItems: "center" }}>
-                <b>{k.kind}</b>
-                <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${new Date(k.expires_at).toLocaleDateString("uz")} (${k.days_left} kun)` : "muddatsiz"}</span>
-                <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? new Date(k.last_used_at).toLocaleString("uz") : "hali yo'q"}</span>
+                <b>{keyKindLabel(k.kind)}</b>
+                <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${fmtDay(k.expires_at)} (${k.days_left} kun)` : "muddatsiz"}</span>
+                <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? fmtDate(k.last_used_at) : "hali yo'q"}</span>
                 <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then(() => loadKeys())}>Almashtirish (365 kun)</button>
               </div>
               <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
@@ -248,10 +248,10 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
             <b>{s.name}</b>
             <span className="grow" />
             <span className="mono">{s.last_value != null ? `${fmtVal(s.last_value)} ${s.unit}` : "—"}</span>
-            <span className={`badge ${s.stale ? "archived" : s.alarm === "ok" ? "published" : "rejected"}`}>{ALARM_LABEL[s.alarm]}</span>
+            <span className={`badge ${s.stale ? "archived" : s.alarm === "ok" ? "published" : "rejected"}`}>{alarmLabel(s.alarm)}</span>
           </span>
           <span className="meta">
-            <span className="mono">{s.key}</span> · {KINDS.find((k) => k.id === s.kind)?.title}
+            <span className="mono">{s.key}</span> · {sensorKindLabel(s.kind)}
             {s.last_ts && <> · {fmtDate(s.last_ts)}</>}
             {s.element_guid ? " · elementga bog'langan" : " · element bog'lanmagan"}
             {s.protocol === "mqtt" && <> · mqtt:{String(s.address.topic ?? "")}</>}
@@ -262,13 +262,13 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
               <div className="row wrap" style={{ marginBottom: 6 }}>
                 {[1, 24, 168, 720].map((h) => <button key={h} className={`btn sm${hours === h ? " active" : ""}`} onClick={() => setHours(h)}>{h === 1 ? "1 soat" : h === 24 ? "1 kun" : h === 168 ? "1 hafta" : "1 oy"}</button>)}
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}
-                {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${ALARM_LABEL[s.alarm]}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${ALARM_LABEL[s.alarm]} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
+                {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${alarmLabel(s.alarm)}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${alarmLabel(s.alarm)} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
                 {canEdit && <button className="btn sm" onClick={() => bindToSelection(s)} title="Tanlangan elementga bog'lash">Tanlanganga bog'lash</button>}
                 {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
                 {role === "approver" && <button className="btn sm danger" onClick={() => void dialogs.confirm("Sensorni o'chirish", { text: `${s.name} (${s.key}) — tarix ham o'chadi.`, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) void api.deleteSensor(s.id).then(load); })}>O'chirish</button>}
               </div>
               {history.length > 1 ? (
-                <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
+                <LineChart title={s.name} unit={s.unit} x={history.map((p) => fmtShort(p.ts))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
               {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
@@ -300,7 +300,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
             <div className="row">
               <label className="field grow"><span>Turi</span>
                 <select className="select" value={editing.kind} onChange={(e) => { const k = KINDS.find((x) => x.id === e.target.value)!; setEditing({ ...editing, kind: k.id, unit: editing.unit || k.unit }); }}>
-                  {KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}
+                  {KINDS.map((k) => <option key={k.id} value={k.id}>{sensorKindLabel(k.id)}</option>)}
                 </select>
               </label>
               <label className="field" style={{ width: 90 }}><span>Birlik</span><input className="input" value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} /></label>

@@ -5,6 +5,7 @@ import { fmtDate, fmtValue } from "../../ui/format";
 import { qualityStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { ageSeconds, fmtAge } from "./model";
+import { keyKindLabel } from "../../i18n/labels";
 
 /** Level 4 — diagnostika: sensor xom qiymatlari va sifat tarixi, aloqa holati (yosh, stale), gateway
  * diagnostika teglari (GW.*), kalit muddati, jonli oqim holati. Operator "nega qiymat yo'q" ga javob topadi. */
@@ -50,7 +51,7 @@ function Body({ sensorId }: { sensorId: number | null }) {
           )}
           {keys.length > 0 && (
             <table className="grid small" style={{ marginTop: 8 }}><thead><tr><th>Kalit</th><th>Muddat</th><th>Oxirgi ishlatilgan</th></tr></thead><tbody>
-              {keys.map((k) => <tr key={k.kind}><td>{k.kind}</td><td className={k.days_left != null && k.days_left < 14 ? "error" : ""}>{k.days_left != null ? `${k.days_left} kun` : "—"}</td><td className="dim">{k.last_used_at ? fmtDate(k.last_used_at) : "hech qachon"}</td></tr>)}
+              {keys.map((k) => <tr key={k.kind}><td>{keyKindLabel(k.kind)}</td><td className={k.days_left != null && k.days_left < 14 ? "error" : ""}>{k.days_left != null ? `${k.days_left} kun` : "—"}</td><td className="dim">{k.last_used_at ? fmtDate(k.last_used_at) : "hech qachon"}</td></tr>)}
             </tbody></table>
           )}
         </section>

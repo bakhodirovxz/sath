@@ -93,7 +93,7 @@ export default function IssuesPanel(p: Props) {
   return (
     <div>
       {error && <p className="error small">{error}</p>}
-      <BPanel id="issues" title="Issue lar" count={list.length} right={
+      <BPanel id="issues" title="Muammolar" count={list.length} right={
         <>
           <select className="select" style={{ width: "auto", padding: "1px 4px", fontSize: 11 }} value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
             <option value="active">Faol</option>
@@ -105,7 +105,7 @@ export default function IssuesPanel(p: Props) {
         <BList
           items={list} keyOf={(i) => i.id} activeKey={detail?.id ?? p.openIssueId} rows={6}
           onSelect={(i) => p.onOpenIssue(i.id)} onActivate={(i) => { if (detail?.id === i.id) void p.applyViewpoint(detail.viewpoint); }}
-          empty={filter === "active" ? "Faol issue yo'q — elementni tanlab «Issue» bosing" : "Issue yo'q"}
+          empty={filter === "active" ? "Faol muammo yo'q — elementni tanlab «Muammo» bosing" : "Muammo yo'q"}
           render={(i) => (
             <>
               <span className="dim mono">#{i.id}</span>
@@ -165,7 +165,7 @@ export default function IssuesPanel(p: Props) {
         </BPanel>
       )}
       {creating && (
-        <Dialog title="Yangi issue" onClose={() => setCreating(false)}>
+        <Dialog title="Yangi muammo" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
             <label className="field"><span>Sarlavha</span><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} data-autofocus required /></label>
             <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
@@ -182,7 +182,7 @@ export default function IssuesPanel(p: Props) {
                 </select>
               </label>
             </div>
-            <p className="dim small">Joriy kamera, tanlangan elementlar va kesimlar issue bilan saqlanadi.</p>
+            <p className="dim small">Joriy kamera, tanlangan elementlar va kesimlar muammo bilan saqlanadi.</p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setCreating(false)}>Bekor qilish</button>
               <button type="submit" className="btn primary">Yaratish</button>

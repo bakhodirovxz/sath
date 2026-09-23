@@ -7,6 +7,8 @@ import { alarmStyle } from "../../ui/tokens";
 import { opsPath } from "./OperatorShell";
 import { fmtAge } from "./model";
 import type { AlarmRow } from "./alarms";
+import { alarmModeLabel, isaStateLabel, priorityLabel } from "../../i18n/labels";
+import { areaTitle } from "./model";
 
 /** Alarm jadvali (F5): ustuvorlik belgisi (shakl + kod), holat, qiymat, ISA-18.2 holati; amallar —
  * kvitlash (Dialog, prompt() emas), shelve/OOS; qator ochilganda ratsionalizatsiya (C3). */
@@ -49,12 +51,12 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
             return (
               <FragmentRow key={e.id}>
                 <tr className={!e.ended_at && !e.suppressed ? "alarm-active" : undefined} data-testid="alarm-row" data-priority={e.priority} data-state={e.state} onClick={() => setOpen(isOpen ? null : e.id)} style={{ cursor: "pointer" }}>
-                  <td><button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={`${e.sensor_name}: tafsilotlar (ratsionalizatsiya)`} onClick={(ev) => { ev.stopPropagation(); setOpen(isOpen ? null : e.id); }}><span className="alarm-mark" style={{ color: st.color, fontSize: 14 }} title={`${e.priority}`}>{st.glyph || "·"}</span></button></td>
+                  <td><button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={`${e.sensor_name}: tafsilotlar (ratsionalizatsiya)`} onClick={(ev) => { ev.stopPropagation(); setOpen(isOpen ? null : e.id); }}><span className="alarm-mark" style={{ color: st.color, fontSize: 14 }} title={priorityLabel(e.priority)}>{st.glyph || "·"}</span></button></td>
                   <td className="mono">{fmtDate(e.started_at)}{e.ended_at && <div className="dim">→ {fmtDate(e.ended_at)}</div>}</td>
-                  <td><Link to={opsPath(pid, "sensor", e.sensor_id)} onClick={(ev) => ev.stopPropagation()}>{e.sensor_name}</Link><div className="dim">{e.sensor_key}{e.area ? ` · ${e.area}` : ""}</div></td>
-                  <td><span className="alarm-mark" style={{ color: st.color }}>{st.code || "—"}</span> {st.label}{e.suppressed && <span className="badge archived" style={{ marginLeft: 4 }}>{e.suppressed}</span>}</td>
+                  <td><Link to={opsPath(pid, "sensor", e.sensor_id)} onClick={(ev) => ev.stopPropagation()}>{e.sensor_name}</Link><div className="dim">{e.sensor_key}{e.area ? ` · ${areaTitle(e.area)}` : ""}</div></td>
+                  <td><span className="alarm-mark" style={{ color: st.color }}>{st.code || "—"}</span> {st.label}{e.suppressed && <span className="badge archived" style={{ marginLeft: 4 }}>{alarmModeLabel(e.suppressed)}</span>}</td>
                   <td className="mono">{e.value == null ? "—" : `${fmtValue(e.value)} ${e.unit}`}</td>
-                  <td><span className={`badge ${e.alarm_state === "unack" ? "rejected" : e.alarm_state === "acked" ? "shared" : "archived"}`}>{e.alarm_state ?? (e.acked_at ? "acked" : "unack")}</span></td>
+                  <td><span className={`badge ${e.alarm_state === "unack" ? "rejected" : e.alarm_state === "acked" ? "shared" : "archived"}`}>{isaStateLabel(e.alarm_state ?? (e.acked_at ? "acked" : "unack"))}</span></td>
                   <td className="row" style={{ gap: 4 }} onClick={(ev) => ev.stopPropagation()}>
                     {e.acked_at ? <span className="dim" title={e.comment}>kvitlangan</span> : canOperate ? <button className="btn sm" onClick={() => setDlg({ kind: "ack", row: e })}>Kvitlash</button> : null}
                     {canOperate && s && !e.ended_at && s.alarm_mode === "normal" && <button className="btn sm" onClick={() => setDlg({ kind: "shelve", row: e })}>Shelve</button>}
@@ -72,7 +74,7 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
                         <dt>Harakatsizlik oqibati</dt><dd>{e.consequence || <span className="dim">—</span>}</dd>
                         <dt>Tuzatuvchi harakat</dt><dd>{e.corrective_action || <span className="dim">—</span>}</dd>
                         <dt>Javob vaqti</dt><dd>{e.response_time_s != null ? fmtAge(e.response_time_s) : <span className="dim">—</span>}</dd>
-                        {s?.alarm_mode && s.alarm_mode !== "normal" && <><dt>Rejim</dt><dd>{s.alarm_mode}{s.alarm_mode_reason ? ` — ${s.alarm_mode_reason}` : ""}{s.alarm_mode_until ? ` (${fmtDate(s.alarm_mode_until)} gacha)` : ""}</dd></>}
+                        {s?.alarm_mode && s.alarm_mode !== "normal" && <><dt>Rejim</dt><dd>{alarmModeLabel(s.alarm_mode)}{s.alarm_mode_reason ? ` — ${s.alarm_mode_reason}` : ""}{s.alarm_mode_until ? ` (${fmtDate(s.alarm_mode_until)} gacha)` : ""}</dd></>}
                         {e.comment && <><dt>Kvitlash izohi</dt><dd>{e.comment}</dd></>}
                       </dl>
                     </td>

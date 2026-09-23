@@ -4,6 +4,7 @@ import { useAuth } from "./store/auth";
 import Login from "./pages/Login";
 import { DialogHost } from "./ui/dialogs";
 import ProfileDialog from "./ui/ProfileDialog";
+import { t, useLocale } from "./i18n";
 
 // Sahifa darajasida kod bo'linishi (F10): login ekrani Three.js/ThatOpen/web-ifc ni yuklamaydi
 const Projects = lazy(() => import("./pages/Projects"));
@@ -24,7 +25,7 @@ const Shift = lazy(() => import("./pages/operator/Shift"));
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, ready } = useAuth();
   const loc = useLocation();
-  if (!ready) return <div className="page-body muted">Yuklanmoqda…</div>;
+  if (!ready) return <div className="page-body muted">{t("common.loading")}</div>;
   if (!user) return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   // L2: admin bergan/boshlang'ich parol — almashtirilguncha faqat profil
   if (user.must_change_password) return <><div className="page-body muted">Parolni almashtiring…</div><ProfileDialog onClose={() => undefined} /></>;
@@ -33,14 +34,15 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 export default function App() {
   const init = useAuth((s) => s.init);
+  const locale = useLocale(); // til almashganda sahifalar yangi matn bilan qayta chiziladi (UX-09)
   useEffect(() => {
     void init();
   }, [init]);
   return (
     <>
     <DialogHost />
-    <Suspense fallback={<div className="page-body muted">Yuklanmoqda…</div>}>
-    <Routes>
+    <Suspense fallback={<div className="page-body muted">{t("common.loading")}</div>}>
+    <Routes key={locale}>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><Projects /></RequireAuth>} />
       <Route path="/projects/:projectId" element={<RequireAuth><ProjectPage /></RequireAuth>} />

@@ -11,6 +11,11 @@ export const AREAS: { id: AreaId; title: string; short: string }[] = [
   { id: "aux", title: "Yordamchi / diagnostika", short: "Yordamchi" },
 ];
 
+/** Uchastka nomi (id → foydalanuvchi matni); noma'lum — o'zgarishsiz. */
+export function areaTitle(id: string): string {
+  return AREAS.find((a) => a.id === id)?.title ?? id;
+}
+
 const HYDRO_KEYS = /^(RES|TW|GATE|SPILL|INFLOW|HEAD|NET|PEN|PENSTOCK|SURGE|DAM|PIEZ|SEEP)[._]/i;
 const ELEC_KEYS = /^(TR|GRID|LINE|CB|BUS|SW)[._\d]|^(GEN|AGG|UNIT)\d*\.(V|I|F|Q|CB|CIRC)$/i;
 const UNIT_KEYS = /^(AGG|UNIT|G|GEN)\d+/i;

@@ -1,3 +1,4 @@
+import { fmtShort, fmtTime } from "./format";
 /** Trend server mantig'i (F7): shkala, o'q belgilari, uzilishlar (sifat/bo'shliq), normallashtirish, kursor. */
 
 export interface TrendPoint { t: number; v: number | null; min?: number | undefined; max?: number | undefined }
@@ -108,11 +109,11 @@ export function panDomain(d: [number, number], dt: number, bounds: [number, numb
   return [t0, t0 + span];
 }
 
+/** Vaqt o'qi belgisi — stansiya vaqti (Asia/Tashkent), 24 soat (UX-09). */
 export function fmtTick(t: number, spanMs: number): string {
-  const d = new Date(t);
-  if (spanMs > 3 * 86400_000) return d.toLocaleDateString("uz-UZ", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  if (spanMs > 2 * 3600_000) return d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (spanMs > 3 * 86400_000) return fmtShort(t);
+  if (spanMs > 2 * 3600_000) return fmtTime(t);
+  return fmtTime(t, true);
 }
 
 export function fmtNum(v: number): string {

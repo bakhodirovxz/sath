@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type Notification } from "../api/client";
 import { fmtDate } from "./format";
 
-const KIND: Record<Notification["kind"], string> = { review: "tasdiqlash", issue: "issue", alarm: "alarm", system: "tizim" };
+const KIND: Record<Notification["kind"], string> = { review: "tasdiqlash", issue: "muammo", alarm: "alarm", system: "tizim" };
 
 /** Qo'ng'iroq: o'qilmaganlar soni (30 s da yangilanadi), ro'yxat, bosganda havolaga o'tish. */
 export default function NotificationsBell() {

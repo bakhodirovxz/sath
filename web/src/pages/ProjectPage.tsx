@@ -4,7 +4,7 @@ import { api, type DocKind, type FedMember, type Federation, type Member, type M
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
-import { label } from "../ui/format";
+import { fmtDate, fmtDay, label } from "../ui/format";
 
 const ROLES: Role[] = ["viewer", "operator", "engineer", "approver"];
 
@@ -94,7 +94,7 @@ export default function ProjectPage() {
                   <td><Link to={`/models/${m.id}`} className="row-link" onClick={(e) => e.stopPropagation()}><b>{m.name}</b></Link>{m.description && <div className="muted small">{m.description}</div>}</td>
                   <td>{m.version_count}</td>
                   <td>{m.published_version_id ? <span className="badge published">bor</span> : <span className="dim">yo'q</span>}</td>
-                  <td>{m.safety ? <span className="badge" title={`${m.safety.verdict}${m.safety.fails.length ? ": " + m.safety.fails.join("; ") : ""} · ${new Date(m.safety.at).toLocaleString("uz")}`} style={{ background: m.safety.counts.fail ? "var(--danger)" : m.safety.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{m.safety.score ?? "—"}/100</span> : <span className="dim small">tekshirilmagan</span>}</td>
+                  <td>{m.safety ? <span className="badge" title={`${m.safety.verdict}${m.safety.fails.length ? ": " + m.safety.fails.join("; ") : ""} · ${fmtDate(m.safety.at)}`} style={{ background: m.safety.counts.fail ? "var(--danger)" : m.safety.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{m.safety.score ?? "—"}/100</span> : <span className="dim small">tekshirilmagan</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -278,7 +278,7 @@ function DocumentsSection({ projectId, canEdit, canDelete, onError }: { projectI
                 <td className="mono">{d.kind.toUpperCase()}</td>
                 <td>{d.title}</td>
                 <td><button className="btn sm" onClick={() => api.downloadCsv(`/api/projects/${projectId}/documents/${d.id}/file`, d.file_name).catch((e) => onError(e.message))}>{d.file_name}</button> <span className="dim">{(d.file_size / 1024).toFixed(0)} KB</span></td>
-                <td className="dim">{d.uploader_username} · {new Date(d.created_at).toLocaleDateString()}</td>
+                <td className="dim">{d.uploader_username} · {fmtDay(d.created_at)}</td>
                 <td>{canDelete && <button className="btn sm" onClick={() => api.deleteDocument(projectId, d.id).then(load).catch((e) => onError(e.message))}>O'chirish</button>}</td>
               </tr>
             ))}

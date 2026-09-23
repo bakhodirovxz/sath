@@ -41,7 +41,7 @@ const TABS: { id: Tab; icon: string; title: string }[] = [
   { id: "layers", icon: "layers", title: "Qatlamlar va ko'rinishlar" },
   { id: "versions", icon: "git-branch", title: "Versiyalar" },
   { id: "review", icon: "check-square", title: "Tasdiqlash" },
-  { id: "issues", icon: "flag", title: "Issue lar" },
+  { id: "issues", icon: "flag", title: "Muammolar" },
   { id: "sim", icon: "waves", title: "Simulyatsiya / CFD" },
   { id: "mon", icon: "activity", title: "Monitoring (SCADA)" },
   { id: "checks", icon: "shield", title: "Tekshiruv (to'qnashuv, hajm)" },
@@ -591,7 +591,7 @@ export default function ModelPage() {
       { label: "To'qnashuvlar (clash)", hint: "CLASH", onClick: () => cmd("CLASH") },
       { label: "Hajm-miqdor (QTO)", hint: "QTO", onClick: () => cmd("QTO") },
       { label: "Oldingi versiya bilan farq", hint: "DIFF", onClick: () => cmd("DIFF") },
-      { label: "Issue ochish (joriy ko'rinish)", hint: "ISSUE", onClick: () => cmd("ISSUE") },
+      { label: "Muammo ochish (joriy ko'rinish)", hint: "ISSUE", onClick: () => cmd("ISSUE") },
     ] },
     { title: "Simulyatsiya", items: [
       { label: "Katalog (barcha simulyatsiyalar)", hint: "SIM", onClick: () => cmd("SIM") },
@@ -669,7 +669,7 @@ export default function ModelPage() {
           <ToolBtn title="Masshtab (S)" active={viewer.current?.drafts.mode === "scale"} onClick={() => viewer.current?.drafts.setMode("scale")}><Icon name="scale" /></ToolBtn>
         </>}
         <div className="sep" />
-        <ToolBtn title="Issue (ISSUE)" onClick={() => cmd("ISSUE")}><Icon name="flag" /></ToolBtn>
+        <ToolBtn title="Muammo ochish (ISSUE)" onClick={() => cmd("ISSUE")}><Icon name="flag" /></ToolBtn>
         <ToolBtn title="Tozalash (CLEAR)" onClick={() => cmd("CLEAR")}><Icon name="trash" /></ToolBtn>
       </div>
 
@@ -769,7 +769,7 @@ export default function ModelPage() {
 
       {pie && (
         <PieMenu
-          x={pie.x} y={pie.y} title="Viewport Shading" releaseKey="z" onClose={() => setPie(null)}
+          x={pie.x} y={pie.y} title="Ko'rinish uslubi (shading)" releaseKey="z" onClose={() => setPie(null)}
           items={[
             { label: "Wireframe", hint: "1", active: shading === "wire", run: () => setShading("wire") },
             { label: "Solid", hint: "2", active: shading === "solid", run: () => setShading("solid") },

@@ -97,7 +97,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
                     <div className="row" style={{ marginTop: 4 }}>
                       <span className="dim small mono">{c.point.map((v) => v.toFixed(2)).join(", ")} m · kesishuv {c.overlap_m.map((v) => v.toFixed(2)).join("×")} m</span>
                       <span className="grow" />
-                      <button className="btn sm" onClick={() => onCreateIssue()}>Issue ochish</button>
+                      <button className="btn sm" onClick={() => onCreateIssue()}>Muammo ochish</button>
                     </div>
                   )}
                 </div>

@@ -7,6 +7,8 @@
  * `tokens.test.ts` tekshiradi. Sahifalar rang qiymatini shu yerdan oladi (test: hex literal yo'q).
  */
 
+import { alarmLabel } from "../i18n/labels";
+
 export type ThemeName = "engineer" | "operator";
 export type AlarmStateName = "ok" | "low" | "high" | "stale" | "lowlow" | "highhigh" | "roc" | "deviation";
 export type PriorityName = "low" | "medium" | "high" | "critical";
@@ -160,10 +162,6 @@ export interface AlarmStyle {
 export const STATE_CODE: Record<AlarmStateName, string> = {
   ok: "", low: "L", high: "H", stale: "?", lowlow: "LL", highhigh: "HH", roc: "ROC", deviation: "DEV",
 };
-export const STATE_LABEL: Record<AlarmStateName, string> = {
-  ok: "normal", low: "past", high: "yuqori", stale: "aloqa yo'q", lowlow: "juda past (LL)",
-  highhigh: "juda yuqori (HH)", roc: "tez o'zgarish", deviation: "model bilan og'ish",
-};
 const PRIO_RANK: Record<PriorityName, 1 | 2 | 3 | 4> = { critical: 1, high: 2, medium: 3, low: 4 };
 const PRIO_SHAPE: Record<PriorityName, AlarmStyle["shape"]> = { critical: "diamond", high: "square", medium: "triangle", low: "circle" };
 const PRIO_GLYPH: Record<PriorityName, string> = { critical: "◆", high: "■", medium: "▲", low: "●" };
@@ -175,15 +173,15 @@ export function isActiveAlarm(state: string | null | undefined): boolean {
 export function alarmStyle(state: AlarmStateName | string, priority: PriorityName | string = "medium"): AlarmStyle {
   const st = (state in STATE_CODE ? state : "ok") as AlarmStateName;
   const pr = (priority in PRIO_RANK ? priority : "medium") as PriorityName;
-  if (st === "ok") return { color: "var(--ok)", bg: "transparent", shape: "none", code: "", rank: 0, label: STATE_LABEL.ok, glyph: "" };
-  if (st === "stale") return { color: "var(--alarm-stale)", bg: "transparent", shape: "none", code: "?", rank: 0, label: STATE_LABEL.stale, glyph: "?" };
+  if (st === "ok") return { color: "var(--ok)", bg: "transparent", shape: "none", code: "", rank: 0, label: alarmLabel("ok"), glyph: "" };
+  if (st === "stale") return { color: "var(--alarm-stale)", bg: "transparent", shape: "none", code: "?", rank: 0, label: alarmLabel("stale"), glyph: "?" };
   return {
     color: `var(--alarm-${pr})`,
     bg: "var(--alarm-row)",
     shape: PRIO_SHAPE[pr],
     code: STATE_CODE[st],
     rank: PRIO_RANK[pr],
-    label: STATE_LABEL[st],
+    label: alarmLabel(st),
     glyph: PRIO_GLYPH[pr],
   };
 }

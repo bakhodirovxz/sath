@@ -7,11 +7,15 @@ import AlarmTable from "./AlarmTable";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { AREAS, type AreaId } from "./model";
 import { EMPTY_FILTER, FLOOD_PRIORITIES, counters, filterAlarms, groupAlarms, sortAlarms, toRows, type AlarmFilter, type ViewMode } from "./alarms";
+import { priorityLabel } from "../../i18n/labels";
+import { areaTitle } from "./model";
 
 /** Alarm sahifasi (F5, ISA-18.2): saralash ustuvorlik → vaqt, filtr (ustuvorlik, uchastka, holat), guruhlash,
  * qidiruv; kvitlash Dialog bilan; «Hammasini kvitlash» — tasdiqlash, faqat filtrlangan to'plam; toshqin rejimida
  * ustuvorlik filtri taklifi (C4); shelving/OOS (C2); ratsionalizatsiya (C3) qator ochilganda.
  * Faol hisoblagichlar tarix ko'rinishidan mustaqil (OperatorShell faol hodisalari). */
+const VIEW_LABEL: Record<ViewMode, string> = { active: "Faol", unack: "Kvitlanmagan", acked: "Kvitlangan", suppressed: "Shelved/OOS", history: "Tarix" };
+
 export default function AlarmsPage() {
   const { projectId } = useParams();
   const pid = Number(projectId);
@@ -62,13 +66,13 @@ function Body() {
         <div className={`tile ${c.active ? "tile-alarm" : ""}`} data-testid="cnt-active"><div className="tile-t">Faol</div><div className="tile-v">{c.active}</div></div>
         <div className={`tile ${c.unacked ? "tile-alarm" : ""}`} data-testid="cnt-unacked"><div className="tile-t">Kvitlanmagan</div><div className="tile-v">{c.unacked}</div></div>
         <div className={`tile ${c.critical ? "tile-alarm" : ""}`}><div className="tile-t">Kritik</div><div className="tile-v">{c.critical}</div></div>
-        <div className="tile"><div className="tile-t">Ko'rinishda</div><div className="tile-v">{rows.length} <span className="tile-u">{filter.view}</span></div></div>
+        <div className="tile"><div className="tile-t">Ko'rinishda</div><div className="tile-v">{rows.length} <span className="tile-u">{VIEW_LABEL[filter.view]}</span></div></div>
       </div>
       <div className="row wrap panel" style={{ gap: 6, margin: "8px 0" }}>
-        {(["active", "unack", "acked", "suppressed", "history"] as ViewMode[]).map((v) => <button key={v} className={`btn sm ${filter.view === v ? "active" : ""}`} onClick={() => setFilter((f) => ({ ...f, view: v }))}>{{ active: "Faol", unack: "Kvitlanmagan", acked: "Kvitlangan", suppressed: "Shelved/OOS", history: "Tarix" }[v]}</button>)}
+        {(["active", "unack", "acked", "suppressed", "history"] as ViewMode[]).map((v) => <button key={v} className={`btn sm ${filter.view === v ? "active" : ""}`} onClick={() => setFilter((f) => ({ ...f, view: v }))}>{VIEW_LABEL[v]}</button>)}
         {filter.view === "history" && <select className="select" style={{ width: 110 }} value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[24, 72, 168, 720].map((h) => <option key={h} value={h}>{h / 24} kun</option>)}</select>}
         <span className="sep" />
-        {(["critical", "high", "medium", "low"] as const).map((p) => { const st = alarmStyle("high", p); return <button key={p} className={`btn sm ${filter.priorities.has(p) ? "active" : ""}`} style={{ color: filter.priorities.has(p) ? undefined : st.color }} onClick={() => togglePrio(p)} title={p}>{st.glyph} {p}</button>; })}
+        {(["critical", "high", "medium", "low"] as const).map((p) => { const st = alarmStyle("high", p); return <button key={p} className={`btn sm ${filter.priorities.has(p) ? "active" : ""}`} style={{ color: filter.priorities.has(p) ? undefined : st.color }} onClick={() => togglePrio(p)} title={priorityLabel(p)}>{st.glyph} {priorityLabel(p)}</button>; })}
         <select className="select" style={{ width: 160 }} value={filter.area} onChange={(e) => setFilter((f) => ({ ...f, area: e.target.value as AreaId | "" }))}>
           <option value="">barcha uchastkalar</option>{AREAS.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
         </select>
@@ -88,7 +92,7 @@ function Body() {
       ))}
       {ackAll && (
         <Dialog title="Hammasini kvitlash" onClose={() => setAckAll(false)}>
-          <p><b>{unackedFiltered.length}</b> ta alarm kvitlanadi — faqat hozirgi filtrdagi kvitlanmagan hodisalar{filter.priorities.size ? ` (${[...filter.priorities].join(", ")})` : ""}{filter.area ? `, uchastka ${filter.area}` : ""}.</p>
+          <p><b>{unackedFiltered.length}</b> ta alarm kvitlanadi — faqat hozirgi filtrdagi kvitlanmagan hodisalar{filter.priorities.size ? ` (${[...filter.priorities].map(priorityLabel).join(", ")})` : ""}{filter.area ? `, uchastka ${areaTitle(filter.area)}` : ""}.</p>
           <label className="field"><span>Izoh (ixtiyoriy)</span><input className="input" value={comment} onChange={(e) => setComment(e.target.value)} data-autofocus /></label>
           <div className="actions">
             <button className="btn" onClick={() => setAckAll(false)}>Bekor</button>

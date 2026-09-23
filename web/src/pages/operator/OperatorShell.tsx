@@ -9,6 +9,7 @@ import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
 import { annunciator } from "../../ui/annunciator";
 import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
+import { priorityLabel } from "../../i18n/labels";
 
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
  * Umumiy qobiq: jonli sensorlar (WebSocket), alarm jamlanmasi, navigatsiya (pastga/yuqoriga, tezkor tugmalar). */
@@ -119,7 +120,7 @@ export function AlarmStrip({ summary, flood, pid }: { summary: AlarmSummary; flo
         const st = alarmStyle("high", p);
         const n = summary.byPriority[p];
         return (
-          <span key={p} className="alarm-mark" style={{ color: n ? st.color : "var(--text-dim)" }} title={`${p}: ${n}`}>
+          <span key={p} className="alarm-mark" style={{ color: n ? st.color : "var(--text-dim)" }} title={`${priorityLabel(p)}: ${n}`}>
             {st.glyph}{n}
           </span>
         );

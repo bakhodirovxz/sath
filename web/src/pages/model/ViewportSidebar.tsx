@@ -89,7 +89,7 @@ export default function ViewportSidebar(p: SidebarProps) {
                 <div className="row wrap" style={{ gap: 4 }}>
                   <button className="btn sm" onClick={() => p.onAction("fit")}>Moslash (.)</button>
                   <button className="btn sm" onClick={() => p.onAction("props")}>Xususiyatlar</button>
-                  <button className="btn sm" onClick={() => p.onAction("issue")}>Issue</button>
+                  <button className="btn sm" onClick={() => p.onAction("issue")}>Muammo</button>
                 </div>
               </Panel>
             )}
@@ -128,7 +128,7 @@ export default function ViewportSidebar(p: SidebarProps) {
                 {p.canEdit && <button className="btn sm primary" onClick={() => p.onAction("upload")}>Yangi versiya</button>}
                 {p.canEdit && <button className="btn sm" onClick={() => p.onAction("submit")}>Tasdiqqa</button>}
                 <button className="btn sm" onClick={() => p.onAction("diff")}>Ota bilan farq</button>
-                <button className="btn sm" onClick={() => p.onAction("issue")}>Issue</button>
+                <button className="btn sm" onClick={() => p.onAction("issue")}>Muammo</button>
               </div>
             </Panel>
             <Panel title="Desktop">

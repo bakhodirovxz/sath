@@ -133,8 +133,8 @@ export default function GenericSim({ kind, modelId, projectId, current, viewer, 
         description: `Simulyatsiya «${active.name || kind.title}» (#${active.id}) jonli suv xaritasi bo'yicha: suv bosgan maydon ${(flood.sum.flooded_area_m2 / 1e4).toFixed(1)} ga, maks. chuqurlik ${flood.sum.h_max.toFixed(1)} m.\n${lines.join("\n")}`,
         version_id: current?.id ?? null, priority: "high", viewpoint: vp,
       });
-      setInfo(`Issue #${issue.id} yaratildi (Issue lar panelida)`);
-    } catch (e) { setError(e instanceof Error ? e.message : "Issue yaratilmadi"); }
+      setInfo(`Muammo #${issue.id} yaratildi («Muammolar» panelida)`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Muammo yaratilmadi"); }
   }
   /** Hisobot (chop etish / PDF): sarlavha, xulosa, ko'rsatkichlar, parametrlar jadvali, grafiklar (SVG nusxa), formulalar. */
   function printReport() {
@@ -165,7 +165,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
 <h2>Kirish parametrlari</h2><table><thead><tr><th>Parametr</th><th>Qiymat</th><th>Birlik</th><th>Manba</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Grafiklar</h2>${charts || "<div class='dim'>—</div>"}
 <h2>Formulalar va manbalar</h2>${kind.formulas.map((f) => `<div class="mono">${esc(f)}</div>`).join("")}
-<footer>Sath · ${esc(new Date().toLocaleString("uz"))} · hisob serverda bajarilgan (ges_sim ${esc(kind.id)})</footer>
+<footer>Sath · ${esc(fmtDate(Date.now()))} · hisob serverda bajarilgan (ges_sim ${esc(kind.id)})</footer>
 <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),300))</script></body></html>`;
     const w = window.open("", "_blank");
     if (!w) { setError("Brauzer yangi oynani bloklagan — ruxsat bering"); return; }

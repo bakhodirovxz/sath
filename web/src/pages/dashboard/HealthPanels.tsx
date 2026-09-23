@@ -8,6 +8,8 @@ import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import Icon from "../../ui/Icon";
 import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtValue } from "../../ui/format";
+import { priorityLabel } from "../../i18n/labels";
+import { DateTimeField } from "../../ui/DateField";
 
 /* Holat monitoringi (sog'liq indeksi, ISO 20816-5 zonalari, RUL, kavitatsiya) va «nima bo'lsa» sinovi + optimal rejim. */
 
@@ -238,7 +240,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
               <td className="dim">{w.id}</td>
               <td><b>{w.title}</b>{w.loto_active && <span className="badge rejected" title="Izolyatsiya qo'yilgan — boshqaruv buyruqlari taqiqlangan">LOTO</span>}{w.permit_status !== "none" && <span className={`badge ${w.permit_status === "issued" ? "published" : "shared"}`}>PTW {w.permit_status}</span>}{w.description && <div className="dim" style={{ maxWidth: 420, whiteSpace: "pre-wrap" }}>{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "plan" ? "profilaktik reja" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}{w.cost ? ` · xarajat ${w.cost}` : ""}{w.tasks.length ? ` · ${w.tasks.filter((t) => t.done).length}/${w.tasks.length} vazifa` : ""}</div></td>
               <td>{w.asset_name ?? "—"}</td>
-              <td><span className={`badge ${PRIO_CLS[w.priority]}`}>{w.priority}</span></td>
+              <td><span className={`badge ${PRIO_CLS[w.priority]}`}>{priorityLabel(w.priority)}</span></td>
               <td><span className={`badge ${WO_STATUS[w.status][1]}`}>{WO_STATUS[w.status][0]}</span></td>
               <td>{canEdit ? <select className="select" value={w.assignee_id ?? ""} onChange={(e) => api.updateWorkOrder(w.id, { assignee_id: e.target.value ? Number(e.target.value) : null }).then(load).catch((er) => setErr(er.message))}><option value="">—</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.username}</option>)}</select> : (w.assignee_username ?? "—")}</td>
               <td className="dim">{w.due_at ? fmtDate(w.due_at) : "—"}</td>
@@ -259,11 +261,11 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
           <label className="field"><span>Sarlavha</span><input className="input" value={form.title} data-autofocus onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
           <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
           <div className="row">
-            <label className="field grow"><span>Ustuvorlik</span><select className="select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{["low", "medium", "high", "critical"].map((p) => <option key={p}>{p}</option>)}</select></label>
+            <label className="field grow"><span>Ustuvorlik</span><select className="select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{["low", "medium", "high", "critical"].map((p) => <option key={p} value={p}>{priorityLabel(p)}</option>)}</select></label>
             {canEdit && <label className="field grow"><span>Ijrochi</span><select className="select" value={form.assignee_id} onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}><option value="">—</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.username}</option>)}</select></label>}
-            <label className="field grow"><span>Muddat</span><input className="input" type="datetime-local" value={form.due_at} onChange={(e) => setForm({ ...form, due_at: e.target.value })} /></label>
+            <label className="field grow"><span>Muddat</span><DateTimeField aria-label="Muddat" value={form.due_at} onChange={(iso) => setForm({ ...form, due_at: iso })} /></label>
           </div>
-          <div className="actions"><button className="btn" onClick={() => setAdding(false)}>Bekor</button><button className="btn primary" disabled={!form.title} onClick={() => api.createWorkOrder(projectId, { title: form.title, description: form.description, priority: form.priority, assignee_id: form.assignee_id ? Number(form.assignee_id) : null, due_at: form.due_at ? new Date(form.due_at).toISOString() : null }).then(() => { setAdding(false); void load(); }).catch((e) => setErr(e.message))}>Yaratish</button></div>
+          <div className="actions"><button className="btn" onClick={() => setAdding(false)}>Bekor</button><button className="btn primary" disabled={!form.title} onClick={() => api.createWorkOrder(projectId, { title: form.title, description: form.description, priority: form.priority, assignee_id: form.assignee_id ? Number(form.assignee_id) : null, due_at: form.due_at || null }).then(() => { setAdding(false); void load(); }).catch((e) => setErr(e.message))}>Yaratish</button></div>
         </Dialog>
       )}
       {detail && <WorkOrderDetail wo={detail} parts={parts} members={members} canApprove={canApprove} onClose={() => setDetail(null)} onChange={(w) => { setDetail(w); void load(); }} />}

@@ -4,6 +4,7 @@ import { fmtDate } from "../ui/format";
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
+import { priorityLabel } from "../i18n/labels";
 
 export default function Admin() {
   const me = useAuth((s) => s.user);
@@ -73,7 +74,7 @@ export default function Admin() {
                 <td>{u.mfa_enabled ? <button className="btn sm" title="MFA ni bekor qilish (telefon yo'qolganda)" onClick={() => api.updateUser(u.id, { mfa_reset: true }).then(load).catch((err) => setError(err.message))}>yoqilgan · bekor</button> : <span className="dim small">—</span>}</td>
                 <td className="row" style={{ gap: 6 }}>
                   <button className="btn sm" onClick={() => setResetFor(u)}>Parolni almashtirish</button>
-                  {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${new Date(u.locked_until).toLocaleTimeString()} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
+                  {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${fmtDate(u.locked_until)} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
                 </td>
               </tr>
             ))}
@@ -135,7 +136,7 @@ function RationalizationSection() {
                   <tr key={r.id}>
                     <td>{r.project_id}</td>
                     <td>{r.name}<div className="dim mono">{r.key}</div></td>
-                    <td><span className={`badge ${r.priority === "critical" ? "rejected" : r.priority === "high" ? "high" : "open"}`}>{r.priority}</span></td>
+                    <td><span className={`badge ${r.priority === "critical" ? "rejected" : r.priority === "high" ? "high" : "open"}`}>{priorityLabel(r.priority)}</span></td>
                     <td className="mono dim">{r.missing.join(", ")}</td>
                   </tr>
                 ))}

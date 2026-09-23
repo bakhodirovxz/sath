@@ -6,6 +6,7 @@ import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
+import { alarmModeLabel, commandStatusLabel } from "../../i18n/labels";
 
 /** Smena jurnali va navbat topshirish (F9): tuzilgan varaqa (faol alarmlar, ochiq ish buyruqlari, blokirovka
  * chetlab o'tishlari, shelved/OOS/o'chirilgan nuqtalar, kutilayotgan buyruqlar, aloqasiz sensorlar — avtomatik),
@@ -59,13 +60,13 @@ function Body() {
                 {snap.work_orders.map((w) => <li key={w.id}>#{w.id} {w.title} <span className="dim">({w.status}, {w.priority})</span>{w.overdue && <span className="badge rejected" style={{ marginLeft: 4 }}>muddati o'tgan</span>}</li>)}
               </Section>
               <Section title={`Blokirovka chetlab o'tishlari (${snap.interlock_overrides.length})`}>
-                {snap.interlock_overrides.map((o, i) => <li key={i}>{fmtDate(o.at)} · {JSON.stringify(o.detail)}</li>)}
+                {snap.interlock_overrides.map((o, i) => <li key={i}>{fmtDate(o.at)} · {detailText(o.detail)}</li>)}
               </Section>
               <Section title={`Shelved / OOS / o'chirilgan nuqtalar (${snap.alarm_modes.length})`}>
-                {snap.alarm_modes.map((m) => <li key={`${m.sensor_id}-${m.mode}`}><Link to={opsPath(pid, "sensor", m.sensor_id)}>{m.name}</Link> — {m.mode}{m.reason ? ` (${m.reason})` : ""}{m.until ? ` ${fmtDate(m.until)} gacha` : ""}</li>)}
+                {snap.alarm_modes.map((m) => <li key={`${m.sensor_id}-${m.mode}`}><Link to={opsPath(pid, "sensor", m.sensor_id)}>{m.name}</Link> — {alarmModeLabel(m.mode)}{m.reason ? ` (${m.reason})` : ""}{m.until ? ` ${fmtDate(m.until)} gacha` : ""}</li>)}
               </Section>
               <Section title={`Kutilayotgan buyruqlar (${snap.pending_commands.length})`}>
-                {snap.pending_commands.map((c) => <li key={c.id}>#{c.id} {c.sensor_key} → {fmtValue(c.value)} <span className="badge open">{c.status}</span> {fmtDate(c.created_at)}</li>)}
+                {snap.pending_commands.map((c) => <li key={c.id}>#{c.id} {c.sensor_key} → {fmtValue(c.value)} <span className="badge open">{commandStatusLabel(c.status)}</span> {fmtDate(c.created_at)}</li>)}
               </Section>
               <Section title={`Aloqasiz sensorlar (${snap.stale_sensors.length})`}>
                 {snap.stale_sensors.map((s) => <li key={s.sensor_id}><Link to={opsPath(pid, "sensor", s.sensor_id)}>{s.name}</Link> <span className="dim mono">{s.key}</span></li>)}
@@ -110,6 +111,11 @@ function Body() {
       )}
     </div>
   );
+}
+
+/** Audit tafsiloti (blokirovka chetlab o'tish) — xom JSON o'rniga «kalit: qiymat» ro'yxati. */
+function detailText(d: Record<string, unknown>): string {
+  return Object.entries(d).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ") || "—";
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

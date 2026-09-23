@@ -33,7 +33,7 @@ export default function SafetyCheck({ modelId, current, viewer, onOpenJob, onDon
       const lines = bad.map((r) => `• ${r.title} — ${STATUS[r.status].label}: ${r.message}`);
       const is = await api.createIssue(modelId, { title: `Xavfsizlik tekshiruvi: ${res.counts.fail} ta mezon bajarilmadi, ${res.counts.warn} ogohlantirish (ball ${res.score ?? "—"})`, description: `Standart ssenariylar to'plami (${current ? `v${current.number}` : ""}):\n${lines.join("\n")}`, version_id: current?.id ?? null, priority: res.counts.fail ? "high" : "normal", viewpoint: vp as never });
       setErr(`Issue #${is.id} yaratildi`);
-    } catch (e) { setErr(e instanceof Error ? e.message : "Issue yaratilmadi"); }
+    } catch (e) { setErr(e instanceof Error ? e.message : "Muammo yaratilmadi"); }
   }
   function print() {
     if (!res) return;
@@ -74,7 +74,7 @@ export default function SafetyCheck({ modelId, current, viewer, onOpenJob, onDon
           </div>
           <div className="row" style={{ gap: 6, marginTop: 6 }}>
             <button className="btn sm" onClick={print}><Icon name="printer" size={11} /> Hisobot</button>
-            {(res.counts.fail > 0 || res.counts.warn > 0) && <button className="btn sm" onClick={() => void issue()} title="Bajarilmagan mezonlar bo'yicha issue (tasdiqlash oqimiga)"><Icon name="flag" size={11} /> Issue ochish</button>}
+            {(res.counts.fail > 0 || res.counts.warn > 0) && <button className="btn sm" onClick={() => void issue()} title="Bajarilmagan mezonlar bo'yicha muammo (tasdiqlash oqimiga)"><Icon name="flag" size={11} /> Issue ochish</button>}
           </div>
         </div>
       )}

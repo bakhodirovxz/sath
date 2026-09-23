@@ -3,8 +3,9 @@ import { usePolling } from "../../hooks/usePolling";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
 import { api, type AssetDocKind, type AssetDocument, type AssetState, type AssetTree, type AssetTreeNode, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState, type Version } from "../../api/client";
-import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
-import { fmtDate, fmtValue } from "../../ui/format";
+import ControlBlock, { CMD_CLASS } from "../operator/ControlBlock";
+import { commandStatusLabel } from "../../i18n/labels";
+import { fmtDate, fmtDateMs, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { dialogs } from "../../ui/dialogs";
 import { AssetHistoryDialog } from "./CmmsPanels";
@@ -115,7 +116,7 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
                 <td>{c.sensor_name} <span className="dim">{c.sensor_key}</span></td>
                 <td className="mono">{fmtValue(c.value)} {c.unit}</td>
                 <td>{c.author_username}{c.note && <div className="dim">{c.note}</div>}</td>
-                <td><span className={`badge ${CMD_CLASS[c.status]}`}>{CMD_LABEL[c.status]}</span></td>
+                <td><span className={`badge ${CMD_CLASS[c.status]}`}>{commandStatusLabel(c.status)}</span></td>
                 <td className="dim small">{c.result}{c.readback_value != null && <div>readback: <span className="mono">{fmtValue(c.readback_value)} {c.unit}</span></div>}{c.approved_by_username && <div>tasdiq: {c.approved_by_username}</div>}</td>
                 <td>
                   {(c.status === "pending" || c.status === "pending_approval") && canCommand && <button className="btn sm" onClick={() => api.cancelCommand(c.id).then((u) => setCmds((p) => p.map((x) => (x.id === u.id ? u : x))))}>Bekor</button>}
@@ -277,7 +278,7 @@ export function SoePanel({ projectId }: { projectId: number }) {
   const [err, setErr] = useState("");
   const load = useCallback(() => (onlySoe ? api.soe(projectId, hours, filter || undefined) : api.timeline(projectId, hours)).then(setRows).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [projectId, hours, onlySoe, filter]);
   usePolling(load, 15000, `${projectId}:${hours}:${onlySoe}:${filter}`);
-  const fmtMs = (ts: string) => { const d = new Date(ts); return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
+  const fmtMs = fmtDateMs;
   return (
     <div className="panel">
       <div className="row wrap" style={{ gap: 6 }}>

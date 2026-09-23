@@ -9,7 +9,9 @@ import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from ".
 import { useLive } from "../hooks/useLive";
 import TopBar from "../ui/TopBar";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
-import { ALARM_LABEL, fmtDate, fmtValue } from "../ui/format";
+import { fmtDate, fmtShort, fmtTime, fmtValue } from "../ui/format";
+import { alarmLabel, periodLabel, sensorKindLabel } from "../i18n/labels";
+import { DateField, DateTimeField } from "../ui/DateField";
 import Mimic from "./operator/Mimic";
 import MimicEditor from "./operator/MimicEditor";
 import { loadScheme, type Scheme } from "./operator/scheme";
@@ -120,7 +122,7 @@ export default function DashboardPage() {
         return [merged, ...rest];
       });
       if (!e.ended_at) {
-        setFlash(`${e.priority === "critical" ? "KRITIK · " : e.priority === "high" ? "MUHIM · " : ""}${e.sensor_name}: ${ALARM_LABEL[e.state]}`);
+        setFlash(`${e.priority === "critical" ? "KRITIK · " : e.priority === "high" ? "MUHIM · " : ""}${e.sensor_name}: ${alarmLabel(e.state)}`);
         if (e.acked_at || e.ended_at) annunciator.ack(e.id);
         else annunciator.alarm(e.id, (e.priority ?? "medium") as "low" | "medium" | "high" | "critical");
       }
@@ -187,7 +189,7 @@ export default function DashboardPage() {
     const base = ids.map((id) => series[id]).sort((a, b) => b.length - a.length)[0];
     const x = base.map((p) => p.ts);
     return {
-      x: x.map((t) => new Date(t).toLocaleTimeString("uz-UZ", hours > 48 ? { day: "2-digit", month: "2-digit", hour: "2-digit" } : { hour: "2-digit", minute: "2-digit" })),
+      x: x.map((t) => (hours > 48 ? fmtShort(t) : fmtTime(t))),
       series: ids.map((id, i) => {
         const s = sensors.find((q) => q.id === id);
         const pts = series[id];
@@ -205,7 +207,7 @@ export default function DashboardPage() {
       <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
         {historyAt ? <span className="badge high"><Icon name="history" size={12} /> TARIX REJIMI</span> : <span className={`badge live-${live.toLowerCase()} ${live === "LIVE" ? "published" : live === "STALE" ? "shared" : "rejected"}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan"><Icon name={live === "OFFLINE" ? "wifi-off" : "wifi"} size={12} /> {live}</span>}
         <label className="row small" title="Vaqt mashinasi: tanlangan vaqtdagi holatni ko'rish (sxema, qiymatlar)">
-          <input className="input" style={{ width: 190, padding: "2px 6px" }} type="datetime-local" value={historyAt ? toLocalInput(historyAt) : ""} onChange={(e) => setHistoryAt(e.target.value ? new Date(e.target.value).toISOString() : null)} />
+          <DateTimeField className="history-at" aria-label="Vaqt mashinasi: sana va vaqt" value={historyAt ?? ""} onChange={(iso) => setHistoryAt(iso || null)} />
           {historyAt && <button className="btn sm primary" onClick={() => setHistoryAt(null)}>Jonli</button>}
         </label>
         <AnnunciatorControl projectId={pid} canOperate={canOperate} />
@@ -266,9 +268,9 @@ export default function DashboardPage() {
           <div className="row wrap">
             <b>Hisobot</b>
             <select className="select" style={{ width: 120 }} value={period} onChange={(e) => setPeriod(e.target.value as Report["period"])}>
-              <option value="day">Kun</option><option value="week">Hafta</option><option value="month">Oy</option>
+              {(["day", "week", "month"] as const).map((p) => <option key={p} value={p}>{periodLabel(p)}</option>)}
             </select>
-            <input className="input" style={{ width: 150 }} type="date" value={date} onChange={(e) => setDate(e.target.value)} title="Davr boshi (bo'sh — joriy)" />
+            <DateField className="report-date" aria-label="Davr boshi" title="Davr boshi, kk.oo.yyyy (bo'sh — joriy)" value={date} onChange={setDate} />
             <span className="grow" />
             <button className="btn sm" onClick={() => api.downloadCsv(`/api/projects/${pid}/report?period=${period}${date ? `&date=${date}` : ""}&format=csv`, `hisobot-${period}.csv`).catch((e) => setError(e.message))}>CSV yuklab olish</button>
           </div>
@@ -279,7 +281,7 @@ export default function DashboardPage() {
                 <thead><tr><th>Sensor</th><th>Tur</th><th>n</th><th>O'rtacha</th><th>Min</th><th>Max</th><th>Energiya, MWh</th></tr></thead>
                 <tbody>
                   {report.sensors.map((r) => (
-                    <tr key={r.sensor_id}><td>{r.name} <span className="dim">{r.key}</span></td><td>{r.kind}</td><td className="mono">{r.n}</td><td className="mono">{r.avg == null ? "—" : `${fmtValue(r.avg)} ${r.unit}`}</td><td className="mono">{r.min == null ? "—" : fmtValue(r.min)}</td><td className="mono">{r.max == null ? "—" : fmtValue(r.max)}</td><td className="mono">{r.energy_mwh == null ? "" : fmtValue(r.energy_mwh)}</td></tr>
+                    <tr key={r.sensor_id}><td>{r.name} <span className="dim">{r.key}</span></td><td>{sensorKindLabel(r.kind)}</td><td className="mono">{r.n}</td><td className="mono">{r.avg == null ? "—" : `${fmtValue(r.avg)} ${r.unit}`}</td><td className="mono">{r.min == null ? "—" : fmtValue(r.min)}</td><td className="mono">{r.max == null ? "—" : fmtValue(r.max)}</td><td className="mono">{r.energy_mwh == null ? "" : fmtValue(r.energy_mwh)}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -304,9 +306,3 @@ export default function DashboardPage() {
   );
 }
 
-/** ISO (UTC) → <input type=datetime-local> qiymati (mahalliy vaqt) */
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
