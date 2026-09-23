@@ -3,7 +3,7 @@ import ErrorBoundary from "../ui/ErrorBoundary";
 import { useOnline } from "../hooks/useOnline";
 import Icon from "../ui/Icon";
 import { ForecastPanel, HealthPanel, PartsPanel, WhatIfPanel, WorkOrdersPanel } from "./dashboard/HealthPanels";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, canCommandRole, type AlarmEvent, type Command, type Dashboard, type JournalEntry, type Project, type ReadingPoint, type Report, type Sensor, type Member } from "../api/client";
 import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from "./dashboard/TwinPanels";
 import TopBar from "../ui/TopBar";
@@ -31,20 +31,15 @@ const RANGES: { label: string; hours: number }[] = [
 ];
 
 type Section = "scheme" | "trend" | "twin" | "health" | "whatif" | "forecast" | "workorders" | "parts" | "assets" | "control" | "journal" | "soe";
-const SECTIONS: { id: Section; title: string }[] = [
-  { id: "scheme", title: "Sxema" },
-  { id: "trend", title: "Trendlar / Hisobot" },
-  { id: "twin", title: "Raqamli egizak" },
-  { id: "health", title: "Sog'liq" },
-  { id: "whatif", title: "Optimal rejim / Nima bo'lsa" },
-  { id: "forecast", title: "Toshqin prognozi" },
-  { id: "workorders", title: "Ish buyruqlari" },
-  { id: "parts", title: "Ehtiyot qismlar" },
-  { id: "assets", title: "Aktivlar" },
-  { id: "control", title: "Boshqaruv" },
-  { id: "journal", title: "Smena jurnali" },
-  { id: "soe", title: "SOE" },
+/** UX-07: ikki zona — Operator (smena davomida doimiy ishlatiladi) va Muhandislik / texnik xizmat. */
+export const ZONES: { id: "operator" | "engineering"; sections: Section[] }[] = [
+  { id: "operator", sections: ["scheme", "control", "journal", "soe", "trend"] },
+  { id: "engineering", sections: ["twin", "health", "whatif", "forecast", "workorders", "parts", "assets"] },
 ];
+const ALL_SECTIONS = ZONES.flatMap((z) => z.sections);
+export function sectionFromQuery(v: string | null): Section {
+  return v && (ALL_SECTIONS as string[]).includes(v) ? (v as Section) : "scheme";
+}
 
 /** Dispetcher paneli (SCADA HMI): mimik sxema, KPI, jonli qiymatlar, trendlar, alarm jurnali, hisobot,
  * raqamli egizak, aktivlar, boshqaruv buyruqlari, smena jurnali, vaqt mashinasi.
@@ -63,7 +58,10 @@ export default function DashboardPage() {
   const [mimic, setMimic] = useState<Record<string, number | null>>({});
   const [scheme, setScheme] = useState<Scheme | null>(null);
   const [selEl, setSelEl] = useState<string | null>(null);
-  const [section, setSection] = useState<Section>("scheme");
+  // Tanlangan bo'lim URL da (?tab=) — yangilash/havola ulashishda saqlanadi (UX-07)
+  const [params, setParams] = useSearchParams();
+  const section = sectionFromQuery(params.get("tab"));
+  const setSection = useCallback((s: Section) => setParams((prev) => { const n = new URLSearchParams(prev); if (s === "scheme") n.delete("tab"); else n.set("tab", s); return n; }, { replace: true }), [setParams]);
   // Vaqt mashinasi: null — jonli; aks holda tanlangan vaqtdagi holat (sensorlar snapshot dan, store ga yozilmaydi)
   const [historyAt, setHistoryAt] = useState<string | null>(null);
   const [historySensors, setHistorySensors] = useState<Sensor[] | null>(null);
@@ -129,7 +127,7 @@ export default function DashboardPage() {
 
   return (
     <div className="page">
-      <TopBar alarms={{ pid, role: project.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
+      <TopBar alarms={{ pid, role: project.my_role }} crumbs={[{ label: t("nav.projects"), to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: t("nav.dashboard") }]}>
         {historyAt ? <span className="badge high"><Icon name="history" size={12} /> {t("live.history")}</span> : <LiveBadge pid={pid} />}
         <span className="row small" title="Vaqt mashinasi: tanlangan vaqtdagi holatni ko'rish (sxema, qiymatlar)">
           <DateTimeField className="history-at" aria-label="Vaqt mashinasi: sana va vaqt" value={historyAt ?? ""} onChange={(iso) => setHistoryAt(iso || null)} />
@@ -176,9 +174,20 @@ function UnackedTabs({ pid, section, onSection }: { pid: number; section: Sectio
   const events = useAlarmEvents(pid);
   const unacked = events.filter((e) => !e.acked_at).length;
   return (
-    <div className="ws-tabs dash-tabs">
-      {SECTIONS.map((sct) => <button key={sct.id} className={section === sct.id ? "active" : ""} onClick={() => onSection(sct.id)}>{sct.title}{sct.id === "scheme" && unacked > 0 && <span className="count">{unacked}</span>}</button>)}
-    </div>
+    <nav className="dash-tabs" aria-label={t("nav.dashboard")}>
+      {ZONES.map((z) => (
+        <div key={z.id} className={`dash-zone zone-${z.id}`} role="group" aria-label={t(`dash.zone.${z.id}`)}>
+          <span className="dash-zone-label" aria-hidden="true">{t(`dash.zone.${z.id}`)}</span>
+          <div className="ws-tabs">
+            {z.sections.map((id) => (
+              <button key={id} type="button" className={section === id ? "active" : ""} aria-current={section === id ? "page" : undefined} onClick={() => onSection(id)} data-tab={id}>
+                {t(`dash.tab.${id}`)}{id === "scheme" && unacked > 0 && <span className="count">{unacked}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
   );
 }
 

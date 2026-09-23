@@ -48,9 +48,9 @@ export default function TopBar({ crumbs = [], children, alarms }: { crumbs?: Cru
       {children}
       <ThemeToggle />
       <NotificationsBell />
-      {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
-      <button className={`btn sm ${user?.mfa_required ? "warn" : ""}`} title={user?.mfa_required ? "MFA yoqilishi shart" : "Profil: parol, MFA"} onClick={() => setProfile(true)} data-testid="profile-btn">{user?.full_name || user?.username}{user?.mfa_required ? " ⚠" : ""}</button>
-      <button className="btn sm" onClick={() => { logout(); nav("/login"); }}>Chiqish</button>
+      {user?.is_admin && <Link to="/admin" className="small" title={t("nav.adminTitle")}>{t("nav.admin")}</Link>}
+      <button className={`btn sm ${user?.mfa_required ? "warn" : ""}`} title={user?.mfa_required ? t("nav.mfaRequired") : t("nav.profile")} onClick={() => setProfile(true)} data-testid="profile-btn">{user?.full_name || user?.username}{user?.mfa_required ? " ⚠" : ""}</button>
+      <button className="btn sm" onClick={() => { logout(); nav("/login"); }}>{t("nav.logout")}</button>
       {profile && <ProfileDialog onClose={() => setProfile(false)} />}
     </div>
     {alarms && alarms.pid > 0 && <AlarmBanner pid={alarms.pid} role={alarms.role} />}

@@ -34,6 +34,7 @@ import { focusCommandLine } from "../ui/CommandLine";
 import type { SearchItem } from "../ui/blender";
 import { notify } from "../ui/notice";
 import AlarmBanner from "./operator/AlarmBanner";
+import { t } from "../i18n";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -646,7 +647,7 @@ export default function ModelPage() {
         {project && model && <span className="crumb-lite"><Link to={`/projects/${project.id}`}>{project.name}</Link> › {model.name}</span>}
         {current && <span className="small muted">v{current.number} <span className={`badge ${current.state}`}>{label(current.state)}</span></span>}
         <NotificationsBell />
-        {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
+        {user?.is_admin && <Link to="/admin" className="small" title={t("nav.adminTitle")}>{t("nav.admin")}</Link>}
         <span className="muted small">{user?.full_name || user?.username}</span>
       </div>
       {project && <AlarmBanner pid={project.id} role={role} />}

@@ -542,7 +542,12 @@ button.tile { color: inherit; font: inherit; text-align: left; cursor: pointer; 
 
 /* ============ 11. Dispetcher (ISA-101) — asos; mimika va alarm uslublari — UX-01..04 bo'limida ============ */
 .dash { width: 100%; max-width: 1440px; margin: 0 auto; }
-.dash-tabs { margin: var(--sp-1-5) 0 var(--sp-2); height: auto; min-height: 30px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+/* Bo'lim yorliqlari: ikki zona (UX-07) — zona nomi kichik bosh harf bilan, yorliqlar ostida; gorizontal surish */
+.dash-tabs { display: flex; gap: var(--sp-4); margin: var(--sp-1-5) 0 var(--sp-2); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; border-bottom: 1px solid var(--line); }
+.dash-zone { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.dash-zone + .dash-zone { padding-left: var(--sp-4); border-left: 1px solid var(--line); }
+.dash-zone-label { font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); padding-left: var(--sp-3); }
+.dash-zone .ws-tabs { margin-left: 0; height: 28px; }
 .dash-kpi { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 /* Mimika to'liq kenglikda (1000 birlik ≥ 1000 px — yorliqlar 14 px dan kichraymaydi), alarm jadvali ostida */
 .dash-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2-5); align-items: start; }

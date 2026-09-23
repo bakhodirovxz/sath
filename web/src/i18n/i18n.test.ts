@@ -22,7 +22,7 @@ describe("i18n: kalitlar qamrovi (UX-09)", () => {
   for (const f of files) for (const m of readFileSync(f, "utf8").matchAll(/\bt\(\s*["'`]([a-zA-Z][\w.]*)["'`]/g)) used.add(m[1]);
 
   it("koddagi har bir t(\"…\") kaliti uz-Latn lug'atida bor", () => {
-    expect(used.size).toBeGreaterThan(5);
+    expect(used.size).toBeGreaterThanOrEqual(35); // UX-07: navigatsiya, dispetcher zonalari, jonli holat — t() orqali
     expect([...used].filter((k) => !hasKey(k))).toEqual([]);
   });
   it("uz-Cyrl to'liq (transliteratsiya) va ru faqat ma'lum kalitlardan iborat", () => {

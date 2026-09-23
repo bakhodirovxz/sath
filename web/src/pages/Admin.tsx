@@ -7,6 +7,7 @@ import Dialog from "../ui/Dialog";
 import { priorityLabel } from "../i18n/labels";
 import { DeletedModelsSection, StorageSection } from "./admin/SystemSections";
 import { PriorityMark } from "../ui/AlarmMark";
+import { t } from "../i18n";
 
 export default function Admin() {
   const me = useAuth((s) => s.user);
@@ -57,7 +58,7 @@ export default function Admin() {
 
   return (
     <div className="page">
-      <TopBar crumbs={[{ label: "Boshqaruv" }]}>
+      <TopBar crumbs={[{ label: t("nav.admin") }]}>
         <button className="btn sm primary" onClick={() => setCreating(true)}>Yangi foydalanuvchi</button>
       </TopBar>
       <div className="page-body page-narrow">

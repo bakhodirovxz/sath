@@ -83,21 +83,21 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   return (
     <Ctx.Provider value={ctx}>
       <div className="page ops" data-level={level}>
-        <TopBar alarms={{ pid, role: project?.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
+        <TopBar alarms={{ pid, role: project?.my_role }} crumbs={[{ label: t("nav.projects"), to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
           <LiveBadge pid={pid} />
           <AnnunciatorControl projectId={pid} canOperate={can(project?.my_role, "scada.ack")} />
         </TopBar>
-        <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
+        <nav className="ops-nav" aria-label={t("ops.nav")}>
           <span className="ops-level">L{level}</span>
-          {parent?.to && <button className="btn sm" onClick={() => nav(parent.to!)} title="Ota ekranga qaytish">↑ {parent.label}</button>}
-          <Link className={`btn sm ${level === 1 ? "active" : ""}`} to={opsPath(pid)}>L1 Umumiy</Link>
-          <Link className="btn sm" to={opsPath(pid, "area", "hydro")}>Gidro</Link>
-          <Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>Mashina zali</Link>
-          <Link className="btn sm" to={opsPath(pid, "area", "electrical")}>Elektr</Link>
-          <Link className="btn sm" to={opsPath(pid, "alarms")} data-testid="nav-alarms">Alarmlar{summary.total ? ` (${summary.total})` : ""}</Link>
-          <Link className="btn sm" to={opsPath(pid, "trends")} data-testid="nav-trends">Trendlar</Link>
-          <Link className="btn sm" to={opsPath(pid, "shift")} data-testid="nav-shift">Smena</Link>
-          <Link className={`btn sm ${level === 4 ? "active" : ""}`} to={opsPath(pid, "diag")}>L4 Diagnostika</Link>
+          {parent?.to && <button className="btn sm" onClick={() => nav(parent.to!)} title={t("ops.up")}>↑ {parent.label}</button>}
+          <Link className={`btn sm ${level === 1 ? "active" : ""}`} to={opsPath(pid)}>{t("ops.overview")}</Link>
+          <Link className="btn sm" to={opsPath(pid, "area", "hydro")}>{t("ops.hydro")}</Link>
+          <Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>{t("ops.powerhouse")}</Link>
+          <Link className="btn sm" to={opsPath(pid, "area", "electrical")}>{t("ops.electrical")}</Link>
+          <Link className="btn sm" to={opsPath(pid, "alarms")} data-testid="nav-alarms">{t("ops.alarms")}{summary.total ? ` (${summary.total})` : ""}</Link>
+          <Link className="btn sm" to={opsPath(pid, "trends")} data-testid="nav-trends">{t("ops.trends")}</Link>
+          <Link className="btn sm" to={opsPath(pid, "shift")} data-testid="nav-shift">{t("ops.shift")}</Link>
+          <Link className={`btn sm ${level === 4 ? "active" : ""}`} to={opsPath(pid, "diag")}>{t("ops.diag")}</Link>
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />
         </nav>
@@ -115,8 +115,8 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
 export function AlarmStrip({ summary, flood, pid }: { summary: AlarmSummary; flood: boolean; pid: number }) {
   const items: ("critical" | "high" | "medium" | "low")[] = ["critical", "high", "medium", "low"];
   return (
-    <Link to={opsPath(pid, "alarms")} className="alarm-strip" title="Alarm sahifasi">
-      {flood && <span className="badge rejected">TOSHQIN</span>}
+    <Link to={opsPath(pid, "alarms")} className="alarm-strip" title={t("ops.alarmStripTitle")}>
+      {flood && <span className="badge rejected">{t("ops.flood")}</span>}
       {items.map((p) => {
         const n = summary.byPriority[p];
         return (
