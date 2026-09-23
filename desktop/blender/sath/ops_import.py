@@ -20,19 +20,34 @@ def _collection(name: str, parent=None):
     return c
 
 
-def _edges_to_curve(name: str, shape, coll, k: float = 0.001):
-    """FreeCAD qirralari → Blender egri chizig'i; k — FreeCAD qiymati (mm) → metr ko'paytuvchisi."""
+def _polylines_to_curve(name: str, polylines, coll):
+    """Polilinyalar (metrda) → Blender egri chizig'i. 2 nuqtadan kam (degenerat, nol uzunlikdagi) qirralar
+    tashlanadi — `points.add(-1)` xatosi bo'lmaydi. Birorta ham chiziq bo'lmasa obyekt yaratilmaydi (None)."""
+    polylines = [p for p in polylines if len(p) >= 2]
+    if not polylines:
+        return None
     cu = bpy.data.curves.new(name, "CURVE")
     cu.dimensions = "3D"
-    for e in shape.Edges:
-        pts = e.discretize(Deflection=0.5)
+    for pts in polylines:
         sp = cu.splines.new("POLY")
         sp.points.add(len(pts) - 1)
         for i, p in enumerate(pts):
-            sp.points[i].co = (p.x * k, p.y * k, p.z * k, 1.0)
+            sp.points[i].co = (float(p[0]), float(p[1]), float(p[2]), 1.0)
     ob = bpy.data.objects.new(name, cu)
     coll.objects.link(ob)
     return ob
+
+
+def _edges_to_curve(name: str, shape, coll, k: float = 0.001):
+    """FreeCAD qirralari → Blender egri chizig'i; k — FreeCAD qiymati (mm) → metr ko'paytuvchisi."""
+    polylines = []
+    for e in shape.Edges:
+        try:
+            pts = e.discretize(Deflection=0.5)
+        except Exception:  # noqa: BLE001 — nol uzunlikdagi qirra
+            continue
+        polylines.append([(p.x * k, p.y * k, p.z * k) for p in pts])
+    return _polylines_to_curve(name, polylines, coll)
 
 
 def _layer_of(o):
@@ -92,8 +107,8 @@ def _import_dxf_fc(FreeCAD, path: Path, work: Path, prepare: bool, unit: str, re
                     me.transform(Matrix.Scale(k / 0.001, 4))
                 ob = bpy.data.objects.new(name, me)
                 coll.objects.link(ob)
-            else:
-                _edges_to_curve(name, sh, coll, k)
+            elif _edges_to_curve(name, sh, coll, k) is None:
+                continue  # faqat degenerat qirralar
             n += 1
     finally:
         FreeCAD.closeDocument(doc.Name)
