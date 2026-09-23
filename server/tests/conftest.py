@@ -98,6 +98,31 @@ def users(client, admin):
     }
 
 
+def add_member(client, admin, project_id: int, username: str, role: str) -> dict:
+    """Loyihaga yangi a'zo (masalan operator / shift_supervisor) — login sarlavhasini qaytaradi."""
+    uid = make_user(client, admin, username)
+    r = client.put(f"/api/projects/{project_id}/members", json={"user_id": uid, "role": role}, headers=admin)
+    assert r.status_code == 200, r.text
+    return login(client, username, "pass1234")
+
+
+def ingest_headers(client, users) -> dict:
+    """Gateway ingest kaliti sarlavhasi (SCADA-07: jonli o'lchov faqat kalit bilan). Kalit bir marta
+    ko'rsatiladi, shuning uchun almashtirib olinadi va `users` ichida keshlanadi."""
+    if "_ingest" not in users:
+        r = client.post(f"/api/projects/{users['project_id']}/keys/ingest", headers=users["approver"])
+        assert r.status_code == 200, r.text
+        users["_ingest"] = {"X-Ingest-Key": r.json()["key"]}
+    return users["_ingest"]
+
+
+def manual_headers(client, users) -> dict:
+    """Qo'lda kiritish (scada.manual_entry) huquqli smena boshlig'i sarlavhasi — `users` ichida keshlanadi."""
+    if "_manual" not in users:
+        users["_manual"] = add_member(client, users["admin"], users["project_id"], "smena_boshligi", "shift_supervisor")
+    return users["_manual"]
+
+
 def make_ifc(path: Path, wall_names=("Wall 1",), project_name="Test GES") -> Path:
     """Minimal IFC4 fayl: loyiha → site → storey → devorlar."""
     import ifcopenshell.api.aggregate

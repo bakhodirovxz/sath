@@ -26,6 +26,7 @@ export const STATE_LABEL: Record<string, string> = {
   critical: "Kritik",
   viewer: "Ko'ruvchi",
   operator: "Dispetcher",
+  shift_supervisor: "Smena boshlig'i",
   engineer: "Muhandis",
   approver: "Tasdiqlovchi",
 };

@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from conftest import manual_headers
 from fastapi import HTTPException, UploadFile
 from ges_server import sandbox, uploads
 from ges_server.config import get_settings
@@ -51,10 +52,10 @@ def test_csv_import_over_limit_413(client, users, monkeypatch):
     r = client.post(f"/api/projects/{pid}/sensors", json={"key": "T1", "name": "T", "kind": "value"}, headers=users["engineer"])
     sid = r.json()["id"]
     big = b"2026-01-01T00:00:00Z,1.0\n" * 60_000  # ~1.5 MB
-    r = client.post(f"/api/sensors/{sid}/import", files={"file": ("big.csv", big, "text/csv")}, headers=users["engineer"])
+    r = client.post(f"/api/sensors/{sid}/import", files={"file": ("big.csv", big, "text/csv")}, headers=manual_headers(client, users))
     assert r.status_code == 413, r.text
     small = b"ts,value\n2026-01-01T00:00:00Z,1.0\n2026-01-01T00:01:00Z,2.0\n"
-    r = client.post(f"/api/sensors/{sid}/import", files={"file": ("ok.csv", small, "text/csv")}, headers=users["engineer"])
+    r = client.post(f"/api/sensors/{sid}/import", files={"file": ("ok.csv", small, "text/csv")}, headers=manual_headers(client, users))
     assert r.status_code == 200 and r.json()["accepted"] == 2
 
 

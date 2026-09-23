@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePolling } from "../../hooks/usePolling";
 import { Link, useParams } from "react-router-dom";
-import { api, type ReadingPoint, type WorkOrder } from "../../api/client";
+import { api, canCommandRole, type ReadingPoint, type WorkOrder } from "../../api/client";
 import Dialog from "../../ui/Dialog";
 import Trend from "../../ui/Trend";
 import { fmtDate, fmtValue } from "../../ui/format";
@@ -52,7 +52,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
   const [shelveH, setShelveH] = useState(8);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const canOperate = project?.my_role === "operator" || project?.my_role === "engineer" || project?.my_role === "approver";
+  const canOperate = project?.my_role === "operator" || project?.my_role === "shift_supervisor" || project?.my_role === "engineer" || project?.my_role === "approver";
   const canEngineer = project?.my_role === "engineer" || project?.my_role === "approver";
   const loadTrend = useCallback(() => api.readings(sensorId, hours, 400).then((r) => setPts(r.points)).catch(() => setPts([])), [sensorId, hours]);
   usePolling(loadTrend, 30_000, `${sensorId}:${hours}`);
@@ -102,7 +102,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
           </div>
           {err && <p className="error">{err}</p>}
         </section>
-        {s.writable && <ControlBlock projectId={pid} sensor={s} canCommand={!!canOperate} canOverride={project?.my_role === "approver"} liveCommand={liveCommand} onCommand={() => void reload()} />}
+        {s.writable && <ControlBlock projectId={pid} sensor={s} canCommand={canCommandRole(project?.my_role)} canOverride={project?.my_role === "shift_supervisor"} liveCommand={liveCommand} onCommand={() => void reload()} />}
         <section className="panel">
           <div className="row"><b>Trend</b><span className="grow" />{[1, 6, 24, 168].map((h) => <button key={h} className={`btn sm ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>{h < 24 ? `${h} s` : `${h / 24} k`}</button>)}</div>
           {pts.length ? <Trend series={[{ id: s.id, name: s.name, unit: s.unit, points: pts.map((p) => ({ t: Date.parse(p.ts), v: p.v, min: p.min, max: p.max })) }]} height={200} refLines={refLines} /> : <p className="muted">Ma'lumot yo'q</p>}

@@ -345,6 +345,8 @@ TAG_ORDER = [
     "AGG3.P", "AGG3.Q", "AGG3.RUN", "AGG3.SP", "AGG3.VIB", "AGG3.TEMP",
 ]
 WRITABLE = {"GATE1.SP", "AGG1.SP", "AGG2.SP", "AGG3.SP"}
+# Gateway yozish chegaralari (SCADA-02: gateway faqat writable teg va cmd_min…cmd_max ichida yozadi)
+CMD_LIMITS = {"writable": True, "cmd_min": 0.0, "cmd_max": 100.0}
 
 
 def register_of(key: str) -> int:
@@ -357,7 +359,10 @@ def gateway_config(server: str = "http://localhost:8000", project_id: int = 1, m
         "type": "modbus",
         "host": host or "127.0.0.1",
         "port": int(port),
-        "tags": [{"key": k, "address": register_of(k), "type": "float32", "scale": 1, "unit_id": 1} for k in TAG_ORDER],
+        "tags": [
+            {"key": k, "address": register_of(k), "type": "float32", "scale": 1, "unit_id": 1, **(CMD_LIMITS if k in WRITABLE else {})}
+            for k in TAG_ORDER
+        ],
     }
     cfg = {"server": server, "project_id": project_id, "ingest_key": "<ingest key>", "commands": True, "command_key": "<command key>", "interval_s": 5, "diag": True, "sources": [src]}
     if opcua:
@@ -540,7 +545,7 @@ def iec104_gateway_source(host: str = "127.0.0.1", port: int = 2404) -> dict:
         "common_address": IEC104_CA,
         "interrogation_s": 300,
         "tags": tags,
-        "commands": [{"key": k, "ioa": cmd_ioa_of(k), "type": "C_SE_NC_1"} for k in sorted(WRITABLE)],
+        "commands": [{"key": k, "ioa": cmd_ioa_of(k), "type": "C_SE_NC_1", "cmd_min": 0.0, "cmd_max": 100.0} for k in sorted(WRITABLE)],
     }
 
 

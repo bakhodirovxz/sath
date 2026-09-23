@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+from conftest import ingest_headers
 from ges_server.db import SessionLocal, engine
 from ges_server.monitoring import live
 from ges_server.orm import Model, Project, ProjectMember, Role, User
@@ -97,7 +98,7 @@ def test_readings_downsampled_in_db_and_alarm_cursor(client, users):
     assert len(r2["points"]) == 3600
     # alarm jurnali kursori
     for v in (6, 1, 7, 1, 8, 1):
-        client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": v}], headers=users["engineer"])
+        client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": v}], headers=ingest_headers(client, users))
     ev = client.get(f"/api/projects/{pid}/alarm-events?limit=2", headers=users["viewer"]).json()
     ev2 = client.get(f"/api/projects/{pid}/alarm-events?limit=10&before_id={ev[-1]['id']}", headers=users["viewer"]).json()
     assert len(ev) == 2 and len(ev2) == 1 and ev2[0]["id"] < ev[-1]["id"] < ev[0]["id"]

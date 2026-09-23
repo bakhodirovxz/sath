@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from conftest import make_user, send_command, upload
+from conftest import ingest_headers, make_user, send_command, upload
 from ges_server.db import SessionLocal
 from ges_server.monitoring import twin
 from ges_server.orm import Project
@@ -39,17 +39,17 @@ def _sensor(client, users, key, name, kind, unit, **kw):
 def test_operator_role_permissions(client, users, operator):
     pid = users["project_id"]
     s = _sensor(client, users, "AGG1.P", "Agregat 1", "power", "MW", high_alarm=30)
-    # operator o'lchov yubora olmaydi (muhandis+), lekin alarmni kvitlaydi va jurnal yozadi
+    # operator o'lchov yubora olmaydi (SCADA-07: faqat gateway kaliti), lekin alarmni kvitlaydi va jurnal yozadi
     assert (
         client.post(
             f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 1}], headers=operator
         ).status_code
-        == 401
+        == 403
     )
     client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "AGG1.P", "value": 40}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     ev = client.get(f"/api/projects/{pid}/alarm-events?active=true", headers=operator).json()
     assert ev and ev[0]["priority"] == "medium"
@@ -99,6 +99,8 @@ def test_commands_gateway_flow(client, users, operator, admin):
         writable=True,
         protocol="modbus",
         address={"register": 10},
+        min_setpoint=0,
+        max_setpoint=100,
     )
     ro = _sensor(client, users, "RES.H", "Sath", "level", "m")
     # bir bosqichli eski endpoint yo'q (410); writable emas → 400; viewer → 403
@@ -189,7 +191,7 @@ def test_twin_expected_power_and_deviation(client, users):
             {"key": "PEN.Q", "value": 60},
             {"key": "AGG1.P", "value": 50},
         ],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     st = client.get(f"/api/projects/{pid}/twin", headers=users["viewer"]).json()
     assert st["status"] == "ok" and st["head_gross_m"] == 100 and len(st["units"]) == 1
@@ -257,7 +259,7 @@ def test_assets_and_snapshot(client, users, operator):
             {"key": "AGG1.P", "value": 50 if on else 0, "ts": (d2 + timedelta(hours=h)).isoformat()}
         )
     items.append({"key": "AGG1.P", "value": 48})
-    client.post(f"/api/projects/{pid}/readings", json=items, headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=items, headers=ingest_headers(client, users))
     a = client.post(
         f"/api/projects/{pid}/assets",
         json={
@@ -352,7 +354,7 @@ def test_health_index_vibration_temperature_trend(client, users):
             items.append({"key": "AGG1.T", "value": 60 + (20 - d) * 0.3, "ts": ts})
     items.append({"key": "AGG1.VIB", "value": 3.9})
     items.append({"key": "AGG1.T", "value": 66})
-    r = client.post(f"/api/projects/{pid}/readings", json=items, headers=users["engineer"])
+    r = client.post(f"/api/projects/{pid}/readings", json=items, headers=ingest_headers(client, users))
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
         historian.rollup(db, now)
@@ -406,7 +408,7 @@ def test_health_index_vibration_temperature_trend(client, users):
     client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "AGG1.T", "value": 85}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     with SessionLocal() as db:
         proj = db.get(Project, pid)
@@ -507,7 +509,7 @@ def test_flood_forecast_from_live_and_site(client, users):
     client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "RES.LEVEL", "value": 909}],
-        headers=users["engineer"],
+        headers=ingest_headers(client, users),
     )
     r = client.post(
         f"/api/projects/{pid}/twin/forecast", json={"rain_mm": 40}, headers=users["viewer"]

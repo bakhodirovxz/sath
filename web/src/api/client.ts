@@ -1,6 +1,8 @@
 // Server API bilan ishlash. Token localStorage da saqlanadi.
 
-export type Role = "viewer" | "operator" | "engineer" | "approver";
+export type Role = "viewer" | "operator" | "shift_supervisor" | "engineer" | "approver";
+/** SCADA-01: buyruq faqat dispetcher va smena boshlig'ida (loyihalash rollari buyruq bermaydi). */
+export const canCommandRole = (r: Role | null | undefined) => r === "operator" || r === "shift_supervisor";
 export type VersionState = "wip" | "shared" | "published" | "archived";
 export type CRStatus = "open" | "changes_requested" | "approved" | "rejected" | "merged";
 export type IssueStatus = "open" | "in_progress" | "resolved" | "closed";
@@ -354,10 +356,11 @@ export interface SensorIn {
   priority?: "low" | "medium" | "high" | "critical" | undefined;
   writable?: boolean;
 }
-export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch";
+export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch" | "unknown";
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
-export interface GatewayKey { kind: GatewayKeyKind; key: string; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
+/** SCADA-04: `key` faqat yaratilganda/almashtirilganda (bir marta), aks holda null — `key_prefix` ko'rsatiladi. */
+export interface GatewayKey { kind: GatewayKeyKind; key: string | null; key_prefix: string | null; shown_once: boolean; exists: boolean; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
 export interface InterlockResult { interlock_id: number; name: string; ok: boolean; message: string }
 export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean; interlocks?: InterlockResult[]; override?: boolean }
 export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }

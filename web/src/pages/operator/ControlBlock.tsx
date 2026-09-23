@@ -22,8 +22,8 @@ export function validateSetpoint(s: Pick<Sensor, "min_setpoint" | "max_setpoint"
   return { ok: true };
 }
 
-export const CMD_LABEL: Record<string, string> = { pending: "navbatda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi", pending_approval: "tasdiq kutilmoqda", mismatch: "readback mos emas" };
-export const CMD_CLASS: Record<string, string> = { pending: "open", sent: "shared", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived", pending_approval: "high", mismatch: "rejected" };
+export const CMD_LABEL: Record<string, string> = { pending: "navbatda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi", pending_approval: "tasdiq kutilmoqda", mismatch: "readback mos emas", unknown: "natija noma'lum" };
+export const CMD_CLASS: Record<string, string> = { pending: "open", sent: "shared", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived", pending_approval: "high", mismatch: "rejected", unknown: "high" };
 
 export default function ControlBlock({ projectId, sensor, canCommand, canOverride = false, liveCommand, onCommand }: { projectId: number; sensor: Sensor; canCommand: boolean; canOverride?: boolean; liveCommand?: Command | null; onCommand?: (c: Command) => void }) {
   const [value, setValue] = useState(sensor.last_value == null ? "" : String(sensor.last_value));

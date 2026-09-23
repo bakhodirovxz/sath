@@ -122,6 +122,8 @@ class Settings(BaseSettings):
     alarm_shelve_max_h: float = 24.0
     # Buyruq watchdog: gateway olib (sent) shuncha soniyada ack/failed qaytarmasa → failed, sensor bo'shaydi
     command_sent_timeout_s: int = 120
+    # SCADA-03: ikki kishi tasdig'ini kutish muddati (pending_approval → expired), soniya
+    command_approval_ttl_s: int = 600
     # Kunlik hisobot emaili (UTC soat); -1 — o'chirilgan. Muhandis/tasdiqlovchi/operatorlarga (SMTP bo'lsa)
     daily_report_hour: int = 6
     # Tezlik cheklovlari (L1), daqiqasiga; 0 — o'chirilgan. Jarayon ichida (replika boshiga).

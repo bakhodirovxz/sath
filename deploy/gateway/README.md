@@ -48,15 +48,53 @@ Windows da doimiy ishlashi uchun Task Scheduler («At startup», «Run whether u
 
 ## Buyruqlar (supervisory control)
 
-Serverda `writable` belgilangan sensor (setpoint/rele) uchun dispetcher **Dispetcher paneli → Buyruq**
-yuboradi (select-before-operate: tanlash → 30 s ichida bajarish; `requires_dual_approval` nuqtalarda ikkinchi
-operator tasdig'i). Gateway har siklda `POST /api/projects/{id}/commands/claim` (X-Ingest-Key) bilan navbatni
-oladi va teg konfiguratsiyasi bo'yicha yozadi: Modbus — `write_registers` (address/type/scale), OPC UA —
-`write_value`, IEC 104 — `C_SE_NC_1` (`commands` ro'yxatidagi IOA ga), sim — simulyator qiymati. Natija `POST /api/commands/{id}/ack` (`acked`/`failed` + matn), so'ng
-gateway tegni qayta o'qib `POST /api/commands/{id}/readback` ga yuboradi — server kutilgan qiymat bilan
-solishtiradi (`readback_tolerance`), farq bo'lsa buyruq `mismatch` va dispetcherlarga bildirishnoma.
-Buyruq TTL (`command_ttl_s`) ichida olinmasa `expired`; `sent` da javob kelmasa watchdog `failed` qiladi.
+Serverda `writable` belgilangan sensor (setpoint/rele, `min_setpoint`/`max_setpoint` majburiy) uchun dispetcher
+yoki smena boshlig'i **Dispetcher paneli → Buyruq** yuboradi (select-before-operate: tanlash → 30 s ichida
+bajarish; `requires_dual_approval` nuqtalarda smena boshlig'i tasdig'i). Muhandis/tasdiqlovchi buyruq bermaydi.
+Gateway har siklda `POST /api/projects/{id}/commands/claim` (**X-Command-Key**) bilan navbatni oladi va teg
+konfiguratsiyasi bo'yicha yozadi: Modbus — `write_registers` (address/type/scale), OPC UA — `write_value`,
+IEC 104 — `C_SE_NC_1` (`commands` ro'yxatidagi IOA ga), sim — simulyator qiymati. Natija
+`POST /api/commands/{id}/ack` (`acked`/`failed` + matn), so'ng gateway tegni qayta o'qib
+`POST /api/commands/{id}/readback` ga yuboradi — server kutilgan qiymat bilan solishtiradi
+(`readback_tolerance`), farq bo'lsa buyruq `mismatch` va dispetcherlarga bildirishnoma.
+Buyruq TTL (`command_ttl_s`, default 60 s) ichida olinmasa `expired`; `sent` da javob kelmasa watchdog
+`unknown` (bajarilgani noma'lum) qiladi va dispetcherlarga alarm yuboradi.
+
+Gateway tomonidagi himoya (serverdan mustaqil):
+
+- **Faqat writable teglar.** Teg konfiguratsiyasida `"writable": true` va `cmd_min`/`cmd_max` bo'lishi shart
+  (IEC 104 da — `commands` ro'yxati, u yerda ham `cmd_min`/`cmd_max`). Belgilanmagan (faqat o'qish) tegga,
+  chegara sozlanmagan tegga, diapazondan tashqari yoki NaN/inf qiymatga yozish rad etiladi (`failed`).
+- **Imzolangan buyruqlar (SCADA-04).** Server har buyruqni HMAC-SHA256 bilan imzolaydi: kanonik JSON
+  (`id, project_id, key, protocol, address, value, nonce, expires_at`), imzo kaliti = HMAC-SHA256(command_key,
+  `"sath-command-sign-v1"`). Gateway imzoni, loyiha id sini, muddatni (`clock_skew_s`, default 30 s
+  tolerantlik bilan) va nonce takrorini (xotiradagi kesh) tekshiradi — imzosiz, o'zgartirilgan, eskirgan yoki
+  takroriy buyruq yozilmaydi. Gateway soati NTP bilan sinxron bo'lishi kerak.
+- **Kalitlar serverda xesh bilan saqlanadi** — kalit faqat yaratilganda/almashtirilganda bir marta
+  ko'rsatiladi; yo'qolsa «Ulanish kalitlari → almashtirish» (eski kalit darhol yaroqsiz).
+
 O'chirish: konfiguratsiyada `"commands": false`.
+
+## Transport: HTTPS va mTLS
+
+`server` manzili **https://** bo'lishi kerak (namuna konfiguratsiyada shunday) — kalitlar va buyruqlar ochiq
+tarmoqda uzatilmasin. Ichki CA bilan: `"ca_bundle": "C:/sath/ca.pem"` (yoki `REQUESTS_CA_BUNDLE` muhit
+o'zgaruvchisi).
+
+Buyruq kanali uchun o'zaro TLS (mTLS, IEC 62443 zona/kanal talabi) tavsiya etiladi: gateway ga alohida mijoz
+sertifikati beriladi, reverse proxy (nginx/Caddy) `/api/projects/*/commands/*` va `/api/commands/*`
+yo'llarida mijoz sertifikatini talab qiladi:
+
+```nginx
+location ~ ^/api/(projects/\d+/commands/claim|commands/\d+/(ack|readback))$ {
+    ssl_verify_client on;                       # server blokida: ssl_client_certificate /etc/sath/gw-ca.pem;
+    proxy_pass http://sath-server:8000;
+}
+```
+
+Gateway konfiguratsiyasida: `"client_cert": "C:/sath/gw.crt", "client_key": "C:/sath/gw.key"` — `requests`
+ga `cert=(client_cert, client_key)` sifatida beriladi (barcha so'rovlarga). mTLS X-Command-Key va buyruq
+imzosining o'rnini bosmaydi — qo'shimcha qatlam.
 
 
 ## OPC UA teglarini avtomatik topish (browse)

@@ -1,6 +1,6 @@
 """F9: smena topshirish — avtomatik varaqa, ogohlantirishlar (yakunlanmagan), ikki imzo (audit), hodisalar tasmasi."""
 
-from conftest import send_command
+from conftest import ingest_headers, send_command
 from ges_server.db import SessionLocal
 from ges_server.orm import AuditLog
 
@@ -15,10 +15,12 @@ def test_handover_requires_acknowledging_warnings_and_two_signatures(client, use
     pid = users["project_id"]
     s = _sensor(client, users, "RES.H", high_alarm=900.0)
     sp = _sensor(client, users, "GATE1.SP", writable=True, min_setpoint=0, max_setpoint=100)
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 905}, {"key": "GATE1.SP", "value": 40}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 905}, {"key": "GATE1.SP", "value": 40}], headers=ingest_headers(client, users))
     client.post(f"/api/sensors/{s['id']}/shelve", json={"reason": "sinov"}, headers=users["engineer"])
     client.post(f"/api/sensors/{s['id']}/unshelve", headers=users["engineer"])
-    send_command(client, users["engineer"], pid, sp["id"], 55.0, "smena")
+    from conftest import add_member
+
+    send_command(client, add_member(client, users["admin"], pid, "opr", "operator"), pid, sp["id"], 55.0, "smena")
     # varaqa: kvitlanmagan alarm + kutilayotgan buyruq → ogohlantirishlar
     snap = client.get(f"/api/projects/{pid}/shift/snapshot", headers=users["viewer"]).json()
     assert snap["unacked"] == 1 and len(snap["pending_commands"]) == 1 and snap["alarms"][0]["key"] == "RES.H"
@@ -60,7 +62,7 @@ def test_handover_requires_acknowledging_warnings_and_two_signatures(client, use
 def test_handover_clean_shift_without_warnings(client, users):
     pid = users["project_id"]
     _sensor(client, users, "TW.H")
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "TW.H", "value": 1}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "TW.H", "value": 1}], headers=ingest_headers(client, users))
     snap = client.get(f"/api/projects/{pid}/shift/snapshot", headers=users["viewer"]).json()
     assert snap["warnings"] == []
     r = client.post(f"/api/projects/{pid}/shift/handover", json={"notes": "tinch smena"}, headers=users["engineer"])

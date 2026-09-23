@@ -205,7 +205,8 @@ def test_loto_blocks_command(client, users, operator):
     h = users["engineer"]
     gate = client.post(
         f"/api/projects/{pid}/sensors",
-        json={"key": "GATE9.SP", "name": "Zatvor 9", "kind": "position", "writable": True, "kks_code": "1MAA10 AA001"},
+        json={"key": "GATE9.SP", "name": "Zatvor 9", "kind": "position", "writable": True, "kks_code": "1MAA10 AA001",
+              "min_setpoint": 0, "max_setpoint": 100},
         headers=h,
     ).json()
     a = client.post(
@@ -255,10 +256,13 @@ def test_loto_blocks_command(client, users, operator):
         f"/api/projects/{pid}/commands/select", json={"sensor_id": gate["id"], "value": 20}, headers=operator
     )
     assert r.status_code == 409 and "LOTO faol" in r.json()["detail"]
+    from conftest import add_member
+
+    sup = add_member(client, users["admin"], pid, "sup", "shift_supervisor")
     r = client.post(
         f"/api/projects/{pid}/commands/select?override=true&override_reason=juda%20zarur",
         json={"sensor_id": gate["id"], "value": 20},
-        headers=users["approver"],
+        headers=sup,
     )
     assert r.status_code == 409 and "LOTO faol" in r.json()["detail"]
     # faol LOTO ro'yxati

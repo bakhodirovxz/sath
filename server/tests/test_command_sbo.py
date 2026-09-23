@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 import pytest
-from conftest import login, make_user, send_command
+from conftest import add_member, login, make_user, send_command
 from ges_server.db import SessionLocal
 from ges_server.monitoring import control
 from ges_server.orm import Command, CommandStatus, utcnow
@@ -24,7 +24,7 @@ def operator(client, admin, users):
 def gate(client, users):
     r = client.post(
         f"/api/projects/{users['project_id']}/sensors",
-        json={"key": "GATE1.SP", "name": "Zatvor 1", "kind": "position", "unit": "%", "writable": True},
+        json={"key": "GATE1.SP", "name": "Zatvor 1", "kind": "position", "unit": "%", "writable": True, "min_setpoint": 0, "max_setpoint": 100},
         headers=users["engineer"],
     )
     return r.json()
@@ -71,8 +71,9 @@ def test_execute_requires_valid_token(client, users, operator, gate):
 def test_dual_approval_author_cannot_approve(client, users, operator, gate):
     pid = users["project_id"]
     client.patch(f"/api/sensors/{gate['id']}", json={"requires_dual_approval": True}, headers=users["engineer"])
+    sup = add_member(client, users["admin"], pid, "sup", "shift_supervisor")
     r = send_command(client, operator, pid, gate["id"], 55, "ikki kishi")
-    assert r.status_code == 201 and r.json()["status"] == "pending_approval" and r.json()["expires_at"] is None
+    assert r.status_code == 201 and r.json()["status"] == "pending_approval" and r.json()["expires_at"] is not None
     cid = r.json()["id"]
     key = _key(client, users)
     # gateway ga berilmaydi
@@ -81,17 +82,18 @@ def test_dual_approval_author_cannot_approve(client, users, operator, gate):
     assert client.post(f"/api/commands/{cid}/approve", headers=operator).status_code == 403
     # ko'ruvchi — 403
     assert client.post(f"/api/commands/{cid}/approve", headers=users["viewer"]).status_code == 403
-    # boshqa operator (muhandis) tasdiqlaydi → pending, TTL boshlanadi
-    r = client.post(f"/api/commands/{cid}/approve", headers=users["engineer"])
+    # muhandis tasdiqlay olmaydi (SCADA-01); smena boshlig'i tasdiqlaydi → pending, TTL boshlanadi
+    assert client.post(f"/api/commands/{cid}/approve", headers=users["engineer"]).status_code == 403
+    r = client.post(f"/api/commands/{cid}/approve", headers=sup)
     assert r.status_code == 200 and r.json()["status"] == "pending"
-    assert r.json()["approved_by_username"] == "engineer" and r.json()["expires_at"] is not None
-    assert client.post(f"/api/commands/{cid}/approve", headers=users["engineer"]).status_code == 409
+    assert r.json()["approved_by_username"] == "sup" and r.json()["expires_at"] is not None
+    assert client.post(f"/api/commands/{cid}/approve", headers=sup).status_code == 409
     got = client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": key}).json()
     assert [g["id"] for g in got] == [cid]
     # tasdiq kutayotganda ikkinchi buyruq — 409; bekor qilish mumkin
     r2 = send_command(client, operator, pid, gate["id"], 56)
     assert r2.status_code == 409
-    n = client.get("/api/notifications", headers=users["engineer"]).json()
+    n = client.get("/api/notifications", headers=sup).json()
     assert any("Tasdiq kutilmoqda" in x["title"] for x in n)
 
 

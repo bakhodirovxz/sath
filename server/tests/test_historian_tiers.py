@@ -4,6 +4,7 @@ ma'lumot, partiyali purge (alarm atrofi saqlanadi), qatlam muddati, arxiv siqish
 import tracemalloc
 from datetime import datetime, timedelta, timezone
 
+from conftest import ingest_headers
 from ges_server.db import SessionLocal, engine
 from ges_server.monitoring import historian, live
 from ges_server.orm import AlarmEvent, AlarmState, Reading, ReadingAgg, ReadingHourly, Sensor
@@ -116,7 +117,7 @@ def test_archive_deadband_compression(client, users):
     sid = _sensor(client, users, archive_deadband=0.5, archive_max_interval_s=60)
     t0 = datetime.now(timezone.utc) - timedelta(minutes=10)
     items = [{"key": "AGG1.P", "value": v, "ts": (t0 + timedelta(seconds=10 * i)).isoformat()} for i, v in enumerate([10.0, 10.1, 10.2, 10.4, 10.6, 10.7, 10.65])]
-    r = client.post(f"/api/projects/{pid}/readings", json=items, headers=users["engineer"])
+    r = client.post(f"/api/projects/{pid}/readings", json=items, headers=ingest_headers(client, users))
     assert r.status_code == 200 and r.json()["accepted"] == 7
     with SessionLocal() as db:
         vals = [x.value for x in db.query(Reading).filter_by(sensor_id=sid).order_by(Reading.ts)]
@@ -125,7 +126,7 @@ def test_archive_deadband_compression(client, users):
         assert s.last_value == 10.65 and s.last_archived_value == 10.6  # holat baribir yangilanadi
     # majburiy yozuv: max_interval (60 s) o'tgach o'zgarish kichik bo'lsa ham yoziladi; bad har doim
     later = t0 + timedelta(seconds=130)
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 10.66, "ts": later.isoformat()}, {"key": "AGG1.P", "value": 10.66, "ts": (later + timedelta(seconds=5)).isoformat(), "quality": "bad"}], headers=users["engineer"])
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 10.66, "ts": later.isoformat()}, {"key": "AGG1.P", "value": 10.66, "ts": (later + timedelta(seconds=5)).isoformat(), "quality": "bad"}], headers=ingest_headers(client, users))
     with SessionLocal() as db:
         rows = db.query(Reading).filter_by(sensor_id=sid).order_by(Reading.ts).all()
         assert [x.value for x in rows] == [10.0, 10.6, 10.66, 10.66] and rows[-1].quality == "bad"

@@ -28,9 +28,15 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, ratelimit, uploads
 from ..auth.deps import (
     DB,
+    P_GATEWAY_KEYS,
+    P_SCADA_MANUAL_ENTRY,
+    P_SENSOR_CONFIGURE,
     CurrentUser,
+    check_project_permission,
     get_project_role,
+    has_permission,
     has_role,
+    require_project_permission,
     require_project_role,
     user_from_token,
 )
@@ -44,7 +50,8 @@ WS_PING_S = 10.0  # WebSocket heartbeat davri (klient 3× davrda xabar kelmasa O
 
 ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
-ApproverProject = Annotated[Project, Depends(require_project_role(Role.approver))]
+# Gateway kalitlari — `gateway.keys` ruxsati (tasdiqlovchi, admin)
+KeysProject = Annotated[Project, Depends(require_project_permission(P_GATEWAY_KEYS))]
 
 Kind = Literal[
     "level", "flow", "power", "pressure", "temperature", "vibration", "status", "position", "value",
@@ -56,6 +63,8 @@ OperatorProject = Annotated[Project, Depends(require_project_role(Role.operator)
 
 
 class SensorIn(BaseModel):
+    model_config = {"allow_inf_nan": False}  # SCADA-02: NaN/inf chegaralar 422
+
     key: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.\-/:]+$")
     kks_code: str | None = Field(default=None, max_length=32)  # H1: KKS/RDS-PP (tekshiriladi)
     name: str = Field(min_length=1, max_length=128)
@@ -107,11 +116,13 @@ class SensorIn(BaseModel):
     max_setpoint: float | None = None
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
-    command_ttl_s: int = Field(300, ge=10, le=86400)
+    command_ttl_s: int = Field(60, ge=10, le=86400)
     readback_tolerance: float = Field(0.01, ge=0, le=1)
 
 
 class SensorPatch(BaseModel):
+    model_config = {"allow_inf_nan": False}
+
     name: str | None = None
     kks_code: str | None = None  # H1; "" — o'chirish
     kind: Kind | None = None
@@ -219,7 +230,7 @@ class SensorOut(BaseModel):
     max_setpoint: float | None = None
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
-    command_ttl_s: int = 300
+    command_ttl_s: int = 60
     readback_tolerance: float = 0.01
 
     model_config = {"from_attributes": True}
@@ -231,20 +242,14 @@ class SensorOut(BaseModel):
 
 
 class ReadingIn(BaseModel):
-    """Gateway ma'lumotlari. `value` chekli son bo'lishi shart (NaN/inf/matn → 422 — gateway o'zi
-    tozalashi kerak); `ts` tekshiruvi ingest da (yaroqsiz/kelajak/eski → `rejected`)."""
+    """Gateway ma'lumotlari. Qiymat va vaqt tamg'asi tekshiruvi har yozuv uchun alohida `live.ingest` da
+    (SCADA-06): NaN/inf → `value_not_finite`, son emas → `value_invalid`, yaroqsiz/kelajak/eski ts →
+    `rejected` ro'yxatida sabab bilan; qolgan yozuvlar qabul qilinadi (bitta yomon yozuv paketni yiqitmaydi)."""
 
     key: str | None = None
     sensor_id: int | None = None
-    value: float
+    value: float | str | None
     ts: datetime | float | str | None = None
-
-    @field_validator("value")
-    @classmethod
-    def _finite(cls, v: float) -> float:
-        if not math.isfinite(v):
-            raise ValueError("qiymat chekli son bo'lishi kerak (NaN/inf emas)")
-        return v
     # QUALITIES (good|uncertain|bad|substituted|manual); yo'q bo'lsa good
     quality: str | None = None
     # manbadagi vaqt tamg'asi (OPC UA SourceTimestamp, gateway o'qish vaqti)
@@ -252,6 +257,55 @@ class ReadingIn(BaseModel):
 
 
 # ---------- Sensorlar ----------
+
+# Boshqaruv sozlamalari (SCADA-01): o'zgartirish `sensor.configure` ruxsati bilan, alohida audit
+CONTROL_FIELDS = (
+    "writable",
+    "protocol",
+    "address",
+    "min_setpoint",
+    "max_setpoint",
+    "max_rate_per_min",
+    "requires_dual_approval",
+    "command_ttl_s",
+    "readback_tolerance",
+)
+
+
+def validate_control(writable: bool, lo: float | None, hi: float | None, rate: float | None) -> None:
+    """SCADA-02: boshqariladigan (writable) nuqtada buyruq diapazoni majburiy, chekli va min <= max.
+    Buzilsa 422."""
+    for name, v in (("min_setpoint", lo), ("max_setpoint", hi), ("max_rate_per_min", rate)):
+        if v is not None and not math.isfinite(v):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{name} chekli son bo'lishi kerak")
+    if rate is not None and rate <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "max_rate_per_min musbat bo'lishi kerak")
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "min_setpoint max_setpoint dan katta bo'lmasin")
+    if writable and (lo is None or hi is None):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Boshqariladigan (writable) nuqtaga buyruq diapazoni majburiy: min_setpoint va max_setpoint",
+        )
+
+
+def _control_snapshot(s: Sensor) -> dict:
+    return {k: getattr(s, k) for k in CONTROL_FIELDS}
+
+
+def _audit_configure(db, user_id: int, s: Sensor, before: dict | None) -> None:
+    after = _control_snapshot(s)
+    changed = {k: {"old": (before or {}).get(k), "new": v} for k, v in after.items() if before is None or before.get(k) != v}
+    if changed:
+        audit.log(
+            db,
+            user_id=user_id,
+            action="sensor.configure",
+            target_type="sensor",
+            target_id=s.id,
+            project_id=s.project_id,
+            detail={"key": s.key, "changes": changed},
+        )
 
 
 @router.get("/projects/{project_id}/sensors", response_model=list[SensorOut])
@@ -285,6 +339,9 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
         data["kks_code"] = kks.validate(data.get("kks_code"))
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    if body.writable:
+        check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
+    validate_control(body.writable, body.min_setpoint, body.max_setpoint, body.max_rate_per_min)
     sensor = Sensor(project_id=project.id, **data)
     db.add(sensor)
     db.flush()
@@ -297,6 +354,8 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
         project_id=project.id,
         detail={"key": sensor.key},
     )
+    if sensor.writable:
+        _audit_configure(db, user.id, sensor, None)
     db.commit()
     mqtt_bridge.refresh()
     live.invalidate_sensors()
@@ -414,10 +473,16 @@ def import_sensors(body: SensorImportIn, project: EngineerProject, user: Current
         if existing:
             if not body.update_existing:
                 continue
+            before = _control_snapshot(existing)
             for k, v in data.model_dump().items():
                 if k == "element_guid" and v is None:
                     continue
+                if k in CONTROL_FIELDS and k not in ("protocol", "address"):
+                    continue  # import boshqaruv sozlamalarini (writable, chegaralar) tushirib yubormasin
                 setattr(existing, k, v)
+            if existing.writable:
+                check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
+                _audit_configure(db, user.id, existing, before)
             updated += 1
         else:
             db.add(Sensor(project_id=project.id, **data.model_dump()))
@@ -462,6 +527,9 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB, 
             changes["kks_code"] = kks.validate(changes["kks_code"])
         except ValueError as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    before = _control_snapshot(s)
+    if body.clear_setpoint_range or any(k in changes and changes[k] != before[k] for k in CONTROL_FIELDS):
+        check_project_permission(db, s.project_id, user, P_SENSOR_CONFIGURE)
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:
@@ -474,6 +542,13 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB, 
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
         s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
+    if _control_snapshot(s) != before:  # boshqaruv sozlamasi o'zgargan bo'lsa to'liq tekshiruv
+        try:
+            validate_control(bool(s.writable), s.min_setpoint, s.max_setpoint, s.max_rate_per_min)
+        except HTTPException:
+            db.rollback()
+            raise
+    _audit_configure(db, user.id, s, before)
     if s.last_value is not None and not s.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
         s.alarm_pending = s.alarm_pending_since = None
@@ -519,8 +594,8 @@ def delete_sensor(sensor_id: int, user: CurrentUser, db: DB):
 # ---------- Ingest ----------
 
 
-def _key_response(project: Project, kind: str) -> dict:
-    inf = keys.info(project, kind)
+def _key_response(project: Project, kind: str, new_key: str | None = None) -> dict:
+    inf = keys.info(project, kind, new_key)
     out = {
         **inf,
         "url": f"/api/projects/{project.id}/readings"
@@ -534,11 +609,12 @@ def _key_response(project: Project, kind: str) -> dict:
 
 @router.get("/projects/{project_id}/keys/{kind}")
 def get_project_key(
-    kind: Literal["ingest", "command"], project: ApproverProject, user: CurrentUser, db: DB
+    kind: Literal["ingest", "command"], project: KeysProject, user: CurrentUser, db: DB
 ):
-    """Gateway kaliti (ingest — X-Ingest-Key, faqat o'lchov; command — X-Command-Key, buyruq kanali).
-    Bo'lmasa yaratiladi (365 kun). Har o'qish auditda."""
-    keys.ensure(db, project, kind, user.id)
+    """Gateway kaliti holati (ingest — X-Ingest-Key, faqat o'lchov; command — X-Command-Key, buyruq kanali).
+    Bo'lmasa yaratiladi (365 kun) va kalit shu javobda bir marta ko'rsatiladi; keyin faqat prefiks
+    (SCADA-04: bazada xesh). Unutilgan kalit — almashtiriladi (POST). Har o'qish auditda."""
+    new_key = keys.ensure(db, project, kind, user.id)
     audit.log(
         db,
         user_id=user.id,
@@ -548,30 +624,31 @@ def get_project_key(
         project_id=project.id,
     )
     db.commit()
-    return _key_response(project, kind)
+    return _key_response(project, kind, new_key)
 
 
 @router.post("/projects/{project_id}/keys/{kind}")
 def rotate_project_key(
     kind: Literal["ingest", "command"],
-    project: ApproverProject,
+    project: KeysProject,
     user: CurrentUser,
     db: DB,
     ttl_days: int = Query(keys.DEFAULT_TTL_DAYS, ge=0, le=3650, description="0 — muddatsiz"),
 ):
-    keys.rotate(db, project, kind, user.id, ttl_days)
+    """Kalitni almashtirish — yangi kalit faqat shu javobda ko'rsatiladi."""
+    new_key = keys.rotate(db, project, kind, user.id, ttl_days)
     db.commit()
-    return _key_response(project, kind)
+    return _key_response(project, kind, new_key)
 
 
 @router.get("/projects/{project_id}/ingest-key")
-def get_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+def get_ingest_key(project: KeysProject, user: CurrentUser, db: DB):
     """Eski manzil — `GET .../keys/ingest` bilan bir xil."""
     return get_project_key("ingest", project, user, db)
 
 
 @router.post("/projects/{project_id}/ingest-key")
-def rotate_ingest_key(project: ApproverProject, user: CurrentUser, db: DB):
+def rotate_ingest_key(project: KeysProject, user: CurrentUser, db: DB):
     """Eski manzil — `POST .../keys/ingest` bilan bir xil."""
     return rotate_project_key("ingest", project, user, db, keys.DEFAULT_TTL_DAYS)
 
@@ -584,38 +661,29 @@ def push_readings(
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """O'lchovlarni yuborish: yoki X-Ingest-Key (gateway), yoki foydalanuvchi tokeni (muhandis+).
+    """O'lchovlarni yuborish (SCADA-07): jonli oqim — faqat gateway X-Ingest-Key bilan. Foydalanuvchi
+    tokeni — faqat `scada.manual_entry` ruxsati bilan (smena boshlig'i) qo'lda kiritish: yozuvlar
+    `quality=manual` (bad bo'lsa bad), `source=manual`, har kiritish qiymatlari bilan auditda.
     Loyiha bo'yicha tezlik cheklovi (`rate_ingest_per_min` so'rov/daqiqa) — 429."""
-    ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    ok = False
-    if x_ingest_key:
-        keys.verify(db, project, "ingest", x_ingest_key)  # 401/403 tashlaydi
-        ok = True
-    auth_kind, actor_id = ("key", None) if ok else (None, None)
-    if not ok and authorization and authorization.lower().startswith("bearer "):
-        user = user_from_token(db, authorization[7:])
-        ok = (
-            user is not None
-            and user.is_active
-            and has_role(get_project_role(db, project_id, user), Role.engineer)
-        )
-        if ok:
-            auth_kind, actor_id = "token", user.id
-    if not ok:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
+    auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
         )
+    items = [b.model_dump() for b in body]
+    if auth_kind == "manual":
+        items = _as_manual(items)
     out = live.ingest(
         db,
         project_id,
-        [b.model_dump() for b in body],
+        items,
+        source="manual" if auth_kind == "manual" else "http",
         max_age=timedelta(days=get_settings().ingest_max_age_days),
     )
+    if auth_kind == "manual":
+        _audit_manual(db, actor_id, "project", project_id, project_id, items, out)
+        db.commit()
+        return out
     # Partiya bo'yicha bitta jamlangan yozuv (har o'lchov emas)
     audit.log(
         db,
@@ -638,6 +706,37 @@ def push_readings(
     return out
 
 
+def _as_manual(items: list[dict]) -> list[dict]:
+    """Qo'lda kiritilgan yozuvlar: sifat `manual` (bad bo'lsa bad — holatga ta'sir qilmasin)."""
+    return [{**it, "quality": "bad" if str(it.get("quality") or "").lower() == "bad" else "manual"} for it in items]
+
+
+def _audit_item(it: dict) -> dict:
+    v = it.get("value")
+    if isinstance(v, float) and not math.isfinite(v):
+        v = str(v)  # audit JSON ga NaN/inf yozilmaydi
+    ts = it.get("ts")
+    return {"key": it.get("key"), "sensor_id": it.get("sensor_id"), "value": v, "ts": None if ts is None else str(ts), "quality": it.get("quality")}
+
+
+def _audit_manual(db, user_id: int, target_type: str, target_id: int, project_id: int, items: list[dict], out: dict) -> None:
+    audit.log(
+        db,
+        user_id=user_id,
+        action="readings.manual",
+        target_type=target_type,
+        target_id=target_id,
+        project_id=project_id,
+        detail={
+            "source": "manual",
+            "count": len(items),
+            "accepted": out["accepted"],
+            "rejected": len(out["rejected"]),
+            "items": [_audit_item(it) for it in items[:50]],
+        },
+    )
+
+
 def _parse_csv(text: str, sensor_id: int) -> list[dict]:
     items = []
     for row in csv.reader(io.StringIO(text)):
@@ -656,9 +755,11 @@ def _parse_csv(text: str, sensor_id: int) -> list[dict]:
 
 @router.post("/sensors/{sensor_id}/import")
 async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB):
-    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya; quality — QUALITIES.
-    Hajm chegarasi `small_upload_mb` (413, oqimda); parse va ingest thread hovuzida (event loop bloklanmaydi, L5)."""
-    s = _get_sensor(db, sensor_id, user, Role.engineer)
+    """CSV: 'ts,value[,quality]' (sarlavha ixtiyoriy). ts — ISO yoki Unix soniya. SCADA-07: qo'lda
+    kiritish — `scada.manual_entry` ruxsati, yozuvlar `quality=manual` (bad qatorlar bad), `source=manual`,
+    audit. Hajm chegarasi `small_upload_mb` (413, oqimda); parse va ingest thread hovuzida (L5)."""
+    s = _get_sensor(db, sensor_id, user, Role.viewer)
+    check_project_permission(db, s.project_id, user, P_SCADA_MANUAL_ENTRY)
     raw = await uploads.read_limited(file, get_settings().small_upload_mb * 1024 * 1024)
     text = raw.decode("utf-8-sig", errors="replace")
     items = await run_in_threadpool(_parse_csv, text, s.id)
@@ -666,16 +767,9 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
     if len(items) > 200_000:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir CSV da 200 000 tagacha qator — bo'lib yuklang")
-    out = await run_in_threadpool(live.ingest, db, s.project_id, items, "csv")
-    audit.log(
-        db,
-        user_id=user.id,
-        action="readings.ingest",
-        target_type="sensor",
-        target_id=s.id,
-        project_id=s.project_id,
-        detail={"count": len(items), "accepted": out["accepted"], "bad": out["bad"], "auth": "csv"},
-    )
+    items = _as_manual(items)
+    out = await run_in_threadpool(live.ingest, db, s.project_id, items, "manual")
+    _audit_manual(db, user.id, "sensor", s.id, s.project_id, items, {**out, "csv": True})
     db.commit()
     return out
 
@@ -693,7 +787,8 @@ class SoeIn(BaseModel):
 
 
 def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: str | None) -> tuple[str, int | None]:
-    """Ingest kaliti yoki muhandis+ tokeni → (auth turi, foydalanuvchi id)."""
+    """SCADA-07: gateway ingest kaliti → ("key", None); foydalanuvchi tokeni faqat `scada.manual_entry`
+    ruxsati bilan → ("manual", user id), ruxsatsiz → 403; hech biri → 401."""
     ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
     project = db.get(Project, project_id)
     if project is None:
@@ -703,8 +798,13 @@ def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: s
         return "key", None
     if authorization and authorization.lower().startswith("bearer "):
         user = user_from_token(db, authorization[7:])
-        if user is not None and has_role(get_project_role(db, project_id, user), Role.engineer):
-            return "token", user.id
+        if user is not None:
+            if not has_permission(db, project_id, user, P_SCADA_MANUAL_ENTRY):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Jonli o'lchov faqat gateway ingest kaliti bilan; qo'lda kiritish — scada.manual_entry ruxsati",
+                )
+            return "manual", user.id
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
 
 
@@ -716,15 +816,19 @@ def push_soe(
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
-    """SOE hodisalarini yuborish (ingest kaliti yoki muhandis+): partiyali, ms aniqlik, takror tashlanadi."""
+    """SOE hodisalarini yuborish (ingest kaliti; qo'lda — `scada.manual_entry`, source=manual): partiyali,
+    ms aniqlik, takror tashlanadi."""
     auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
-    out = soe.ingest(db, project_id, [b.model_dump() for b in body], max_age=timedelta(days=get_settings().ingest_max_age_days))
+    events = [b.model_dump() for b in body]
+    if auth_kind == "manual":
+        events = [{**e, "source": "manual"} for e in events]
+    out = soe.ingest(db, project_id, events, max_age=timedelta(days=get_settings().ingest_max_age_days))
     audit.log(
         db,
         user_id=actor_id,
-        action="soe.ingest",
+        action="soe.manual" if auth_kind == "manual" else "soe.ingest",
         target_type="project",
         target_id=project_id,
         project_id=project_id,

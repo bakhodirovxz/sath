@@ -1,5 +1,9 @@
 {
-  "server": "http://ges-server:8000",
+  "server": "https://sath.example.local",
+  "ca_bundle": null,
+  "client_cert": null,
+  "client_key": null,
+  "clock_skew_s": 30,
   "project_id": 1,
   "ingest_key": "<Monitoring → Ulanish kalitlari → ingest (yoki GES_GATEWAY_INGEST_KEY muhitdan)>",
   "commands": false,
@@ -23,7 +27,8 @@
       "port": 502,
       "tags": [
         { "key": "AGG2.P", "address": 100, "type": "float32", "scale": 1, "unit_id": 1 },
-        { "key": "AGG2.Q", "address": 102, "type": "int16", "scale": 0.1, "kind": "input" }
+        { "key": "AGG2.Q", "address": 102, "type": "int16", "scale": 0.1, "kind": "input" },
+        { "key": "AGG2.SP", "address": 110, "type": "float32", "writable": true, "cmd_min": 0, "cmd_max": 40 }
       ]
     },
     {
@@ -44,7 +49,7 @@
         { "key": "AGG1.P", "ioa": 12, "type": "M_ME_NB_1", "scale": 0.1 },
         { "key": "AGG1.RUN", "ioa": 13, "type": "M_SP_TB_1" }
       ],
-      "commands": [{ "key": "GATE1.SP", "ioa": 41, "type": "C_SE_NC_1" }]
+      "commands": [{ "key": "GATE1.SP", "ioa": 41, "type": "C_SE_NC_1", "cmd_min": 0, "cmd_max": 100 }]
     }
   ]
 }

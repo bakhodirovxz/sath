@@ -4,7 +4,7 @@ import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { api, canCommandRole, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
@@ -226,13 +226,14 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 <b>{k.kind}</b>
                 <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${new Date(k.expires_at).toLocaleDateString("uz")} (${k.days_left} kun)` : "muddatsiz"}</span>
                 <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? new Date(k.last_used_at).toLocaleString("uz") : "hali yo'q"}</span>
-                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then(() => loadKeys())}>Almashtirish (365 kun)</button>
+                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then((nk) => setGwKeys((p) => (p ?? []).map((x) => (x.kind === nk.kind ? nk : x))))}>Almashtirish (365 kun)</button>
               </div>
+              {k.key ? <div className="error small">Kalit faqat hozir ko'rsatiladi — nusxalab gateway ga saqlang (serverda faqat xeshi turadi).</div> : <div className="dim small">Kalit yashirin (prefiks {k.key_prefix ?? "—"}…); yo'qolgan bo'lsa almashtiring.</div>}
               <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
                 ? `curl -X POST ${location.origin}${k.url} \
-  -H "${k.header}: ${k.key}" -H "Content-Type: application/json" \
+  -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}" -H "Content-Type: application/json" \
   -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`
-                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key}"`}</pre>
+                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}"`}</pre>
             </div>
           ))}
           <div className="row"><button className="btn sm" onClick={() => setGwKeys(null)}>Yopish</button></div>
@@ -269,15 +270,15 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
-              {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
+              {s.writable && canCommandRole(role) && (
                 <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
                   <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
                   <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
-              {canEdit && (
-                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }}>
+              {role === "shift_supervisor" && (
+                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }} title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
                   <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
                   <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
@@ -352,7 +353,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
       )}
       {cmdTarget && (
         <Dialog title={`Buyruq: ${cmdTarget.name}`} onClose={() => setCmdTarget(null)}>
-          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={role === "operator" || canEdit} canOverride={role === "approver"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
+          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={canCommandRole(role)} canOverride={role === "shift_supervisor"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
         </Dialog>
       )}
     </div>

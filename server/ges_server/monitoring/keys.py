@@ -3,10 +3,19 @@
 Kalit sizib chiqsa zarar chegaralanadi: ingest kaliti buyruqlarni o'qiy/soxta ack qila olmaydi.
 Har kalitda muddat (`*_expires_at`, default 365 kun) va oxirgi ishlatilgan vaqt; muddati yaqinlashsa
 adminlar/tasdiqlovchilarga bildirishnoma (background.tick_keys).
+
+SCADA-04: bazada kalitning o'zi emas, SHA-256 xeshi (`*_key_hash`) va identifikatsiya uchun prefiksi
+saqlanadi — kalit faqat yaratilganda/almashtirilganda bir marta ko'rsatiladi. Buyruq kaliti
+yaratilganda undan imzo kaliti (`command_sign_key` = HMAC-SHA256(kalit, SIGN_CONTEXT)) hosil qilinadi:
+gateway ga beriladigan har buyruq HMAC-SHA256 bilan imzolanadi (`sign_command`), gateway o'z
+kalitidan xuddi shu imzo kalitini hosil qilib tekshiradi (id, manzil, qiymat, nonce, expires_at).
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -21,6 +30,9 @@ KeyKind = Literal["ingest", "command"]
 DEFAULT_TTL_DAYS = 365
 LAST_USED_WRITE_INTERVAL_S = 60  # har so'rovda yozmaslik uchun
 EXPIRY_WARN_DAYS = (14, 7, 3, 1)
+PREFIX_LEN = 6
+SIGN_CONTEXT = b"sath-command-sign-v1"
+SIGN_ALG = "hmac-sha256-v1"
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -29,8 +41,36 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def derive_sign_key(command_key: str) -> str:
+    """Buyruq kalitidan imzo kaliti (hex). Gateway ham xuddi shunday hosil qiladi."""
+    return hmac.new(command_key.encode("utf-8"), SIGN_CONTEXT, hashlib.sha256).hexdigest()
+
+
+def canonical(cmd: dict) -> bytes:
+    """Imzolanadigan kanonik ko'rinish: faqat shu maydonlar, kalitlar tartiblangan, bo'shliqsiz JSON."""
+    body = {k: cmd.get(k) for k in ("id", "project_id", "key", "protocol", "address", "value", "nonce", "expires_at")}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def sign_command(project: Project, cmd: dict) -> dict:
+    """Buyruqqa `alg` va `sig` qo'shadi (imzo kaliti bo'lmasa — imzosiz, gateway rad etadi)."""
+    if not project.command_sign_key:
+        return cmd
+    sig = hmac.new(bytes.fromhex(project.command_sign_key), canonical(cmd), hashlib.sha256).hexdigest()
+    return {**cmd, "alg": SIGN_ALG, "sig": sig}
+
+
 def get(project: Project, kind: KeyKind) -> str | None:
-    return project.ingest_key if kind == "ingest" else project.command_key
+    """Saqlangan kalit xeshi (kalitning o'zi bazada yo'q)."""
+    return project.ingest_key_hash if kind == "ingest" else project.command_key_hash
+
+
+def prefix(project: Project, kind: KeyKind) -> str | None:
+    return project.ingest_key_prefix if kind == "ingest" else project.command_key_prefix
 
 
 def expires_at(project: Project, kind: KeyKind) -> datetime | None:
@@ -45,10 +85,11 @@ def last_used_at(project: Project, kind: KeyKind) -> datetime | None:
 
 def ensure(
     db: Session, project: Project, kind: KeyKind, user_id: int | None, ttl_days: int | None = None
-) -> str:
-    """Kalit bo'lmasa yaratadi (audit bilan). Commit chaqiruvchi zimmasida."""
+) -> str | None:
+    """Kalit bo'lmasa yaratadi (audit bilan) va uni qaytaradi; bor bo'lsa None (kalit qayta
+    ko'rsatilmaydi — kerak bo'lsa almashtiriladi). Commit chaqiruvchi zimmasida."""
     if get(project, kind):
-        return get(project, kind)
+        return None
     return rotate(db, project, kind, user_id, ttl_days, action_suffix="create")
 
 
@@ -60,16 +101,18 @@ def rotate(
     ttl_days: int | None = None,
     action_suffix: str = "rotate",
 ) -> str:
-    """Yangi kalit; ttl_days=0 — muddatsiz, None — DEFAULT_TTL_DAYS. Commit chaqiruvchi zimmasida."""
+    """Yangi kalit; ttl_days=0 — muddatsiz, None — DEFAULT_TTL_DAYS. Qaytaradi: kalit (faqat shu
+    javobda ko'rsatiladi). Commit chaqiruvchi zimmasida."""
     key = secrets.token_urlsafe(24)
     days = DEFAULT_TTL_DAYS if ttl_days is None else ttl_days
     exp = utcnow() + timedelta(days=days) if days > 0 else None
     if kind == "ingest":
-        project.ingest_key, project.ingest_key_expires_at = key, exp
-        project.ingest_key_last_used_at = None
+        project.ingest_key_hash, project.ingest_key_prefix = hash_key(key), key[:PREFIX_LEN]
+        project.ingest_key_expires_at, project.ingest_key_last_used_at = exp, None
     else:
-        project.command_key, project.command_key_expires_at = key, exp
-        project.command_key_last_used_at = None
+        project.command_key_hash, project.command_key_prefix = hash_key(key), key[:PREFIX_LEN]
+        project.command_sign_key = derive_sign_key(key)
+        project.command_key_expires_at, project.command_key_last_used_at = exp, None
     audit.log(
         db,
         user_id=user_id,
@@ -77,9 +120,13 @@ def rotate(
         target_type="project",
         target_id=project.id,
         project_id=project.id,
-        detail={"expires_at": exp.isoformat() if exp else None},
+        detail={"expires_at": exp.isoformat() if exp else None, "prefix": key[:PREFIX_LEN]},
     )
     return key
+
+
+def _matches(stored_hash: str | None, presented: str) -> bool:
+    return bool(stored_hash) and secrets.compare_digest(hash_key(presented), stored_hash)
 
 
 def verify(db: Session, project: Project, kind: KeyKind, presented: str | None) -> None:
@@ -87,8 +134,7 @@ def verify(db: Session, project: Project, kind: KeyKind, presented: str | None) 
     muddati o'tgan → 401. `*_last_used_at` ni (60 s dan oshsa) yangilaydi — commit chaqiruvchida."""
     if not presented:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"{kind} kaliti kerak")
-    expected = get(project, kind)
-    if expected and secrets.compare_digest(presented, expected):
+    if _matches(get(project, kind), presented):
         exp = expires_at(project, kind)
         if exp is not None and exp <= utcnow():
             raise HTTPException(
@@ -102,8 +148,7 @@ def verify(db: Session, project: Project, kind: KeyKind, presented: str | None) 
             else:
                 project.command_key_last_used_at = now
         return
-    other = get(project, "command" if kind == "ingest" else "ingest")
-    if other and secrets.compare_digest(presented, other):
+    if _matches(get(project, "command" if kind == "ingest" else "ingest"), presented):
         # to'g'ri loyiha, noto'g'ri kanal: ingest kaliti buyruq kanaliga kira olmaydi (va aksincha)
         audit.log_now(
             user_id=None,
@@ -120,14 +165,19 @@ def verify(db: Session, project: Project, kind: KeyKind, presented: str | None) 
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"{kind} kaliti noto'g'ri")
 
 
-def info(project: Project, kind: KeyKind) -> dict:
+def info(project: Project, kind: KeyKind, new_key: str | None = None) -> dict:
+    """Kalit holati. `key` — faqat yangi yaratilgan/almashtirilgan paytda (bir marta), aks holda None."""
     exp = expires_at(project, kind)
+    last = last_used_at(project, kind)
     return {
         "kind": kind,
-        "key": get(project, kind),
+        "key": new_key,
+        "shown_once": new_key is not None,
+        "exists": bool(get(project, kind)),
+        "key_prefix": prefix(project, kind),
         "expires_at": exp.isoformat() if exp else None,
         "days_left": (exp - utcnow()).days if exp else None,
-        "last_used_at": (last_used_at(project, kind) or None) and last_used_at(project, kind).isoformat(),
+        "last_used_at": last.isoformat() if last else None,
     }
 
 

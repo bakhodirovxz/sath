@@ -64,7 +64,7 @@ def test_one_open_command_per_sensor_enforced_by_db(client, users):
     pid = users["project_id"]
     r = client.post(
         f"/api/projects/{pid}/sensors",
-        json={"key": "G.SP", "name": "Zatvor", "kind": "position", "unit": "%", "writable": True},
+        json={"key": "G.SP", "name": "Zatvor", "kind": "position", "unit": "%", "writable": True, "min_setpoint": 0, "max_setpoint": 100},
         headers=users["engineer"],
     )
     sid = r.json()["id"]

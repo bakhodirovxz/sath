@@ -1,4 +1,4 @@
-from conftest import ws_ticket
+from conftest import manual_headers, ws_ticket
 
 """A4: audit zanjiri — yaxlitlik tekshiruvi, rollback dan omon qolish, yetishmagan hodisalar, eksport."""
 
@@ -72,9 +72,10 @@ def test_missing_events_are_logged(client, admin, users):
     )
     # ingest kalitini o'qish
     key = client.get(f"/api/projects/{pid}/ingest-key", headers=users["approver"]).json()["ingest_key"]
-    # ingest: kalit bilan va token bilan — partiya bo'yicha bitta yozuv
+    # ingest: kalit bilan — partiya bo'yicha bitta yozuv; qo'lda kiritish (SCADA-07) — readings.manual
     client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 1}], headers={"X-Ingest-Key": key})
-    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 2}, {"key": "YOQ", "value": 3}], headers=users["engineer"])
+    sup = manual_headers(client, users)
+    client.post(f"/api/projects/{pid}/readings", json=[{"key": "AGG1.P", "value": 2}, {"key": "YOQ", "value": 3}], headers=sup)
     sid = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]["id"]
     client.get(f"/api/sensors/{sid}/export.csv", headers=users["viewer"])
     client.get(f"/api/projects/{pid}/report", headers=users["viewer"])
@@ -94,10 +95,11 @@ def test_missing_events_are_logged(client, admin, users):
         by.setdefault(a["action"], []).append(a)
     assert "project.ingest_key.read" in by
     ing = sorted(by["readings.ingest"], key=lambda a: a["id"])
-    assert len(ing) == 2
+    assert len(ing) == 1
     assert ing[0]["detail"]["auth"] == "key" and ing[0]["detail"]["key_prefix"] == key[:6]
-    assert ing[1]["detail"] == {"count": 2, "accepted": 1, "bad": 0, "unknown": 1, "rejected": 0, "auth": "token", "key_prefix": None}
-    assert ing[1]["user_id"] == users["ids"]["engineer"]
+    man = by["readings.manual"]
+    assert len(man) == 1 and man[0]["detail"]["count"] == 2 and man[0]["detail"]["accepted"] == 1
+    assert man[0]["user_id"] == client.get("/api/auth/me", headers=sup).json()["id"]
     assert by["export.csv"][0]["detail"] == {"hours": 24.0}
     assert by["export.report"][0]["detail"]["period"] == "day"
     assert by["auth.password_changed"][0]["user_id"] == users["ids"]["viewer"]

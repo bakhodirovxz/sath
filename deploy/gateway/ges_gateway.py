@@ -13,6 +13,8 @@ config.json namunasi — gateway_config.example.json
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import math
@@ -493,9 +495,76 @@ SOURCES = {"sim": SimSource, "modbus": ModbusSource, "opcua": OpcUaSource, "csv"
 # ---------- Yuborish ----------
 
 
+def tls_kwargs(cfg: dict) -> dict:
+    """HTTPS sozlamalari: ichki CA (`ca_bundle`) va mTLS mijoz sertifikati (`client_cert` + `client_key`).
+    Berilmagan bo'lsa bo'sh — requests standart tekshiruvi (tizim CA)."""
+    out: dict = {}
+    if cfg.get("ca_bundle"):
+        out["verify"] = cfg["ca_bundle"]
+    if cfg.get("client_cert"):
+        out["cert"] = (cfg["client_cert"], cfg["client_key"]) if cfg.get("client_key") else cfg["client_cert"]
+    if str(cfg.get("server", "")).startswith("http://"):
+        log.warning("server manzili http:// — kalitlar va buyruqlar shifrlanmagan (https tavsiya etiladi)")
+    return out
+
+
+SIGN_CONTEXT = b"sath-command-sign-v1"  # server: ges_server.monitoring.keys.SIGN_CONTEXT
+SIGN_ALG = "hmac-sha256-v1"
+
+
+def derive_sign_key(command_key: str) -> bytes:
+    """Buyruq kalitidan imzo kaliti — server `command_sign_key` bilan bir xil (SCADA-04)."""
+    return hmac.new(command_key.encode("utf-8"), SIGN_CONTEXT, hashlib.sha256).digest()
+
+
+def canonical(cmd: dict) -> bytes:
+    body = {k: cmd.get(k) for k in ("id", "project_id", "key", "protocol", "address", "value", "nonce", "expires_at")}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+class CommandVerifier:
+    """Serverdan kelgan buyruq imzosini tekshiradi (SCADA-04): HMAC-SHA256 (id, manzil, qiymat, nonce,
+    expires_at), loyiha mosligi, muddat (`clock_skew_s` tolerantligi bilan) va nonce takrori (replay)
+    keshi. Imzosiz, soxta, eskirgan yoki takroriy buyruq → RuntimeError (yozilmaydi)."""
+
+    def __init__(self, command_key: str, project_id: int, clock_skew_s: float = 30.0, cache_max: int = 10000):
+        self.key = derive_sign_key(command_key)
+        self.project_id = int(project_id)
+        self.clock_skew_s = float(clock_skew_s)
+        self.cache_max = int(cache_max)
+        self.seen: dict[str, float] = {}  # nonce → expires_at
+
+    def verify(self, cmd: dict, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        if cmd.get("alg") != SIGN_ALG or not isinstance(cmd.get("sig"), str):
+            raise RuntimeError("buyruq imzosiz yoki noma'lum algoritm — rad etildi")
+        want = hmac.new(self.key, canonical(cmd), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(want, cmd["sig"]):
+            raise RuntimeError("buyruq imzosi noto'g'ri — rad etildi")
+        if cmd.get("project_id") != self.project_id:
+            raise RuntimeError("buyruq boshqa loyihaniki — rad etildi")
+        nonce, exp = cmd.get("nonce"), cmd.get("expires_at")
+        if not nonce or not isinstance(exp, (int, float)):
+            raise RuntimeError("buyruqda nonce/expires_at yo'q — rad etildi")
+        if now > exp + self.clock_skew_s:
+            raise RuntimeError("buyruq muddati o'tgan — rad etildi")
+        for n, e in list(self.seen.items()):  # eskirganlarni tozalash
+            if e + self.clock_skew_s < now:
+                del self.seen[n]
+        if nonce in self.seen:
+            raise RuntimeError("buyruq takrorlandi (nonce) — rad etildi")
+        if len(self.seen) >= self.cache_max:
+            self.seen.pop(next(iter(self.seen)))
+        self.seen[nonce] = float(exp)
+
+
 class Commander:
     """Supervisory control: serverdagi kutayotgan buyruqlarni olib, manbaga yozadi (modbus/opcua/sim)
-    va natijani qaytaradi. Teg konfiguratsiyasi kalit bo'yicha topiladi (writable teglar)."""
+    va natijani qaytaradi.
+
+    SCADA-02: faqat konfiguratsiyada `writable: true` deb belgilangan teglar (IEC 104 da `commands`
+    ro'yxati) yoziladi; har yozuvda qiymat chekli va `cmd_min`…`cmd_max` ichida bo'lishi shart (chegara
+    sozlanmagan teg — yozilmaydi). Server tekshiruvidan mustaqil ikkinchi himoya qatlami."""
 
     def __init__(self, cfg: dict, sources: list, source_cfgs: list[dict]):
         base = cfg["server"].rstrip("/")
@@ -508,14 +577,42 @@ class Commander:
                 "GES_GATEWAY_COMMAND_KEY muhit o'zgaruvchisi kerak — ingest kaliti buyruq kanaliga yaramaydi"
             )
         self.headers = {"X-Command-Key": cfg["command_key"]}
+        self.verifier = CommandVerifier(cfg["command_key"], cfg["project_id"], cfg.get("clock_skew_s", 30))
+        self.tls = tls_kwargs(cfg)
         self.tags: dict[str, tuple[object, dict]] = {}
         for src, scfg in zip(sources, source_cfgs, strict=False):
             for tag in scfg.get("tags", []):
+                if tag.get("writable") is True:
+                    self.tags[tag["key"]] = (src, tag)
+            for tag in scfg.get("commands", []):  # IEC 104 buyruq nuqtalari — aniq e'lon qilingan
                 self.tags[tag["key"]] = (src, tag)
+        for key, (_src, tag) in self.tags.items():
+            if tag.get("cmd_min") is None or tag.get("cmd_max") is None:
+                log.warning("buyruq tegi %s: cmd_min/cmd_max yo'q — unga yozish rad etiladi", key)
+
+    def check_write(self, key: str, value) -> tuple[object, dict, float]:
+        """Yozishdan oldingi tekshiruv: teg writable, qiymat chekli va cmd_min…cmd_max ichida.
+        Buzilsa RuntimeError (natija serverga failed bo'lib qaytadi)."""
+        src_tag = self.tags.get(key)
+        if src_tag is None:
+            raise RuntimeError(f"{key}: gateway konfiguratsiyasida yozish mumkin (writable) teg emas")
+        src, tag = src_tag
+        try:
+            v = float(value)
+        except (TypeError, ValueError) as e:
+            raise RuntimeError(f"{key}: qiymat son emas") from e
+        if not math.isfinite(v):
+            raise RuntimeError(f"{key}: qiymat chekli son emas")
+        lo, hi = tag.get("cmd_min"), tag.get("cmd_max")
+        if lo is None or hi is None:
+            raise RuntimeError(f"{key}: cmd_min/cmd_max sozlanmagan — yozish taqiqlangan")
+        if not float(lo) <= v <= float(hi):
+            raise RuntimeError(f"{key}: {v:g} ruxsat etilgan {lo}…{hi} diapazonidan tashqarida")
+        return src, tag, v
 
     def run_once(self) -> None:
         try:
-            cmds = requests.post(self.claim_url, headers=self.headers, timeout=10).json()
+            cmds = requests.post(self.claim_url, headers=self.headers, timeout=10, **self.tls).json()
         except (requests.RequestException, ValueError) as e:
             log.warning("buyruqlarni olib bo'lmadi: %s", e)
             return
@@ -523,13 +620,12 @@ class Commander:
             status, result = "acked", ""
             src_tag = self.tags.get(c["key"])
             try:
-                if src_tag is None:
-                    raise RuntimeError("gateway konfiguratsiyasida bunday teg yo'q")
-                src, tag = src_tag
+                self.verifier.verify(c)
+                src, tag, value = self.check_write(c["key"], c["value"])
                 if hasattr(src, "write"):
-                    src.write(tag, float(c["value"]))
+                    src.write(tag, value)
                 elif isinstance(src, SimSource):
-                    tag["base"] = float(c["value"])  # simulyatorda qiymatni o'rnatamiz
+                    tag["base"] = value  # simulyatorda qiymatni o'rnatamiz
                 else:
                     raise RuntimeError(f"{type(src).__name__} yozishni qo'llamaydi")
                 result = f"{c['key']} = {c['value']}"
@@ -543,6 +639,7 @@ class Commander:
                     json={"status": status, "result": result},
                     headers=self.headers,
                     timeout=10,
+                    **self.tls,
                 )
             except requests.RequestException as e:
                 log.warning("buyruq #%s natijasi yuborilmadi: %s", c["id"], e)
@@ -567,6 +664,7 @@ class Commander:
                 json={"value": value, "ts": datetime.now(timezone.utc).isoformat()},
                 headers=self.headers,
                 timeout=10,
+                **self.tls,
             )
         except Exception as e:  # noqa: BLE001 — readback ixtiyoriy, asosiy siklni to'xtatmasin
             log.warning("buyruq #%s readback yuborilmadi: %s", c["id"], e)
@@ -656,15 +754,26 @@ class Spool:
         self.conn.close()
 
 
+# Qayta urinish kerak bo'lgan 4xx (kalit/ruxsat/tezlik/timeout) — qolgan 4xx partiya tarkibiga bog'liq
+RETRY_4XX = (401, 403, 408, 429)
+SPLIT_4XX = (413, 422)  # hajm / yozuv validatsiyasi — bo'lib yuborish yordam beradi
+
+
 class Pusher:
     """O'lchovlarni spool orqali serverga yuboradi: har siklda eng eski partiyalar, xatoda eksponensial
     kechikish (2…300 s). Diagnostika teglari (`diag: true`): GW.spool_rows, GW.spool_oldest_age_s,
-    GW.spool_dropped, GW.clock_offset_s (server Date sarlavhasi bilan farq; NTP tekshiruvi o'rnini bosadi)."""
+    GW.spool_dropped, GW.clock_offset_s (server Date sarlavhasi bilan farq; NTP tekshiruvi o'rnini bosadi).
+
+    SCADA-05: 5xx, tarmoq xatosi va 401/403/408/429 — qayta urinish (backoff, spool saqlanadi). 413/422 —
+    partiya ikkiga bo'linib qayta yuboriladi (yakka yozuv ham rad etilsa — log bilan tashlanadi); boshqa
+    4xx (400/404/…) — partiya log bilan tashlanadi. Shu tariqa bitta yaroqsiz yozuv spoolni abadiy
+    to'xtatib qo'ymaydi. Yuborilgan/tashlangan bo'laklar darhol spooldan o'chiriladi (takror yuborilmaydi)."""
 
     def __init__(self, cfg: dict):
         self.url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/readings"
         self.soe_url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/soe"
         self.headers = {"X-Ingest-Key": cfg["ingest_key"]}
+        self.tls = tls_kwargs(cfg)
         self.spool = Spool(
             cfg.get("spool_path", "gateway_spool.db"),
             cfg.get("spool_max_rows", 1_000_000),
@@ -678,6 +787,7 @@ class Pusher:
         self.backoff_s = 0.0
         self.next_try = 0.0
         self.clock_offset_s: float | None = None
+        self.dropped_4xx = 0  # server rad etgani uchun tashlangan yozuvlar soni
 
     @staticmethod
     def sanitize(items: list[dict]) -> list[dict]:
@@ -685,8 +795,8 @@ class Pusher:
         for it in items:
             it.setdefault("ts", now)
             it.setdefault("src_ts", it["ts"])
-            # Server chekli bo'lmagan qiymatga butun paketni 422 bilan rad etadi — o'qish xatosi
-            # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3)
+            # Server chekli bo'lmagan qiymatni (yozuv bo'yicha) rad etadi — o'qish xatosi
+            # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3), tarixda "bad" qoladi
             try:
                 v = float(it.get("value"))
             except (TypeError, ValueError):
@@ -715,6 +825,39 @@ class Pusher:
         self.spool.add(items + [{"_soe": True, **e} for e in (soe or [])])
         self.flush()
 
+    def _send(self, url: str, rows: list[tuple[int, dict]], label: str) -> dict:
+        """Bo'lakni yuboradi va spooldan o'chiradi (qabul qilingan yoki qat'iy rad etilgan). Qayta urinish
+        kerak bo'lsa (5xx, tarmoq, RETRY_4XX) — RequestException, bo'lak spoolda qoladi."""
+        ids, items = [i for i, _ in rows], [b for _, b in rows]
+        r = requests.post(url, json=items, headers=self.headers, timeout=15, **self.tls)
+        if url == self.url:
+            self._check_clock(r)
+        sc = r.status_code
+        if 400 <= sc < 500 and sc not in RETRY_4XX:
+            if sc in SPLIT_4XX and len(rows) > 1:
+                mid = len(rows) // 2
+                log.warning("server %d (%s): partiya (%d) ikkiga bo'linadi", sc, label, len(rows))
+                a = self._send(url, rows[:mid], label)
+                b = self._send(url, rows[mid:], label)
+                return {
+                    "accepted": a.get("accepted", 0) + b.get("accepted", 0),
+                    "unknown": (a.get("unknown") or []) + (b.get("unknown") or []),
+                    "rejected": (a.get("rejected") or []) + (b.get("rejected") or []),
+                }
+            log.error(
+                "server %d (%s): %d yozuv tashlandi (qayta yuborilmaydi): %s | %s",
+                sc, label, len(rows), json.dumps(items[:3], ensure_ascii=False)[:300], r.text[:300],
+            )
+            self.dropped_4xx += len(rows)
+            self.spool.ack(ids)
+            return {"accepted": 0, "unknown": [], "rejected": []}
+        r.raise_for_status()
+        self.spool.ack(ids)
+        try:
+            return r.json()
+        except ValueError:
+            return {}
+
     def flush(self) -> None:
         if time.time() < self.next_try:
             return
@@ -722,38 +865,22 @@ class Pusher:
             ids, batch = self.spool.batch(self.batch_size)
             if not ids:
                 return
-            readings = [b for b in batch if not b.get("_soe")]
-            soe = [{k: v for k, v in b.items() if k != "_soe"} for b in batch if b.get("_soe")]
+            soe = [(i, {k: v for k, v in b.items() if k != "_soe"}) for i, b in zip(ids, batch, strict=True) if b.get("_soe")]
+            readings = [(i, b) for i, b in zip(ids, batch, strict=True) if not b.get("_soe")]
             try:
                 if soe:
-                    rs = requests.post(self.soe_url, json=soe, headers=self.headers, timeout=15)
-                    if rs.status_code == 422:
-                        log.error("server 422 (SOE): partiya (%d) tashlandi: %s", len(soe), rs.text[:300])
-                    else:
-                        rs.raise_for_status()
-                        log.info("SOE yuborildi: %d (qabul %d)", len(soe), rs.json().get("accepted", 0))
-                if not readings:
-                    self.spool.ack(ids)
-                    self.backoff_s = 0.0
-                    continue
-                r = requests.post(self.url, json=readings, headers=self.headers, timeout=15)
-                self._check_clock(r)
-                if r.status_code == 422:
-                    # Validatsiya xatosi — partiya hech qachon qabul qilinmaydi: o'chirib, loglaymiz
-                    log.error("server 422: partiya (%d) tashlandi: %s", len(readings), r.text[:300])
-                    self.spool.ack(ids)
-                    continue
-                r.raise_for_status()
-                resp = r.json()
-                if resp.get("unknown"):
-                    log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
-                if resp.get("rejected"):
-                    log.warning("server rad etdi: %s", resp["rejected"][:10])
-                log.info("yuborildi: %d (qabul %d, spoolda %d)", len(readings), resp.get("accepted", 0), self.spool.size() - len(ids))
-                self.spool.ack(ids)
+                    rs = self._send(self.soe_url, soe, "SOE")
+                    log.info("SOE yuborildi: %d (qabul %d)", len(soe), rs.get("accepted", 0))
+                if readings:
+                    resp = self._send(self.url, readings, "o'lchov")
+                    if resp.get("unknown"):
+                        log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
+                    if resp.get("rejected"):
+                        log.warning("server rad etdi: %s", resp["rejected"][:10])
+                    log.info("yuborildi: %d (qabul %d, spoolda %d)", len(readings), resp.get("accepted", 0), self.spool.size())
                 self.backoff_s = 0.0
             except requests.RequestException as e:
-                self.spool.fail(ids)
+                self.spool.fail(ids)  # yuborilgan bo'laklar allaqachon o'chirilgan — qolgani qayta urinadi
                 self.backoff_s = min(max(self.backoff_s * 2, 2.0), 300.0)
                 self.next_try = time.time() + self.backoff_s
                 log.warning(

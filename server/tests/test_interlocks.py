@@ -1,7 +1,7 @@
 """B4: blokirovkalar — shart bajarilmasa 409 (sabab bilan), bad/stale sensor → taqiq, chetlab o'tish."""
 
 import pytest
-from conftest import login, make_user, send_command
+from conftest import ingest_headers, login, make_user, send_command
 from ges_server.monitoring import interlock
 
 
@@ -16,7 +16,7 @@ def operator(client, admin, users):
 def plant(client, users):
     pid = users["project_id"]
     mk = lambda **kw: client.post(f"/api/projects/{pid}/sensors", json=kw, headers=users["engineer"]).json()  # noqa: E731
-    gate = mk(key="GATE1.SP", name="Zatvor 1", kind="position", unit="%", writable=True)
+    gate = mk(key="GATE1.SP", name="Zatvor 1", kind="position", unit="%", writable=True, min_setpoint=0, max_setpoint=100)
     run = mk(key="AGG1.RUN", name="Agregat 1 holati", kind="status", unit="")
     level = mk(key="RES.H", name="Sath", kind="level", unit="m")
     r = client.post(
@@ -34,7 +34,7 @@ def plant(client, users):
 
 
 def _push(client, users, items):
-    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"])
+    r = client.post(f"/api/projects/{users['project_id']}/readings", json=items, headers=ingest_headers(client, users))
     assert r.status_code == 200, r.text
 
 
@@ -78,16 +78,20 @@ def test_execute_reevaluates_after_select(client, users, operator, plant):
     assert r.status_code == 409 and "Blokirovka" in r.json()["detail"]
 
 
-def test_override_only_approver_with_reason_audit_and_alarm(client, users, operator, plant, admin):
+def test_override_only_shift_supervisor_with_reason_audit_and_alarm(client, users, operator, plant, admin):
+    from conftest import add_member
+
     pid = users["project_id"]
+    sup = add_member(client, admin, pid, "sup", "shift_supervisor")
     _push(client, users, [{"key": "AGG1.RUN", "value": 1}, {"key": "RES.H", "value": 900}])
     q = {"override": "true", "override_reason": "avariya: qo'lda boshqaruv"}
     body = {"sensor_id": plant["gate"]["id"], "value": 30}
     assert client.post(f"/api/projects/{pid}/commands/select", json=body, headers=operator, params=q).status_code == 403
-    assert client.post(f"/api/projects/{pid}/commands/select", json=body, headers=users["approver"], params={"override": "true", "override_reason": "x"}).status_code == 400
-    sel = client.post(f"/api/projects/{pid}/commands/select", json=body, headers=users["approver"], params=q)
+    assert client.post(f"/api/projects/{pid}/commands/select", json=body, headers=users["approver"], params=q).status_code == 403
+    assert client.post(f"/api/projects/{pid}/commands/select", json=body, headers=sup, params={"override": "true", "override_reason": "x"}).status_code == 400
+    sel = client.post(f"/api/projects/{pid}/commands/select", json=body, headers=sup, params=q)
     assert sel.status_code == 200 and sel.json()["override"] is True and sel.json()["interlocks"][0]["ok"] is False
-    r = client.post(f"/api/projects/{pid}/commands/execute", json={"select_token": sel.json()["select_token"]}, headers=users["approver"])
+    r = client.post(f"/api/projects/{pid}/commands/execute", json={"select_token": sel.json()["select_token"]}, headers=sup)
     assert r.status_code == 201
     acts = [a for a in client.get("/api/audit", headers=admin, params={"project_id": pid}).json()]
     ov = [a for a in acts if a["action"] == "command.interlock_override"]

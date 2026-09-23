@@ -465,7 +465,7 @@ def ingest(
         try:
             value = float(it["value"])
         except (KeyError, TypeError, ValueError):
-            unknown.append(it.get("key"))
+            rejected.append({"key": ident, "reason": "value_invalid"})
             continue
         if not math.isfinite(value):
             rejected.append({"key": ident, "reason": "value_not_finite"})
