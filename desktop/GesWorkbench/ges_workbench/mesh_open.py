@@ -3,7 +3,8 @@ MS3D, COB, OGEX, B3D, MD2/MD3/MD5, SMD, NFF, AMF, IRRMESH, X3D, eski .blend …
 
 Init.py da FreeCAD.addImportType(...) bilan ro'yxatga olinadi → Fayl → Ochish / Import ishlaydi.
 Har obyekt — alohida Mesh::Feature (Blender/3ds Max dagi nomi, material rangi); Mesh ish muhitida
-tahrirlash, Part ga aylantirish (Part → Create shape from mesh) mumkin. Y-up (FBX/DAE/glTF) → Z-up.
+tahrirlash, Part ga aylantirish (Part → Create shape from mesh) mumkin. Birlik va yuqori o'q —
+cad_common.detect_units_and_axis (FBX UnitScaleFactor/UpAxis; aniqlanmasa format odati + ogohlantirish).
 """
 
 from __future__ import annotations
@@ -12,20 +13,6 @@ import os
 from pathlib import Path
 
 import FreeCAD
-
-Y_UP_EXTS = {
-    ".fbx",
-    ".x",
-    ".dae",
-    ".gltf",
-    ".glb",
-    ".ms3d",
-    ".md2",
-    ".md3",
-    ".md5mesh",
-    ".smd",
-    ".b3d",
-}
 
 
 def _ensure_vendor() -> None:
@@ -36,7 +23,28 @@ def _ensure_vendor() -> None:
         sys.path.append(str(vendor))
 
 
-def load_into(doc, filename: str, y_up: bool | None = None) -> list:
+def units_and_axis(filename: str, y_up: bool | None = None, unit: str | None = None) -> tuple[float, bool, list]:
+    """(fayl birligi → mm ko'paytuvchisi, Y-up → Z-up kerakmi, ogohlantirishlar) — umumiy cad_common orqali.
+    Birlik aniqlanmasa xom qiymat mm deb olinadi (FreeCAD odati) va ogohlantiriladi."""
+    from ges_workbench import cad_common
+
+    info = cad_common.detect_units_and_axis(filename)
+    warnings = []
+    if unit:
+        factor = cad_common.UNITS[unit] * 1000.0
+    elif info.scale:
+        factor = info.scale * 1000.0
+    else:
+        factor = 1.0
+        warnings.append(f"{info.note or 'birlik aniqlanmadi'} — qiymatlar mm deb olindi")
+    if y_up is None:
+        y_up = info.up_axis == "Y"
+        if info.axis_uncertain and info.up_axis:
+            warnings.append(f"yuqori o'q faylda yo'q — {info.up_axis} deb olindi")
+    return factor, y_up, warnings
+
+
+def load_into(doc, filename: str, y_up: bool | None = None, unit: str | None = None) -> list:
     """Faylni hujjatga Mesh obyektlar sifatida qo'shadi; obyektlar ro'yxatini qaytaradi."""
     import Mesh
 
@@ -47,12 +55,12 @@ def load_into(doc, filename: str, y_up: bool | None = None) -> list:
         raise RuntimeError(
             "assimp-py topilmadi (Mod/Ges/vendor) — glTF/OBJ ga eksport qilib oching"
         )
-    ext = Path(filename).suffix.lower()
-    if y_up is None:
-        y_up = ext in Y_UP_EXTS
+    factor, y_up, warnings = units_and_axis(filename, y_up, unit)
+    for w in warnings:
+        FreeCAD.Console.PrintWarning(f"Sath: {Path(filename).name}: {w}\n")
     objs = []
     for o in assimp_load.load(filename):
-        v = o["vertices"]
+        v = o["vertices"] * factor  # fayl birligi → mm
         if y_up:  # (x, y, z) → (x, −z, y)
             v = v[:, [0, 2, 1]] * [1, -1, 1]
         pts = [tuple(map(float, p)) for p in v]

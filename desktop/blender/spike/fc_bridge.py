@@ -14,8 +14,9 @@ import time
 import traceback
 
 FC_HOME = os.environ.get("GES_FC_HOME", r"C:\Program Files\FreeCAD 1.1")
-GES_WB = os.environ.get(
-    "GES_WB_DIR", r"C:\Users\uge226\Desktop\Sath-FreeCAD\src\Mod\Ges\ges_workbench"
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+GES_WB = os.environ.get(  # CODE-04: lokal yo'l o'rniga repo ichidagi workbench
+    "GES_WB_DIR", os.path.join(_REPO, "desktop", "GesWorkbench", "ges_workbench")
 )
 RESULTS: list[tuple[str, str, str]] = []  # (qadam, OK/FAIL, izoh)
 

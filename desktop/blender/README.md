@@ -18,7 +18,7 @@ dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-b
 ```
 python desktop/build/build_blender_bundle.py --installer
 ```
-→ `desktop/dist/Sath-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
+→ `desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
 (splash, bo'sh metr sahna, N-panel ochiq) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
 (prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
 Sath template ga o'tkazadi) + `freecad/` (conda py313 muhiti, ~0.9 GB ga kesilgan: MKL/VTK/libclang/FEM yo'q)
@@ -56,8 +56,8 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 - `sath/` — extension (`blender_manifest.toml`, `wheels/`)
   - `fc_engine.py` FreeCAD yuklash + `ges_build` · `ifc.py` Bonsai ko'prigi · `flows.py` bpy siz server oqimlari
   - `ops_*.py` operatorlar · `ui.py` panellar/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
-  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`) va `wb/ges_objects.py` — **workbench nusxasi**
-    (`python desktop/build/sync_blender.py`, CI `--check`)
+  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`) — **`common/sath_common`
+    nusxasi**, `wb/ges_objects.py` — workbench nusxasi (`python desktop/build/sync_blender.py`, CI `--check`)
 - Testlar: `pytest desktop/tests/test_sath_pure.py desktop/tests/test_sath_flows.py` (Blender siz, real server);
   `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 9 ta sinov, Bonsai + FreeCAD kerak).
 

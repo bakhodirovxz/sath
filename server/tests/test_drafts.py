@@ -435,23 +435,45 @@ def test_import_dxf_3dface_and_extrude_and_dwg(client, users, model_id, tmp_path
     assert objs[0]["psets"]["Pset_GES_Import"]["Manba"] == "dwg"
 
 
-def test_dxf_flatten_copy_in_sync():
-    """server/…/dxf_flatten.py — desktop dxf_prepare.py ning nusxasi (sarlavhadan tashqari bir xil bo'lsin)."""
+def test_dxf_solid_and_3dface_vertex_order(tmp_path):
+    """CAD-02: SOLID DXF da 0-1-3-2 tartibda — kvadrat 2 ta to'g'ri uchburchak (normal bir tomonga, maydon 1);
+    3DFACE 0-1-2-3 — kapalak yo'q."""
+    import ezdxf
+    import numpy as np
+    from ges_server.models import mesh_import
+
+    doc = ezdxf.new("R2018")
+    doc.header["$INSUNITS"] = 6  # m
+    msp = doc.modelspace()
+    msp.add_solid([(0, 0), (1, 0), (0, 1), (1, 1)], dxfattribs={"layer": "SOLID"})
+    msp.add_3dface([(5, 0, 0), (7, 0, 0), (7, 0, 3), (5, 0, 3)], dxfattribs={"layer": "FACE"})
+    dxf = tmp_path / "s.dxf"
+    doc.saveas(dxf)
+    by = {o["name"]: o for o in mesh_import.load_objects(dxf)}
+    for name, area in (("SOLID", 1.0), ("FACE", 6.0)):
+        v = np.asarray(by[name]["mesh"]["vertices"])
+        f = np.asarray(by[name]["mesh"]["faces"])
+        assert len(f) == 2
+        n = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
+        assert float(np.dot(n[0], n[1])) > 0  # ikkala uchburchak bir tomonga qaragan
+        assert abs(float(np.linalg.norm(n, axis=1).sum()) / 2 - area) < 1e-6
+
+
+def test_common_copies_identical_to_canonical():
+    """CODE-01: server dagi umumiy modullar — common/sath_common kanonik manbasining bayt-bayt nusxasi."""
     from pathlib import Path
 
-    here = Path(__file__).resolve()
-    desk = here.parents[2] / "desktop" / "GesWorkbench" / "ges_workbench" / "dxf_prepare.py"
-    srv = here.parents[1] / "ges_server" / "models" / "dxf_flatten.py"
-    if not desk.exists():
-        pytest.skip("desktop papkasi yo'q")
-
-    def body(p: Path) -> str:
-        s = p.read_text(encoding="utf-8")
-        return s[s.index("from __future__") :]
-
-    assert body(desk) == body(srv), (
-        "desktop/dxf_prepare.py va server/dxf_flatten.py farq qiladi — nusxalang"
-    )
+    root = Path(__file__).resolve().parents[2]
+    canon = root / "common" / "sath_common"
+    if not canon.is_dir():
+        pytest.skip("common/sath_common yo'q (faqat server obrazi)")
+    srv = root / "server" / "ges_server" / "models"
+    names = sorted(p.name for p in canon.glob("*.py") if (srv / p.name).exists())
+    assert {"assimp_load.py", "dxf_prepare.py"} <= set(names)
+    for n in names:
+        assert (srv / n).read_bytes() == (canon / n).read_bytes(), (
+            f"server/ges_server/models/{n} eskirgan — python desktop/build/sync_blender.py"
+        )
 
 
 def test_import_fbx_3ds_via_assimp(client, users, model_id):

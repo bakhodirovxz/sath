@@ -1,6 +1,7 @@
 """server_client ni haqiqiy server (uvicorn, alohida oqim) bilan sinaydi — FreeCAD kerak emas."""
 
 import os
+import secrets
 import socket
 import sys
 import tempfile
@@ -18,13 +19,17 @@ _TMP = Path(tempfile.mkdtemp(prefix="ges_desktop_"))
 os.environ["GES_DATABASE_URL"] = f"sqlite:///{(_TMP / 'test.db').as_posix()}"
 os.environ["GES_DATA_DIR"] = str(_TMP)
 os.environ["GES_SECRET_KEY"] = "desktop-test-secret-key-at-least-32-bytes"
-os.environ["GES_ADMIN_PASSWORD"] = "admin123"
-os.environ["GES_DEV_MODE"] = "true"  # CODE-08: zaif sinov paroli faqat dev rejimida
+# admin paroli koddan emas: muhitda bo'lmasa tasodifiy (server conftest uni almashtirishi mumkin —
+# haqiqiy qiymat importlardan keyin ADMIN_PW ga o'qiladi)
+os.environ.setdefault("GES_ADMIN_PASSWORD", "t-" + secrets.token_urlsafe(12))
+os.environ["GES_DEV_MODE"] = "true"  # CODE-08: sinov serveri dev rejimida
 
 import uvicorn  # noqa: E402
 from conftest import make_ifc  # noqa: E402  (server/tests/conftest.py)
 from ges_server.main import app  # noqa: E402
 from ges_workbench.server_client import GesClient, ServerError  # noqa: E402
+
+ADMIN_PW = os.environ["GES_ADMIN_PASSWORD"]
 
 
 def _free_port() -> int:
@@ -55,7 +60,7 @@ def base_url():
 @pytest.fixture(scope="module")
 def admin(base_url):
     c = GesClient(base_url)
-    c.login("admin", "admin123")
+    c.login("admin", ADMIN_PW)
     return c
 
 
@@ -64,7 +69,7 @@ def test_login_and_me(base_url):
     with pytest.raises(ServerError) as e:
         c.login("admin", "wrong")
     assert e.value.status == 401
-    c.login("admin", "admin123")
+    c.login("admin", ADMIN_PW)
     assert c.me()["username"] == "admin"
 
 

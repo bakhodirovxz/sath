@@ -62,6 +62,18 @@ def guid_map() -> dict[str, bpy.types.Object]:
     return out
 
 
+def stamp_guids() -> int:
+    """IFC elementli obyektlarga `sath_guid` custom property yozadi — Blender eksporti (glTF extras, FBX custom
+    properties) GUID ni olib ketadi, qayta importda element yangilanadi, ikki barobar bo'lmaydi (CAD-07)."""
+    n = 0
+    for o in bpy.data.objects:
+        g = guid(o)
+        if g and o.get("sath_guid") != g:
+            o["sath_guid"] = g
+            n += 1
+    return n
+
+
 def object_for_guid(g: str):
     f = file()
     if f is None:

@@ -317,14 +317,17 @@ def import_mesh_version(
     db: DB,
     message: Annotated[str, Form()] = "",
     unit: Annotated[str, Form()] = "m",
-    y_up: Annotated[bool, Form()] = False,
+    y_up: Annotated[bool | None, Form()] = None,
     merge: Annotated[bool, Form()] = False,
     onto_current: Annotated[bool, Form()] = True,
     extrude_m: Annotated[float, Form()] = 0.0,
+    unit_override: Annotated[bool, Form()] = False,
 ):
     """Blender / 3ds Max / AutoCAD faylini (OBJ, STL, PLY, glTF/GLB, DAE, 3MF, OFF, DXF) IFC ga aylantirib yangi
     versiya yaratadi: har obyekt — IFC element (nomi saqlanadi). onto_current — joriy oxirgi versiya ustiga
-    qo'shiladi (ota = oxirgi), aks holda yangi IFC. unit — fayl birligi; y_up — Y yuqoriga (glTF, ba'zi eksportlar)."""
+    qo'shiladi (ota = oxirgi), aks holda yangi IFC. unit — fayl birligi (fayldan aniqlanmasa); unit_override — unit
+    ni fayldagidan ustun qo'yish; y_up — Y yuqoriga (berilmasa fayldan). Javobda import_info.units_uncertain —
+    birlik aniqlanmadi/shubhali (CAD-04): klient foydalanuvchidan so'rab unit_override bilan qayta yuboradi."""
     model = get_model_checked(db, model_id, user, Role.engineer)
     name = file.filename or "mesh"
     ext = Path(name).suffix.lower()
@@ -353,7 +356,9 @@ def import_mesh_version(
                     raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Fayl juda katta")
                 fh.write(chunk)
         try:
-            objects = mesh_import.load_objects(tp, unit, y_up, merge, extrude_m=extrude_m)
+            objects, imp = mesh_import.load_objects_ex(
+                tp, unit, y_up, merge, auto_unit=not unit_override, extrude_m=extrude_m
+            )
             out = Path(tmp) / "import.ifc"
             info = drafts.build(src, objects, out, crs=crs_mod.from_project(model.project))
         except (ValueError, OSError) as e:
@@ -364,9 +369,13 @@ def import_mesh_version(
             ) from e
         with open(out, "rb") as fh:
             sha, fsize = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
-    return _version_from_import(
-        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": unit}, onto=onto_current
+    res = _version_from_import(
+        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": imp.unit}, onto=onto_current
     )
+    res["import_info"] = imp.to_dict()  # CAD-03/04: birlik manbasi, tashlab ketilgan 2D, ogohlantirishlar
+    res["warnings"] = imp.warnings
+    res["units_uncertain"] = imp.units_uncertain
+    return res
 
 
 def _version_from_import(

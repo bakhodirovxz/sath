@@ -1,4 +1,4 @@
-"""desktop/GesWorkbench/ges_workbench/ifc_classes.py ni ifcopenshell sxemasidan qayta generatsiya qiladi (G1).
+"""common/sath_common/ifc_classes.py ni ifcopenshell sxemasidan qayta generatsiya qiladi (G1).
 python desktop/build/gen_ifc_classes.py  (server .venv da); keyin sync_blender.py."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "server"))
 from ges_server.models import ifc_schema  # noqa: E402
 
-OUT = ROOT / "desktop" / "GesWorkbench" / "ges_workbench" / "ifc_classes.py"
+OUT = ROOT / "common" / "sath_common" / "ifc_classes.py"  # kanonik manba (CODE-01)
 
 
 def main() -> None:

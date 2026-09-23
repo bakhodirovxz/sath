@@ -1,6 +1,6 @@
 """IFC sxemalaridagi konkret IfcProduct sinflari (G1) — desktop (FreeCAD/Blender) da ifcopenshell bo'lmasa ham
 sinf nomini tekshirish uchun. Generatsiya: server/ges_server/models/ifc_schema.element_classes (ifcopenshell).
-Qayta generatsiya: python desktop/build/gen_ifc_classes.py"""
+Qayta generatsiya: python desktop/build/gen_ifc_classes.py (common/sath_common ga yozadi, keyin sync_blender.py)"""
 
 from __future__ import annotations
 

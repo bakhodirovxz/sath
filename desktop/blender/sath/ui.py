@@ -59,8 +59,9 @@ class SATH_PT_server(GesPanel, bpy.types.Panel):
         else:
             col.prop(p, "server")
             col.prop(p, "username")
-            col.prop(s, "password")
-            col.prop(s, "otp")
+            sec = context.window_manager.sath_secret  # .blend ga saqlanmaydi (CODE-05)
+            col.prop(sec, "password")
+            col.prop(sec, "otp")
             col.operator("sath.connect", icon="LINKED")
         if s.status:
             col.label(text=s.status, icon="INFO")
@@ -88,6 +89,10 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
         row = lay.row(align=True)
         row.operator("sath.open_version", icon="IMPORT")
         row.operator("sath.commit", icon="EXPORT")
+        if s.head_conflict_id >= 0:  # VCS-01: commit 409 — model serverda yangilangan
+            box = lay.box()
+            box.label(text="Model serverda yangilangan — commit qabul qilinmadi", icon="ERROR")
+            box.operator("sath.pull_head", icon="IMPORT")
         row = lay.row(align=True)
         row.operator("sath.submit", icon="CHECKMARK")
         row.operator("sath.open_web", icon="URL")

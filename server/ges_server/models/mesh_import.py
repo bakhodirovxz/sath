@@ -12,14 +12,15 @@ Eksport: IFC → glTF/GLB/OBJ/STL (Blender, 3ds Max da ochish uchun) — IfcOpen
 
 from __future__ import annotations
 
-import re
 import shutil
 import tempfile
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from .. import sandbox
+from . import cad_common
 from .assimp_load import ASSIMP_EXTS
 from .cad_import import CAD_EXTS
 
@@ -31,39 +32,17 @@ VIA_BLENDER = {".blend"}
 SUPPORTED = (
     DIRECT | VIA_ASSIMP | VIA_DWG | VIA_BLENDER | CAD_EXTS | {".zip"}
 )  # zip: obj+mtl, gltf+bin, dae+tekstura
-UNITS = {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254, "ft": 0.3048}
+UNITS = cad_common.UNITS  # {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254, "ft": 0.3048}
 MAX_TRIANGLES = 2_000_000
-DXF_UNITS = {1: "in", 2: "ft", 4: "mm", 5: "cm", 6: "m"}  # $INSUNITS
+DXF_UNITS = cad_common.DXF_INSUNITS  # $INSUNITS
 
-# Nom bo'yicha GES turi: (regex, ifc_class, pset nomi, kind)
-NAME_RULES: list[tuple[str, str, str, str]] = [
-    (r"to.?g.?on|\bdam\b|plotina", "IfcWall", "Pset_GES_Dam", "dam"),
-    (r"penstock|quvur|pipe|truba", "IfcPipeSegment", "Pset_GES_Penstock", "penstock"),
-    (r"turbin|agregat|unit\d|generator", "IfcFlowMovingDevice", "Pset_GES_Turbine", "turbine"),
-    (r"spillway|tashlag|vodosbros", "IfcSlab", "Pset_GES_Spillway", "spillway"),
-    (r"transformator|transformer|trafo", "IfcTransformer", "", "transformer"),
-    (
-        r"mashina|powerhouse|zal|building|bino",
-        "IfcBuildingElementProxy",
-        "Pset_GES_Powerhouse",
-        "powerhouse",
-    ),
-    (r"intake|qabul|vodozabor", "IfcBuildingElementProxy", "", "intake"),
-    (r"slab|plita|\bpol\b|floor", "IfcSlab", "", "slab"),
-    (r"wall|devor|stena", "IfcWall", "", "wall"),
-    (r"column|ustun|kolonna", "IfcColumn", "", "column"),
-    (r"beam|balka|to.?sin", "IfcBeam", "", "beam"),
-    (r"roof|\btom\b|krysha", "IfcRoof", "", "roof"),
-]
+# Nom bo'yicha GES turi — umumiy qoidalar (server, Blender addoni bir xil; cad_common.NAME_RULES)
+NAME_RULES = cad_common.NAME_RULES
 
 
 def classify(name: str) -> tuple[str, str, str]:
     """(ifc_class, pset, kind) — obyekt nomi bo'yicha; topilmasa proxy."""
-    n = name.lower()
-    for rx, cls, pset, kind in NAME_RULES:
-        if re.search(rx, n):
-            return cls, pset, kind
-    return "IfcBuildingElementProxy", "", "mesh"
+    return cad_common.classify_name(name)
 
 
 def _find(name: str, extra_dirs: list[Path]) -> str | None:
@@ -102,6 +81,16 @@ def tools() -> dict[str, str | None]:
     }
 
 
+def blender_cmd(blender: str, blend: Path, script: Path, out: Path) -> list[str]:
+    """Ishonchsiz .blend ni glb ga eksport qilish buyrug'i (CAD-08): --factory-startup — foydalanuvchi
+    sozlamalari/addonlari yuklanmaydi; --disable-autoexec — fayl ichidagi skriptlar (driver, Text autorun)
+    ishga tushmaydi. Ikkalasi .blend fayl nomidan OLDIN turishi shart."""
+    return [
+        blender, "-b", "--factory-startup", "--disable-autoexec", str(blend),
+        "--python", str(script), "--", str(out),
+    ]  # fmt: skip
+
+
 def _convert_external(path: Path, tmp: Path) -> Path:
     ext = path.suffix.lower()
     t = tools()
@@ -109,7 +98,7 @@ def _convert_external(path: Path, tmp: Path) -> Path:
         out = tmp / (path.stem + ".dxf")
         if t["dwg2dxf"]:
             r = sandbox.run([t["dwg2dxf"], "-y", "-o", str(out), str(path)], cwd=tmp, timeout_s=300, ro_paths=(path,))
-            if not out.exists() or out.stat().st_size == 0:
+            if r.returncode != 0 or not out.exists() or out.stat().st_size == 0:
                 raise ValueError(
                     "DWG ni o'qib bo'lmadi (dwg2dxf): "
                     + (r.stderr or r.stdout)[-300:].decode(errors="replace")
@@ -121,12 +110,15 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             in_dir.mkdir()
             out_dir.mkdir()
             shutil.copy(path, in_dir / path.name)
-            sandbox.run(
+            r = sandbox.run(
                 [t["oda"], str(in_dir), str(out_dir), "ACAD2018", "DXF", "0", "1", path.name], cwd=tmp, timeout_s=600
             )
             res = out_dir / (path.stem + ".dxf")
-            if not res.exists():
-                raise ValueError("DWG ni o'qib bo'lmadi (ODA File Converter)")
+            if r.returncode != 0 or not res.exists() or res.stat().st_size == 0:  # CAD-06: qaytish kodi ham
+                raise ValueError(
+                    f"DWG ni o'qib bo'lmadi (ODA File Converter, kod {r.returncode}): "
+                    + (r.stderr or r.stdout or b"")[-300:].decode(errors="replace")
+                )
             return res
         raise ValueError(
             "DWG uchun serverda konverter yo'q: LibreDWG (dwg2dxf) yoki ODA File Converter o'rnating "
@@ -145,9 +137,9 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             "bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=True, export_yup=False)\n",
             encoding="utf-8",
         )
-        # Ishonchsiz .blend + --python: faqat sandbox ichida (tarmoqsiz, faqat tmp ga yozadi)
+        # Ishonchsiz .blend + --python: faqat sandbox ichida (tarmoqsiz, faqat tmp ga yozadi), timeout bilan
         sandbox.run(
-            [t["blender"], "-b", str(path), "--python", str(script), "--", str(out)],
+            blender_cmd(t["blender"], path, script, out),
             cwd=tmp, timeout_s=600, check=True, ro_paths=(path,),
         )
         return out
@@ -177,26 +169,17 @@ def _convert_external(path: Path, tmp: Path) -> Path:
 
 
 def detect_unit(path: Path) -> str | None:
-    ext = path.suffix.lower()
-    if ext in (".gltf", ".glb"):
-        return "m"  # spesifikatsiya bo'yicha metr
-    if ext == ".3mf":
-        return "mm"  # 3MF default
-    if ext in CAD_EXTS:
-        return "mm"  # OpenCASCADE STEP/IGES ni mm ga keltiradi
-    if ext == ".dxf":
-        try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[:6000]
-            for i, line in enumerate(lines):
-                if (
-                    line.strip() == "$INSUNITS"
-                    and i + 2 < len(lines)
-                    and lines[i + 1].strip() == "70"
-                ):
-                    return DXF_UNITS.get(int(lines[i + 2].strip()))
-        except (OSError, ValueError):
-            return None
-    return None
+    """Fayldagi birlik (cad_common.detect_units_and_axis) yoki None — aniqlanmasa taxmin qilinmaydi (CAD-04)."""
+    return cad_common.detect_units_and_axis(path).unit
+
+
+def _detect(orig: Path, src: Path) -> cad_common.UnitInfo:
+    """Birlik/o'q: .blend — server Blender dan Z-up glb (metr) oladi; assimp formatlari — asl fayl metama'lumoti
+    (FBX GlobalSettings); qolganlari — o'qiladigan fayl (DWG → DXF)."""
+    ext = orig.suffix.lower()
+    if ext in VIA_BLENDER:
+        return cad_common.UnitInfo("m", 1.0, "Z", "Blender (glTF eksport)", False, False)
+    return cad_common.detect_units_and_axis(orig if ext in VIA_ASSIMP else src)
 
 
 def _load_mtl(path: Path) -> dict[str, tuple]:
@@ -327,68 +310,66 @@ def _read_dxf(path: Path):
         return doc
 
 
+@dataclass
+class DxfInfo:
+    """_load_dxf natijasi haqida (CAD-05: global o'rniga natija bilan qaytadi — parallel importlar xavfsiz).
+    offset — 2D chizma (0,0) ga ko'chirilgan siljish (chizma birligida), extent — chizma o'lchami."""
+
+    offset: tuple[float, float] | None = None
+    extent: float | None = None
+    linework: bool = False
+    inserts: int = 0  # yoyilgan INSERT (blok) lar soni (CAD-03)
+    skipped_2d: int = 0  # 3D faylda import qilinmagan 2D elementlar (chiziq, matn, o'lcham …)
+    skipped_types: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ImportInfo:
+    """load_objects_ex natijasi: birlik, o'q, DXF ma'lumoti, ogohlantirishlar (import javobida qaytadi)."""
+
+    unit: str = "m"
+    scale: float = 1.0
+    unit_source: str = ""  # "$INSUNITS", "FBX UnitScaleFactor", "glTF spetsifikatsiyasi", "foydalanuvchi" …
+    units_uncertain: bool = False  # True — birlik fayldan aniqlanmadi/shubhali: klient foydalanuvchidan so'rasin
+    unit_note: str = ""
+    up_axis: str | None = None  # faylda aniqlangan yuqori o'q ("Y"/"Z")
+    axis_uncertain: bool = True
+    y_up: bool = False  # Y → Z o'girish qo'llandimi
+    dxf: DxfInfo | None = None
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 def _load_dxf(
     path: Path, extrude_m: float = 0.0
-) -> list[tuple[str, np.ndarray, np.ndarray, tuple | None]]:
+) -> tuple[list[tuple[str, np.ndarray, np.ndarray, tuple | None]], DxfInfo]:
     """DXF (AutoCAD): 3DFACE, POLYLINE (polyface/polymesh), MESH, SOLID → uchburchaklar; yopiq 2D konturlar
     (LWPOLYLINE/POLYLINE/CIRCLE) extrude_m > 0 bo'lsa balandlikka ko'tariladi. Qatlam (layer) = obyekt nomi;
-    3DSOLID/REGION (ACIS) o'qilmaydi — AutoCAD da 3DSOLID ni MESH ga aylantiring (MESHSMOOTH / EXPORT → FBX/OBJ)."""
+    3DSOLID/REGION (ACIS) o'qilmaydi — AutoCAD da 3DSOLID ni MESH ga aylantiring (MESHSMOOTH / EXPORT → FBX/OBJ).
+    INSERT (blok) lar rekursiv yoyiladi (transformatsiya bilan, CAD-03). 3D yuzali faylda 2D elementlar import
+    qilinmaydi, lekin soni DxfInfo.skipped_2d da qaytadi (jimgina yo'qolmaydi)."""
     from ezdxf import colors as dxfcolors
 
     doc = _read_dxf(path)
     msp = doc.modelspace()
     layers: dict[str, list[list[list[float]]]] = {}  # layer → [triangles (3 nuqta)]
     acis = 0
+    walk: dict = {}
+    skipped: dict[str, int] = {}
 
-    def add(layer: str, pts: list) -> None:
-        pts = [list(map(float, tuple(p)[:3])) for p in pts]  # Vec3 kesilmaydi → tuple
-        if len(pts) < 3:
-            return
-        tris = layers.setdefault(layer, [])
-        for k in range(1, len(pts) - 1):
-            tris.append([pts[0], pts[k], pts[k + 1]])
+    def skip2d(t: str) -> None:
+        skipped[t] = skipped.get(t, 0) + 1
 
-    for e in msp:
+    for e in cad_common.iter_dxf_entities(msp, stats=walk):
         t = e.dxftype()
         try:
-            if t in ("3DFACE", "SOLID", "TRACE"):
-                pts = [e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2, e.dxf.vtx3]
-                uniq = []
-                for p in pts:
-                    if not uniq or tuple(p) != tuple(uniq[-1]):
-                        uniq.append(p)
-                add(e.dxf.layer, uniq)
-            elif t == "MESH":
-                md = e.get_data()
-                vs = [list(v) for v in md.vertices]
-                for face in md.faces:
-                    add(e.dxf.layer, [vs[int(i)] for i in face])
-            elif t == "POLYLINE" and (e.is_poly_face_mesh or e.is_polygon_mesh):
-                if e.is_poly_face_mesh:
-                    vs = [list(v.dxf.location) for v in e.vertices if v.is_poly_face_mesh_vertex]
-                    for f in e.vertices:
-                        if f.is_face_record:
-                            idx = [abs(int(getattr(f.dxf, f"vtx{k}", 0))) for k in range(4)]
-                            idx = [i - 1 for i in idx if i > 0]
-                            add(e.dxf.layer, [vs[i] for i in idx if i < len(vs)])
-                else:
-                    m = (
-                        e.get_polygon_mesh_vertex_matrix()
-                        if hasattr(e, "get_polygon_mesh_vertex_matrix")
-                        else None
-                    )
-                    if m is not None:
-                        for i in range(m.m - 1):
-                            for j in range(m.n - 1):
-                                add(
-                                    e.dxf.layer,
-                                    [
-                                        list(m[i, j]),
-                                        list(m[i + 1, j]),
-                                        list(m[i + 1, j + 1]),
-                                        list(m[i, j + 1]),
-                                    ],
-                                )
+            # 3DFACE (0-1-2-3), SOLID/TRACE (DXF da 0-1-3-2), MESH, polyface/polymesh → uchburchaklar (CAD-02)
+            tris = cad_common.dxf_triangles(e)
+            if tris is not None:
+                if tris:
+                    layers.setdefault(e.dxf.layer, []).extend([list(q) for q in tri] for tri in tris)
             elif extrude_m > 0 and t in ("LWPOLYLINE", "POLYLINE", "CIRCLE"):
                 if t == "CIRCLE":
                     import math
@@ -400,20 +381,27 @@ def _load_dxf(
                     ]
                 elif t == "LWPOLYLINE":
                     if not e.closed:
+                        skip2d(t)
                         continue
                     z = e.dxf.elevation
                     ring = [(x, y, z) for x, y, *_ in e.get_points()]
                 else:
                     if not e.is_closed:
+                        skip2d(t)
                         continue
                     ring = [tuple(v.dxf.location) for v in e.vertices]
                 if len(ring) < 3:
                     continue
                 _extrude(layers.setdefault(e.dxf.layer, []), ring, extrude_m)
-            elif t in ("3DSOLID", "REGION", "BODY", "SURFACE"):
+            elif t in cad_common.DXF_ACIS_TYPES:
                 acis += 1
+            elif t in cad_common.DXF_2D_TYPES:
+                skip2d(t)
         except Exception:  # noqa: BLE001 — bitta buzuq element importni to'xtatmasin
             continue
+    info = DxfInfo(inserts=walk.get("insert", 0))
+    if layers and skipped:  # aralash fayl: 3D yuzalar olindi, 2D chiziqlar olinmadi — xabar beramiz
+        info.skipped_2d, info.skipped_types = sum(skipped.values()), dict(sorted(skipped.items()))
     if not layers:
         if acis:
             raise ValueError(
@@ -423,7 +411,7 @@ def _load_dxf(
         # 3D yuza yo'q — oddiy 2D chizma (plan/kesim): chiziqlarni yupqa lentalar sifatida qatlam bo'yicha
         # elementlarga aylantiramiz, shunda chizma 3D ko'rgichda tekis varaq bo'lib ko'rinadi
         try:  # bloklar, o'lchamlar, matn (harf konturlari), shtrix, chiqish → oddiy chiziqlar (AutoCAD ko'rinishi)
-            from .dxf_flatten import flatten
+            from .dxf_prepare import flatten
 
             flatten(doc)
         except Exception:  # noqa: BLE001 — tekislash o'tmasa xom chiziqlar bilan davom
@@ -458,11 +446,8 @@ def _load_dxf(
             col = None
         out.append((name, v, f, col))
     if offset is not None:
-        _LAST_DXF_INFO.update(offset=offset[:2], extent=offset[2], linework=True)
-    return out
-
-
-_LAST_DXF_INFO: dict = {}  # oxirgi _load_dxf: {"offset": (x, y), "extent": float, "linework": bool}
+        info.offset, info.extent, info.linework = (offset[0], offset[1]), offset[2], True
+    return out, info
 
 
 _ACI_NAMES = {
@@ -614,7 +599,27 @@ def load_objects(
     extrude_m: float = 0.0,
 ) -> list[dict]:
     """Fayl → [{name, kind, ifc_class, psets, color, mesh:{vertices, faces}, transform}] (drafts.build formati)."""
+    return load_objects_ex(path, unit, y_up, merge, auto_unit, classify_names, extrude_m)[0]
+
+
+def load_objects_ex(
+    path: Path,
+    unit: str = "m",
+    y_up: bool | None = None,
+    merge: bool = False,
+    auto_unit: bool = True,
+    classify_names: bool = True,
+    extrude_m: float = 0.0,
+) -> tuple[list[dict], ImportInfo]:
+    """load_objects + import haqida ma'lumot (ImportInfo) — holat global o'zgaruvchida emas, natija bilan.
+    auto_unit — birlik fayldan (cad_common.detect_units_and_axis); aniqlanmasa `unit` olinadi va
+    `units_uncertain=True` (jimgina taxmin yo'q). auto_unit=False — `unit` aniq (foydalanuvchi tanlovi).
+    y_up=None — fayldagi o'q aniq bo'lsa (glTF, FBX UpAxis) shunga ko'ra; True/False — majburiy."""
     import trimesh
+
+    info = ImportInfo()
+    dxf_info: DxfInfo | None = None
+    guids: dict[str, str] = {}  # obyekt nomi → GUID (glTF extras / FBX user props; CAD-07)
 
     with tempfile.TemporaryDirectory(prefix="ges-conv-") as tmp:
         if path.suffix.lower() == ".zip":
@@ -634,9 +639,18 @@ def load_objects(
                 raise ValueError("ZIP ichida 3D fayl topilmadi (obj/gltf/dae/…)")
             path = sorted(cands, key=lambda q: (q.suffix.lower() != ".obj", str(q)))[0]
         src = _convert_external(path, Path(tmp))
-        if auto_unit:
-            unit = detect_unit(src) or unit
-        scale = UNITS.get(unit, 1.0)
+        det = _detect(path, src)
+        info.up_axis, info.axis_uncertain = det.up_axis, det.axis_uncertain
+        if not auto_unit:
+            scale, info.unit_source = UNITS.get(unit, 1.0), "foydalanuvchi"
+        elif det.scale:
+            scale, unit, info.unit_source = det.scale, det.unit or f"{det.scale:g} m", det.source
+        else:
+            scale, info.unit_source, info.units_uncertain = UNITS.get(unit, 1.0), "aniqlanmadi", True
+            info.unit_note = f"{det.note or 'Birlik aniqlanmadi'}: {unit} deb olindi — birlikni tasdiqlang"
+            info.warnings.append(info.unit_note)
+        if y_up is None:
+            y_up = det.up_axis == "Y" and not det.axis_uncertain
         meshes: list[tuple[str, trimesh.Trimesh, tuple | None]] = []
         loaded = None
         if src.suffix.lower() == ".obj" and not merge:
@@ -656,6 +670,11 @@ def load_objects(
         elif src.suffix.lower() in VIA_ASSIMP:
             from . import assimp_load
 
+            if src.suffix.lower() == ".fbx":  # FBX Custom Properties (Blender: sath_guid)
+                for mname, props in cad_common.fbx_info(src)["models"].items():
+                    g = cad_common.guid_from_props(props)
+                    if g:
+                        guids[mname] = g
             for o in assimp_load.load(src):
                 meshes.append(
                     (
@@ -665,19 +684,30 @@ def load_objects(
                     )
                 )
         elif src.suffix.lower() == ".dxf":
-            _LAST_DXF_INFO.clear()
-            for name, v, f, col in _load_dxf(
-                src, extrude_m / scale
-            ):  # ko'tarish metrda → chizma birligi
+            loaded_dxf, dxf_info = _load_dxf(src, extrude_m / scale)  # ko'tarish metrda → chizma birligi
+            for name, v, f, col in loaded_dxf:
                 meshes.append((name, trimesh.Trimesh(vertices=v, faces=f, process=False), col))
-            if _LAST_DXF_INFO.get("linework") and auto_unit and unit == "mm":
-                # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi: varaq (ramka) 200 mm dan
-                # kichik bo'lishi mumkin emas → bu metr
-                if _LAST_DXF_INFO.get("extent", 1e9) < 200:
-                    unit, scale = "m", 1.0
-                    _LAST_DXF_INFO["unit_guess"] = "m (chizma 200 mm dan kichik — metr deb olindi)"
+            if dxf_info.skipped_2d:
+                kinds = ", ".join(f"{k} {n}" for k, n in dxf_info.skipped_types.items())
+                info.warnings.append(
+                    f"DXF: 3D yuzalar bilan birga {dxf_info.skipped_2d} ta 2D element bor ({kinds}) — ular import "
+                    "qilinmadi. 2D chizmani alohida DXF qilib yuklang yoki yopiq konturlar uchun «balandlikka "
+                    "ko'tarish» ni kiriting"
+                )
+            ext_ = dxf_info.extent or 1e9
+            if dxf_info.linework and auto_unit and unit == "mm" and ext_ < 200:
+                # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi (varaq 200 mm dan kichik
+                # bo'lmaydi). Jimgina ×1000 qilinmaydi (CAD-04) — belgi qo'yamiz, klient foydalanuvchidan so'raydi
+                info.units_uncertain = True
+                info.unit_note = (
+                    f"Chizma o'lchami {ext_:g} mm (200 mm dan kichik) — ehtimol metrda chizilgan; "
+                    "birlikni tanlab qayta import qiling"
+                )
+                info.warnings.append(info.unit_note)
         else:
             loaded = trimesh.load(str(src), force="scene" if not merge else "mesh", process=False)
+            if src.suffix.lower() in cad_common.GLTF_EXTS:
+                guids.update(cad_common.gltf_node_guids(src))
         if isinstance(loaded, trimesh.Scene):
             for name, geom in loaded.geometry.items():
                 if not isinstance(geom, trimesh.Trimesh) or geom.faces.shape[0] == 0:
@@ -690,6 +720,9 @@ def load_objects(
                     if node is not None:
                         m.apply_transform(loaded.graph[node][0])
                     label = (node or name) if len(nodes) == 1 else f"{name}_{i + 1}"
+                    g = cad_common.guid_from_props(geom.metadata) if len(nodes) == 1 else None
+                    if g and str(label) not in guids:
+                        guids[str(label)] = g
                     meshes.append((str(label), m, _color_of(geom)))
         elif isinstance(loaded, trimesh.Trimesh):
             meshes.append((path.stem, loaded, _color_of(loaded)))
@@ -703,7 +736,15 @@ def load_objects(
             f"Juda ko'p uchburchak: {total} > {MAX_TRIANGLES} — Blender da Decimate qiling"
         )
     out = []
-    for name, m, col in meshes:
+    seen_guids: set[str] = set()
+    for label, m, col in meshes:
+        # CAD-07: eksportdagi "Nom [GUID]" / sath_guid → mavjud element yangilanadi (drafts.build obj["guid"])
+        name, guid = cad_common.split_guid(label)
+        guid = guid or guids.get(label)
+        if guid in seen_guids:  # bir GUID ikki marta (nusxa obyekt) — ikkinchisi yangi element
+            guid = None
+        if guid:
+            seen_guids.add(guid)
         v = np.asarray(m.vertices, dtype=float) * scale
         if y_up:  # Y yuqoriga → Z yuqoriga: (x, y, z) → (x, −z, y)
             v = np.column_stack([v[:, 0], -v[:, 2], v[:, 1]])
@@ -721,17 +762,14 @@ def load_objects(
                 "Birlik": unit,
                 **(
                     {
-                        "Asl_siljish_X": round(float(_LAST_DXF_INFO["offset"][0]), 3),
-                        "Asl_siljish_Y": round(float(_LAST_DXF_INFO["offset"][1]), 3),
+                        # asl (geodezik) siljish — metrda (chizma birligida emas)
+                        "Asl_siljish_X": round(float(dxf_info.offset[0]) * scale, 3),
+                        "Asl_siljish_Y": round(float(dxf_info.offset[1]) * scale, 3),
                     }
-                    if src.suffix.lower() == ".dxf" and _LAST_DXF_INFO.get("offset")
+                    if dxf_info is not None and dxf_info.offset
                     else {}
                 ),
-                **(
-                    {"Birlik_izoh": _LAST_DXF_INFO["unit_guess"]}
-                    if src.suffix.lower() == ".dxf" and _LAST_DXF_INFO.get("unit_guess")
-                    else {}
-                ),
+                **({"Birlik_izoh": info.unit_note} if info.unit_note else {}),
             }
         }
         if pset == "Pset_GES_Dam":
@@ -749,6 +787,7 @@ def load_objects(
             psets[pset] = {}
         out.append(
             {
+                **({"guid": guid} if guid else {}),
                 "kind": kind,
                 "name": str(name)[:120] or "Mesh",
                 "ifc_class": cls,
@@ -758,13 +797,18 @@ def load_objects(
                 "mesh": {"vertices": v.round(5).tolist(), "faces": f.tolist()},
             }
         )
-    return out
+    info.unit, info.scale, info.y_up, info.dxf = unit, scale, bool(y_up), dxf_info
+    return out, info
 
 
 # --- IFC → glTF / OBJ / STL (Blender, 3ds Max uchun) ---
+_Z_UP_TO_Y_UP = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=float)  # (x, z, −y)
+
+
 def export_ifc(path: Path, fmt: str = "glb") -> bytes:
     """IFC dan barcha elementlar geometriyasi (dunyo koordinatalari, metr, ranglar) → glb/obj/stl baytlar;
-    element nomi va GUID saqlanadi (Blender da obyekt nomi = "Nom [GUID]")."""
+    element nomi va GUID saqlanadi (Blender da obyekt nomi = "Nom [GUID]", glTF mesh extras da sath_guid) —
+    qayta importda GUID o'qiladi va element yangilanadi (CAD-07). glb — glTF spetsifikatsiyasi bo'yicha Y-up."""
     import ifcopenshell
     import ifcopenshell.geom
     import trimesh
@@ -791,6 +835,9 @@ def export_ifc(path: Path, fmt: str = "glb") -> bytes:
                             int(max(min(float(x), 1), 0) * 255) for x in rgb
                         ] + [255]
                     name = f"{el.Name or el.is_a()} [{el.GlobalId}]"
+                    m.metadata["sath_guid"] = el.GlobalId  # glTF mesh extras → Blender custom property
+                    if fmt == "glb":
+                        m.apply_transform(_Z_UP_TO_Y_UP)
                     scene.add_geometry(m, node_name=name, geom_name=name)
             except Exception:  # noqa: BLE001 — bitta element xatosi eksportni to'xtatmasin
                 pass

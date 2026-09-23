@@ -18,7 +18,7 @@
 - `bpy` faqat asosiy oqimda; tarmoq so'rovlari qisqa bo'lsa sinxron, uzun bo'lsa `threading.Thread` + `bpy.app.timers`.
 - Birlik: Blender/IFC metr; FreeCAD mm — faqat `fc_engine` ichida ×0.001.
 - `sath/shared/*.py` — manba `desktop/GesWorkbench/ges_workbench/`; faqat `sync_blender.py` orqali o'zgaradi.
-- Har vazifa oxirida: `cd C:\Users\uge226\Desktop\BIM && .venv\Scripts\ruff check desktop && git add ... && git commit`.
+- Har vazifa oxirida: `cd <repo ildizi> && .venv\Scripts\ruff check desktop && git add ... && git commit`.
 - Headless Blender ishga tushirish: `%USERPROFILE%\Tools\blender-5.2\blender.exe -b --python <script>`; addon yo'li `SATH_ADDON_DIR` env (repo `desktop/blender/sath`) — test runner uni `bpy.utils.script_paths` ga qo'shmasdan `sys.path` + `importlib` bilan yuklaydi (pastda `blender_headless.py`).
 
 ## Fayl tuzilmasi
@@ -147,7 +147,7 @@ def test_shared_is_synced():
     assert sync_blender.check() == [], "python desktop/build/sync_blender.py ni ishga tushiring"
 ```
 
-- [ ] **Step 2: FAIL** — `cd C:\Users\uge226\Desktop\BIM && .venv\Scripts\pytest -q desktop/tests/test_sath_pure.py` → AssertionError
+- [ ] **Step 2: FAIL** — `cd <repo ildizi> && .venv\Scripts\pytest -q desktop/tests/test_sath_pure.py` → AssertionError
 
 - [ ] **Step 3: `.venv\Scripts\python desktop/build/sync_blender.py`** → pytest PASS
 
@@ -483,7 +483,7 @@ def run(ctx):
 - [ ] **Step 7: ruff + pytest + commit**
 
 ```bash
-cd C:\Users\uge226\Desktop\BIM && .venv\Scripts\ruff check desktop && .venv\Scripts\pytest -q desktop/tests/test_sath_pure.py
+cd <repo ildizi> && .venv\Scripts\ruff check desktop && .venv\Scripts\pytest -q desktop/tests/test_sath_pure.py
 git add desktop/blender/sath desktop/build/sync_blender.py desktop/tests/blender_headless.py desktop/tests/sath_tests desktop/tests/test_sath_pure.py
 git commit -m "sath: Blender addon skeleti (prefs, session, sync_blender, headless runner)"
 ```

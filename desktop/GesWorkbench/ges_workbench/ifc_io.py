@@ -121,6 +121,45 @@ def _write_psets(ifcfile, element, props: dict) -> None:
         ifcopenshell.api.pset.edit_pset(ifcfile, pset=ps, properties=values)
 
 
+MAX_MESH_FACETS = 200_000  # bundan katta mesh Part ga aylantirilmaydi (juda sekin) — ogohlantiriladi
+
+
+def meshes_to_shapes(doc) -> tuple[list, list[str]]:
+    """Mesh::Feature (FBX/3DS/OBJ import, mesh_open) → Part::Feature: IFC eksporti faqat Shape li obyektlarni
+    oladi, mesh lar avval jimgina tushib qolardi (CAD-01). Nom, rang saqlanadi; asl mesh obyekt o'rniga Part.
+    Qaytaradi: (yangi Part obyektlar, aylantirib bo'lmagan obyekt nomlari)."""
+    import Part
+
+    made, failed = [], []
+    for o in list(doc.Objects):
+        if o.TypeId != "Mesh::Feature":
+            continue
+        label = o.Label
+        try:
+            mesh = o.Mesh
+            if mesh.CountFacets == 0 or mesh.CountFacets > MAX_MESH_FACETS:
+                raise ValueError(f"{mesh.CountFacets} ta uchburchak")
+            sh = Part.Shape()
+            sh.makeShapeFromMesh(mesh.Topology, 0.05)
+            shell = Part.Shell(sh.Faces)
+            shape = Part.Solid(shell) if shell.isClosed() else shell
+            part = doc.addObject("Part::Feature", o.Name + "_shape")
+            part.Shape = shape
+            color = None
+            if FreeCAD.GuiUp and getattr(o, "ViewObject", None) is not None:
+                color = getattr(o.ViewObject, "ShapeColor", None)
+            doc.removeObject(o.Name)
+            part.Label = label
+            if color is not None and getattr(part, "ViewObject", None) is not None:
+                part.ViewObject.ShapeColor = color
+            made.append(part)
+        except Exception as e:  # noqa: BLE001 — bitta mesh qolganini to'xtatmasin
+            failed.append(f"{label} ({e})")
+    if made:
+        doc.recompute()
+    return made, failed
+
+
 def save_ifc(doc, path: Path) -> Path:
     """Hujjatni IFC ga yozadi.
 
@@ -129,6 +168,11 @@ def save_ifc(doc, path: Path) -> Path:
     - Aks holda: eski eksporter bilan barcha obyektlar (GES obyektlari IfcType + IfcProperties bilan).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    _made, failed = meshes_to_shapes(doc)
+    if failed:
+        FreeCAD.Console.PrintWarning(
+            f"Sath: IFC ga kirmagan obyektlar: {len(failed)} — " + "; ".join(failed[:10]) + "\n"
+        )
     project = project_object(doc)
     if project is not None:
         _, ifc_tools = _nativeifc()

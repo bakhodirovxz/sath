@@ -4,7 +4,7 @@ OGEX, B3D, MD2/MD3/MD5, SMD, NFF, AMF, IRRMESH, … (assimp 5.x 40+ format).
 Natija — oddiy ro'yxat: [{name, vertices (N×3, float), faces (M×3, int), color (r,g,b) yoki None}].
 Tugun (node) daraxti bo'ylab yuriladi: har mesh o'z tugun nomi va yig'ilgan transformatsiyasi bilan —
 Blender/3ds Max dagi obyekt nomlari saqlanadi (FBX ning $AssimpFbx$ yordamchi tugunlari nomga kirmaydi).
-Server (web import) va desktop (FreeCAD) da bir xil nusxa (server/ges_server/models/assimp_load.py).
+Kanonik manba: common/sath_common/assimp_load.py; nusxalar desktop/build/sync_blender.py bilan yangilanadi (qo'lda tahrirlamang).
 """
 
 from __future__ import annotations

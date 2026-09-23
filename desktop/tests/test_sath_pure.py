@@ -13,6 +13,20 @@ import sync_blender  # noqa: E402
 def test_shared_is_synced():
     assert sync_blender.check() == [], "python desktop/build/sync_blender.py ni ishga tushiring"
 
+
+def test_common_copies_byte_identical_to_canonical():
+    """CODE-01: har umumiy modulning yagona manbasi common/sath_common; nusxalar (addon, workbench, server)
+    bayt-bayt bir xil — farq bo'lsa CI yiqiladi."""
+    pairs = sync_blender.copies()
+    dsts = {d.relative_to(ROOT).as_posix() for _, d in pairs}
+    for f in ("assimp_load.py", "dxf_prepare.py"):
+        assert f"server/ges_server/models/{f}" in dsts
+        assert f"desktop/GesWorkbench/ges_workbench/{f}" in dsts
+        assert f"desktop/blender/sath/shared/{f}" in dsts
+    for src, dst in pairs:
+        if src.parent == sync_blender.SRC:
+            assert src.read_bytes() == dst.read_bytes(), dst
+
 from sath import fc_engine  # noqa: E402
 
 
@@ -195,3 +209,91 @@ def test_bonsai_pinned_sha256(tmp_path, monkeypatch):
     assert bb.ensure_bonsai(z, "5.2.2") == z
     monkeypatch.setattr(bb, "TOOLS", tmp_path)
     assert bb.ensure_bonsai(None, "5.2.2") == z  # kesh: faqat qotirilgan versiya nomi
+
+
+def test_unassigned_objects_warning_text():
+    objs = [
+        ("FBX_Togon", "MESH", False, False), ("GES_Suv", "MESH", False, True), ("Devor", "MESH", True, False),
+        ("DXF_OQ_chiziq", "CURVE", False, False), ("Kamera", "CAMERA", False, False),
+    ]  # fmt: skip
+    names = flows.unassigned_objects(objs)
+    assert names == ["FBX_Togon", "DXF_OQ_chiziq"]
+    assert flows.unassigned_text(names) == "IFC ga kirmagan obyektlar: 2 — FBX_Togon, DXF_OQ_chiziq"
+    assert flows.unassigned_text([f"o{i}" for i in range(6)], limit=2).endswith("o0, o1 … (+4)")
+    assert flows.unassigned_text([]) == ""
+
+
+def test_legacy_parts_are_marked():
+    """CODE-02: legacy qismlar belgilangan (papkalar ko'chirilmagan — skriptlar yo'llariga tayanadi)."""
+    assert "legacy" in (ROOT / "desktop" / "GesWorkbench" / "LEGACY.md").read_text(encoding="utf-8").lower()
+    assert "legacy" in (ROOT / "desktop" / "blender" / "spike" / "LEGACY.md").read_text(encoding="utf-8").lower()
+    for f in ("sync_fork.py", "build_portable.py"):
+        head = (ROOT / "desktop" / "build" / f).read_text(encoding="utf-8")[:300]
+        assert head.startswith('"""LEGACY (CODE-02)'), f
+
+
+def test_package_names_distinct_and_product_in_build_info(tmp_path, monkeypatch):
+    """CODE-03: Blender bundle va legacy FreeCAD paketi turli nomda, build metama'lumotida product."""
+    import json
+
+    import build_blender_bundle as bb
+    import build_portable as bp
+
+    assert bb.artifact_name("0.3.0") == "Sath-Blender-0.3.0-Windows-x86_64"
+    assert bp.artifact_name("0.3.0") == "Sath-FreeCAD-0.3.0-Windows-x86_64"
+    assert bb.build_info("0.3.0")["product"] == "sath-blender"
+    assert bp.build_info("0.3.0")["product"] == "sath-freecad"
+    monkeypatch.setattr(bp, "DIST", tmp_path / "dist")
+    side = bp.write_build_info(tmp_path, "0.3.0")
+    assert json.loads(side.read_text(encoding="utf-8"))["product"] == "sath-freecad"
+    assert json.loads((tmp_path / "Sath-BUILD.json").read_text(encoding="utf-8"))["name"].startswith("Sath-FreeCAD-")
+
+
+def test_binaries_in_git_lfs_and_no_local_user_paths():
+    """CODE-04: katta binar fayllar Git LFS da (indeksda pointer), ish nusxasida haqiqiy fayl (smudge);
+    lokal foydalanuvchi yo'llari (C:/Users/<nom>) va spike loglari repoda yo'q."""
+    import re
+    import shutil
+    import subprocess
+
+    attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    for pat in ("*.FCStd", "*.whl", "*.dwg", "*.fbx", "*.3ds", "*.blend"):
+        assert f"{pat} filter=lfs diff=lfs merge=lfs -text" in attrs, pat
+    git = shutil.which("git")
+    if git is None or not (ROOT / ".git").exists():
+        return
+    files = subprocess.run([git, "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    assert not [f for f in files if f.startswith("desktop/blender/spike/") and f.endswith(".log")]
+    lfs = subprocess.run([git, "lfs", "ls-files", "-n"], cwd=ROOT, capture_output=True, text=True)
+    if lfs.returncode == 0:
+        tracked = set(lfs.stdout.splitlines())
+        binaries = {f for f in files if re.search(r"\.(fcstd|whl|dwg|fbx|3ds|blend)$", f, re.I)}
+        assert binaries and binaries <= tracked, binaries - tracked
+        # ish nusxasida pointer emas, haqiqiy fayl (testlar shu fayllarni o'qiydi)
+        assert (ROOT / "server" / "tests" / "samples" / "box.fbx").read_bytes()[:7] == b"Kaydara"
+    bad = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+(?!<)[^\\/\s\"']+[\\/]", re.I)
+    for f in files:
+        if not f.endswith((".py", ".ps1", ".md", ".toml", ".yml", ".json", ".txt")) or f.endswith("package-lock.json"):
+            continue
+        p = ROOT / f
+        if p.is_file() and bad.search(p.read_text(encoding="utf-8", errors="replace")):
+            raise AssertionError(f"lokal foydalanuvchi yo'li: {f}")
+
+
+def test_desktop_tests_have_no_hardcoded_admin_password(monkeypatch):
+    """Desktop testlari admin parolini muhitdan oladi (GES_TEST_PASSWORD), yo'q bo'lsa tushunarli xato."""
+    import importlib
+
+    import pytest
+
+    for p in (ROOT / "desktop" / "tests").rglob("*"):
+        if p.suffix in (".py", ".ps1") and p.name != "test_sath_pure.py":
+            assert "admin123" not in p.read_text(encoding="utf-8-sig"), p
+    sys.path.insert(0, str(ROOT / "desktop" / "tests" / "sath_tests"))
+    creds = importlib.import_module("creds")
+    monkeypatch.delenv("GES_TEST_PASSWORD", raising=False)
+    monkeypatch.delenv("GES_ADMIN_PASSWORD", raising=False)
+    with pytest.raises(RuntimeError, match="GES_TEST_PASSWORD"):
+        creds.admin_password()
+    monkeypatch.setenv("GES_TEST_PASSWORD", "x-parol")
+    assert creds.admin_password() == "x-parol"

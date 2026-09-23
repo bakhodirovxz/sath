@@ -1,6 +1,6 @@
 # FreeCAD GUI da ishga tushiriladi (ishlayotgan server kerak):
 #   "C:\Program Files\FreeCAD 1.1\bin\freecad.exe" desktop\tests\fc_gui.py
-# Muhit: GES_URL (default http://localhost:8000), GES_USER/GES_PASS (admin/admin123).
+# Muhit: GES_URL (default http://localhost:8000), GES_USER (admin), GES_PASS yoki GES_TEST_PASSWORD (majburiy).
 # Natija: %TEMP%\sath\fc_gui.log va fc_gui.png. Tekshiradi: workbench, buyruqlar, dialoglar,
 # serverga kirish, modelni ochish, GES obyekt, commit, issue + ko'rinish.
 import os
@@ -35,7 +35,10 @@ try:
     d = dialogs.LoginDialog()
     d.server.setText(url)
     d.username.setText(os.environ.get("GES_USER", "admin"))
-    d.password.setText(os.environ.get("GES_PASS", "admin123"))
+    pw = os.environ.get("GES_PASS") or os.environ.get("GES_TEST_PASSWORD")
+    if not pw:
+        raise RuntimeError("GES_PASS (yoki GES_TEST_PASSWORD) o'rnatilmagan — test serveri admin paroli")
+    d.password.setText(pw)
     d.try_login()
     assert d.result() == QtWidgets.QDialog.Accepted, d.status.text()
     P("login:", d.user["username"])

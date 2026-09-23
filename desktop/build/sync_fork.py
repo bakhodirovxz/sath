@@ -1,4 +1,7 @@
-"""GES workbench ni FreeCAD fork iga (src/Mod/Ges) sinxronlash.
+"""LEGACY (CODE-02): FreeCAD fork i va GesWorkbench — legacy tarqatish yo'li (desktop/GesWorkbench/LEGACY.md).
+Asosiy desktop — Blender extension (desktop/blender/sath). Faqat xato tuzatishlar.
+
+GES workbench ni FreeCAD fork iga (src/Mod/Ges) sinxronlash.
 
 Manba — shu repo: desktop/GesWorkbench (testlar shu yerda). Fork (Sath-FreeCAD) o'z CMake
 build ida Mod/Ges ni shu nusxadan oladi; CMakeLists.txt va branding/ papkasi fork niki, ularga

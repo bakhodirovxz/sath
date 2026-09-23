@@ -457,11 +457,11 @@ Parolni foydalanuvchi o'zi o'zgartira oladi (API `/api/auth/change-password`); a
 
 Windows mashinada (o'rnatilgan FreeCAD 1.1.3, fork `../Sath-FreeCAD`, NSIS — `desktop/README.md`):
 ```bash
-python desktop/build/build_blender_bundle.py --installer   # yoki build_portable.py (FreeCAD fork)
+python desktop/build/build_blender_bundle.py --installer   # dist: Sath-Blender-<ver>-Windows-x86_64-installer.exe va .zip
+python desktop/build/build_portable.py                    # (legacy) Sath-FreeCAD-<ver>-Windows-x86_64-*
 # bir martalik: imzo kalit juftligi (private — CI secret / parol menejeri; ochiq — serverga va addonga)
 python desktop/build/publish_desktop.py --gen-key ~/.sath/release-ed25519.pem
-python desktop/build/publish_desktop.py --server https://<server> --user admin --product blender \
-    --signing-key ~/.sath/release-ed25519.pem   # dist dagi eng yangi installer + zip
+python desktop/build/publish_desktop.py --server https://<server> --user admin --product blender     --signing-key ~/.sath/release-ed25519.pem   # dist dagi eng yangi installer + zip
 ```
 Yangilanish butunligi (SEC-03):
 - Server paketni `.part` ga yozadi va faqat sha256/imzo tekshiruvidan keyin atomik `os.replace` qiladi —

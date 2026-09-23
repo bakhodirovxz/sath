@@ -36,6 +36,20 @@ Litsenziya: ichki foydalanish — GPL/LGPL/AGPL komponentlar bemalol ishlatiladi
 | + Toshqin prognozi, ish buyruqlari | ✅ | yog'in prognozi + jonli sath → sath/tavsiya; CMMS-lite (KPI MTTR/MTBF, avto buyruq sog'liqdan), 3D sog'liq rangi |
 | + Ehtiyot qismlar, elektr, ML nuqtasi | ✅ | ombor (kirim/sarf, min zaxira), transformator IEC 60076-7 (sim + sog'liq), `/ml/predictions` → ML.* sensorlar |
 | + Holat monitoringi | ✅ | sog'liq indeksi (ISO 20816-5, harorat, FIK trendi, anomaliya, RUL, kavitatsiya), «nima bo'lsa», optimal rejim |
+| + Audit: desktop/CAD (2026-09-23) | ✅ | CAD-01..09 (CAD-10 — secops), CODE-01..05; desktop asosiy yo'li — Blender extension, FreeCAD workbench/fork — legacy |
+
+Desktop/CAD audit (SATH_AUDIT.md 2.3, 4) natijasi, qisqa:
+- Import: DXF 3D yuzalar to'g'ri tartibda (SOLID 0-1-3-2), bloklar rekursiv, aralash 2D/3D da tashlangan 2D soni javobda;
+  birlik/o'q `cad_common.detect_units_and_axis` (DXF `$INSUNITS`, FBX `UnitScaleFactor`/`UpAxis`, glTF) — jimgina
+  ×1000 yo'q, `units_uncertain` + `unit_override`; `Asl_siljish_X/Y` metrda; GUID (`"Nom [GUID]"`, glTF extras,
+  FBX `sath_guid`) qayta importda saqlanadi; glb eksport Y-up.
+- Blender: import qilingan mesh lar IFC elementi (Bonsai), commit da «IFC ga kirmagan obyektlar: N»; DXF FreeCAD siz
+  (ezdxf); DWG konverter vaqtinchalik papkada, qaytish kodi tekshiriladi; parol `.blend` ga yozilmaydi;
+  `platforms` (windows-x64, linux-x64, macos-arm64 — Linux/macOS sinalmagan, assimp faqat Windows).
+- Repo: umumiy modullar `common/sath_common` (nusxalar CI da tekshiriladi), katta binar fayllar Git LFS da,
+  paket nomlari `Sath-Blender-<ver>` / `Sath-FreeCAD-<ver>` (legacy), build metama'lumotida `product`.
+- Qolgan: `sath-common` wheel (K1, alohida qaror); server `.blend` uchun sandbox da `BLENDER_USER_RESOURCES`
+  (secops); web import dialogi `units_uncertain` da birlik so'rashi (web).
 
 Ma'lum cheklovlar: desktop FreeCAD 1.1.3 forki (yadro C++ o'zgartirilmagan; paket hozircha rasmiy 1.1.3 binaridan overlay bilan yig'iladi, to'liq kompilyatsiya — fork CI);
 katta IFC (>100 MB) — serverdagi fragments konvertatsiya va geometriya tahlili bir necha daqiqa olishi mumkin (fonda);
@@ -118,12 +132,27 @@ BIM/
 │   ├── preset/         (user.cfg: dark theme, keymap, toolbars)
 │   ├── build/          (portable zip yig'ish, Inno Setup skripti)
 │   └── tests/          (freecadcmd headless)
+├── common/sath_common/ # umumiy sof Python modullar — yagona manba (CODE-01), nusxalari sync_blender.py bilan
 ├── sim/               # ges_sim paketi (umumiy)
 │   ├── ges_sim/ reservoir.py, turbine.py, penstock.py, cfd/, monitoring/
 │   └── tests/
 ├── deploy/            # docker-compose.yml, .env.example, backup.sh
 └── docs/              # o'rnatish, foydalanuvchi qo'llanmasi, API
 ```
+
+### Umumiy modullar (CODE-01) va `sath-common` wheel rejasi
+
+Hozir: `common/sath_common/` — `assimp_load`, `dxf_prepare`, `server_client`, `ifc_classes`, `cad_common` ning
+**yagona manbasi**. `python desktop/build/sync_blender.py` ularni Blender addoni (`sath/shared/`), FreeCAD
+workbench (`GesWorkbench/ges_workbench/`, legacy) va server (`server/ges_server/models/`) ga nusxalaydi; CI
+`--check` va `desktop/tests/test_sath_pure.py`, `server/tests/test_drafts.py` nusxa farq qilsa yiqiladi.
+Nusxani qo'lda tahrirlamang — faqat `common/sath_common` ni. `ges_objects.py` FreeCAD ga bog'liq, manbasi
+GesWorkbench (→ `sath/wb/`).
+
+Keyingi qadam (roadmap K1, alohida qaror — foydalanuvchi bilan kelishiladi): `common/` ga `pyproject.toml`,
+`sath-common` sof Python wheel (`py3-none-any`); server `pip install ./common`, Blender addoni wheel ni
+`blender_manifest.toml` `wheels` ga qo'shadi, `sync_blender.py` nusxalari va server dagi nusxalar olib tashlanadi.
+FreeCAD fork i arxivlanmaguncha workbench nusxasi qoladi.
 
 ### Ma'lumotlar modeli (asosiy jadvallar)
 

@@ -34,11 +34,14 @@ class SATH_OT_connect(bpy.types.Operator):
 
     def execute(self, context):
         p, s = prefs(), context.scene.ges
+        sec = props.secret(context)
 
         def do():
-            u = session.login(p.server, p.username, s.password, s.otp)
-            s.password = ""
-            s.otp = ""
+            try:
+                u = session.login(p.server, p.username, sec.password, sec.otp)
+            finally:  # CODE-05: xato bo'lsa ham parol/MFA kodi xotirada qolmaydi
+                sec.password = ""
+                sec.otp = ""
             s.status = f"{u['username']} sifatida kirildi"
             pkg = flows.newer_package(session.client(), flows.ADDON_VERSION)
             s.update_version = pkg["version"] if pkg else ""
@@ -208,11 +211,78 @@ class SATH_OT_open_version(bpy.types.Operator):
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
 
+class SATH_OT_pull_head(bpy.types.Operator):
+    """Commit rad etildi (model serverda yangilangan): joriy IFC zaxira nusxaga saqlanadi, eng oxirgi versiya
+    ochiladi — o'zgarishlarni qayta kiritib commit qiling (VCS-01)"""
+
+    bl_idname = "sath.pull_head"
+    bl_label = "Eng oxirgi versiyani yuklab olish"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and context.scene.ges.head_conflict_id >= 0 and bool(context.scene.ges.model_id)
+
+    def execute(self, context):
+        import time
+
+        s = context.scene.ges
+        model_id, head_id = s.model_id, s.head_conflict_id
+        snap = props.snapshot(s)
+
+        def do():
+            c = session.client()
+            versions = c.versions(model_id)
+            head = next((v for v in versions if v["id"] == head_id), None) if head_id else None
+            head = head or max(versions, key=lambda v: v["number"])
+            backup = None
+            if ifc.file() is not None:  # lokal o'zgarishlar yo'qolmasin
+                backup = ifc.save(flows.cache_dir() / f"lokal_m{model_id}_{time.strftime('%Y%m%d_%H%M%S')}.ifc")
+            path = flows.download_version(c, {"id": model_id}, {"id": head["id"], "number": head["number"]})
+            if ifc.load(path):
+                props.restore(bpy.context.scene.ges, snap)
+            sc = bpy.context.scene.ges
+            sc.version_id, sc.version_number, sc.head_conflict_id = head["id"], head["number"], -1
+            sc.status = f"v{head['number']} ochildi" + (f"; lokal nusxa: {backup}" if backup else "")
+            self.report({"INFO"}, sc.status)
+
+        if not guard(self, do):
+            return {"CANCELLED"}
+        bpy.ops.sath.refresh_versions()
+        return {"FINISHED"}
+
+
+def unassigned(context) -> list[str]:
+    """Sahnadagi IFC ga kirmagan (commit ga tushmaydigan) MESH/CURVE obyektlar; yordamchilar (suv tekisligi,
+    yer, sim animatsiyasi, `sath_aux`) hisobga olinmaydi (CAD-01)."""
+    from . import demo_plant, sim_anim, water
+
+    rows = []
+    for o in context.scene.objects:
+        if o.type not in ("MESH", "CURVE"):
+            continue
+        aux = (
+            bool(o.get(flows.AUX_PROP))
+            or o.name in water.PLANES
+            or o.name == demo_plant.GROUND
+            or any(c.name == sim_anim.SIM_COLL for c in o.users_collection)
+        )
+        rows.append((o.name, o.type, ifc.entity(o) is not None, aux))
+    return flows.unassigned_objects(rows)
+
+
 class SATH_OT_commit(bpy.types.Operator):
     """Joriy IFC ni serverga yangi versiya sifatida yuklash"""
 
     bl_idname = "sath.commit"
     bl_label = "Commit (yangi versiya)"
+
+    assign_missing: bpy.props.BoolProperty(
+        name="IFC ga kirmagan mesh larni qo'shish",
+        description="IFC elementi bo'lmagan mesh obyektlar IfcBuildingElementProxy (yoki nom bo'yicha GES turi) bo'ladi",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+    unassigned_note: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -228,7 +298,9 @@ class SATH_OT_commit(bpy.types.Operator):
             s.model_id, s.model_name = m.item_id, m.name
             p = _sel(s.projects, s.projects_index)
             s.project_id = p.item_id if p else 0
-        return context.window_manager.invoke_props_dialog(self, width=420)
+        # CAD-01: IFC ga kirmagan obyektlar commit ga tushmaydi — dialogda ogohlantiramiz (davom / bekor qilish)
+        self.unassigned_note = flows.unassigned_text(unassigned(context))
+        return context.window_manager.invoke_props_dialog(self, width=480)
 
     def draw(self, context):
         s = context.scene.ges
@@ -236,6 +308,11 @@ class SATH_OT_commit(bpy.types.Operator):
         self.layout.label(text=f"Model: {s.model_name}{parent}")
         self.layout.prop(s, "commit_message")
         self.layout.prop(s, "submit_after_commit")
+        if self.unassigned_note:
+            box = self.layout.box()
+            box.label(text=self.unassigned_note, icon="ERROR")
+            box.label(text="Ular yangi versiyaga kirmaydi. Davom etish — OK, to'xtatish — Bekor.")
+            box.prop(self, "assign_missing")
 
     def execute(self, context):
         s = context.scene.ges
@@ -244,15 +321,30 @@ class SATH_OT_commit(bpy.types.Operator):
             from . import ges_objects
 
             ges_objects.flush_pending()  # kechiktirilgan qayta qurishlar IFC ga kirsin
+            if self.assign_missing:
+                from .ops_import import assign_imported
+
+                assign_imported([bpy.data.objects[n] for n in unassigned(context) if n in bpy.data.objects])
+            ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
-            r = flows.commit(
-                session.client(),
-                s.model_id,
-                path,
-                s.commit_message.strip(),
-                s.version_id or None,
-                s.submit_after_commit,
-            )
+            try:
+                r = flows.commit(
+                    session.client(),
+                    s.model_id,
+                    path,
+                    s.commit_message.strip(),
+                    s.version_id or None,
+                    s.submit_after_commit,
+                )
+            except ServerError as e:
+                head = flows.head_conflict(e)
+                if head is None:
+                    raise
+                # VCS-01: ota versiya eskirgan — jimgina «vilka» qilinmaydi; foydalanuvchi eng oxirgisini oladi
+                s.head_conflict_id = head
+                s.status = flows.conflict_text(e)
+                raise ServerError(e.status, s.status) from None
+            s.head_conflict_id = -1
             v = r["version"]
             s.version_id, s.version_number = v["id"], v["number"]
             s.status = f"v{v['number']} yuklandi" + (" va tasdiqqa yuborildi" if r["cr"] else "")
@@ -347,7 +439,7 @@ class SATH_OT_mark_read(bpy.types.Operator):
 
 CLASSES = (
     SATH_OT_connect, SATH_OT_download_update, SATH_OT_logout, SATH_OT_refresh_projects, SATH_OT_refresh_models,
-    SATH_OT_refresh_versions, SATH_OT_create_model, SATH_OT_open_version, SATH_OT_commit,
+    SATH_OT_refresh_versions, SATH_OT_create_model, SATH_OT_open_version, SATH_OT_commit, SATH_OT_pull_head,
     SATH_OT_submit, SATH_OT_open_web, SATH_OT_notifications, SATH_OT_mark_read,
 )  # fmt: skip
 
