@@ -637,6 +637,8 @@ def test_delete_model_with_sim_jobs(client, users):
         client.get(f"/api/models/{t['model_id']}/versions", headers=users["viewer"]).status_code
         == 404
     )
+    # VCS-06: yumshoq o'chirish; butunlay tozalash (FK tartibi) — admin
+    assert client.delete(f"/api/admin/models/{t['model_id']}/purge", headers=users["admin"]).status_code == 204
 
 
 def test_dem_grid_offline_mocked(monkeypatch, tmp_path):

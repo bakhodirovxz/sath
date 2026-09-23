@@ -1,15 +1,20 @@
-from datetime import datetime
+import functools
+import random
+import time
+from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from .. import audit
+from .. import audit, jobs, ratelimit
 from ..auth.deps import (
     DB,
+    AdminUser,
     CurrentUser,
     check_project_role,
     get_project_role,
@@ -17,7 +22,8 @@ from ..auth.deps import (
     require_project_role,
 )
 from ..config import get_settings
-from ..orm import Federation, Model, Project, Role, Version, VersionState
+from ..downloads import content_disposition
+from ..orm import Federation, Job, JobStatus, Model, Project, Role, Version, VersionState, utcnow
 from . import classification, cobie, derived, federation, ifc_meta, ifc_schema, iso19650, storage
 from . import crs as crs_mod
 
@@ -89,7 +95,7 @@ def _safety_last(model_id: int) -> dict | None:
     return safety.last(model_id)
 
 
-_VERSION_RETRIES = 3
+_VERSION_RETRIES = 8
 
 
 def _next_number(db, model_id: int) -> int:
@@ -98,6 +104,135 @@ def _next_number(db, model_id: int) -> int:
         db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model_id).scalar()
         + 1
     )
+
+
+# --- Versiya yaratish: yagona yo'l (VCS-01/02) ---
+
+PURGE_GRACE_S = 600  # VCS-06: tozalangan model fayllari — shundan eski bo'lsa darhol o'chiriladi
+HEAD = object()  # parent_id = joriy oxirgi versiya (yozish paytida o'qiladi)
+ANY = object()  # expected_head tekshirilmaydi
+HEAD_MOVED_MSG = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oling)"
+
+
+class HeadMoved(Exception):
+    """Optimistic concurrency: klient ko'rgan oxirgi versiya endi oxirgi emas (VCS-01)."""
+
+    def __init__(self, head_id: int | None):
+        super().__init__(head_id)
+        self.head_id = head_id
+
+
+def head_conflict_response(fn):
+    """Endpoint dekoratori: `HeadMoved` → 409 `{detail, head_id}` (klient yangilab, qayta urinadi)."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except HeadMoved as e:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"detail": HEAD_MOVED_MSG, "head_id": e.head_id},
+                headers={"X-Head-Id": str(e.head_id or "")},
+            )
+
+    return wrapper
+
+
+def head_version(db, model_id: int) -> Version | None:
+    """Modelning oxirgi versiyasi — DB dan (sessiyadagi eskirgan `model.versions` emas)."""
+    return db.query(Version).filter_by(model_id=model_id).order_by(Version.number.desc()).first()
+
+
+def check_head(db, model_id: int, expected_id: int | None) -> Version | None:
+    """expected_id oxirgi versiya bo'lmasa `HeadMoved` (None — model bo'sh bo'lishi kutiladi)."""
+    head = head_version(db, model_id)
+    if (head.id if head else None) != expected_id:
+        raise HeadMoved(head.id if head else None)
+    return head
+
+
+def create_version(
+    db,
+    *,
+    model_id: int,
+    user,
+    parent_id=HEAD,
+    expected_head=ANY,
+    file_sha256: str,
+    file_name: str,
+    file_size: int,
+    meta: dict,
+    message: str,
+    action: str = "version.create",
+    detail: dict | None = None,
+    on_insert: Callable[[Version], None] | None = None,
+) -> Version:
+    """Yangi versiya yozuvi — upload, restore, klassifikatsiya, draft commit va importlar uchun yagona yo'l.
+
+    - `parent_id`: HEAD — joriy oxirgi versiya; int — aniq ota; None — ildiz (yangi IFC).
+    - `expected_head`: ANY — tekshirilmaydi; int/None — yozish paytida oxirgi versiya shu bo'lishi shart,
+      aks holda `HeadMoved` (409, tarmoqlanish jimgina bo'lmaydi — VCS-01).
+    - Raqam: max+1; parallel yozuvda `UniqueConstraint(model_id, number)` IntegrityError beradi → rollback,
+      qisqa kutish va qayta urinish (har urinishda oxirgi versiya qayta tekshiriladi). Tugasa 409 (VCS-02).
+    - ISO 19650: har yangi versiya S0 (WIP) va keyingi P reviziya (upload bilan bir xil).
+    - `on_insert(v)` — shu tranzaksiyada qo'shimcha o'zgarishlar (masalan qoralamalarni o'chirish).
+    Fayl oldindan saqlangan (idempotent, content-addressed) — qayta urinish faylga tegmaydi."""
+    version = None
+    for attempt in range(_VERSION_RETRIES):
+        try:
+            model = db.get(Model, model_id)
+            if model is None or model.deleted_at is not None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Model topilmadi")
+            if expected_head is not ANY:
+                check_head(db, model_id, expected_head)
+            if parent_id is HEAD:
+                head = head_version(db, model_id)
+                pid = head.id if head else None
+            else:
+                pid = parent_id
+            revisions = [r for (r,) in db.query(Version.revision_code).filter_by(model_id=model_id).all()]
+            version = Version(
+                model_id=model_id,
+                number=_next_number(db, model_id),
+                parent_id=pid,
+                author_id=user.id,
+                message=message,
+                file_sha256=file_sha256,
+                file_name=file_name,
+                file_size=file_size,
+                meta=meta,
+                suitability_code=iso19650.DEFAULT[VersionState.wip],
+                revision_code=iso19650.next_revision(revisions, "P"),
+            )
+            db.add(version)
+            db.flush()
+            if on_insert is not None:
+                on_insert(version)
+            audit.log(
+                db,
+                user_id=user.id,
+                action=action,
+                target_type="version",
+                target_id=version.id,
+                project_id=model.project_id,
+                detail={"model_id": model_id, "number": version.number, **(detail or {})},
+            )
+            db.commit()
+            break
+        except IntegrityError:
+            db.rollback()
+            if attempt == _VERSION_RETRIES - 1:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, "Parallel yozuv — versiya raqami band, qayta urinib ko'ring"
+                ) from None
+            time.sleep(random.uniform(0.005, 0.03) * (attempt + 1))
+        except (HeadMoved, HTTPException):
+            db.rollback()
+            raise
+    db.refresh(version)
+    derived.enqueue_for(db, file_sha256, meta_pending=bool((meta or {}).get("pending")))
+    return version
 
 
 def version_out(v: Version) -> VersionOut:
@@ -125,7 +260,7 @@ def version_out(v: Version) -> VersionOut:
 
 def get_model_checked(db, model_id: int, user, required: Role) -> Model:
     model = db.get(Model, model_id)
-    if model is None:
+    if model is None or model.deleted_at is not None:  # VCS-06: o'chirilgan (savatdagi) model ko'rinmaydi
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model topilmadi")
     check_project_role(db, model.project_id, user, required)
     return model
@@ -133,7 +268,7 @@ def get_model_checked(db, model_id: int, user, required: Role) -> Model:
 
 def get_version_checked(db, version_id: int, user, required: Role) -> Version:
     version = db.get(Version, version_id)
-    if version is None:
+    if version is None or version.model.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Versiya topilmadi")
     check_project_role(db, version.model.project_id, user, required)
     return version
@@ -144,12 +279,18 @@ def get_version_checked(db, version_id: int, user, required: Role) -> Version:
 
 @router.get("/projects/{project_id}/models", response_model=list[ModelOut])
 def list_models(project: ViewerProject):
-    return [_model_out(m) for m in project.models]
+    return [_model_out(m) for m in project.models if m.deleted_at is None]
 
 
 @router.post("/projects/{project_id}/models", response_model=ModelOut, status_code=201)
 def create_model(body: ModelCreate, project: EngineerProject, user: CurrentUser, db: DB):
-    if any(m.name == body.name for m in project.models):
+    same = next((m for m in project.models if m.name == body.name), None)
+    if same is not None:
+        if same.deleted_at is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Bu nom o'chirilgan (savatdagi) modelniki — administrator tiklashi yoki butunlay tozalashi kerak",
+            )
         raise HTTPException(status.HTTP_409_CONFLICT, "Bu loyihada shunday model mavjud")
     model = Model(project_id=project.id, **body.model_dump())
     db.add(model)
@@ -174,7 +315,11 @@ def get_model(model_id: int, user: CurrentUser, db: DB):
 
 @router.delete("/models/{model_id}", status_code=204)
 def delete_model(model_id: int, user: CurrentUser, db: DB):
+    """VCS-06: yumshoq o'chirish (tasdiqlovchi) — model va butun tarixi saqlanadi, ro'yxatlardan yo'qoladi.
+    Tiklash va butunlay tozalash — faqat administrator (`/api/admin/models/...`)."""
     model = get_model_checked(db, model_id, user, Role.approver)
+    model.deleted_at = utcnow()
+    model.deleted_by = user.id
     audit.log(
         db,
         user_id=user.id,
@@ -182,11 +327,64 @@ def delete_model(model_id: int, user: CurrentUser, db: DB):
         target_type="model",
         target_id=model.id,
         project_id=model.project_id,
-        detail={"name": model.name},
+        detail={"name": model.name, "soft": True, "versions": len(model.versions)},
+    )
+    db.commit()
+
+
+# --- VCS-06: o'chirilgan modellar (administrator) ---
+
+
+class DeletedModelOut(ModelOut):
+    deleted_at: datetime
+    deleted_by: int | None = None
+
+
+def _deleted_model(db, model_id: int) -> Model:
+    model = db.get(Model, model_id)
+    if model is None or model.deleted_at is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "O'chirilgan model topilmadi")
+    return model
+
+
+@router.get("/admin/models/deleted", response_model=list[DeletedModelOut])
+def list_deleted_models(_: AdminUser, db: DB, project_id: int | None = None):
+    q = db.query(Model).filter(Model.deleted_at.isnot(None))
+    if project_id is not None:
+        q = q.filter(Model.project_id == project_id)
+    return [
+        DeletedModelOut(**_model_out(m).model_dump(), deleted_at=m.deleted_at, deleted_by=m.deleted_by)
+        for m in q.order_by(Model.deleted_at.desc()).all()
+    ]
+
+
+@router.post("/admin/models/{model_id}/restore", response_model=ModelOut)
+def restore_deleted_model(model_id: int, admin: AdminUser, db: DB):
+    model = _deleted_model(db, model_id)
+    model.deleted_at = None
+    model.deleted_by = None
+    audit.log(
+        db, user_id=admin.id, action="model.restore", target_type="model", target_id=model.id,
+        project_id=model.project_id, detail={"name": model.name},
+    )
+    db.commit()
+    return _model_out(model)
+
+
+@router.delete("/admin/models/{model_id}/purge", status_code=204)
+def purge_deleted_model(model_id: int, admin: AdminUser, db: DB):
+    """Savatdagi modelni butunlay o'chirish: versiyalar, CR, issue, sim ishlari; boshqa hech kim murojaat
+    qilmaydigan fayllar (va hosilaviy kesh) darhol GC bilan o'chiriladi (SRV-05)."""
+    from ..orm import ChangeRequest, Issue, SimJob
+    from . import blob_gc
+
+    model = _deleted_model(db, model_id)
+    shas = {v.file_sha256 for v in model.versions}
+    audit.log(
+        db, user_id=admin.id, action="model.purge", target_type="model", target_id=model.id,
+        project_id=model.project_id, detail={"name": model.name, "versions": len(model.versions), "files": len(shas)},
     )
     # Versiyalarga bog'liq yozuvlar (FK cascade siz): sim vazifalari, issue lar, tasdiqlash so'rovlari — avval
-    from ..orm import ChangeRequest, Issue, SimJob
-
     for cls in (SimJob, Issue, ChangeRequest):
         for row in db.query(cls).filter_by(model_id=model.id).all():
             db.delete(row)
@@ -195,6 +393,9 @@ def delete_model(model_id: int, user: CurrentUser, db: DB):
     db.flush()
     db.delete(model)
     db.commit()
+    # Fayllar: faqat shu model sha lari, boshqa yozuv murojaat qilmasa; 10 daqiqalik oyna — parallel yuklash
+    # (xuddi shu fayl dedup bo'lib, hali commit bo'lmagan) himoyasi
+    blob_gc.collect(db, dry_run=False, grace_s=PURGE_GRACE_S, only_shas=shas)
 
 
 # --- Versiyalar ---
@@ -206,7 +407,13 @@ def list_versions(model_id: int, user: CurrentUser, db: DB):
     return [version_out(v) for v in reversed(model.versions)]
 
 
-@router.post("/models/{model_id}/versions", response_model=VersionOut, status_code=201)
+@router.post(
+    "/models/{model_id}/versions",
+    response_model=VersionOut,
+    status_code=201,
+    responses={409: {"description": "parent_id oxirgi versiya emas: {detail, head_id}"}},
+)
+@head_conflict_response
 def upload_version(
     model_id: int,
     file: UploadFile,
@@ -215,7 +422,8 @@ def upload_version(
     message: Annotated[str, Form()] = "",
     parent_id: Annotated[int | None, Form()] = None,
 ):
-    """Commit: yangi IFC versiya yuklash. parent_id berilmasa oxirgi versiya ota bo'ladi.
+    """Commit: yangi IFC versiya yuklash. parent_id berilmasa oxirgi versiya ota bo'ladi; berilsa u oxirgi
+    versiya bo'lishi shart — aks holda 409 `{detail, head_id}` (eski versiyadan jimgina tarmoqlanmaydi, VCS-01).
     Yuklangach fonda geometriya tahlili (QTO, to'qnashuvlar) oldindan hisoblanadi."""
     model = get_model_checked(db, model_id, user, Role.engineer)
     if not (file.filename or "").lower().endswith(".ifc"):
@@ -232,12 +440,13 @@ def upload_version(
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
 
     try:
-        meta = ifc_meta.extract(storage.resolve(sha))
+        # OPS-03: katta fayl so'rov ichida to'liq parse qilinmaydi (faqat sarlavha) — to'liq metadata navbatda
+        meta = ifc_meta.extract_bounded(storage.resolve(sha))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if naming_warning:
         meta["warnings"] = [*meta.get("warnings", []), naming_warning]
-    if crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
+    if not meta.get("pending") and crs_mod.from_project(model.project) is not None and not (meta.get("georef") or {}).get("epsg"):
         # G3: loyihada CRS bor, faylda IfcMapConversion yo'q — ogohlantirish (POST /models/{id}/georeference qo'shadi)
         meta["warnings"] = [*meta.get("warnings", []), "Georeferensiya yo'q: IfcMapConversion topilmadi — loyiha CRS bilan mos kelmasligi mumkin"]
 
@@ -246,50 +455,19 @@ def upload_version(
         if parent is None or parent.model_id != model.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "parent_id shu modelga tegishli emas")
 
-    # Versiya raqami: max+1 → INSERT poygasi UniqueConstraint(model_id, number) ga uriladi;
-    # IntegrityError da rollback qilib qayta urinamiz (fayl saqlash sikldan tashqarida, idempotent).
-    model_id, project_id = model.id, model.project_id
-    for attempt in range(_VERSION_RETRIES):
-        try:
-            model = db.get(Model, model_id)
-            if parent_id is None:
-                parent = model.versions[-1] if model.versions else None
-            else:
-                parent = db.get(Version, parent_id)
-            version = Version(
-                model_id=model_id,
-                number=_next_number(db, model_id),
-                parent_id=parent.id if parent else None,
-                author_id=user.id,
-                message=message,
-                file_sha256=sha,
-                file_name=file.filename,
-                suitability_code="S0",
-                revision_code=iso19650.next_revision([x.revision_code for x in model.versions], "P"),
-                file_size=size,
-                meta=meta,
-            )
-            db.add(version)
-            db.flush()
-            audit.log(
-                db,
-                user_id=user.id,
-                action="version.create",
-                target_type="version",
-                target_id=version.id,
-                project_id=project_id,
-                detail={"model_id": model_id, "number": version.number, "message": message},
-            )
-            db.commit()
-            break
-        except IntegrityError:
-            db.rollback()
-            if attempt == _VERSION_RETRIES - 1:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT, "Parallel yuklash — qayta urinib ko'ring"
-                ) from None
-    db.refresh(version)
-    derived.enqueue_for(db, sha)
+    version = create_version(
+        db,
+        model_id=model.id,
+        user=user,
+        parent_id=HEAD if parent_id is None else parent_id,
+        expected_head=ANY if parent_id is None else parent_id,
+        file_sha256=sha,
+        file_name=file.filename or "model.ifc",
+        file_size=size,
+        meta=meta,
+        message=message,
+        detail={"message": message},
+    )
     return version_out(version)
 
 
@@ -326,26 +504,35 @@ def version_ids_run(version_id: int, user: CurrentUser, db: DB):
 
 @router.get("/versions/{version_id}/fragments")
 def version_fragments(version_id: int, user: CurrentUser, db: DB):
-    """Tayyor fragments (.frag) — brauzer IFC o'rniga shuni yuklaydi (tez). Hali yo'q bo'lsa 404;
-    konvertatsiya mumkin bo'lsa shu so'rovda bajariladi (kesh)."""
+    """Tayyor fragments (.frag) — brauzer IFC o'rniga shuni yuklaydi (tez). OPS-03: konvertatsiya (1800 s gacha)
+    so'rov ichida emas — navbatda: hali tayyor bo'lmasa 202 `{job_id, status}` (klient IFC ni ochadi yoki
+    keyinroq qayta so'raydi); vosita yo'q yoki konvertatsiya yiqilgan — 404. Yangi konvertatsiya — rate limit."""
     from . import fragments
 
     version = get_version_checked(db, version_id, user, Role.viewer)
     if not get_settings().fragments_enabled:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments o'chirilgan")
-    out = fragments.frag_path(version.file_sha256)
+    sha = version.file_sha256
+    out = fragments.frag_path(sha)
     if not out.exists():
+        if not fragments.available():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments tayyor emas (Node/tool yo'q)")
         try:
-            path = storage.resolve(version.file_sha256)
+            storage.resolve(sha)
         except FileNotFoundError:
             raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
-        if fragments.convert(path, version.file_sha256) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "fragments tayyor emas (Node/tool yo'q)")
+        job = _derived_job(
+            db, user, kind="fragments", payload={"sha": sha}, key=f"fragments:{sha}",
+            project_id=version.model.project_id, failed_status=status.HTTP_404_NOT_FOUND,
+        )
+        return _accepted(job)
     return FileResponse(
         out,
         media_type="application/octet-stream",
-        filename=f"{version.model.name}_v{version.number}.frag",
-        headers={"Cache-Control": "private, max-age=86400"},
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Content-Disposition": content_disposition(f"{version.model.name}_v{version.number}.frag"),
+        },
     )
 
 
@@ -364,10 +551,19 @@ class VersionPatch(BaseModel):
 
 @router.patch("/versions/{version_id}", response_model=VersionOut)
 def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: DB):
-    """Izoh (muallif yoki tasdiqlovchi) va yorliq/teg (tasdiqlovchi) — fayl o'zgarmaydi."""
+    """Izoh (muallif yoki tasdiqlovchi) va yorliq/teg (tasdiqlovchi) — fayl o'zgarmaydi.
+    VCS-05: published/archived versiya o'zgarmas — izoh va reviziya kodi 409 (yorliq/teg va yaroqlilik kodi
+    tasdiqlovchi uchun o'zgaruvchan qoladi)."""
     v = get_version_checked(db, version_id, user, Role.viewer)
     project_id = v.model.project_id
     approver = has_role(get_project_role(db, project_id, user), Role.approver)
+    if v.state in (VersionState.published, VersionState.archived):
+        frozen = [k for k in ("message", "revision_code") if getattr(body, k) is not None]
+        if frozen:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"v{v.number} {v.state.value} — o'zgarmas ({', '.join(frozen)} o'zgartirilmaydi); yorliq qo'yish mumkin",
+            )
     if body.message is not None:
         if v.author_id != user.id and not approver:
             raise HTTPException(
@@ -409,42 +605,29 @@ def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: D
 
 
 @router.post("/versions/{version_id}/restore", response_model=VersionOut, status_code=201)
-def restore_version(version_id: int, user: CurrentUser, db: DB):
+@head_conflict_response
+def restore_version(version_id: int, user: CurrentUser, db: DB, expected_head_id: int | None = None):
     """Eski versiyani qayta tiklash: fayli bilan yangi (oxirgi) versiya yaratiladi (git revert kabi),
-    ota — joriy oxirgi versiya, izoh — qaysi versiyadan. Tarix o'chmaydi."""
+    ota — joriy oxirgi versiya, izoh — qaysi versiyadan. Tarix o'chmaydi. `expected_head_id` — klient
+    ko'rgan oxirgi versiya; oraliqda boshqa commit bo'lgan bo'lsa 409 `{detail, head_id}` (VCS-01)."""
     src = get_version_checked(db, version_id, user, Role.engineer)
-    model = src.model
-    last = model.versions[-1] if model.versions else None
+    last = head_version(db, src.model_id)
     if last is not None and last.id == src.id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Bu allaqachon oxirgi versiya")
-    number = (
-        db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar()
-        + 1
-    )
-    v = Version(
-        model_id=model.id,
-        number=number,
-        parent_id=last.id if last else None,
-        author_id=user.id,
-        message=f"v{src.number} dan qayta tiklandi: {src.message}".strip(),
+    v = create_version(
+        db,
+        model_id=src.model_id,
+        user=user,
+        parent_id=HEAD,
+        expected_head=ANY if expected_head_id is None else expected_head_id,
         file_sha256=src.file_sha256,
         file_name=src.file_name,
         file_size=src.file_size,
         meta=src.meta,
-    )
-    db.add(v)
-    db.flush()
-    audit.log(
-        db,
-        user_id=user.id,
+        message=f"v{src.number} dan qayta tiklandi: {src.message}".strip(),
         action="version.restore",
-        target_type="version",
-        target_id=v.id,
-        project_id=model.project_id,
-        detail={"from_version_id": src.id, "from_number": src.number, "number": number},
+        detail={"from_version_id": src.id, "from_number": src.number},
     )
-    db.commit()
-    db.refresh(v)
     return version_out(v)
 
 
@@ -458,11 +641,53 @@ def download_version(version_id: int, user: CurrentUser, db: DB):
     return FileResponse(
         path,
         media_type="application/x-step",
-        filename=f"{version.model.name}_v{version.number}.ifc",
+        headers={"Content-Disposition": content_disposition(f"{version.model.name}_v{version.number}.ifc")},
     )
 
 
 # ---------- BIM tekshiruvlar: hajm-miqdor (QTO), to'qnashuvlar ----------
+
+
+# OPS-03/04: og'ir hosilaviy hisob (geometriya, fragments) — foydalanuvchi bo'yicha yangi hisoblar chegarasi
+# (keshdagi natijani o'qish va navbatdagi ishni kuzatish cheklanmaydi)
+DERIVED_RATE_PER_MIN = 10
+
+
+def _derived_rate(user) -> None:
+    ratelimit.check("derived", f"user:{user.id}", int(getattr(get_settings(), "rate_derived_per_min", DERIVED_RATE_PER_MIN)))
+
+
+DERIVED_FAILED_RETRY_S = 600  # yiqilgan hisob shuncha vaqt ichida qayta navbatga qo'yilmaydi (xato qaytadi)
+
+
+def _derived_job(db, user, *, kind: str, payload: dict, key: str, project_id: int, failed_status: int = 422) -> Job:
+    """OPS-03: og'ir hosilaviy hisob — DB navbati (jobs.py). Navbatda/ishlayotgan bo'lsa o'sha ish qaytadi
+    (takror yo'q, cheklanmaydi); yangi (yoki natijasi yo'qolgan) hisob — foydalanuvchi bo'yicha rate limit.
+    Yaqinda yiqilgan ish — `failed_status` bilan xato (so'rov har safar og'ir ishni qayta boshlamasin)."""
+    row = db.query(Job).filter_by(idempotency_key=key).one_or_none()
+    if row is not None and row.status in (JobStatus.queued, JobStatus.running):
+        return row
+    if row is not None and row.status == JobStatus.failed and row.finished_at is not None:
+        fin = row.finished_at if row.finished_at.tzinfo else row.finished_at.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - fin).total_seconds() < DERIVED_FAILED_RETRY_S:
+            raise HTTPException(failed_status, f"Hisoblab bo'lmadi: {(row.error or '?')[:300]}")
+    _derived_rate(user)
+    row = jobs.enqueue(db, kind, payload, idempotency_key=key, project_id=project_id, user_id=user.id)
+    if row.status in (JobStatus.done, JobStatus.failed):  # natija (kesh) yo'qolgan yoki eski xato — qayta
+        row.status, row.attempts, row.error = JobStatus.queued, 0, ""
+        row.finished_at = row.worker_id = row.lease_until = None
+    db.commit()
+    jobs.kick()
+    return row
+
+
+def _accepted(job: Job) -> JSONResponse:
+    """202 — hisob navbatda: klient shu URL ni `Retry-After` dan keyin qayta so'raydi (200 — natija)."""
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"job_id": job.id, "status": job.status.value},
+        headers={"Retry-After": "2", "Cache-Control": "no-store"},
+    )
 
 
 def _version_path(db, version_id: int, user):
@@ -481,11 +706,17 @@ def version_qto(
     format: str = "json",
 ):
     """Hajm-miqdor hisobi (IfcOpenShell geometriyasidan): har element hajmi/sirti/o'lchamlari,
-    tur va qavat bo'yicha jamlanma; ?format=csv — Excel uchun. Natija fayl bo'yicha keshlanadi."""
+    tur va qavat bo'yicha jamlanma; ?format=csv — Excel uchun. Natija fayl bo'yicha keshlanadi.
+    OPS-03: keshda bo'lmasa navbatga qo'yiladi — 202 `{job_id, status}`, tayyor bo'lgach shu URL 200."""
     from . import geometry
 
-    version, path = _version_path(db, version_id, user)
-    data = geometry.cached(version.file_sha256, "qto", lambda: geometry.compute_qto(path))
+    version, _path = _version_path(db, version_id, user)
+    data = geometry.peek(version.file_sha256, "qto")
+    if data is None:
+        sha = version.file_sha256
+        return _accepted(
+            _derived_job(db, user, kind="qto", payload={"sha": sha}, key=f"qto:{sha}", project_id=version.model.project_id)
+        )
     if format == "csv":
         import csv
         import io
@@ -533,7 +764,7 @@ def version_qto(
             "﻿" + buf.getvalue(),
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="qto_{version.model.name}_v{version.number}.csv"'
+                "Content-Disposition": content_disposition(f"qto_{version.model.name}_v{version.number}.csv")
             },
         )
     return data
@@ -550,19 +781,55 @@ def version_clashes(
 ):
     """To'qnashuvlar (clash detection): hard — sirtlar kesishadi, possible — ichma-ich/aniq emas,
     touch — tegib turadi. types_a/types_b — vergul bilan IFC turlari (masalan IfcWall,IfcPipeSegment)
-    — faqat shu guruhlar orasidagi juftlar."""
+    — faqat shu guruhlar orasidagi juftlar. OPS-04: turlar ma'lum IFC klasslari bo'lishi shart (aks holda
+    422), kesh kaliti — normallashtirilgan parametrlar xeshi, yangi hisob foydalanuvchi bo'yicha cheklangan."""
     from . import geometry
 
-    version, path = _version_path(db, version_id, user)
-    ta = [t for t in (types_a or "").split(",") if t] or None
-    tb = [t for t in (types_b or "").split(",") if t] or None
-    key = "clash" if not (ta or tb) else f"clash_{'+'.join(ta or [])}_{'+'.join(tb or [])}"
-    data = geometry.cached(
-        version.file_sha256, key, lambda: geometry.compute_clashes(path, 0.0, ta, tb)
-    )
+    if kind is not None and kind not in ("hard", "possible", "touch"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind: hard | possible | touch")
+    try:
+        ta, tb = geometry.normalize_types(types_a), geometry.normalize_types(types_b)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    version, _path = _version_path(db, version_id, user)
+    key = geometry.clash_kind(ta, tb)
+    data = geometry.peek(version.file_sha256, key)
+    if data is None:  # OPS-03: navbatda — 202, tayyor bo'lgach 200
+        sha = version.file_sha256
+        return _accepted(
+            _derived_job(
+                db, user, kind="clash", payload={"sha": sha, "types_a": ta, "types_b": tb},
+                key=f"clash:{sha}:{key}", project_id=version.model.project_id,
+            )
+        )
     if kind:
         data = {**data, "clashes": [c for c in data["clashes"] if c["kind"] == kind]}
     return data
+
+
+# --------------------------------------------------------------------------- SRV-05: fayl ombori tozalash
+
+
+class StorageGcIn(BaseModel):
+    dry_run: bool = True
+    # Kamida 1 soat: yangi saqlangan, lekin hali commit bo'lmagan fayl o'chirilmasin
+    grace_hours: float = Field(default=24.0, ge=1.0, le=24 * 365)
+
+
+@router.post("/admin/storage/gc")
+def storage_gc(body: StorageGcIn, admin: AdminUser, db: DB):
+    """Murojaatsiz content-addressed fayllar, ularning hosilaviy keshi va eskirgan vaqtinchalik (`tmp*`,
+    `*.part`) fayllar: `dry_run` (default) — faqat hisobot; aks holda o'chiradi (audit)."""
+    from . import blob_gc
+
+    rep = blob_gc.collect(db, dry_run=body.dry_run, grace_s=body.grace_hours * 3600)
+    if not body.dry_run:
+        audit.log(
+            db, user_id=admin.id, action="storage.gc", target_type="storage",
+            detail={k: rep[k] for k in ("blobs", "derived", "temp", "bytes", "kept_recent", "errors", "grace_s")},
+        )
+        db.commit()
+    return rep
 
 
 # --------------------------------------------------------------------------- G5: klassifikatsiya
@@ -581,6 +848,7 @@ class ClassifyIn(BaseModel):
 
 
 @router.post("/versions/{version_id}/classify", response_model=VersionOut, status_code=201)
+@head_conflict_response
 def classify_version(version_id: int, body: ClassifyIn, user: CurrentUser, db: DB):
     """Oxirgi versiyani GES turi bo'yicha klassifikatsiyalab (IfcClassificationReference) yangi versiya yozadi."""
     import tempfile
@@ -590,8 +858,9 @@ def classify_version(version_id: int, body: ClassifyIn, user: CurrentUser, db: D
 
     src_v = get_version_checked(db, version_id, user, Role.engineer)
     model = src_v.model
-    if model.versions[-1].id != src_v.id:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Faqat oxirgi versiya klassifikatsiyalanadi")
+    head = head_version(db, model.id)
+    if head is None or head.id != src_v.id:
+        raise HeadMoved(head.id if head else None)  # faqat oxirgi versiya klassifikatsiyalanadi
     if body.system not in classification.SYSTEMS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Klassifikator: {', '.join(classification.SYSTEMS)}")
     try:
@@ -605,20 +874,21 @@ def classify_version(version_id: int, body: ClassifyIn, user: CurrentUser, db: D
         f.write(str(out))
         with open(out, "rb") as fh:
             sha, size = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
-    meta = ifc_meta.extract(storage.resolve(sha))
-    number = db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar() + 1
-    v = Version(
-        model_id=model.id, number=number, parent_id=src_v.id, author_id=user.id,
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
+    v = create_version(
+        db,
+        model_id=model.id,
+        user=user,
+        parent_id=src_v.id,
+        expected_head=src_v.id,
+        file_sha256=sha,
+        file_name=src_v.file_name,
+        file_size=size,
+        meta=meta,
         message=body.message or f"Klassifikatsiya ({body.system}): {info['assigned']} element",
-        file_sha256=sha, file_name=src_v.file_name, file_size=size, meta=meta,
-        suitability_code="S0", revision_code=iso19650.next_revision([x.revision_code for x in model.versions], "P"),
+        action="version.classify",
+        detail=info,
     )
-    db.add(v)
-    db.flush()
-    audit.log(db, user_id=user.id, action="version.classify", target_type="version", target_id=v.id, project_id=model.project_id, detail=info)
-    db.commit()
-    db.refresh(v)
-    derived.enqueue_for(db, sha)
     return version_out(v)
 
 
@@ -673,7 +943,7 @@ def _check_members(db, project: Project, members: list[FedMember]) -> list[dict]
     raw = [m.model_dump() for m in members]
     for m in raw:
         model = db.get(Model, m["model_id"])
-        if model is None or model.project_id != project.id:
+        if model is None or model.project_id != project.id or model.deleted_at is not None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Model {m['model_id']} shu loyihaniki emas")
     try:
         federation.resolve_members(db, raw)
@@ -741,7 +1011,9 @@ def federation_ifc(fed_id: int, user: CurrentUser, db: DB):
         path = federation.merged_ifc(federation.resolve_members(db, fed.members))
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
-    return FileResponse(path, filename=f"federation_{fed.id}.ifc", media_type="application/octet-stream")
+    return FileResponse(
+        path, media_type="application/octet-stream", headers={"Content-Disposition": content_disposition(f"federation_{fed.id}.ifc")}
+    )
 
 
 # --------------------------------------------------------------------------- G6: aktiv registri (COBie ga o'xshash)
@@ -761,7 +1033,7 @@ def version_asset_register(version_id: int, user: CurrentUser, db: DB, format: s
     if format == "csv":
         audit.log(db, user_id=user.id, action="export.cobie", target_type="version", target_id=v.id, project_id=v.model.project_id, detail=reg["counts"])
         db.commit()
-        return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="cobie_{v.model.name}_v{v.number}.zip"'})
+        return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": content_disposition(f"cobie_{v.model.name}_v{v.number}.zip")})
     return reg
 
 

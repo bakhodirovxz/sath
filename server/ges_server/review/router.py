@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, notifications, notify, uploads
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..models import iso19650, storage
 from ..models.router import VersionOut, get_model_checked, get_version_checked, version_out
 from ..monitoring import linkage
@@ -220,6 +221,16 @@ def _emails(db, project_id: int, role: Role | None = None, exclude: int | None =
         if u.email and u.id != exclude
     ]
     return sorted(set(out + (admins if role == Role.approver else [])))
+
+
+def _check_assignee(db, project_id: int, assignee_id: int) -> None:
+    """AUTH-04: ijrochi — faol foydalanuvchi va loyiha a'zosi (yoki administrator); aks holda issue sarlavhasi
+    bildirishnoma orqali loyihadan tashqariga chiqadi."""
+    u = db.get(User, assignee_id)
+    if u is None or not u.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ijrochi topilmadi")
+    if not u.is_admin and db.query(ProjectMember).filter_by(project_id=project_id, user_id=u.id).first() is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ijrochi loyiha a'zosi emas")
 
 
 def _get_cr(db, cr_id: int, user: User, required: Role) -> ChangeRequest:
@@ -449,6 +460,18 @@ def merge_cr(cr_id: int, user: CurrentUser, db: DB):
     cr = _get_cr(db, cr_id, user, Role.approver)
     if cr.status != CRStatus.approved:
         raise HTTPException(status.HTTP_409_CONFLICT, "Avval tasdiqlanishi kerak")
+    # VCS-03: eskirgan CR — undan yangi (yoki o'sha) versiya allaqachon published bo'lsa, merge published ni
+    # orqaga qaytarmaydi (v2 merge → keyin v1 CR merge qilinmaydi)
+    newer = next(
+        (v for v in cr.version.model.versions if v.state == VersionState.published and v.number >= cr.version.number and v.id != cr.version_id),
+        None,
+    )
+    if newer is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"CR eskirgan: v{newer.number} allaqachon tasdiqlangan (v{cr.version.number} undan yangi emas) — "
+            "yangi versiya bilan CR oching yoki bu CR ni yoping",
+        )
     _require_ids(db, cr.version)
     for v in cr.version.model.versions:
         if v.state == VersionState.published:
@@ -561,8 +584,8 @@ def create_issue(model_id: int, body: IssueCreate, user: CurrentUser, db: DB):
         cr = db.get(ChangeRequest, body.change_request_id)
         if cr is None or cr.model_id != model.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "CR shu modelga tegishli emas")
-    if body.assignee_id is not None and db.get(User, body.assignee_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ijrochi topilmadi")
+    if body.assignee_id is not None:
+        _check_assignee(db, model.project_id, body.assignee_id)
     issue = Issue(
         model_id=model.id, author_id=user.id, bcf_guid=str(uuid.uuid4()), **body.model_dump()
     )
@@ -602,7 +625,7 @@ def export_bcf(model_id: int, user: CurrentUser, db: DB, status_filter: IssueSta
     return Response(
         data,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{model.name}_issues.bcfzip"'},
+        headers={"Content-Disposition": content_disposition(f"{model.name}_issues.bcfzip")},
     )
 
 
@@ -646,19 +669,21 @@ def get_issue(issue_id: int, user: CurrentUser, db: DB):
 
 @router.patch("/issues/{issue_id}", response_model=IssueOut)
 def update_issue(issue_id: int, body: IssueUpdate, user: CurrentUser, db: DB):
-    """Muallif, ijrochi yoki tasdiqlovchi o'zgartira oladi."""
+    """Muallif yoki tasdiqlovchi — hamma maydon; ijrochi — faqat holat (izoh — alohida endpoint).
+    AUTH-04: ijrochi boshqaga tayinlay olmaydi, sarlavha/tavsif/ustuvorlik/ko'rinishni o'zgartirmaydi."""
     issue = _get_issue(db, issue_id, user)
     project_id = get_model_checked(db, issue.model_id, user, Role.viewer).project_id
-    allowed = (
-        issue.author_id == user.id
-        or issue.assignee_id == user.id
-        or has_role(get_project_role(db, project_id, user), Role.approver)
-    )
-    if not allowed:
+    full = issue.author_id == user.id or has_role(get_project_role(db, project_id, user), Role.approver)
+    if not full and issue.assignee_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Ruxsat yo'q")
     changes = body.model_dump(exclude_none=True)
-    if "assignee_id" in changes and db.get(User, changes["assignee_id"]) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ijrochi topilmadi")
+    if not full and set(changes) - {"status"}:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Ijrochi faqat holatni o'zgartiradi (izoh — «Izoh» orqali); boshqa maydonlar — muallif yoki tasdiqlovchi",
+        )
+    if "assignee_id" in changes:
+        _check_assignee(db, project_id, changes["assignee_id"])
     for k, v in changes.items():
         setattr(issue, k, v)
     audit.log(

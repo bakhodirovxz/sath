@@ -10,6 +10,7 @@ from sqlalchemy import func
 from .. import audit
 from ..auth import sessions
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
+from ..downloads import content_disposition
 from ..models import crs as crs_mod
 from ..orm import Model, Project, ProjectDocument, ProjectMember, Role, User
 
@@ -76,7 +77,7 @@ def _out(db, project: Project, user: User, role: Role | None = None, model_count
         description=project.description,
         location=project.location,
         my_role=role if model_count is not None else get_project_role(db, project.id, user),
-        model_count=model_count if model_count is not None else len(project.models),
+        model_count=model_count if model_count is not None else sum(1 for m in project.models if m.deleted_at is None),
         ids_required=bool(project.ids_required),
         naming_template=project.naming_template or "",
         naming_required=bool(project.naming_required),
@@ -109,7 +110,10 @@ def list_projects(
     if not ids:
         return []
     counts = dict(
-        db.query(Model.project_id, func.count(Model.id)).filter(Model.project_id.in_(ids)).group_by(Model.project_id).all()
+        db.query(Model.project_id, func.count(Model.id))
+        .filter(Model.project_id.in_(ids), Model.deleted_at.is_(None))
+        .group_by(Model.project_id)
+        .all()
     )
     if user.is_admin:
         roles = {pid: Role.approver for pid in ids}
@@ -207,15 +211,36 @@ def list_members(project: ViewerProject, db: DB, limit: int = Query(500, gt=0, l
     return [MemberOut(user_id=m.user_id, username=u.username, full_name=u.full_name, role=m.role) for m, u in rows]
 
 
+def _approver_rank(role) -> bool:
+    """Tasdiqlovchi yoki undan yuqori rol. Noma'lum (yangi, masalan SCADA `shift_supervisor`) rollar —
+    tasdiqlovchidan past hisoblanadi (AUTH-04)."""
+    try:
+        return has_role(role, Role.approver)
+    except (KeyError, ValueError):
+        return False
+
+
+def _check_grant(user: User, new_role, current_role=None) -> None:
+    """AUTH-04: tasdiqlovchi rolini faqat administrator beradi/oladi; tasdiqlovchi faqat o'zidan past rollarni
+    boshqaradi (boshqa tasdiqlovchini pasaytira yoki chiqara olmaydi)."""
+    if user.is_admin:
+        return
+    if new_role is not None and _approver_rank(new_role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tasdiqlovchi rolini faqat administrator beradi")
+    if current_role is not None and _approver_rank(current_role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tasdiqlovchini faqat administrator o'zgartiradi yoki chiqaradi")
+
+
 @router.put("/{project_id}/members", response_model=MemberOut)
 def set_member(body: MemberSet, project: ApproverProject, user: CurrentUser, db: DB):
-    """A'zo qo'shish yoki rolini o'zgartirish."""
+    """A'zo qo'shish yoki rolini o'zgartirish. Tasdiqlovchi rolini faqat administrator beradi/oladi (AUTH-04)."""
     target = db.get(User, body.user_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Foydalanuvchi topilmadi")
     member = (
         db.query(ProjectMember).filter_by(project_id=project.id, user_id=body.user_id).one_or_none()
     )
+    _check_grant(user, body.role, member.role if member is not None else None)
     if member is None:
         member = ProjectMember(project_id=project.id, user_id=body.user_id, role=body.role)
         db.add(member)
@@ -243,6 +268,7 @@ def remove_member(user_id: int, project: ApproverProject, user: CurrentUser, db:
     member = db.query(ProjectMember).filter_by(project_id=project.id, user_id=user_id).one_or_none()
     if member is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "A'zo topilmadi")
+    _check_grant(user, None, member.role)
     db.delete(member)
     sessions.revoke_all(db, user_id, reason="member_removed")
     audit.log(
@@ -381,7 +407,7 @@ def download_document(doc_id: int, project: ViewerProject, db: DB):
         path = storage.resolve(d.file_sha256, ext=d.ext)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
-    return FileResponse(path, filename=d.file_name)
+    return FileResponse(path, headers={"Content-Disposition": content_disposition(d.file_name)})
 
 
 @router.delete("/{project_id}/documents/{doc_id}", status_code=204)

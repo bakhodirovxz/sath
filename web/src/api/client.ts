@@ -552,17 +552,31 @@ export class ApiError extends Error {
     message: string,
     /** 401 + `X-MFA-Required` — parol to'g'ri, TOTP kodi kerak (L1) */
     public mfaRequired = false,
+    /** 409 `{detail, head_id}` — model boshqa versiya bilan yangilangan (VCS-01): avval yangilash kerak */
+    public headId: number | null = null,
   ) {
     super(message);
   }
 }
+
+/** Optimistic concurrency (VCS-01): commit eski versiya ustiga — ro'yxatni yangilab, qayta urinish kerak */
+export function isHeadMoved(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.status === 409 && e.headId !== null;
+}
+export const HEAD_MOVED_TEXT = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oching), keyin qayta urinib ko'ring";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+/** OPS-03: og'ir hisob navbatda — server 202 `{job_id, status}` qaytaradi */
+export interface JobPending { job_id: number; status: string }
+const PENDING = Symbol("pending");
+type RequestOpts = RequestInit & { acceptPending?: boolean };
+
+async function request<T>(path: string, opts: RequestOpts = {}, retried = false): Promise<T> {
+  const { acceptPending, ...init } = opts;
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -572,22 +586,38 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   const res = await fetch(path, { ...init, headers });
   if (res.status === 401 && !res.headers.get("X-MFA-Required") && !path.startsWith("/api/auth/login")) {
     // Access token muddati tugadi (15 daqiqa) — cookie bilan yangilab, so'rovni bir marta takrorlaymiz
-    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return request<T>(path, init, true);
+    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return request<T>(path, opts, true);
     setToken(null);
     onUnauthorized?.();
   }
   if (!res.ok) {
     let detail = res.statusText;
+    let headId: number | null = null;
     try {
       const j = await res.json();
       detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      if (res.status === 409 && typeof j.head_id === "number") headId = j.head_id;
     } catch {
       /* matn emas */
     }
-    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"));
+    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"), headId);
   }
   if (res.status === 204) return undefined as T;
+  if (res.status === 202 && acceptPending) return { [PENDING]: true, ...((await res.json()) as JobPending) } as T;
   return (await res.json()) as T;
+}
+
+/** OPS-03: GET natija navbatda hisoblanayotgan bo'lsa (202) — tayyor bo'lguncha qayta so'raydi (1 → 5 s). */
+async function requestReady<T>(path: string, timeoutMs = 20 * 60_000): Promise<T> {
+  const t0 = Date.now();
+  let wait = 1000;
+  for (;;) {
+    const r = await request<T>(path, { acceptPending: true });
+    if (!(r && typeof r === "object" && PENDING in r)) return r;
+    if (Date.now() - t0 > timeoutMs) throw new ApiError(504, "Hisoblash juda uzoq davom etmoqda — keyinroq qayta oching");
+    await new Promise((ok) => setTimeout(ok, wait));
+    wait = Math.min(wait * 1.5, 5000);
+  }
 }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -733,12 +763,13 @@ export const api = {
   importDem: (modelId: number, body: { lat: number; lon: number; width_m: number; height_m: number; rotation_deg: number; zoom: number; nx: number; z_offset_m: number; message?: string; onto_current?: boolean }) => request<Version & { imported: number; dem: Record<string, unknown> }>(`/api/models/${modelId}/versions/import-dem`, { method: "POST", body: json(body) }),
   versionFileUrl: (id: number) => `/api/versions/${id}/file`,
   updateVersion: (id: number, body: { message?: string; tag?: string; suitability_code?: string; revision_code?: string }) => request<Version>(`/api/versions/${id}`, { method: "PATCH", body: json(body) }),
-  restoreVersion: (id: number) => request<Version>(`/api/versions/${id}/restore`, { method: "POST" }),
+  restoreVersion: (id: number, expectedHeadId?: number | null) => request<Version>(`/api/versions/${id}/restore${expectedHeadId ? `?expected_head_id=${expectedHeadId}` : ""}`, { method: "POST" }),
   /** Server tomonida tayyorlangan fragments (.frag); yo'q bo'lsa null — IFC yuklanadi */
   async versionFragments(id: number): Promise<Uint8Array | null> {
     // no-cache: ETag bilan qayta tekshiriladi (fayl yangilangan bo'lsa eskisi qolmasin)
     const res = await fetch(`/api/versions/${id}/fragments`, { cache: "no-cache", headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
-    if (res.status === 404) return null;
+    // 202 — konvertatsiya navbatda (OPS-03): kutmaymiz, hozir IFC ochiladi; keyingi ochishda .frag tayyor bo'ladi
+    if (res.status === 404 || res.status === 202 || res.status === 429) return null;
     if (!res.ok) throw new ApiError(res.status, "Fragments yuklab bo'lmadi");
     return new Uint8Array(await res.arrayBuffer());
   },
@@ -827,10 +858,10 @@ export const api = {
   readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean; tier?: "raw" | "1m" | "10m" | "1h" }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),
   alarms: (projectId: number) => request<Sensor[]>(`/api/projects/${projectId}/alarms`),
   // BIM tekshiruvlar
-  qto: (versionId: number) => request<Qto>(`/api/versions/${versionId}/qto`),
+  qto: (versionId: number) => requestReady<Qto>(`/api/versions/${versionId}/qto`),
   ids: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`),
   runIds: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`, { method: "POST" }),
-  clashes: (versionId: number, kind?: string) => request<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
+  clashes: (versionId: number, kind?: string) => requestReady<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
   alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number, includeSuppressed = false) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}${includeSuppressed ? "&include_suppressed=true" : ""}`),
   annunciatorSilence: (projectId: number, minutes: number, reason = "") => request<{ ok: boolean; minutes: number }>(`/api/projects/${projectId}/annunciator/silence`, { method: "POST", body: json({ minutes, reason }) }),
@@ -858,6 +889,7 @@ export const api = {
   async downloadCsv(path: string, filename: string) {
     // Bearer bilan yuklab olish (URL da token yo'q): blob → <a download>
     const r = await fetch(path, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
+    if (r.status === 202) throw new Error("Hisob tayyorlanmoqda — birozdan so'ng qayta urinib ko'ring");
     if (!r.ok) throw new Error(`Yuklab bo'lmadi (${r.status})`);
     const url = URL.createObjectURL(await r.blob());
     const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
@@ -956,7 +988,7 @@ export const api = {
   pushReadings: (projectId: number, items: { key?: string; sensor_id?: number; value: number; ts?: string }[]) =>
     request<{ accepted: number; unknown: unknown[] }>(`/api/projects/${projectId}/readings`, { method: "POST", body: json(items) }),
   importReadings: (sensorId: number, file: File) => { const fd = new FormData(); fd.append("file", file); return request<{ accepted: number }>(`/api/sensors/${sensorId}/import`, { method: "POST", body: fd }); },
-  /** Jonli oqim: avval 60 s li chipta (sessiya tokeni URL ga tushmaydi, L2), keyin soket. */
+  /** Jonli oqim: avval bir martalik 30 s li chipta (sessiya tokeni URL ga tushmaydi, L2/AUTH-02) — har ulanishga yangisi, keyin soket. */
   async liveSocket(projectId: number): Promise<WebSocket> {
     const { ticket } = await api.wsTicket();
     const proto = location.protocol === "https:" ? "wss" : "ws";

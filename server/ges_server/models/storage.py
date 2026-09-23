@@ -4,6 +4,7 @@ Bir xil fayl ikki marta yuklansa bitta nusxa saqlanadi (dedup).
 """
 
 import hashlib
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -41,6 +42,10 @@ def store(stream: BinaryIO, ext: str = ".ifc", max_bytes: int | None = None) -> 
     final = _path_for(sha, ext)
     if final.exists():
         tmp_path.unlink(missing_ok=True)
+        try:
+            os.utime(final)  # SRV-05: dedup — GC grace oynasi qayta boshlanadi (hali commit bo'lmagan murojaat)
+        except OSError:
+            pass
     else:
         final.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp_path), str(final))

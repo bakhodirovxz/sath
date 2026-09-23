@@ -37,13 +37,22 @@ COMMON_PASSWORDS = frozenset(
 )
 
 
-def password_problems(password: str, username: str = "") -> list[str]:
+def privileged_min_length() -> int:
+    """AUTH-01: administrator va tasdiqlovchi uchun minimal uzunlik (default 12; `password_min_length_privileged`
+    sozlamasi bo'lsa — o'sha; umumiy minimaldan kam bo'lmaydi)."""
+    s = get_settings()
+    return max(s.password_min_length, int(getattr(s, "password_min_length_privileged", 12)))
+
+
+def password_problems(password: str, username: str = "", min_length: int | None = None) -> list[str]:
     """Parol siyosati (L2, NIST 800-63B): uzunlik, bloklash ro'yxati, login bilan mos kelmaslik,
-    kamida ikki belgi sinfi (faqat raqam/faqat harf emas). Bo'sh ro'yxat — parol qabul qilinadi."""
+    kamida ikki belgi sinfi (faqat raqam/faqat harf emas). Bo'sh ro'yxat — parol qabul qilinadi.
+    `min_length` — rolga qarab kuchaytirilgan minimal (masalan admin/tasdiqlovchi uchun 12)."""
     s = get_settings()
     out: list[str] = []
-    if len(password) < s.password_min_length:
-        out.append(f"kamida {s.password_min_length} belgi")
+    need = max(s.password_min_length, min_length or 0)
+    if len(password) < need:
+        out.append(f"kamida {need} belgi")
     if len(password) > 128:
         out.append("128 belgidan oshmasin")
     low = password.lower()
@@ -66,24 +75,30 @@ def create_access_token(
     *,
     ver: int = 0,
     sid: str | None = None,
+    sn: int | None = None,
+    seconds: int | None = None,
 ) -> str:
     """scope="session" — oddiy kirish tokeni; boshqa scope — tor maqsadli, qisqa muddatli token.
     `ver` — foydalanuvchining token versiyasi (parol/rol o'zgarsa oshadi → eski tokenlar yaroqsiz),
-    `sid` — sessiya (refresh) identifikatori (logout shu sessiyani bekor qiladi)."""
+    `sid` — sessiya (refresh) identifikatori (logout shu sessiyani bekor qiladi), `sn` — sessiya qatori
+    (barqaror id; AUTH-01: har so'rovda sessiya bekor qilinmaganligi tekshiriladi), `seconds` — muddat soniyada."""
     settings = get_settings()
     now = datetime.now(timezone.utc)
+    ttl = timedelta(seconds=seconds) if seconds else timedelta(minutes=minutes or settings.access_token_minutes)
     payload = {
         "iss": ISSUER,
         "aud": AUDIENCE,
         "sub": str(user_id),
         "iat": now,
-        "exp": now + timedelta(minutes=minutes or settings.access_token_minutes),
+        "exp": now + ttl,
         "scope": scope,
         "ver": ver,
         "jti": secrets.token_urlsafe(12),
     }
     if sid:
         payload["sid"] = sid
+    if sn is not None:
+        payload["sn"] = sn
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
@@ -104,7 +119,11 @@ def create_refresh_token(user_id: int, jti: str, hours: float, ver: int = 0) -> 
 
 
 def decode_token(token: str, scope: str = "session") -> dict | None:
-    """Imzo, muddat, iss/aud va scope mos bo'lsa payload (sub — int), aks holda None."""
+    """Imzo, muddat, iss/aud va scope mos bo'lsa payload (sub — int), aks holda None.
+
+    AUTH-01: sessiya tokeni (`sn` bilan) — sessiya bekor qilingan bo'lsa (logout, sessiyani yopish) darhol
+    yaroqsiz (qisqa muddatli kesh, HA da ≤ 5 s). AUTH-02: `ws` chiptasi bir martalik — tekshiruvda `jti` DB da
+    iste'mol qilinadi (ikkinchi ulanish rad etiladi, bir necha API jarayonida ham)."""
     try:
         payload = jwt.decode(
             token, get_settings().secret_key, algorithms=[ALGORITHM], audience=AUDIENCE, issuer=ISSUER
@@ -112,9 +131,19 @@ def decode_token(token: str, scope: str = "session") -> dict | None:
         if payload.get("scope", "session") != scope:
             return None
         payload["sub"] = int(payload["sub"])
-        return payload
     except (jwt.PyJWTError, KeyError, ValueError):
         return None
+    from . import sessions  # aylanma import: sessions → security
+
+    if scope == "session" and payload.get("sn") is not None:
+        try:
+            if not sessions.session_alive(int(payload["sn"]), payload["sub"]):
+                return None
+        except (TypeError, ValueError):
+            return None
+    elif scope == "ws" and not sessions.consume_ticket(str(payload.get("jti") or ""), payload["sub"], payload.get("exp")):
+        return None
+    return payload
 
 
 def decode_access_token(token: str, scope: str = "session") -> int | None:

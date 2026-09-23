@@ -9,15 +9,23 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func
 
 from .. import audit
-from ..auth.deps import DB, CurrentUser
+from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..orm import DraftObject, Role, Version, utcnow
-from . import assimp_load, cad_import, derived, drafts, ifc_meta, mesh_import, storage
+from . import assimp_load, cad_import, drafts, ifc_meta, mesh_import, storage
 from . import crs as crs_mod
-from .router import get_model_checked, version_out
+from .router import (
+    ANY,
+    check_head,
+    create_version,
+    get_model_checked,
+    head_conflict_response,
+    head_version,
+    version_out,
+)
 
 router = APIRouter(prefix="/api", tags=["drafts"])
 
@@ -132,23 +140,36 @@ def create_draft(model_id: int, body: DraftIn, user: CurrentUser, db: DB):
     return _out(d)
 
 
-def _get_draft(db, draft_id: int, user, role: Role) -> DraftObject:
+def _get_own_draft(db, draft_id: int, user) -> tuple[DraftObject, int]:
+    """VCS-04: qoralamani faqat muallifi (yoki loyiha tasdiqlovchisi) o'zgartiradi/o'chiradi.
+    Qaytaradi: (qoralama, project_id)."""
     d = db.get(DraftObject, draft_id)
     if d is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Qoralama topilmadi")
-    get_model_checked(db, d.model_id, user, role)
-    return d
+    model = get_model_checked(db, d.model_id, user, Role.engineer)
+    if d.author_id != user.id and not has_role(get_project_role(db, model.project_id, user), Role.approver):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Qoralamani muallifi yoki tasdiqlovchi o'zgartiradi")
+    return d, model.project_id
 
 
 @router.patch("/drafts/{draft_id}", response_model=DraftOut)
 def update_draft(draft_id: int, body: DraftPatch, user: CurrentUser, db: DB):
-    d = _get_draft(db, draft_id, user, Role.engineer)
+    d, project_id = _get_own_draft(db, draft_id, user)
     changes = body.model_dump(exclude_none=True)
     _check_mesh(changes.get("mesh"))
     for k in DraftPatch.model_fields:
         if k in changes:
             setattr(d, k, changes[k])
     d.updated_at = utcnow()
+    audit.log(
+        db,
+        user_id=user.id,
+        action="draft.update",
+        target_type="draft",
+        target_id=d.id,
+        project_id=project_id,
+        detail={"fields": sorted(changes), "author_id": d.author_id, "name": d.name},
+    )
     db.commit()
     db.refresh(d)
     return _out(d)
@@ -156,15 +177,15 @@ def update_draft(draft_id: int, body: DraftPatch, user: CurrentUser, db: DB):
 
 @router.delete("/drafts/{draft_id}", status_code=204)
 def delete_draft(draft_id: int, user: CurrentUser, db: DB):
-    d = _get_draft(db, draft_id, user, Role.engineer)
+    d, project_id = _get_own_draft(db, draft_id, user)
     audit.log(
         db,
         user_id=user.id,
         action="draft.delete",
         target_type="draft",
         target_id=d.id,
-        project_id=get_model_checked(db, d.model_id, user, Role.viewer).project_id,
-        detail={"kind": d.kind, "name": d.name},
+        project_id=project_id,
+        detail={"kind": d.kind, "name": d.name, "author_id": d.author_id},
     )
     db.delete(d)
     db.commit()
@@ -173,20 +194,29 @@ def delete_draft(draft_id: int, user: CurrentUser, db: DB):
 class CommitIn(BaseModel):
     message: str = Field(default="", max_length=2000)
     base_version_id: int | None = None  # qaysi versiya ustiga (default: oxirgi)
-    draft_ids: list[int] | None = None  # None — hammasi
+    # None — o'z qoralamalarim (VCS-04); boshqaning qoralamasini faqat tasdiqlovchi aniq id bilan qo'sha oladi
+    draft_ids: list[int] | None = None
     keep_drafts: bool = False  # commitdan keyin qoralamalarni saqlab qolish
 
 
 @router.post("/models/{model_id}/drafts/commit", status_code=201)
+@head_conflict_response
 def commit_drafts(
     model_id: int, body: CommitIn, user: CurrentUser, db: DB
 ):
-    """Qoralamalarni IFC ga qo'shib yangi versiya yaratadi (git commit kabi): ota — tanlangan/oxirgi versiya."""
+    """Qoralamalarni IFC ga qo'shib yangi versiya yaratadi (git commit kabi): ota — tanlangan/oxirgi versiya.
+    `base_version_id` oxirgi versiya bo'lishi shart; oraliqda boshqa commit bo'lsa 409 `{detail, head_id}`."""
     model = get_model_checked(db, model_id, user, Role.engineer)
     q = db.query(DraftObject).filter_by(model_id=model.id)
     if body.draft_ids:
         q = q.filter(DraftObject.id.in_(body.draft_ids))
+    else:
+        q = q.filter(DraftObject.author_id == user.id)  # hammaning emas — faqat o'zimniki
     rows = q.order_by(DraftObject.id).all()
+    if any(d.author_id != user.id for d in rows) and not has_role(
+        get_project_role(db, model.project_id, user), Role.approver
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Boshqa foydalanuvchining qoralamasini faqat tasdiqlovchi commit qiladi")
     if not rows:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Commit uchun qoralama obyekt yo'q")
     missing = [d.name or d.kind for d in rows if not d.mesh and d.kind != "deleted"]
@@ -200,8 +230,9 @@ def commit_drafts(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "base_version_id shu modelga tegishli emas"
             )
+        check_head(db, model.id, base.id)  # og'ir qurishdan oldin — eski versiya ustiga commit yo'q (VCS-01)
     else:
-        base = model.versions[-1] if model.versions else None
+        base = head_version(db, model.id)
     src = None
     if base is not None:
         try:
@@ -236,11 +267,7 @@ def commit_drafts(
     with open(tmp, "rb") as fh:
         sha, size = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
     tmp.unlink(missing_ok=True)
-    meta = ifc_meta.extract(storage.resolve(sha))
-    number = (
-        db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar()
-        + 1
-    )
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
     names = ", ".join((d.name or d.kind) for d in rows[:5]) + (" …" if len(rows) > 5 else "")
     n_del, n_edit = len(remove_guids), sum(1 for o in objects if o["guid"])
     n_new = len(objects) - n_edit
@@ -253,47 +280,36 @@ def commit_drafts(
         )
         if n
     )
-    v = Version(
+    draft_ids = [d.id for d in rows]
+    n_drafts = len(rows)
+    message = body.message or f"Web 3D: {what} ({names})"
+
+    def _drop_drafts(_v: Version) -> None:
+        # shu tranzaksiyada: versiya yozilmasa qoralamalar ham qoladi
+        if not body.keep_drafts:
+            db.query(DraftObject).filter(DraftObject.id.in_(draft_ids)).delete(synchronize_session=False)
+
+    v = create_version(
+        db,
         model_id=model.id,
-        number=number,
+        user=user,
         parent_id=base.id if base else None,
-        author_id=user.id,
-        message=body.message or f"Web 3D: {what} ({names})",
+        expected_head=base.id if base else None,
         file_sha256=sha,
         file_name=(base.file_name if base else f"{model.name}.ifc"),
         file_size=size,
         meta=meta,
+        message=message,
+        detail={"message": message, "drafts": n_drafts, "guids": info["guids"], "removed": info.get("removed", 0)},
+        on_insert=_drop_drafts,
     )
-    db.add(v)
-    db.flush()
-    audit.log(
-        db,
-        user_id=user.id,
-        action="version.create",
-        target_type="version",
-        target_id=v.id,
-        project_id=model.project_id,
-        detail={
-            "model_id": model.id,
-            "number": v.number,
-            "message": v.message,
-            "drafts": len(rows),
-            "guids": info["guids"],
-            "removed": info.get("removed", 0),
-        },
-    )
-    if not body.keep_drafts:
-        for d in rows:
-            db.delete(d)
-    db.commit()
-    db.refresh(v)
-    derived.enqueue_for(db, sha)
     out = version_out(v).model_dump()
     out["guids"] = info["guids"]
     return out
 
 
 @router.post("/models/{model_id}/versions/import-mesh", status_code=201)
+@head_conflict_response
 def import_mesh_version(
     model_id: int,
     file: UploadFile,
@@ -349,50 +365,29 @@ def import_mesh_version(
         with open(out, "rb") as fh:
             sha, fsize = storage.store(fh, max_bytes=settings.max_upload_mb * 1024 * 1024)
     return _version_from_import(
-        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": unit}
+        db, user, model, base, sha, fsize, name, message, info, objects, {"unit": unit}, onto=onto_current
     )
 
 
 def _version_from_import(
-    db, user, model, base, sha, fsize, name, message, info, objects, detail
+    db, user, model, base, sha, fsize, name, message, info, objects, detail, *, onto: bool = True
 ):
-    """Saqlangan IFC (sha) dan yangi versiya yozuvi, audit, fon vazifalar; javob JSON."""
-    meta = ifc_meta.extract(storage.resolve(sha))
-    number = (
-        db.query(func.coalesce(func.max(Version.number), 0)).filter_by(model_id=model.id).scalar()
-        + 1
-    )
-    v = Version(
+    """Saqlangan IFC (sha) dan yangi versiya yozuvi, audit, fon vazifalar; javob JSON.
+    `onto` — joriy oxirgi versiya ustiga: yozish paytida u hali oxirgi bo'lishi shart (aks holda 409)."""
+    meta = ifc_meta.extract_bounded(storage.resolve(sha))
+    v = create_version(
+        db,
         model_id=model.id,
-        number=number,
+        user=user,
         parent_id=base.id if base else None,
-        author_id=user.id,
-        message=message or f"{name} dan import: {info['count']} element",
+        expected_head=(base.id if base else None) if onto else ANY,
         file_sha256=sha,
         file_name=f"{Path(name).stem}.ifc",
         file_size=fsize,
         meta=meta,
+        message=message or f"{name} dan import: {info['count']} element",
+        detail={"import": name, "elements": info["count"], **detail},
     )
-    db.add(v)
-    db.flush()
-    audit.log(
-        db,
-        user_id=user.id,
-        action="version.create",
-        target_type="version",
-        target_id=v.id,
-        project_id=model.project_id,
-        detail={
-            "model_id": model.id,
-            "number": v.number,
-            "import": name,
-            "elements": info["count"],
-            **detail,
-        },
-    )
-    db.commit()
-    db.refresh(v)
-    derived.enqueue_for(db, sha)
     out_v = version_out(v).model_dump()
     out_v["imported"] = info["count"]
     out_v["names"] = [o["name"] for o in objects][:50]
@@ -400,6 +395,7 @@ def _version_from_import(
 
 
 @router.post("/models/{model_id}/versions/import-image", status_code=201)
+@head_conflict_response
 def import_image_version(
     model_id: int,
     file: UploadFile,
@@ -482,6 +478,7 @@ def import_image_version(
         info,
         objects,
         {"mode": mode, "width_m": width_m},
+        onto=onto_current,
     )
 
 
@@ -503,6 +500,7 @@ class DemIn(BaseModel):
 
 
 @router.post("/models/{model_id}/versions/import-dem", status_code=201)
+@head_conflict_response
 def import_dem_version(
     model_id: int, body: DemIn, user: CurrentUser, db: DB
 ):
@@ -571,6 +569,7 @@ def import_dem_version(
         built,
         [obj],
         {"dem": True, "lat": body.lat, "lon": body.lon, "removed": built.get("removed", 0)},
+        onto=body.onto_current,
     )
     res["dem"] = info
     return res
@@ -614,7 +613,7 @@ def export_version(version_id: int, user: CurrentUser, db: DB, fmt: str = "glb")
     return Response(
         content=data,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": content_disposition(name)},
     )
 
 
@@ -643,6 +642,7 @@ class GeorefIn(BaseModel):
 
 
 @router.post("/models/{model_id}/georeference")
+@head_conflict_response
 def add_georeference(model_id: int, body: GeorefIn, user: CurrentUser, db: DB):
     """G3: joriy (oxirgi) versiyaga loyiha CRS dan IfcMapConversion/IfcProjectedCRS va IfcSite Ref* qo'shib
     yangi versiya yozadi (mavjud modellarni georeferensiyalash)."""

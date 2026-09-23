@@ -42,6 +42,7 @@ from ..auth.deps import (
 )
 from ..config import get_settings
 from ..db import SessionLocal
+from ..downloads import content_disposition
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
 from . import alarm_kpi, historian, interlock, keys, kks, linkage, live, mqtt_bridge, soe
 
@@ -936,7 +937,7 @@ def export_csv(
     return Response(
         buf.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{s.key}.csv"'},
+        headers={"Content-Disposition": content_disposition(f"{s.key}.csv")},
     )
 
 
@@ -1560,7 +1561,7 @@ def report(
             "\ufeff" + buf.getvalue(),  # BOM — Excel UTF-8 ni to'g'ri ochsin
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="hisobot-{period}-{start.date()}.csv"'
+                "Content-Disposition": content_disposition(f"hisobot-{period}-{start.date()}.csv")
             },
         )
     return out

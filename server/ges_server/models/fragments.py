@@ -9,23 +9,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
-import threading
+import tempfile
 from pathlib import Path
 
 from .. import sandbox
 from ..config import get_settings
+from .keylocks import KeyLocks
 
 log = logging.getLogger("ges_server.fragments")
 
-# Bir sha uchun bir vaqtda bitta konvertatsiya (navbat ishchisi va so'rovdagi konvertatsiya to'qnashmasin, L3)
-_locks: dict[str, threading.Lock] = {}
-_locks_guard = threading.Lock()
-
-
-def _lock_for(sha: str) -> threading.Lock:
-    with _locks_guard:
-        return _locks.setdefault(sha, threading.Lock())
+# Bir jarayonda bir sha uchun bitta konvertatsiya (chegaralangan LRU). Jarayonlar orasida takror — DB navbati
+# (`fragments:<sha>` idempotent kaliti) oldini oladi; baribir to'qnashsa ham har biri o'z noyob temp fayliga
+# yozadi va natija atomik `os.replace` bilan joyiga qo'yiladi (SRV-04).
+_locks = KeyLocks(256)
 
 
 def tool_path() -> Path | None:
@@ -56,7 +54,7 @@ def convert(ifc: Path, sha: str, timeout_s: int = 1800) -> Path | None:
     out = frag_path(sha)
     if out.exists():
         return out
-    with _lock_for(sha):
+    with _locks.get(sha):
         if out.exists():
             return out
         return _convert_locked(ifc, sha, out, timeout_s)
@@ -67,7 +65,10 @@ def _convert_locked(ifc: Path, sha: str, out: Path, timeout_s: int) -> Path | No
     node = shutil.which(get_settings().node_bin)
     if tool is None or node is None:
         return None
-    tmp = out.with_suffix(".frag.part")
+    # SRV-04: noyob temp (shu papkada — os.replace atomik); GC eskirgan *.part larni tozalaydi
+    fd, tmp_name = tempfile.mkstemp(prefix=f"{sha}.", suffix=".frag.part", dir=out.parent)
+    os.close(fd)
+    tmp = Path(tmp_name)
     try:
         # Sandbox (L5): ishonchsiz IFC web-ifc/Node da — tarmoqsiz, xotira/vaqt chegarasi, faqat derived papkaga yozadi
         r = sandbox.run([node, str(tool), str(ifc), str(tmp)], cwd=out.parent, timeout_s=timeout_s, ro_paths=(ifc,))
@@ -76,11 +77,17 @@ def _convert_locked(ifc: Path, sha: str, out: Path, timeout_s: int) -> Path | No
         tmp.unlink(missing_ok=True)
         return None
     stdout, stderr = r.stdout.decode(errors="replace"), r.stderr.decode(errors="replace")
-    if r.returncode != 0 or not tmp.exists():
+    if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size == 0:
         log.warning("fragments konvertatsiya xato (%s): %s", r.returncode, (stderr or stdout)[-800:])
         tmp.unlink(missing_ok=True)
         return None
-    tmp.replace(out)
+    try:
+        os.replace(tmp, out)
+    except OSError:
+        # Windows: parallel yozuvchi bir vaqtda almashtirayotgan bo'lsa — uning natijasi yetarli
+        tmp.unlink(missing_ok=True)
+        if not out.exists():
+            raise
     try:
         info = json.loads(stdout.strip().splitlines()[-1])
         log.info(

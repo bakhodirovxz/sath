@@ -35,7 +35,7 @@ def resolve_members(db: Session, members: list[dict]) -> list[dict]:
     out = []
     for m in members:
         model = db.get(Model, int(m["model_id"]))
-        if model is None:
+        if model is None or model.deleted_at is not None:  # VCS-06: savatdagi model federatsiyada yo'q
             raise ValueError(f"Model {m['model_id']} topilmadi")
         v = None
         if m.get("version_id"):

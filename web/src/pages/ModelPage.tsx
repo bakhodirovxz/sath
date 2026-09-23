@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { dialogs } from "../ui/dialogs";
 import Icon from "../ui/Icon";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, getToken, type ChangeRequest, type Diff, type Issue, type Member, type Model, type Project, type Underlay, type Version } from "../api/client";
+import { api, getToken, HEAD_MOVED_TEXT, isHeadMoved, type ChangeRequest, type Diff, type Issue, type Member, type Model, type Project, type Underlay, type Version } from "../api/client";
 import { useViewer } from "../viewer/useViewer";
 import { COMMANDS, type ParsedCommand } from "../viewer/commands";
 import type { Hover, NavMode, Shading, ViewName } from "../viewer/Viewer";
@@ -415,7 +415,10 @@ export default function ModelPage() {
       const nv = vs.find((x) => x.id === v.id);
       if (nv) await openVersion(nv);
       setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga qo'shildi`);
-    } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } finally { setDraftBusy(false); }
+    } catch (e) {
+      // VCS-01: model boshqa versiya bilan yangilangan — ro'yxatni yangilaymiz, qoralamalar saqlanadi
+      if (isHeadMoved(e)) { setError(HEAD_MOVED_TEXT); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
+    } finally { setDraftBusy(false); }
   };
   const pickWorkspace = (id: string) => { setWorkspace(id); const w = WORKSPACES.find((x) => x.id === id); if (w) { setTab(w.tab); setDockOpen(true); } };
   const cmd = (name: string, ...args: string[]) => onCommand({ name, args, raw: [name, ...args].join(" ") });

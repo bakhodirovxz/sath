@@ -111,6 +111,18 @@ class UserSession(Base):
     revoke_reason: Mapped[str] = mapped_column(String(32), default="")
 
 
+class WsTicketUse(Base):
+    """AUTH-02: iste'mol qilingan WebSocket chiptasi (`jti`) — chipta bir martalik; DB da, shuning uchun bir
+    necha API jarayoni (L8) orasida ham takror ulanish rad etiladi. Muddati o'tganlari tozalanadi."""
+
+    __tablename__ = "ws_ticket_uses"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer)
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -224,6 +236,10 @@ class Model(Base):
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # VCS-06: yumshoq o'chirish — tarix (versiyalar, CR, issue) saqlanadi; ro'yxat va olishda ko'rinmaydi,
+    # administrator tiklaydi yoki butunlay tozalaydi (fayllar GC bilan)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="models")
     versions: Mapped[list[Version]] = relationship(
@@ -1242,6 +1258,8 @@ class AuditLog(Base):
     # Hash zanjiri (audit.py): prev_hash — oldingi qatorning row_hash i ("" birinchisi uchun)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # AUTH-05: hash sxemasi — NULL/"v1" sha256 (eski), "v2" HMAC-SHA256 audit kaliti bilan
+    hash_alg: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
 
 class ShiftHandover(Base):

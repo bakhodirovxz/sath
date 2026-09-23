@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .. import audit
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..orm import AuditLog, Role, User
 
 router = APIRouter(prefix="/api/audit", tags=["system"])
@@ -18,8 +19,15 @@ router = APIRouter(prefix="/api/audit", tags=["system"])
 
 @router.get("/verify")
 def verify(_: AdminUser, db: DB):
-    """Hash zanjirini boshidan tekshiradi: {ok, checked, first_bad_id, head}."""
+    """Hash zanjirini boshidan tekshiradi: {ok, checked, first_bad_id, head, schemes, keyed, write_failures}
+    — v1 (sha256, eski) va v2 (HMAC, audit kaliti) qatorlar birga tekshiriladi."""
     return audit.verify_chain(db)
+
+
+@router.get("/status")
+def status_(_: AdminUser):
+    """AUTH-05: audit yozish xatolari metrikasi (jarayon bo'yicha) — monitoring/alarm uchun."""
+    return {**audit.STATS, "hash_alg": audit.HASH_ALG}
 
 
 @router.get("/export")
@@ -39,7 +47,7 @@ def export_day(_: AdminUser, db: DB, day: str = Query(..., description="YYYY-MM-
         body,
         media_type="application/x-ndjson",
         headers={
-            "Content-Disposition": f'attachment; filename="audit-{day}.jsonl"',
+            "Content-Disposition": content_disposition(f"audit-{day}.jsonl"),
             "X-Audit-Signature": sig,
         },
     )

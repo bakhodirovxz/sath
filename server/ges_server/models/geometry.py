@@ -6,15 +6,20 @@ bir xil fayl uchun qayta hisoblanmaydi.
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import json
 import logging
-import threading
+import os
+import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from ..config import get_settings
+from .keylocks import KeyLocks
 
 log = logging.getLogger("ges_server.geometry")
 
@@ -47,13 +52,61 @@ def _derived_path(sha: str, kind: str) -> Path:
 
 
 _MESH_CACHE: dict[str, list[Mesh]] = {}
-_LOCKS: dict[str, threading.Lock] = {}
-_LOCKS_GUARD = threading.Lock()
+# OPS-04: kalit bo'yicha qulflar chegaralangan (ilgari har noyob clash parametri uchun abadiy qulf)
+_LOCKS = KeyLocks(256)
 
 
-def _lock(key: str) -> threading.Lock:
-    with _LOCKS_GUARD:
-        return _LOCKS.setdefault(key, threading.Lock())
+def _lock(key: str):
+    return _LOCKS.get(key)
+
+
+# --------------------------------------------------------------------------- OPS-04: clash turlari whitelist
+
+_IFC_NAME = re.compile(r"^Ifc[A-Za-z0-9]+$")
+MAX_TYPES = 30
+
+
+@functools.lru_cache(maxsize=1)
+def _ifc_classes() -> dict[str, str]:
+    """Ma'lum IFC entity nomlari (IFC2X3, IFC4, IFC4X3*): kichik harf → kanonik nom."""
+    import ifcopenshell.ifcopenshell_wrapper as w
+
+    out: dict[str, str] = {}
+    for schema in ("IFC2X3", "IFC4", "IFC4X3", "IFC4X3_ADD2"):
+        try:
+            sc = w.schema_by_name(schema)
+        except Exception:  # noqa: BLE001 — eski ifcopenshell da sxema bo'lmasligi mumkin
+            continue
+        for d in sc.declarations():
+            if isinstance(d, w.entity):
+                out.setdefault(d.name().lower(), d.name())
+    return out
+
+
+def normalize_types(raw: str | None) -> list[str] | None:
+    """`types_a`/`types_b` query: vergul bilan IFC klass nomlari → kanonik, takrorsiz, saralangan ro'yxat
+    (None — cheklov yo'q). Noto'g'ri nom (`/`, bo'shliq, noma'lum klass) → ValueError (API 422)."""
+    items = [t.strip() for t in (raw or "").split(",") if t.strip()]
+    if not items:
+        return None
+    if len(items) > MAX_TYPES:
+        raise ValueError(f"Ko'pi bilan {MAX_TYPES} ta IFC turi")
+    known = _ifc_classes()
+    out = set()
+    for t in items:
+        if not _IFC_NAME.fullmatch(t) or t.lower() not in known:
+            raise ValueError(f"Noma'lum IFC turi: {t[:64]!r} (masalan IfcWall, IfcPipeSegment)")
+        out.add(known[t.lower()])
+    return sorted(out)
+
+
+def clash_kind(types_a: list[str] | None, types_b: list[str] | None) -> str:
+    """Kesh nomi: cheklovsiz — "clash"; aks holda "clash-<sha256(normallashtirilgan parametrlar)[:32]>"
+    (ilgari query satri to'g'ridan-to'g'ri fayl nomiga tushardi — `/` bilan 500, cheksiz kalitlar)."""
+    if not types_a and not types_b:
+        return "clash"
+    key = json.dumps({"a": types_a or [], "b": types_b or []}, sort_keys=True, separators=(",", ":"))
+    return "clash-" + hashlib.sha256(key.encode()).hexdigest()[:32]
 
 
 def load_meshes(path: Path) -> list[Mesh]:
@@ -520,14 +573,31 @@ def transformed(meshes: list[Mesh], dx: float, dy: float, dz: float, rot_deg: fl
     return [Mesh(m.guid, m.ifc_type, m.name, m.storey, (m.verts @ R.T) + off, m.faces, group) for m in meshes]
 
 
+def peek(sha: str, kind: str) -> dict | None:
+    """Keshlangan natija (hisoblamasdan); yo'q yoki buzilgan bo'lsa None."""
+    p = _derived_path(sha, kind)
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def cached(sha: str, kind: str, compute) -> dict:
-    """Diskdagi kesh (data/derived); parallel so'rovlar bir xil hisobni ikki marta qilmasin."""
+    """Diskdagi kesh (data/derived); parallel so'rovlar bir xil hisobni ikki marta qilmasin. Yozish atomik
+    (noyob temp + os.replace) — jarayonlar orasida ham yarim yozilgan JSON o'qilmaydi."""
     p = _derived_path(sha, kind)
     with _lock(f"{sha}:{kind}"):
         if p.exists():
             return json.loads(p.read_text(encoding="utf-8"))
         result = compute()
-        p.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(prefix=f"{sha}.", suffix=".json.part", dir=p.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(result, fh, ensure_ascii=False)
+            os.replace(tmp, p)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
         return result
 
 
