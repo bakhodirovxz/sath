@@ -41,3 +41,8 @@ desktop/dist/
 *.FCBak
 web/test-results/
 web/playwright-report/
+
+# Agent skill ornatmalari (lokal)
+.agents/
+.claude/
+skills-lock.json
