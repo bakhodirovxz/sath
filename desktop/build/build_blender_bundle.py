@@ -3,7 +3,7 @@
 
 python desktop/build/build_blender_bundle.py [--blender ~/Tools/blender-5.2] [--fc-home ~/Tools/fc-py313]
         [--bonsai <zip>] [--no-freecad] [--no-zip] [--installer] [--keep-stage]
-Natija: desktop/dist/Sath-<ver>-Windows-x86_64.zip (+ -installer.exe, .build.json — product: sath-blender).
+Natija: desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip (+ -installer.exe, .build.json — product: sath-blender).
 Stage: desktop/build/_work/sath-bundle/Sath. Legacy FreeCAD paketi boshqa nomda: Sath-FreeCAD-<ver>-… (CODE-03).
 """
 
@@ -54,7 +54,7 @@ PRODUCT = "sath-blender"  # CODE-03: build metama'lumotidagi mahsulot (legacy Fr
 
 
 def artifact_name(ver: str) -> str:
-    return f"Sath-{ver}-Windows-x86_64"
+    return f"Sath-Blender-{ver}-Windows-x86_64"  # server nom prefiksidan mahsulotni aniqlaydi
 
 
 def build_info(ver: str) -> dict:

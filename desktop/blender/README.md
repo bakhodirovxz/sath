@@ -18,7 +18,7 @@ dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-b
 ```
 python desktop/build/build_blender_bundle.py --installer
 ```
-→ `desktop/dist/Sath-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
+→ `desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
 (splash, bo'sh metr sahna, N-panel ochiq) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
 (prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
 Sath template ga o'tkazadi) + `freecad/` (conda py313 muhiti, ~0.9 GB ga kesilgan: MKL/VTK/libclang/FEM yo'q)

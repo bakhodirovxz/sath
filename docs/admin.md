@@ -431,7 +431,7 @@ Parolni foydalanuvchi o'zi o'zgartira oladi (API `/api/auth/change-password`); a
 
 Windows mashinada (o'rnatilgan FreeCAD 1.1.3, fork `../Sath-FreeCAD`, NSIS — `desktop/README.md`):
 ```bash
-python desktop/build/build_portable.py     # desktop/dist/Sath-<ver>-Windows-x86_64-installer.exe (~600 MB) va .zip
+python desktop/build/build_portable.py     # (legacy) desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64-installer.exe (~600 MB) va .zip
 for f in desktop/dist/Sath-0.1.0-Windows-x86_64-installer.exe desktop/dist/Sath-0.1.0-Windows-x86_64.zip; do
   curl -X POST -H "Authorization: Bearer <admin token>" -F file=@$f http://<server>:8000/api/desktop/upload
 done

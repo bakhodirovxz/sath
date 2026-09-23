@@ -3,7 +3,7 @@
 > **Asosiy desktop — Blender 5.2 extension (`blender/sath`, pastda).** FreeCAD forki, `GesWorkbench/` GUI,
 > `build/sync_fork.py`, `build/build_portable.py` va `blender/spike/` — **legacy** (CODE-02): faqat xato tuzatishlar,
 > qarang `GesWorkbench/LEGACY.md`, `blender/spike/LEGACY.md`. Paket nomlari (CODE-03): Blender —
-> `Sath-<ver>-Windows-x86_64.zip`, FreeCAD (legacy) — `Sath-FreeCAD-<ver>-Windows-x86_64.zip`.
+> `Sath-Blender-<ver>-Windows-x86_64.zip`, FreeCAD (legacy) — `Sath-FreeCAD-<ver>-Windows-x86_64.zip`.
 
 O'z dasturimiz — **FreeCAD 1.1.3 forki** (`../Sath-FreeCAD`, LGPL) + shu papkadagi GES workbench.
 Ishchi bitta installer o'rnatadi: dastur «Sath» nomi, o'z ikonkasi/splash i bilan, qora tema,
@@ -50,8 +50,8 @@ python desktop/build/build_portable.py            # zip + siqilgan installer (~1
 python desktop/build/build_portable.py --fast     # installer siqilmagan (sinov, ~2 daqiqa)
 ```
 Natija `desktop/dist/`:
-- `Sath-<ver>-Windows-x86_64-installer.exe` — ishchiga shu (Start menyu, ishchi stol, o'chirish)
-- `Sath-<ver>-Windows-x86_64.zip` — portable (ochib `Sath.exe`; Blender bundle — `blender/README.md`)
+- `Sath-FreeCAD-<ver>-Windows-x86_64-installer.exe` (legacy) — ishchiga shu (Start menyu, ishchi stol, o'chirish)
+- `Sath-FreeCAD-<ver>-Windows-x86_64.zip` (legacy) — portable (Blender bundle — `Sath-Blender-<ver>-…`, `blender/README.md`)
 
 FreeCAD kompilyatsiya qilinmaydi: rasmiy 1.1.3 binari fork tegi bilan bir xil commit, fork
 `overlay.py` uni brending + Mod/Ges bilan Sath ga aylantiradi. To'liq kompilyatsiya (yadro

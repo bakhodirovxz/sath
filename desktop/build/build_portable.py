@@ -8,7 +8,7 @@ Fork (Sath-FreeCAD) overlay skripti bilan tayyor FreeCAD 1.1.3 binarini Sath ga 
   * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64.zip            — portable (Sath.bat)
   * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64-installer.exe  — NSIS installer (makensis bo'lsa)
   * desktop/dist/Sath-FreeCAD-<ver>-Windows-x86_64.build.json     — metama'lumot (product: sath-freecad)
-Nom Blender bundle (Sath-<ver>-Windows-x86_64) dan farq qiladi — FreeCAD foydalanuvchisiga Blender paketi
+Nom Blender bundle (Sath-Blender-<ver>-Windows-x86_64) dan farq qiladi — FreeCAD foydalanuvchisiga Blender paketi
 «yangilanish» sifatida taklif qilinmasin (CODE-03).
 
     python desktop/build/build_portable.py [--freecad-dir "C:\\Program Files\\FreeCAD 1.1"]
@@ -62,6 +62,8 @@ def write_build_info(stage: Path, version: str) -> Path:
     side = DIST / f"{artifact_name(version)}.build.json"
     side.write_text(text, encoding="utf-8")
     return side
+
+
 # LibreDWG (dwg2dxf) — DWG ochish uchun paket ichiga qo'shiladi: tools/libredwg/ (GPL, ichki foydalanish)
 LIBREDWG_CANDIDATES = [
     Path(os.environ.get("LIBREDWG_DIR", "")),

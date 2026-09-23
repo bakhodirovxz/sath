@@ -205,7 +205,7 @@ def test_package_names_distinct_and_product_in_build_info(tmp_path, monkeypatch)
     import build_blender_bundle as bb
     import build_portable as bp
 
-    assert bb.artifact_name("0.3.0") == "Sath-0.3.0-Windows-x86_64"
+    assert bb.artifact_name("0.3.0") == "Sath-Blender-0.3.0-Windows-x86_64"
     assert bp.artifact_name("0.3.0") == "Sath-FreeCAD-0.3.0-Windows-x86_64"
     assert bb.build_info("0.3.0")["product"] == "sath-blender"
     assert bp.build_info("0.3.0")["product"] == "sath-freecad"

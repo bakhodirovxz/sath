@@ -47,7 +47,7 @@ Desktop/CAD audit (SATH_AUDIT.md 2.3, 4) natijasi, qisqa:
   (ezdxf); DWG konverter vaqtinchalik papkada, qaytish kodi tekshiriladi; parol `.blend` ga yozilmaydi;
   `platforms` (windows-x64, linux-x64, macos-arm64 — Linux/macOS sinalmagan, assimp faqat Windows).
 - Repo: umumiy modullar `common/sath_common` (nusxalar CI da tekshiriladi), katta binar fayllar Git LFS da,
-  paket nomlari `Sath-<ver>` (Blender) / `Sath-FreeCAD-<ver>` (legacy), build metama'lumotida `product`.
+  paket nomlari `Sath-Blender-<ver>` / `Sath-FreeCAD-<ver>` (legacy), build metama'lumotida `product`.
 - Qolgan: `sath-common` wheel (K1, alohida qaror); server `.blend` uchun sandbox da `BLENDER_USER_RESOURCES`
   (secops); web import dialogi `units_uncertain` da birlik so'rashi (web).
 
