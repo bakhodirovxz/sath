@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLatest } from "../../../hooks/useLatest";
-import { api, type GenericParams, type GenericResult, type SimJob, type SimKind, type Version } from "../../../api/client";
+import { api, saveBlob, type GenericParams, type GenericResult, type SimJob, type SimKind, type Version } from "../../../api/client";
 import type { Viewer } from "../../../viewer/Viewer";
 import type { WaterSim } from "../../../viewer/waterSim";
 import Icon from "../../../ui/Icon";
@@ -176,10 +176,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
     if (!flood) return;
     const rows = [["Element", "Turi", "GUID", "Suv chuqurligi (m)", "Kelish vaqti (soat)", "h·v (m²/s)", "Xavf"].join(";")];
     for (const e of flood.elements) rows.push([csvCell(e.name), csvCell(e.category), csvCell(e.guid ?? ""), e.depth.toFixed(2), e.t_arrive >= 0 ? (e.t_arrive / 3600).toFixed(2) : "", e.hv.toFixed(2), hazardLabel(e.hv)].join(";"));
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" }));
-    a.download = `toshqin_inshootlar_${active?.id ?? ""}.csv`;
-    a.click();
+    saveBlob(new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" }), `toshqin_inshootlar_${active?.id ?? ""}.csv`);
   }
 
   // Pasportdan avtomatik to'ldirish (bir marta), model GUID lari (3D bo'yash uchun)

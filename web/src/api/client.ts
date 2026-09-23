@@ -1,4 +1,6 @@
-// Server API bilan ishlash. Token localStorage da saqlanadi.
+// Server API bilan ishlash. Access token faqat xotirada (L2, pastda `accessToken`); sahifa qayta yuklanganda
+// HttpOnly refresh cookie orqali tiklanadi. So'rovlar: vaqt chegarasi (FE-05), 401 da bir marta refresh,
+// xatolar foydalanuvchiga tushunarli o'zbekcha matnda (`apiErrorMessage`).
 
 export type Role = "viewer" | "operator" | "engineer" | "approver";
 export type VersionState = "wip" | "shared" | "published" | "archived";
@@ -543,12 +545,17 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+export type ApiErrorCode = "http" | "timeout" | "network";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
     /** 401 + `X-MFA-Required` — parol to'g'ri, TOTP kodi kerak (L1) */
     public mfaRequired = false,
+    /** Serverning xom `detail` qiymati (strukturali 409/422 ni chaqiruvchi o'zi tahlil qilishi uchun) */
+    public detail: unknown = undefined,
+    public code: ApiErrorCode = "http",
   ) {
     super(message);
   }
@@ -559,32 +566,156 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
-  const headers = new Headers(init.headers);
+/** So'rov vaqt chegarasi (FE-05): server/tarmoq osilib qolsa UI cheksiz "Yuklanmoqda…" da qolmasin. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
+/** Fayl yuklash (IFC, rasm, CSV) — katta fayllar sekin tarmoqda ham o'tsin. */
+export const UPLOAD_TIMEOUT_MS = 10 * 60_000;
+
+export interface RequestOptions extends RequestInit {
+  /** ms; 0 — chegarasiz. Default: FormData — UPLOAD_TIMEOUT_MS, boshqalar — DEFAULT_TIMEOUT_MS */
+  timeoutMs?: number;
+}
+
+// --- Xato matnlari (FE-05): FastAPI 422 massivlari va HTTP holatlari → o'zbekcha ---------------------------
+
+type ValidationItem = { loc?: (string | number)[]; msg?: string; type?: string; ctx?: Record<string, unknown> };
+
+const STATUS_TEXT: Record<number, string> = {
+  400: "So'rov noto'g'ri",
+  401: "Sessiya tugagan — qayta kiring",
+  403: "Bu amal uchun ruxsat yo'q",
+  404: "Topilmadi",
+  409: "Ziddiyat: ma'lumot boshqa amal bilan o'zgargan — sahifani yangilab qayta urinib ko'ring",
+  413: "Fayl juda katta",
+  422: "Ma'lumot noto'g'ri",
+  423: "Hisob vaqtincha bloklangan",
+  429: "Juda ko'p so'rov — biroz kutib qayta urinib ko'ring",
+  500: "Server xatosi",
+  502: "Server vaqtincha ishlamayapti",
+  503: "Server vaqtincha ishlamayapti",
+  504: "Server javob bermadi",
+};
+
+function validationText(it: ValidationItem): string {
+  const c = it.ctx ?? {};
+  switch (it.type) {
+    case "missing": return "to'ldirilishi shart";
+    case "string_too_short": return `kamida ${String(c.min_length)} belgi bo'lishi kerak`;
+    case "string_too_long": return `ko'pi bilan ${String(c.max_length)} belgi bo'lishi kerak`;
+    case "too_short": return `kamida ${String(c.min_length)} ta element bo'lishi kerak`;
+    case "too_long": return `ko'pi bilan ${String(c.max_length)} ta element bo'lishi kerak`;
+    case "greater_than_equal": return `${String(c.ge)} yoki undan katta bo'lishi kerak`;
+    case "greater_than": return `${String(c.gt)} dan katta bo'lishi kerak`;
+    case "less_than_equal": return `${String(c.le)} yoki undan kichik bo'lishi kerak`;
+    case "less_than": return `${String(c.lt)} dan kichik bo'lishi kerak`;
+    case "int_parsing": case "int_type": case "int_from_float": return "butun son bo'lishi kerak";
+    case "float_parsing": case "float_type": return "son bo'lishi kerak";
+    case "bool_parsing": case "bool_type": return "ha/yo'q qiymati bo'lishi kerak";
+    case "string_type": return "matn bo'lishi kerak";
+    case "enum": case "literal_error": return `ruxsat etilgan qiymatlardan biri bo'lishi kerak: ${String(c.expected ?? "")}`.trim();
+    case "string_pattern_mismatch": return "format noto'g'ri";
+    case "datetime_parsing": case "datetime_from_date_parsing": case "date_parsing": return "sana/vaqt formati noto'g'ri";
+    case "json_invalid": return "so'rov JSON formatida emas";
+    case "value_error": return (it.msg ?? "qiymat noto'g'ri").replace(/^Value error,\s*/i, "");
+    default: return "qiymat noto'g'ri";
+  }
+}
+
+/** Maydon nomi: `loc` ning oxirgi matnli qismi ("body"/"query" dan tashqari); indekslar `[n]` (1 dan). */
+function fieldName(loc: (string | number)[] | undefined): string {
+  const parts = (loc ?? []).filter((p) => p !== "body" && p !== "query" && p !== "path" && p !== "form");
+  if (!parts.length) return "";
+  return parts.map((p) => (typeof p === "number" ? `[${p + 1}]` : p)).join(".").replace(/\.\[/g, "[");
+}
+
+/** Server javobidagi `detail` → foydalanuvchi o'qiy oladigan matn. Xom JSON hech qachon ko'rsatilmaydi. */
+export function apiErrorMessage(status: number, detail: unknown, statusText = ""): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    const items = (detail as ValidationItem[]).slice(0, 5).map((it) => {
+      const f = fieldName(it.loc);
+      return f ? `«${f}» — ${validationText(it)}` : validationText(it);
+    });
+    const more = detail.length > 5 ? ` (yana ${detail.length - 5} ta)` : "";
+    return `Ma'lumot noto'g'ri: ${items.join("; ")}${more}`;
+  }
+  if (detail && typeof detail === "object") {
+    const o = detail as Record<string, unknown>;
+    for (const k of ["message", "detail", "error", "reason"]) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+  }
+  return STATUS_TEXT[status] ?? (status >= 500 ? "Server xatosi" : statusText || `Xato (${status})`);
+}
+
+/** Tarmoq so'rovi: token, vaqt chegarasi, chaqiruvchi signali, 401 da bir marta refresh. Javob `ok` bo'lmasa —
+ * ApiError (o'zbekcha matn). Muvaffaqiyatda xom Response (json/blob/arrayBuffer — chaqiruvchida). */
+async function send(path: string, init: RequestOptions = {}, retried = false): Promise<Response> {
+  const { timeoutMs: tm, ...rest } = init;
+  const headers = new Headers(rest.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+  if (rest.body && !(rest.body instanceof FormData) && !(rest.body instanceof URLSearchParams) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(path, { ...init, headers });
+  const timeoutMs = tm ?? (rest.body instanceof FormData ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = timeoutMs > 0 ? setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs) : undefined;
+  const outer = rest.signal;
+  const onOuterAbort = () => ctrl.abort();
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  let res: Response;
+  try {
+    res = await fetch(path, { ...rest, headers, signal: ctrl.signal });
+  } catch (e) {
+    if (timedOut) throw new ApiError(0, `Server ${Math.round(timeoutMs / 1000)} s ichida javob bermadi — tarmoqni tekshirib, qayta urinib ko'ring`, false, undefined, "timeout");
+    if (outer?.aborted) throw e; // chaqiruvchi o'zi bekor qildi — AbortError o'zgarishsiz
+    throw new ApiError(0, "Server bilan aloqa yo'q — tarmoq yoki server ishlamayapti", false, undefined, "network");
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onOuterAbort);
+  }
   if (res.status === 401 && !res.headers.get("X-MFA-Required") && !path.startsWith("/api/auth/login")) {
     // Access token muddati tugadi (15 daqiqa) — cookie bilan yangilab, so'rovni bir marta takrorlaymiz
-    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return request<T>(path, init, true);
+    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return send(path, init, true);
     setToken(null);
     onUnauthorized?.();
   }
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail: unknown;
     try {
-      const j = await res.json();
-      detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      detail = ((await res.json()) as { detail?: unknown }).detail;
     } catch {
-      /* matn emas */
+      /* matn/HTML javob — detail yo'q */
     }
-    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"));
+    throw new ApiError(res.status, apiErrorMessage(res.status, detail, res.statusText), res.status === 401 && !!res.headers.get("X-MFA-Required"), detail);
   }
+  return res;
+}
+
+async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+  const res = await send(path, init);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** Blob ni fayl sifatida saqlash. URL darhol emas, brauzer yuklashni boshlab olgach (60 s) bo'shatiladi —
+ * darhol `revokeObjectURL` ba'zi brauzerlarda (Firefox/Safari) yuklashni bekor qiladi (FE-05). */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -853,12 +984,10 @@ export const api = {
   saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[]; scheme?: Scheme | null; pen_groups?: PenGroup[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),
   async downloadCsv(path: string, filename: string) {
-    // Bearer bilan yuklab olish (URL da token yo'q): blob → <a download>
-    const r = await fetch(path, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
-    if (!r.ok) throw new Error(`Yuklab bo'lmadi (${r.status})`);
-    const url = URL.createObjectURL(await r.blob());
-    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+    // Bearer bilan yuklab olish (URL da token yo'q): umumiy so'rov yo'li — 401 da refresh, vaqt chegarasi,
+    // o'zbekcha xato; fayl katta bo'lishi mumkin — chegara yuklash kabi
+    const r = await send(path, { timeoutMs: UPLOAD_TIMEOUT_MS });
+    saveBlob(await r.blob(), filename);
   },
   // Raqamli egizak, boshqaruv, jurnal, aktivlar, vaqt mashinasi
   twin: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin`),
