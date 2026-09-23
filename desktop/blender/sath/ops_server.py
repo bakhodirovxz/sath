@@ -191,6 +191,46 @@ class SATH_OT_open_version(bpy.types.Operator):
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
 
+class SATH_OT_pull_head(bpy.types.Operator):
+    """Commit rad etildi (model serverda yangilangan): joriy IFC zaxira nusxaga saqlanadi, eng oxirgi versiya
+    ochiladi — o'zgarishlarni qayta kiritib commit qiling (VCS-01)"""
+
+    bl_idname = "sath.pull_head"
+    bl_label = "Eng oxirgi versiyani yuklab olish"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and context.scene.ges.head_conflict_id >= 0 and bool(context.scene.ges.model_id)
+
+    def execute(self, context):
+        import time
+
+        s = context.scene.ges
+        model_id, head_id = s.model_id, s.head_conflict_id
+        snap = props.snapshot(s)
+
+        def do():
+            c = session.client()
+            versions = c.versions(model_id)
+            head = next((v for v in versions if v["id"] == head_id), None) if head_id else None
+            head = head or max(versions, key=lambda v: v["number"])
+            backup = None
+            if ifc.file() is not None:  # lokal o'zgarishlar yo'qolmasin
+                backup = ifc.save(flows.cache_dir() / f"lokal_m{model_id}_{time.strftime('%Y%m%d_%H%M%S')}.ifc")
+            path = flows.download_version(c, {"id": model_id}, {"id": head["id"], "number": head["number"]})
+            if ifc.load(path):
+                props.restore(bpy.context.scene.ges, snap)
+            sc = bpy.context.scene.ges
+            sc.version_id, sc.version_number, sc.head_conflict_id = head["id"], head["number"], -1
+            sc.status = f"v{head['number']} ochildi" + (f"; lokal nusxa: {backup}" if backup else "")
+            self.report({"INFO"}, sc.status)
+
+        if not guard(self, do):
+            return {"CANCELLED"}
+        bpy.ops.sath.refresh_versions()
+        return {"FINISHED"}
+
+
 def unassigned(context) -> list[str]:
     """Sahnadagi IFC ga kirmagan (commit ga tushmaydigan) MESH/CURVE obyektlar; yordamchilar (suv tekisligi,
     yer, sim animatsiyasi, `sath_aux`) hisobga olinmaydi (CAD-01)."""
@@ -267,14 +307,24 @@ class SATH_OT_commit(bpy.types.Operator):
                 assign_imported([bpy.data.objects[n] for n in unassigned(context) if n in bpy.data.objects])
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
-            r = flows.commit(
-                session.client(),
-                s.model_id,
-                path,
-                s.commit_message.strip(),
-                s.version_id or None,
-                s.submit_after_commit,
-            )
+            try:
+                r = flows.commit(
+                    session.client(),
+                    s.model_id,
+                    path,
+                    s.commit_message.strip(),
+                    s.version_id or None,
+                    s.submit_after_commit,
+                )
+            except ServerError as e:
+                head = flows.head_conflict(e)
+                if head is None:
+                    raise
+                # VCS-01: ota versiya eskirgan — jimgina «vilka» qilinmaydi; foydalanuvchi eng oxirgisini oladi
+                s.head_conflict_id = head
+                s.status = flows.conflict_text(e)
+                raise ServerError(e.status, s.status) from None
+            s.head_conflict_id = -1
             v = r["version"]
             s.version_id, s.version_number = v["id"], v["number"]
             s.status = f"v{v['number']} yuklandi" + (" va tasdiqqa yuborildi" if r["cr"] else "")
@@ -369,7 +419,7 @@ class SATH_OT_mark_read(bpy.types.Operator):
 
 CLASSES = (
     SATH_OT_connect, SATH_OT_download_update, SATH_OT_logout, SATH_OT_refresh_projects, SATH_OT_refresh_models,
-    SATH_OT_refresh_versions, SATH_OT_create_model, SATH_OT_open_version, SATH_OT_commit,
+    SATH_OT_refresh_versions, SATH_OT_create_model, SATH_OT_open_version, SATH_OT_commit, SATH_OT_pull_head,
     SATH_OT_submit, SATH_OT_open_web, SATH_OT_notifications, SATH_OT_mark_read,
 )  # fmt: skip
 

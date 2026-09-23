@@ -15,10 +15,12 @@ from urllib import error, parse, request
 
 
 class ServerError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, data: dict | None = None, headers: dict | None = None):
         super().__init__(f"{status}: {message}")
         self.status = status
         self.message = message
+        self.data = data or {}  # javob JSON (masalan 409: {detail, head_id})
+        self.headers = headers or {}  # javob sarlavhalari (masalan X-Head-Id)
 
 
 class GesClient:
@@ -62,11 +64,15 @@ class GesClient:
                 return self._request(
                     method, path, body=body, content_type=content_type, params=params, raw=raw, timeout=timeout, _retry=False
                 )
+            payload: dict = {}
             try:
-                detail = json.loads(e.read()).get("detail", e.reason)
+                payload = json.loads(e.read())
+                detail = payload.get("detail", e.reason) if isinstance(payload, dict) else e.reason
             except Exception:
                 detail = e.reason
-            raise ServerError(e.code, str(detail)) from None
+            hdrs = dict(e.headers.items()) if e.headers else {}
+            data = payload if isinstance(payload, dict) else {}
+            raise ServerError(e.code, str(detail), data, hdrs) from None
         except error.URLError as e:
             raise ServerError(0, f"Serverga ulanib bo'lmadi: {e.reason}") from None
 

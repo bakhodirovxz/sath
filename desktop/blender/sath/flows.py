@@ -451,3 +451,26 @@ def unassigned_text(names: list[str], limit: int = 4) -> str:
         return ""
     head = ", ".join(names[:limit]) + (f" … (+{len(names) - limit})" if len(names) > limit else "")
     return f"IFC ga kirmagan obyektlar: {len(names)} — {head}"
+
+
+# --- VCS-01: commit eskirgan ota versiyaga — server 409 (head yangilangan) ---------------------------------------
+
+
+def head_conflict(err: ServerError) -> int | None:
+    """409 javobidan serverdagi eng oxirgi versiya id si (JSON head_id yoki X-Head-Id sarlavhasi); boshqa xato —
+    None. Retry tugagan 409 da head_id bo'lmasligi mumkin — 0 qaytadi (baribir «yangilang»)."""
+    if getattr(err, "status", None) != 409:
+        return None
+    raw = (getattr(err, "data", None) or {}).get("head_id")
+    if raw is None:
+        hdrs = {k.lower(): v for k, v in (getattr(err, "headers", None) or {}).items()}
+        raw = hdrs.get("x-head-id")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def conflict_text(err: ServerError) -> str:
+    base = str(getattr(err, "message", "") or "Model yangilangan — avval yangilang")
+    return f"{base}. «Eng oxirgi versiyani yuklab olish» → o'zgarishlarni qayta kiritib commit qiling"

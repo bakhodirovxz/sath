@@ -251,3 +251,55 @@ def test_manifest_validates_with_blender(tmp_path):
         env={**os.environ, "BLENDER_USER_RESOURCES": str(tmp_path)},  # foydalanuvchi profiliga tegmaydi
     )  # fmt: skip
     assert "Success parsing TOML" in r.stdout + r.stderr, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+# --- VCS-01: commit 409 (ota versiya eskirgan) — javobni o'qish ----------------------------------------------------
+
+
+def _serve_409(body: bytes, headers: dict):
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            self.send_response(409)
+            self.send_header("Content-Type", "application/json")
+            for k, v in headers.items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+@pytest.mark.parametrize(
+    ("body", "headers", "head"),
+    [
+        (b'{"detail": "Model yangilangan \u2014 avval yangilang", "head_id": 42}', {"X-Head-Id": "42"}, 42),
+        (b'{"detail": "Model yangilangan"}', {"X-Head-Id": "7"}, 7),  # faqat sarlavhada
+        (b'{"detail": "Versiya yaratib bo\'lmadi, qayta urining"}', {}, 0),  # retry tugagan 409
+    ],
+)
+def test_commit_409_head_conflict_parsed(tmp_path, body, headers, head):
+    from sath import flows
+    from sath.shared.server_client import GesClient, ServerError
+
+    srv = _serve_409(body, headers)
+    try:
+        ifc = tmp_path / "a.ifc"
+        ifc.write_text("ISO-10303-21;")
+        c = GesClient(f"http://127.0.0.1:{srv.server_address[1]}", token="t")
+        with pytest.raises(ServerError) as ei:
+            flows.commit(c, 1, ifc, "x", 3, False)
+    finally:
+        srv.shutdown()
+    e = ei.value
+    assert e.status == 409 and flows.head_conflict(e) == head
+    assert "Eng oxirgi versiyani yuklab olish" in flows.conflict_text(e)
+    assert flows.head_conflict(ServerError(500, "x")) is None

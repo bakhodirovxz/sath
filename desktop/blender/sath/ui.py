@@ -89,6 +89,10 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
         row = lay.row(align=True)
         row.operator("sath.open_version", icon="IMPORT")
         row.operator("sath.commit", icon="EXPORT")
+        if s.head_conflict_id >= 0:  # VCS-01: commit 409 — model serverda yangilangan
+            box = lay.box()
+            box.label(text="Model serverda yangilangan — commit qabul qilinmadi", icon="ERROR")
+            box.operator("sath.pull_head", icon="IMPORT")
         row = lay.row(align=True)
         row.operator("sath.submit", icon="CHECKMARK")
         row.operator("sath.open_web", icon="URL")

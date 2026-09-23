@@ -69,6 +69,7 @@ class GesScene(bpy.types.PropertyGroup):
     model_id: bpy.props.IntProperty(default=0)
     version_id: bpy.props.IntProperty(default=0)
     version_number: bpy.props.IntProperty(default=0)
+    head_conflict_id: bpy.props.IntProperty(default=-1)  # VCS-01: commit 409 — serverdagi eng oxirgi versiya (-1 yo'q)
     model_name: bpy.props.StringProperty(default="")
     projects: bpy.props.CollectionProperty(type=GesListItem)
     projects_index: bpy.props.IntProperty(default=-1, update=_on_project)
