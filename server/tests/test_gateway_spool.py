@@ -210,3 +210,115 @@ def test_soe_goes_through_spool_to_soe_endpoint(tmp_path):
     assert by_url["soe"] == [{"point": "AGG1.PROT", "state": "TRIP", "ts": "2026-09-21T10:00:00.012+00:00", "source": "iec104"}]
     assert [i["key"] for i in by_url["readings"]] == ["A"]
     p.spool.close()
+
+
+def _scripted(handler):
+    """_post o'rniga: handler(url, items) → (status, body)."""
+    sent = []
+
+    def post(url, json=None, headers=None, timeout=None):
+        sent.append((url, list(json)))
+        st, body = handler(url, list(json))
+        if st == -1:
+            raise _RequestException("tarmoq yo'q")
+        return _Resp(st, body)
+
+    return post, sent
+
+
+def test_4xx_splits_or_drops_batch_instead_of_retrying_forever(tmp_path, monkeypatch):
+    """SCADA-05: 413 → bo'lib yuboriladi; 422 → yaroqsiz yozuv ajratilib tashlanadi, qolgani yetib boradi;
+    400/404 → partiya log bilan tashlanadi; spool tiqilib qolmaydi."""
+    gw = _load_gateway()
+    _mode.update(fail=False, status=200)
+
+    def handler(url, items):
+        if len(items) > 4:
+            return 413, {"detail": "katta"}
+        if any(i["key"] == "BAD" for i in items):
+            return 422, {"detail": "yaroqsiz"}
+        return 200, {"accepted": len(items), "unknown": [], "rejected": [], "bad": 0}
+
+    post, sent = _scripted(handler)
+    monkeypatch.setattr(gw.requests, "post", post)
+    p = gw.Pusher(_cfg(tmp_path, batch_size=10))
+    items = [{"key": f"K{i}", "value": i} for i in range(9)]
+    items.insert(5, {"key": "BAD", "value": 1})
+    p.push(items)
+    delivered = [i["key"] for url, b in sent for i in b if handler(url, b)[0] == 200]
+    assert sorted(delivered) == sorted(f"K{i}" for i in range(9))  # hammasi yetib bordi
+    assert p.spool.size() == 0 and p.dropped_4xx == 1 and p.backoff_s == 0.0
+    p.spool.close()
+    # 400 (partiya tarkibiga bog'liq emas) — bo'linmaydi, bir marta tashlanadi
+    post, sent = _scripted(lambda url, items: (400, {"detail": "x"}))
+    monkeypatch.setattr(gw.requests, "post", post)
+    p = gw.Pusher(_cfg(tmp_path, spool_path=str(tmp_path / "s400.db")))
+    p.push([{"key": f"K{i}", "value": i} for i in range(6)])
+    assert len(sent) == 1 and p.spool.size() == 0 and p.dropped_4xx == 6
+    p.spool.close()
+
+
+def test_retryable_statuses_keep_spool(tmp_path, monkeypatch):
+    """5xx, 401/403/429, tarmoq xatosi — spool saqlanadi, backoff; keyin hammasi yetib boradi."""
+    gw = _load_gateway()
+    for st in (500, 503, 401, 403, 429, -1):
+        post, sent = _scripted(lambda url, items, st=st: (st, {"detail": "x"}))
+        monkeypatch.setattr(gw.requests, "post", post)
+        p = gw.Pusher(_cfg(tmp_path, spool_path=str(tmp_path / f"r{st}.db")))
+        p.push([{"key": "A", "value": 1}, {"key": "B", "value": 2}])
+        assert p.spool.size() == 2 and p.backoff_s == 2.0 and p.dropped_4xx == 0, st
+        post, sent = _scripted(lambda url, items: (200, {"accepted": len(items)}))
+        monkeypatch.setattr(gw.requests, "post", post)
+        p.next_try = 0
+        p.flush()
+        assert p.spool.size() == 0, st
+        p.spool.close()
+
+
+def test_partial_success_not_resent_after_retryable_error(tmp_path, monkeypatch):
+    """Bo'lingan partiyaning yuborilgan yarmi spooldan o'chadi — keyingi urinishda takrorlanmaydi."""
+    gw = _load_gateway()
+    state = {"n": 0}
+
+    def handler(url, items):
+        if len(items) > 2:
+            return 413, {}
+        state["n"] += 1
+        return (200, {"accepted": len(items)}) if state["n"] == 1 else (503, {})
+
+    post, sent = _scripted(handler)
+    monkeypatch.setattr(gw.requests, "post", post)
+    p = gw.Pusher(_cfg(tmp_path))
+    p.push([{"key": f"K{i}", "value": i} for i in range(4)])
+    assert p.spool.size() == 2  # birinchi yarmi yetib bordi, ikkinchisi spoolda
+    post, sent = _scripted(lambda url, items: (200, {"accepted": len(items)}))
+    monkeypatch.setattr(gw.requests, "post", post)
+    p.next_try = 0
+    p.flush()
+    assert [i["key"] for _, b in sent for i in b] == ["K2", "K3"] and p.spool.size() == 0
+    p.spool.close()
+
+
+def test_30000_row_backlog_fully_delivered(tmp_path, monkeypatch):
+    """SCADA-05 qabul: 30 000 yozuvli spool — server 10 000 dan kattasini 413 qilsa ham hammasi yetib boradi."""
+    gw = _load_gateway()
+    got = []
+
+    def handler(url, items):
+        if len(items) > 10000:
+            return 413, {}
+        got.extend(items)
+        return 200, {"accepted": len(items)}
+
+    post, _ = _scripted(handler)
+    monkeypatch.setattr(gw.requests, "post", post)
+    _mode.update(fail=True)
+    p = gw.Pusher(_cfg(tmp_path, batch_size=20000, max_batches_per_cycle=5))
+    monkeypatch.setattr(gw.requests, "post", lambda *a, **k: (_ for _ in ()).throw(_RequestException("yo'q")))
+    p.push([{"key": f"K{i}", "value": i} for i in range(30000)])
+    assert p.spool.size() == 30000
+    monkeypatch.setattr(gw.requests, "post", post)
+    p.next_try = 0
+    p.flush()
+    assert p.spool.size() == 0 and len(got) == 30000
+    p.spool.close()

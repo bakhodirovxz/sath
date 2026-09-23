@@ -754,10 +754,20 @@ class Spool:
         self.conn.close()
 
 
+# Qayta urinish kerak bo'lgan 4xx (kalit/ruxsat/tezlik/timeout) — qolgan 4xx partiya tarkibiga bog'liq
+RETRY_4XX = (401, 403, 408, 429)
+SPLIT_4XX = (413, 422)  # hajm / yozuv validatsiyasi — bo'lib yuborish yordam beradi
+
+
 class Pusher:
     """O'lchovlarni spool orqali serverga yuboradi: har siklda eng eski partiyalar, xatoda eksponensial
     kechikish (2…300 s). Diagnostika teglari (`diag: true`): GW.spool_rows, GW.spool_oldest_age_s,
-    GW.spool_dropped, GW.clock_offset_s (server Date sarlavhasi bilan farq; NTP tekshiruvi o'rnini bosadi)."""
+    GW.spool_dropped, GW.clock_offset_s (server Date sarlavhasi bilan farq; NTP tekshiruvi o'rnini bosadi).
+
+    SCADA-05: 5xx, tarmoq xatosi va 401/403/408/429 — qayta urinish (backoff, spool saqlanadi). 413/422 —
+    partiya ikkiga bo'linib qayta yuboriladi (yakka yozuv ham rad etilsa — log bilan tashlanadi); boshqa
+    4xx (400/404/…) — partiya log bilan tashlanadi. Shu tariqa bitta yaroqsiz yozuv spoolni abadiy
+    to'xtatib qo'ymaydi. Yuborilgan/tashlangan bo'laklar darhol spooldan o'chiriladi (takror yuborilmaydi)."""
 
     def __init__(self, cfg: dict):
         self.url = cfg["server"].rstrip("/") + f"/api/projects/{cfg['project_id']}/readings"
@@ -777,6 +787,7 @@ class Pusher:
         self.backoff_s = 0.0
         self.next_try = 0.0
         self.clock_offset_s: float | None = None
+        self.dropped_4xx = 0  # server rad etgani uchun tashlangan yozuvlar soni
 
     @staticmethod
     def sanitize(items: list[dict]) -> list[dict]:
@@ -814,6 +825,39 @@ class Pusher:
         self.spool.add(items + [{"_soe": True, **e} for e in (soe or [])])
         self.flush()
 
+    def _send(self, url: str, rows: list[tuple[int, dict]], label: str) -> dict:
+        """Bo'lakni yuboradi va spooldan o'chiradi (qabul qilingan yoki qat'iy rad etilgan). Qayta urinish
+        kerak bo'lsa (5xx, tarmoq, RETRY_4XX) — RequestException, bo'lak spoolda qoladi."""
+        ids, items = [i for i, _ in rows], [b for _, b in rows]
+        r = requests.post(url, json=items, headers=self.headers, timeout=15, **self.tls)
+        if url == self.url:
+            self._check_clock(r)
+        sc = r.status_code
+        if 400 <= sc < 500 and sc not in RETRY_4XX:
+            if sc in SPLIT_4XX and len(rows) > 1:
+                mid = len(rows) // 2
+                log.warning("server %d (%s): partiya (%d) ikkiga bo'linadi", sc, label, len(rows))
+                a = self._send(url, rows[:mid], label)
+                b = self._send(url, rows[mid:], label)
+                return {
+                    "accepted": a.get("accepted", 0) + b.get("accepted", 0),
+                    "unknown": (a.get("unknown") or []) + (b.get("unknown") or []),
+                    "rejected": (a.get("rejected") or []) + (b.get("rejected") or []),
+                }
+            log.error(
+                "server %d (%s): %d yozuv tashlandi (qayta yuborilmaydi): %s | %s",
+                sc, label, len(rows), json.dumps(items[:3], ensure_ascii=False)[:300], r.text[:300],
+            )
+            self.dropped_4xx += len(rows)
+            self.spool.ack(ids)
+            return {"accepted": 0, "unknown": [], "rejected": []}
+        r.raise_for_status()
+        self.spool.ack(ids)
+        try:
+            return r.json()
+        except ValueError:
+            return {}
+
     def flush(self) -> None:
         if time.time() < self.next_try:
             return
@@ -821,38 +865,22 @@ class Pusher:
             ids, batch = self.spool.batch(self.batch_size)
             if not ids:
                 return
-            readings = [b for b in batch if not b.get("_soe")]
-            soe = [{k: v for k, v in b.items() if k != "_soe"} for b in batch if b.get("_soe")]
+            soe = [(i, {k: v for k, v in b.items() if k != "_soe"}) for i, b in zip(ids, batch, strict=True) if b.get("_soe")]
+            readings = [(i, b) for i, b in zip(ids, batch, strict=True) if not b.get("_soe")]
             try:
                 if soe:
-                    rs = requests.post(self.soe_url, json=soe, headers=self.headers, timeout=15, **self.tls)
-                    if rs.status_code == 422:
-                        log.error("server 422 (SOE): partiya (%d) tashlandi: %s", len(soe), rs.text[:300])
-                    else:
-                        rs.raise_for_status()
-                        log.info("SOE yuborildi: %d (qabul %d)", len(soe), rs.json().get("accepted", 0))
-                if not readings:
-                    self.spool.ack(ids)
-                    self.backoff_s = 0.0
-                    continue
-                r = requests.post(self.url, json=readings, headers=self.headers, timeout=15, **self.tls)
-                self._check_clock(r)
-                if r.status_code == 422:
-                    # Validatsiya xatosi — partiya hech qachon qabul qilinmaydi: o'chirib, loglaymiz
-                    log.error("server 422: partiya (%d) tashlandi: %s", len(readings), r.text[:300])
-                    self.spool.ack(ids)
-                    continue
-                r.raise_for_status()
-                resp = r.json()
-                if resp.get("unknown"):
-                    log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
-                if resp.get("rejected"):
-                    log.warning("server rad etdi: %s", resp["rejected"][:10])
-                log.info("yuborildi: %d (qabul %d, spoolda %d)", len(readings), resp.get("accepted", 0), self.spool.size() - len(ids))
-                self.spool.ack(ids)
+                    rs = self._send(self.soe_url, soe, "SOE")
+                    log.info("SOE yuborildi: %d (qabul %d)", len(soe), rs.get("accepted", 0))
+                if readings:
+                    resp = self._send(self.url, readings, "o'lchov")
+                    if resp.get("unknown"):
+                        log.warning("serverda noma'lum kalitlar: %s", resp["unknown"][:10])
+                    if resp.get("rejected"):
+                        log.warning("server rad etdi: %s", resp["rejected"][:10])
+                    log.info("yuborildi: %d (qabul %d, spoolda %d)", len(readings), resp.get("accepted", 0), self.spool.size())
                 self.backoff_s = 0.0
             except requests.RequestException as e:
-                self.spool.fail(ids)
+                self.spool.fail(ids)  # yuborilgan bo'laklar allaqachon o'chirilgan — qolgani qayta urinadi
                 self.backoff_s = min(max(self.backoff_s * 2, 2.0), 300.0)
                 self.next_try = time.time() + self.backoff_s
                 log.warning(
