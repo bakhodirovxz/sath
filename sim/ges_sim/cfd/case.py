@@ -270,7 +270,7 @@ touch DONE
 
 @dataclass
 class SpillwayCase:
-    """Keng ostonali suv tashlagich ustidan oqim: 2D, interFoam (VOF), laminar."""
+    """Keng ostonali suv tashlagich ustidan oqim: 2D, interFoam (VOF), RAS k-omega SST (SIM-07)."""
 
     crest_height_m: float = 3.0  # ostona balandligi (kanal tubidan)
     head_m: float = 1.0  # ostona ustidagi napor (boshlang'ich suv sathi)
@@ -419,11 +419,16 @@ divSchemes
     div(rhoPhi,U)  Gauss linearUpwind grad(U);
     div(phi,alpha) Gauss vanLeer;
     div(phirb,alpha) Gauss linear;
+    div(phi,k)     Gauss upwind;
+    div(phi,omega) Gauss upwind;
+    div(rhoPhi,k)     Gauss upwind;
+    div(rhoPhi,omega) Gauss upwind;
     div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
 }
 laplacianSchemes { default Gauss linear corrected; }
 interpolationSchemes { default linear; }
 snGradSchemes { default corrected; }
+wallDist { method meshWave; }
 """,
             ),
         )
@@ -439,8 +444,8 @@ solvers
     "pcorr.*" { solver PCG; preconditioner DIC; tolerance 1e-6; relTol 0; }
     p_rgh { solver PCG; preconditioner DIC; tolerance 1e-7; relTol 0.05; }
     p_rghFinal { $p_rgh; relTol 0; }
-    "(U|k|epsilon)" { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0; }
-    "(U|k|epsilon)Final" { $U; relTol 0; }
+    "(U|k|omega)" { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0; }
+    "(U|k|omega)Final" { $U; relTol 0; }
 }
 PIMPLE { momentumPredictor no; nOuterCorrectors 1; nCorrectors 3; nNonOrthogonalCorrectors 0; }
 relaxationFactors { equations { ".*" 1; } }
@@ -470,7 +475,60 @@ sigma 0.07;
         )
         _w(
             case / "constant/turbulenceProperties",
-            _dict("dictionary", "turbulenceProperties", "simulationType laminar;"),
+            _dict(
+                "dictionary",
+                "turbulenceProperties",
+                "simulationType RAS;\nRAS { RASModel kOmegaSST; turbulence on; printCoeffs on; }",
+            ),
+        )
+        # SIM-07: prototip Reynolds soni (Re = q/ν ~ 10^6) — turbulent oqim; k-ω SST + devor funksiyalari.
+        # Boshlang'ich: kirish tezligi U = q / y0, intensivlik I = 5 %, aralashish uzunligi l = 0.07·y0.
+        u_in = max(self.q / y0, 1e-3)
+        k0 = max(1.5 * (0.05 * u_in) ** 2, 1e-8)
+        omega0 = k0**0.5 / (0.09**0.25 * 0.07 * y0)
+        for name, val, dims, wall in (
+            ("k", k0, "[0 2 -2 0 0 0 0]", "kqRWallFunction"),
+            ("omega", omega0, "[0 0 -1 0 0 0 0]", "omegaWallFunction"),
+        ):
+            _w(
+                case / f"0/{name}",
+                _dict(
+                    "volScalarField",
+                    name,
+                    f"""
+dimensions {dims};
+internalField uniform {_f(val):.6g};
+boundaryField
+{{
+    inlet      {{ type fixedValue; value uniform {_f(val):.6g}; }}
+    outlet     {{ type inletOutlet; inletValue uniform {_f(val):.6g}; value uniform {_f(val):.6g}; }}
+    atmosphere {{ type inletOutlet; inletValue uniform {_f(val):.6g}; value uniform {_f(val):.6g}; }}
+    bottom     {{ type {wall}; value uniform {_f(val):.6g}; }}
+    weir       {{ type {wall}; value uniform {_f(val):.6g}; }}
+    frontAndBack {{ type empty; }}
+}}
+""",
+                ),
+            )
+        _w(
+            case / "0/nut",
+            _dict(
+                "volScalarField",
+                "nut",
+                """
+dimensions [0 2 -1 0 0 0 0];
+internalField uniform 0;
+boundaryField
+{
+    inlet      { type calculated; value uniform 0; }
+    outlet     { type calculated; value uniform 0; }
+    atmosphere { type calculated; value uniform 0; }
+    bottom     { type nutkWallFunction; value uniform 0; }
+    weir       { type nutkWallFunction; value uniform 0; }
+    frontAndBack { type empty; }
+}
+""",
+            ),
         )
         _w(
             case / "0/alpha.water.orig",

@@ -262,3 +262,23 @@ def test_docker_command_defaults():
 
     cmd = runner.docker_command(Path("/tmp/c"), "sath-cfd-x", image="img", cpus=2, memory="8g", user=None)
     assert "--user" not in cmd and cmd[cmd.index("--pids-limit") + 1] == "2048" and "no-new-privileges" in cmd
+
+
+def test_spillway_is_turbulent_komega_sst(tmp_path):
+    """SIM-07: suv tashlagich — laminar emas, RAS k-omega SST (prototip Re ~ 10^6), devor funksiyalari bilan."""
+    case = build_case({"kind": "spillway", "crest_height_m": 3, "head_m": 1.2}, tmp_path)
+    tp = (tmp_path / "constant/turbulenceProperties").read_text()
+    assert "simulationType RAS;" in tp and "RASModel kOmegaSST;" in tp and "laminar" not in tp
+    k, omega, nut = ((tmp_path / f"0/{n}").read_text() for n in ("k", "omega", "nut"))
+    assert "kqRWallFunction" in k and "omegaWallFunction" in omega and "nutkWallFunction" in nut
+    for text in (k, omega, nut):
+        for patch in ("inlet", "outlet", "atmosphere", "bottom", "weir", "frontAndBack"):
+            assert patch in text
+    assert "dimensions [0 2 -2 0 0 0 0];" in k and "dimensions [0 0 -1 0 0 0 0];" in omega
+    u_in = case.q / (3 + 1.2)
+    k0 = 1.5 * (0.05 * u_in) ** 2
+    assert f"uniform {k0:.6g};" in k
+    fs = (tmp_path / "system/fvSchemes").read_text()
+    assert "div(phi,k)" in fs and "div(phi,omega)" in fs and "wallDist { method meshWave; }" in fs
+    sol = (tmp_path / "system/fvSolution").read_text()
+    assert '"(U|k|omega)"' in sol and '"(U|k|omega)Final"' in sol

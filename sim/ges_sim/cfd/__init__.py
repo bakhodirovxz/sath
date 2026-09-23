@@ -2,7 +2,7 @@
 
 Ikki shablon:
 - penstock  — bosimli quvur ichidagi oqim, o'q-simmetrik (wedge), simpleFoam + k-epsilon.
-- spillway  — suv tashlagich ustidan erkin sirtli oqim, 2D, interFoam (VOF).
+- spillway  — suv tashlagich ustidan erkin sirtli oqim, 2D, interFoam (VOF) + k-omega SST.
 
 OpenFOAM (v2406, opencfd) lokal yoki Docker orqali ishlaydi: runner.py.
 """
