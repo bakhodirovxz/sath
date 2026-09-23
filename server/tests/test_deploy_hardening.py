@@ -170,3 +170,14 @@ def test_backup_fails_loudly_when_volume_missing(tmp_path):
     assert "sath_ges_data" in r.stderr and "topilmadi" in r.stderr
     assert not (tmp_path / "out").exists() or not any((tmp_path / "out").iterdir())
     assert "run" not in calls.read_text(encoding="utf-8")  # hech qanday konteyner ishga tushmadi
+
+
+def test_bind_default_loopback_and_caddy_csp_same_host():
+    """OPS-01: 8000 port default faqat 127.0.0.1 (tashqariga — Caddy HTTPS); Caddy CSP ws/wss faqat shu host."""
+    ports = _compose()["services"]["ges"]["ports"]
+    assert ports == ["${GES_BIND:-127.0.0.1}:${GES_PORT:-8000}:8000"]
+    env = (DEPLOY / ".env.example").read_text(encoding="utf-8")
+    assert "\nGES_BIND=127.0.0.1" in env
+    for name in ("Caddyfile", "Caddyfile.ha"):
+        caddy = (DEPLOY / name).read_text(encoding="utf-8")
+        assert "connect-src 'self' wss://{host} blob: data:;" in caddy and " ws: " not in caddy

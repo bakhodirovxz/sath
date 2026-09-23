@@ -7,7 +7,7 @@ Talab: Linux server (yoki Windows Server + Docker Desktop), 4+ CPU, 8+ GB RAM, 1
 ```bash
 git clone <repo> sath && cd sath/deploy
 cp .env.example .env            # GES_ADMIN_PASSWORD, GES_PORT, GES_PUBLIC_URL ni to'ldiring
-docker compose up -d --build    # server + web: http://<server>:8000
+docker compose --profile https up -d --build   # server + web: https://<GES_DOMAIN> (8000 — faqat 127.0.0.1)
 docker compose logs ges         # admin paroli bo'sh qoldirilgan bo'lsa — fayl yo'li shu yerda
 ```
 
@@ -37,7 +37,7 @@ o'rnating (`docker compose exec caddy cat /data/caddy/pki/authorities/local/root
 domen bo'lsa `tls internal` qatorini olib tashlang (Let's Encrypt). `.env` da `GES_PUBLIC_URL=https://<domen>`,
 `GES_BIND=127.0.0.1` (8000 port tashqariga ochilmaydi — TLS chegarasi aylanib o'tilmaydi) va
 `GES_RATE_TRUST_FORWARDED=true` (klient IP `X-Forwarded-For` dan — tezlik cheklovi uchun; Caddy siz **false**).
-Caddyfile HSTS, CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi.
+Caddyfile HSTS, CSP (`connect-src 'self' wss://{host}` — boshqa hostga ulanish yo'q), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` sarlavhalarini qo'shadi; ilova o'zi ham (Caddy siz) xuddi shu sarlavhalarni beradi (HSTS — HTTPS yoki ishonchli proksi `X-Forwarded-Proto: https` bo'lsa). `GES_BIND` default `127.0.0.1`.
 
 ## Ish navbati (simulyatsiya, fragments, geometriya)
 

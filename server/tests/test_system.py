@@ -262,3 +262,38 @@ def test_desktop_products_do_not_collide(client, users, admin, clean_desktop):
     r = client.post("/api/desktop/upload", data={"product": "freecad"},
                     files={"file": ("Sath-Blender-1.0.0-Windows-x86_64.zip", b"x")}, headers=admin)
     assert r.status_code == 400  # nomdagi mahsulot bilan mos emas
+
+
+def test_security_headers_on_api_and_spa(client, tmp_path, monkeypatch):
+    """OPS-01: ilovaning o'zi CSP (script-src 'self', connect-src faqat shu host), nosniff, X-Frame-Options,
+    Referrer-Policy beradi; HSTS faqat HTTPS (yoki ishonchli proksi) da."""
+    r = client.get("/api/health")
+    h = r.headers
+    assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
+    assert h["referrer-policy"] == "strict-origin-when-cross-origin"
+    csp = h["content-security-policy"]
+    assert "script-src 'self' 'wasm-unsafe-eval';" in csp and "frame-ancestors 'none'" in csp
+    connect = next(p for p in csp.split(";") if p.strip().startswith("connect-src")).split()[1:]
+    assert connect == ["'self'", "ws://testserver", "wss://testserver", "blob:", "data:"]  # boshqa host yo'q
+    assert "ws:" not in connect and "wss:" not in connect and "*" not in csp
+    assert "strict-transport-security" not in h  # http
+    r = client.get("https://testserver/api/health")
+    assert r.headers["strict-transport-security"].startswith("max-age=")
+    # soxta Host sarlavhasi CSP ga tushmaydi
+    r = client.get("/api/health", headers={"Host": "evil.uz; script-src *"})
+    assert "evil" not in r.headers["content-security-policy"]
+    # xato javoblarda ham (404)
+    assert client.get("/api/nomalum-yol").headers["x-frame-options"] == "DENY"
+
+
+def test_hsts_behind_trusted_proxy_only():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from ges_server.http_security import SecurityHeadersMiddleware
+
+    for trust, expect in ((False, False), (True, True)):
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, trust_forwarded=trust)
+        app.get("/x")(lambda: {"ok": 1})
+        r = TestClient(app).get("/x", headers={"X-Forwarded-Proto": "https"})
+        assert ("strict-transport-security" in r.headers) is expect

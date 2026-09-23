@@ -18,6 +18,7 @@ from .auth.router import router as auth_router
 from .auth.security import hash_password
 from .config import get_settings, write_private
 from .db import SessionLocal, assert_at_head, migrate
+from .http_security import SecurityHeadersMiddleware
 from .models.drafts_router import router as drafts_router
 from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
@@ -116,6 +117,8 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
     # L5: Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413 (multipart sarlavhalari uchun +1 MB)
     app.add_middleware(MaxBodyMiddleware, max_bytes=settings.max_upload_mb * 1024 * 1024 + (1 << 20))
+    # OPS-01: CSP, nosniff, X-Frame-Options, Referrer-Policy, HSTS (https) — Caddy siz ham
+    app.add_middleware(SecurityHeadersMiddleware, trust_forwarded=settings.rate_trust_forwarded)
 
     app.include_router(auth_router)
     app.include_router(projects_router)

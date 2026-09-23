@@ -1,7 +1,8 @@
 # Sath — kompaniya ichki server.
 #   cp .env.example .env   (parollarni o'zgartiring)
 #   docker compose up -d --build
-# Brauzer: http://<server>:8000
+# Brauzer: https://<GES_DOMAIN> (--profile https). 8000 port default faqat shu hostda (127.0.0.1, OPS-01) —
+#   Caddy siz tarmoqqa ochish kerak bo'lsa (faqat sinov/ichki): .env da GES_BIND=0.0.0.0
 #
 # Default: Postgres + TimescaleDB (historian uchun; D1). SQLite faqat ishlab chiqish/sinov uchun —
 #   .env da GES_DATABASE_URL=sqlite:////data/ges.db bersangiz postgres servisi kerak emas.
@@ -21,7 +22,7 @@ services:
     image: sath:latest
     restart: unless-stopped
     ports:
-      - "${GES_BIND:-0.0.0.0}:${GES_PORT:-8000}:8000"
+      - "${GES_BIND:-127.0.0.1}:${GES_PORT:-8000}:8000"
     env_file: .env
     environment:
       # .env dagi GES_DATABASE_URL ustun; berilmasa — compose dagi Postgres
