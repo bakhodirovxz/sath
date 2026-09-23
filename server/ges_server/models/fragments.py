@@ -81,7 +81,13 @@ def _convert_locked(ifc: Path, sha: str, out: Path, timeout_s: int) -> Path | No
         log.warning("fragments konvertatsiya xato (%s): %s", r.returncode, (stderr or stdout)[-800:])
         tmp.unlink(missing_ok=True)
         return None
-    os.replace(tmp, out)
+    try:
+        os.replace(tmp, out)
+    except OSError:
+        # Windows: parallel yozuvchi bir vaqtda almashtirayotgan bo'lsa — uning natijasi yetarli
+        tmp.unlink(missing_ok=True)
+        if not out.exists():
+            raise
     try:
         info = json.loads(stdout.strip().splitlines()[-1])
         log.info(
