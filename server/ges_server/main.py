@@ -25,6 +25,7 @@ from .models.underlays import router as underlays_router
 from .monitoring import background, backplane, mqtt_bridge
 from .monitoring.cm_router import router as cm_router
 from .monitoring.control import router as control_router
+from .monitoring.linkage import router as linkage_router
 from .monitoring.parts import router as parts_router
 from .monitoring.router import router as monitoring_router
 from .monitoring.twin_router import router as twin_router
@@ -126,6 +127,7 @@ def create_app() -> FastAPI:
     app.include_router(review_router)
     app.include_router(sim_catalog_router)  # /sim/catalog — /sim/{job_id} dan oldin
     app.include_router(sim_router)
+    app.include_router(linkage_router)  # SCADA-13: /sensors/unlinked
     app.include_router(monitoring_router)
     app.include_router(control_router)
     app.include_router(twin_router)

@@ -224,9 +224,7 @@ def create_job(model_id: int, body: SimCreate, user: CurrentUser, db: DB):
     so'rov shu ishni qaytaradi). Analitik turlar — ko'ruvchi ham (natija modelni o'zgartirmaydi; byudjet,
     vaqt chegarasi va foydalanuvchi/loyiha kvotasi bilan cheklangan); CFD — muhandis+."""
     ratelimit.check("sim", str(user.id), get_settings().rate_sim_per_min)
-    model = get_model_checked(
-        db, model_id, user, Role.engineer if body.kind == "cfd" else Role.viewer
-    )
+    model = get_model_checked(db, model_id, user, Role.engineer)  # SIM-02: har qanday ishga tushirish — muhandis+
     settings = get_settings()
     if body.idempotency_key:
         existing = db.query(SimJob).filter_by(author_id=user.id, idempotency_key=body.idempotency_key).one_or_none()

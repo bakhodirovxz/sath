@@ -1,14 +1,21 @@
 """Suv ombori suv balansi: kiruvchi sarf → sath, hajm, tashlama.
 
-V[t+1] = V[t] + (Q_in − Q_turb − Q_spill − Q_other) · dt
-Tashlama sathga bog'liq (Q ∝ H^1.5) — qadam ichida ikki iteratsiya (Puls): Q_spill qadam boshi va
-oxiri sathlari bo'yicha o'rtacha; massa balansi yopiq (`mass_residual_m3` natijada, ≈ 0), hajm
-manfiy bo'lsa xato (jim nol emas). Suv tashlagich formulasi — `spillway.py` (flood.py bilan bir xil).
+Sath-hovuz marshrutlash (level-pool routing), o'zgartirilgan Puls / "storage-indication" usuli
+(Chow, Maidment & Mays, "Applied Hydrology", 1988, 8.2 "Level pool routing"; USACE EM 1110-2-1417):
+    (2S₂/Δt + O₂) = (I₁ + I₂) + (2S₁/Δt − O₁)
+ya'ni dS/dt = I − O(S) ning trapetsiya (Krank–Nikolson) implicit sxemasi — 2-tartibli aniqlik,
+har qanday Δt da barqaror. Holatga bog'liq HAMMA hadlar O(S) ichida qadam boshi VA oxirida
+baholanadi: suv tashlagich Q(H), bug'lanish E·A(S) (yuza sathga bog'liq), filtratsiya, boshqa chiqim.
+S₂ monoton tenglamadan (g(S₂) = 0) chegaralangan sekant (Illinois) usuli bilan aniq topiladi —
+belgilangan iteratsiya soni yo'q. Turbina sarfi — boshqaruv qarori (qadam ichida doimiy), o'lik
+hajmdan pastga tushirmaydigan qilib cheklanadi. Kiruvchi sarf qadam ichida doimiy (I₁ = I₂).
+Massa balansi yopiq (`mass_residual_m3` ≈ 0), hajm manfiy bo'lsa xato (jim nol emas). Suv tashlagich formulasi — `spillway.py` (flood.py bilan bir xil).
 Sath–hajm bog'liqligi nuqtalar bilan (batimetriya), chiziqli interpolyatsiya.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -101,6 +108,55 @@ class ReservoirState:
     volume_m3: float
 
 
+def route_step(
+    s1: float,
+    dt_s: float,
+    inflow: float,
+    outflow: Callable[[float], float],
+    tol: float = 1e-9,
+) -> float:
+    """Bitta qadam, trapetsiya implicit sxemasi (modified Puls): S₂ = S₁ + Δt·(I − (O(S₁) + O(S₂))/2).
+    O(S) — kamaymaydigan funksiya (m³/s); g(S₂) monoton o'suvchi → yagona ildiz, Illinois usuli.
+    I — qadam o'rtacha kiruvchi sarf (m³/s). Qaytaradi S₂ (m³), manfiy bo'lishi mumkin (chaqiruvchi
+    tekshiradi)."""
+    o1 = outflow(s1)
+    base = s1 + dt_s * (inflow - o1 / 2)
+
+    def g(s2: float) -> float:
+        return s2 - base + dt_s * outflow(max(s2, 0.0)) / 2
+
+    # Chegaralar: g(lo) ≤ 0 ≤ g(hi). O ≥ 0 → S₂ ≤ base; pastki chegara — kerak bo'lsa kengaytiriladi
+    hi = max(base, 0.0)
+    g_hi = g(hi)
+    if g_hi <= 0:
+        return hi
+    lo = min(base - dt_s * o1, 0.0)
+    g_lo = g(lo)
+    span = max(abs(hi - lo), 1.0)
+    while g_lo > 0 and span < 1e18:
+        lo -= span
+        span *= 2
+        g_lo = g(lo)
+    side = 0
+    x = hi
+    for _ in range(200):
+        x = (lo * g_hi - hi * g_lo) / (g_hi - g_lo) if g_hi != g_lo else (lo + hi) / 2
+        gx = g(x)
+        if abs(gx) <= tol * max(1.0, abs(s1), abs(dt_s * inflow)) or (hi - lo) <= tol * max(1.0, abs(x)):
+            return x
+        if gx > 0:
+            hi, g_hi = x, gx
+            if side == 1:
+                g_lo /= 2
+            side = 1
+        else:
+            lo, g_lo = x, gx
+            if side == -1:
+                g_hi /= 2
+            side = -1
+    return x
+
+
 def step(
     state: ReservoirState,
     spec: ReservoirSpec,
@@ -109,32 +165,46 @@ def step(
     dt_s: float,
     day_of_year: float | None = None,
 ) -> tuple[ReservoirState, dict]:
-    """Bitta vaqt qadami. Turbina sarfi o'lik sathdan pastga tushirmaydigan qilib cheklanadi.
-    Tashlama: sath ostonadan yuqori bo'lsa suv tashlagich formulasi (qadam boshi/oxiri sathlari
-    o'rtachasi — Puls); suv tashlagich bo'lmasa va sath FPU dan oshsa — ortiqcha suv "majburiy
-    tashlama" sifatida chiqariladi. Hajm manfiy bo'lsa ValueError."""
-    area = _surface_area(spec.curve, state.elev_m)
+    """Bitta vaqt qadami (modified Puls, `route_step`). Turbina sarfi o'lik sathdan pastga
+    tushirmaydigan qilib cheklanadi. Tashlama: sath ostonadan yuqori bo'lsa suv tashlagich formulasi
+    (qadam boshi va oxiri sathlarida — trapetsiya); suv tashlagich bo'lmasa va sath FPU dan oshsa —
+    ortiqcha suv "majburiy tashlama" sifatida chiqariladi. Natijadagi tashlama/bug'lanish — qadam
+    o'rtachasi (massa balansi shu qiymatlar bilan yopiladi). Hajm manfiy bo'lsa ValueError."""
     ice = False
     if spec.climate is not None and day_of_year is not None:
         e_mm = open_water_evaporation_mm_day(spec.climate, day_of_year)
         ice = is_ice(spec.climate, day_of_year)
     else:
         e_mm = spec.evaporation_mm_day
-    evap = e_mm / 1000 / 86400 * area  # m³/s
-    losses = spec.other_outflow_m3s + evap + spec.seepage_m3s
-    dead_volume = spec.curve.volume(spec.dead_level_m)
-    available = max(state.volume_m3 - dead_volume, 0.0) / dt_s + inflow - losses
-    q_turb = max(min(turbine_demand, available), 0.0)
     tw = spec.tailwater_m if spec.tailwater_m > 0 else None
-    q_spill = 0.0
-    if spec.spillway:
-        q1 = spec.spillway.discharge(state.elev_m, tw)
-        q_spill = q1
-        for _ in range(2):  # sath oxiri bo'yicha qayta baholash (Puls yarim qadami)
-            v_try = state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s
-            q2 = spec.spillway.discharge(spec.curve.elevation(max(v_try, 0.0)), tw)
-            q_spill = (q1 + q2) / 2
-    v_next = state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s
+    fixed_losses = spec.other_outflow_m3s + spec.seepage_m3s
+
+    def parts(v: float) -> tuple[float, float]:
+        """(tashlama, bug'lanish) m³/s — hajm (sath) funksiyasi."""
+        elev = spec.curve.elevation(max(v, 0.0))
+        q_sp = spec.spillway.discharge(elev, tw) if spec.spillway else 0.0
+        evap = e_mm / 1000 / 86400 * _surface_area(spec.curve, elev)
+        return q_sp, evap
+
+    def outflow(v: float) -> float:
+        q_sp, evap = parts(v)
+        return q_sp + evap + fixed_losses
+
+    s1 = state.volume_m3
+    dead_volume = spec.curve.volume(spec.dead_level_m)
+    q_turb = max(turbine_demand, 0.0)
+    s2 = route_step(s1, dt_s, inflow - q_turb, outflow)
+    if s2 < dead_volume and q_turb > 0:
+        # Turbina o'lik hajmgacha: S₂ = S_dead bo'ladigan sarf (trapetsiya balansidan aniq)
+        q_turb = inflow - (outflow(s1) + outflow(dead_volume)) / 2 - (dead_volume - s1) / dt_s
+        q_turb = min(max(q_turb, 0.0), turbine_demand)
+        s2 = route_step(s1, dt_s, inflow - q_turb, outflow)
+    sp1, ev1 = parts(s1)
+    sp2, ev2 = parts(s2)
+    q_spill = (sp1 + sp2) / 2
+    evap = (ev1 + ev2) / 2
+    losses = fixed_losses + evap
+    v_next = s1 + (inflow - q_turb - q_spill - losses) * dt_s
     if v_next < -1e-6:
         raise ValueError(
             f"ombor hajmi manfiy ({v_next / 1e6:.3f} mln m³): yo'qotishlar/tashlama kiruvchi oqimdan "
@@ -148,7 +218,7 @@ def step(
         forced = (v_next - v_max) / dt_s
         q_spill += forced
         v_next = v_max
-    residual = v_next - (state.volume_m3 + (inflow - q_turb - q_spill - losses) * dt_s)
+    residual = v_next - (s1 + (inflow - q_turb - q_spill - losses) * dt_s)
     new = ReservoirState(spec.curve.elevation(v_next), v_next)
     return new, {
         "turbine": q_turb,

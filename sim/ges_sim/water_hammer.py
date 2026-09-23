@@ -13,6 +13,10 @@ Chegaralar: yuqorida suv ombori (H = const), pastda zadvijka Q = Q0·τ(t)·sqrt
 Halqa kuchlanish (Barlow):  σ = p·D / (2·e),  p = ρ·g·H_max.
 Kavitatsiya (ustun uzilishi) har tugunda: p_abs = H(x) − z(x) + 10.3 m — H pyezometrik napor
   (zadvijka belgisiga nisbatan), z(x) — quvur o'qi balandligi (profil). Eng xavfli — yuqori nuqtalar.
+Suv ustuni uzilishi (column separation) — DVCM, Wylie & Streeter (1993) 8-bob; Bergant, Simpson &
+  Tijsseling, J. Fluids Struct. 22 (2006) 135–171: tugunda H < H_v bo'lsa H = H_v, yuqori/quyi tomon
+  sarfi Qu = (C_P − H_v)/B, Qd = (H_v − C_M)/B, bo'shliq hajmi ∀ ← ∀ + Δt[ψ(Qd − Qu) + (1−ψ)(Qd⁰ − Qu⁰)];
+  ∀ ≤ 0 → bo'shliq yopiladi (ustunlar qo'shilishi, bosim cho'qqisi). Natija ogohlantirish bilan beriladi.
 Tashqi bosimda buklanish (vakuum): p_cr = 2E/(1−ν²)·(e/D)³ (Timoshenko, uzun yupqa devorli silindr,
   ν = 0.3); ASCE MOP 79: zaxira ≥ 2 (kuchaytiruvchi halqalarsiz quvur).
 """
@@ -26,6 +30,9 @@ from .schema import Field, Meta
 from .validity import check_budget
 
 K_WATER = 2.15e9  # suvning hajmiy elastiklik moduli, Pa
+H_ATM = 10.3  # atmosfera bosimi napori, m (dengiz sathi)
+H_VAPOR = 0.24  # suv bug' bosimi napori, m (20 °C)
+PSI = 1.0  # DVCM vazn koeffitsienti ψ (Bergant, Simpson & Tijsseling 2006: ψ = 1 — barqaror)
 MATERIALS = {
     "steel": (
         "Po'lat S355/09G2S",
@@ -274,51 +281,96 @@ def run(p: dict) -> dict:
     B = a / (G * A)
     R = f * dx / (2 * G * D * A**2)
     steps = int(p["sim_s"] / dt) + 1
+    warnings: list[str] = []
+    z = pipe_profile(p, N, warnings)
+    # Bug'lanish napori (pyezometrik, zadvijka datumida): H_v(x) = z(x) + h_vap − H_atm
+    h_vap_x = [z[i] + H_VAPOR - H_ATM for i in range(N + 1)]
     H = [h_res - hf0 * i / N for i in range(N + 1)]
-    Q = [q0] * (N + 1)
+    # DVCM: har tugunda yuqori (Qu) va quyi (Qd) tomondagi sarf; bug' bo'shlig'i yo'q bo'lsa Qu = Qd
+    Qu = [q0] * (N + 1)
+    Qd = [q0] * (N + 1)
+    vol = [0.0] * (N + 1)  # bug' bo'shlig'i hajmi, m³
     cv0 = q0**2 / h0  # Q = sqrt(cv0·τ²·H)
     t_series, h_valve, q_valve, h_mid = [], [], [], []
     h_max = list(H)
     h_min = list(H)
+    sep_first: tuple[float, int] | None = None  # (t, tugun) — birinchi ustun uzilishi
+    sep_nodes: set[int] = set()
+    vol_max = 0.0
     frames: list[dict] = []  # 3D animatsiya uchun: har ~1/60 davrda quvur bo'ylab napor
     frame_every = max(steps // 60, 1)
+
+    def cavity(i: int, cp: float, cm: float | None, q_out: float | None):
+        """DVCM tugun: H = H_v; Qu — C+ dan, Qd — C− dan (yoki zadvijka orqali); ∀ integrali."""
+        hv = h_vap_x[i]
+        qu = (cp - hv) / B
+        qd = (hv - cm) / B if cm is not None else float(q_out or 0.0)
+        v_new = vol[i] + dt * (PSI * (qd - qu) + (1 - PSI) * (Qd[i] - Qu[i]))
+        return hv, qu, qd, v_new
+
     for k in range(steps):
         t = k * dt
         if k % frame_every == 0:
             frames.append({"t": round(t, 3), "h": [round(v, 2) for v in H]})
         t_series.append(round(t, 4))
         h_valve.append(round(H[N], 3))
-        q_valve.append(round(Q[N], 4))
+        q_valve.append(round(Qd[N], 4))
         h_mid.append(round(H[N // 2], 3))
-        Hn, Qn = [0.0] * (N + 1), [0.0] * (N + 1)
+        Hn = [0.0] * (N + 1)
+        Qun, Qdn, voln = [0.0] * (N + 1), [0.0] * (N + 1), [0.0] * (N + 1)
+        t_new = t + dt
         # Suv ombori (yuqori chegara)
-        cm = H[1] - B * Q[1] + R * Q[1] * abs(Q[1])
+        cm = H[1] - B * Qu[1] + R * Qu[1] * abs(Qu[1])
         Hn[0] = h_res
-        Qn[0] = (Hn[0] - cm) / B
-        # Ichki nuqtalar
+        Qun[0] = Qdn[0] = (Hn[0] - cm) / B
+        # Ichki nuqtalar (C+ — chap tugunning quyi tomoni Qd, C− — o'ng tugunning yuqori tomoni Qu)
         for i in range(1, N):
-            cp = H[i - 1] + B * Q[i - 1] - R * Q[i - 1] * abs(Q[i - 1])
-            cm = H[i + 1] - B * Q[i + 1] + R * Q[i + 1] * abs(Q[i + 1])
-            Hn[i] = (cp + cm) / 2
-            Qn[i] = (cp - cm) / (2 * B)
+            cp = H[i - 1] + B * Qd[i - 1] - R * Qd[i - 1] * abs(Qd[i - 1])
+            cm = H[i + 1] - B * Qu[i + 1] + R * Qu[i + 1] * abs(Qu[i + 1])
+            hp = (cp + cm) / 2
+            if vol[i] <= 0.0 and hp >= h_vap_x[i]:
+                Hn[i] = hp
+                Qun[i] = Qdn[i] = (cp - cm) / (2 * B)
+                continue
+            hv, qu, qd, v_new = cavity(i, cp, cm, None)
+            if v_new <= 0.0:  # bo'shliq yopildi — ustunlar qo'shiladi, suyuqlik holatiga qaytish
+                Hn[i] = max(hp, hv)
+                Qun[i] = Qdn[i] = (cp - cm) / (2 * B)
+            else:
+                Hn[i], Qun[i], Qdn[i], voln[i] = hv, qu, qd, v_new
+                if sep_first is None:
+                    sep_first = (t_new, i)
+                sep_nodes.add(i)
         # Zadvijka (quyi chegara): Q_P = −B·Cv/2 + sqrt((B·Cv/2)² + Cv·C_P)
-        tau = (1 - (t + dt) / tc) ** n_exp if (t + dt) < tc else 0.0
-        cp = H[N - 1] + B * Q[N - 1] - R * Q[N - 1] * abs(Q[N - 1])
+        tau = (1 - t_new / tc) ** n_exp if t_new < tc else 0.0
+        cp = H[N - 1] + B * Qd[N - 1] - R * Qd[N - 1] * abs(Qd[N - 1])
         cv = cv0 * tau**2
         if cv > 0 and cp > 0:
-            Qn[N] = -B * cv / 2 + math.sqrt((B * cv / 2) ** 2 + cv * cp)
+            qv = -B * cv / 2 + math.sqrt((B * cv / 2) ** 2 + cv * cp)
         else:
-            Qn[N] = 0.0
-        Hn[N] = cp - B * Qn[N]
-        H, Q = Hn, Qn
+            qv = 0.0
+        hp = cp - B * qv
+        if vol[N] <= 0.0 and hp >= h_vap_x[N]:
+            Hn[N], Qun[N], Qdn[N] = hp, qv, qv
+        else:
+            # zadvijka oldida bo'shliq: H = H_v; zadvijka orqali oqim faqat H_v > 0 bo'lsa
+            q_cav = math.sqrt(cv * h_vap_x[N]) if cv > 0 and h_vap_x[N] > 0 else 0.0
+            hv, qu, qd, v_new = cavity(N, cp, None, q_cav)
+            if v_new <= 0.0:
+                Hn[N], Qun[N], Qdn[N] = max(hp, hv), qv, qv
+            else:
+                Hn[N], Qun[N], Qdn[N], voln[N] = hv, qu, qd, v_new
+                if sep_first is None:
+                    sep_first = (t_new, N)
+                sep_nodes.add(N)
+        H, Qu, Qd, vol = Hn, Qun, Qdn, voln
+        vol_max = max(vol_max, max(vol))
         for i in range(N + 1):
             h_max[i] = max(h_max[i], H[i])
             h_min[i] = min(h_min[i], H[i])
 
     hmax = max(h_max)
     hmin = min(h_min)
-    warnings: list[str] = []
-    z = pipe_profile(p, N, warnings)
     # Bosim napori har tugunda: pyezometrik − balandlik (zadvijka datumida); maksimal bosim ham shunday
     ph_max = [h_max[i] - z[i] for i in range(N + 1)]
     ph_min = [h_min[i] - z[i] for i in range(N + 1)]
@@ -326,13 +378,13 @@ def run(p: dict) -> dict:
     p_max = RHO * G * max(ph_max[i_pmax], 0.0)  # Pa (manometrik)
     stress = p_max * D / (2 * e) / 1e6  # MPa
     sf = sigma_all / stress if stress > 0 else 99.0
-    # Kavitatsiya: absolyut bosim napori = H − z + 10.3 m; bug'lanish napori ≈ 0.24 m (20 °C)
+    # Kavitatsiya: absolyut bosim napori = H − z + H_atm; bug'lanish napori ≈ 0.24 m (20 °C)
     i_cav = min(range(N + 1), key=lambda i: ph_min[i])
-    p_abs_min = ph_min[i_cav] + 10.3
-    cav = p_abs_min < 0.3
+    p_abs_min = ph_min[i_cav] + H_ATM
+    cav = p_abs_min < 0.3 or sep_first is not None
     # Tashqi bosimda buklanish: vakuum (manfiy manometrik bosim, 10.3 m dan chuqur emas)
     vac_m = max(-ph_min[i_cav], 0.0) if ph_min[i_cav] < 0 else 0.0
-    p_ext = RHO * G * min(vac_m, 10.3)
+    p_ext = RHO * G * min(vac_m, H_ATM)
     p_cr = buckling_pressure(e, D, E)
     buck_sf = p_cr / p_ext if p_ext > 0 else 99.0
     x_series = [round(i * dx, 2) for i in range(N + 1)]
@@ -347,6 +399,14 @@ def run(p: dict) -> dict:
         verdict += (
             f" · kavitatsiya: x = {x_series[i_cav]} m (z = {z[i_cav] + p['valve_elev_m']:.1f} m) da "
             f"absolyut napor {p_abs_min:.1f} m — ustun uzilishi"
+        )
+    if sep_first is not None:
+        t_sep, i_sep = sep_first
+        warnings.append(
+            "suv ustuni uzilishi — natija bu nuqtadan keyin ishonchsiz: birinchi marta "
+            f"t = {t_sep:.3f} s, x = {i_sep * dx:.1f} m (tugun {i_sep}); bug' bo'shlig'i DVCM "
+            "(Wylie & Streeter) bilan modellashtirildi, ustunlar qo'shilishidagi bosim cho'qqilari "
+            "taxminiy (±20–30 %)"
         )
     if buck_sf < 2.0:
         verdict += f" · vakuumda buklanish zaxirasi {buck_sf:.2f} < 2 (x = {x_series[i_cav]} m)"
@@ -381,6 +441,11 @@ def run(p: dict) -> dict:
             "safety_factor": round(sf, 2),
             "cavitation_risk": bool(cav),
             "cavitation_x_m": x_series[i_cav],
+            "column_separation": sep_first is not None,
+            "column_sep_t_s": round(sep_first[0], 4) if sep_first else None,
+            "column_sep_x_m": round(sep_first[1] * dx, 2) if sep_first else None,
+            "column_sep_nodes": len(sep_nodes),
+            "cavity_max_m3": round(vol_max, 4),
             "p_abs_min_m": round(p_abs_min, 2),
             "p_max_x_m": x_series[i_pmax],
             "buckling_p_cr_bar": round(p_cr / 1e5, 3),

@@ -2,8 +2,8 @@
 
 Manning (ochiq kanal, to'g'ri burchakli, normal chuqurlik):  Q = (1/n)·A·R^(2/3)·√S,  A = b·y,  R = b·y/(b + 2y).
 Thoma kavitatsiya koeffitsienti:  σ = (H_atm − H_v − H_s) / H_net,  H_atm ≈ 10.1 m (0–500 m balandlik), H_v ≈ 0.24 m (20 °C);
-  kritik σ_c (tur, solishtirma tezlik n_s = n·√P/H^1.25, P kVt): Francis 0.0432·(n_s/100)²  (USBR/Krivchenko),
-  Kaplan 0.28 + (n_s/380)³, Pelton — kavitatsiya yo'q. σ < σ_c → kavitatsiya.
+  kritik σ_c(tur, n_s) — yagona manba `shared/cavitation.py` (sim/ges_sim/cavitation.py nusxasi,
+  formulalar va adabiyot o'sha yerda; server ham shuni ishlatadi). σ < σ_c → kavitatsiya.
 Sinxron tezlik:  n = 120·f/p  [ayl/min].
 Generator FIK (turbine.py bilan bir xil):  P_loss = P_r(1/η_max − 1)·[k_fe + (1 − k_fe)·(P/P_r)²],  η = P/(P + P_loss).
 Egri bosh quvur o'qi — ges_objects.penstock_path bilan bir xil (birlik: metr).
@@ -14,6 +14,8 @@ Zilzila: psevdo-spektral siljish  S_d = S_a·g·(T/2π)²  (Eurocode 8, 3.2.2.2)
 from __future__ import annotations
 
 import math
+
+from .shared import cavitation as _cav
 
 G = 9.80665
 H_ATM = 10.1
@@ -47,10 +49,8 @@ def synchronous_rpm(freq_hz: float, poles: int) -> float:
 
 
 def specific_speed(n_rpm: float, p_kw: float, head_m: float) -> float:
-    """n_s = n·√P/H^1.25 (metrik, P kVt)."""
-    if p_kw <= 0 or head_m <= 0:
-        return 0.0
-    return n_rpm * math.sqrt(p_kw) / head_m**1.25
+    """n_s = n·√P/H^1.25 (metrik, P kVt) — shared/cavitation.py."""
+    return _cav.specific_speed(n_rpm, p_kw, head_m)
 
 
 def thoma_sigma(suction_head_m: float, head_net_m: float) -> float:
@@ -60,12 +60,7 @@ def thoma_sigma(suction_head_m: float, head_net_m: float) -> float:
 
 
 def sigma_critical(turbine_type: str, n_s: float) -> float:
-    t = (turbine_type or "Francis").lower()
-    if t == "pelton":
-        return 0.0
-    if t in ("kaplan", "bulb"):
-        return 0.28 + (n_s / 380.0) ** 3
-    return 0.0432 * (n_s / 100.0) ** 2
+    return _cav.sigma_critical(turbine_type, n_s)
 
 
 def cavitation(turbine_type: str, suction_head_m: float, head_net_m: float, n_rpm: float, p_kw: float) -> tuple[float, float, bool]:

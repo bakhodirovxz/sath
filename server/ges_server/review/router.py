@@ -20,6 +20,7 @@ from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
 from ..models import iso19650, storage
 from ..models.router import VersionOut, get_model_checked, get_version_checked, version_out
+from ..monitoring import linkage
 from ..orm import (
     ChangeRequest,
     CRStatus,
@@ -459,6 +460,7 @@ def merge_cr(cr_id: int, user: CurrentUser, db: DB):
     cr.version.revision_code = iso19650.next_revision([x.revision_code for x in cr.version.model.versions], "C")
     cr.status = CRStatus.merged
     cr.closed_at = utcnow()
+    linkage.on_version_published(db, cr.version)  # SCADA-13: bog'lanmagan sensorlar → bildirishnoma
     audit.log(
         db,
         user_id=user.id,

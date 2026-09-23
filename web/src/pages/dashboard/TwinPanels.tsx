@@ -14,6 +14,14 @@ import { VAL_CLS, VAL_TXT, ValidationPanel } from "./ValidationPanel";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
+/** SCADA-14: agregat sarfi manbasi — measured (sarf sensori), split (quvur sarfidan taqsimlangan),
+ *  estimated (quvvatdan nominal FIK bilan; og'ish/FIK aylanma — server null qaytaradi). */
+type FlowSource = "measured" | "split" | "estimated" | null;
+const FLOW_SRC_NOTE: Record<string, string> = {
+  split: "Umumiy quvur sarfidan quvvatga proporsional taqsimlangan (agregat sarf sensori yo'q)",
+  estimated: "Sarf o'lchanmagan — quvvatdan nominal FIK bilan hisoblangan; og'ish va FIK ko'rsatilmaydi (aylanma hisob)",
+};
+
 
 /** Raqamli egizak: jonli o'lchov ↔ model bo'yicha kutilgan quvvat, og'ish, FIK. */
 export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId: number; canRun: boolean; canApprove?: boolean }) {
@@ -42,6 +50,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
               {t.units.map((u) => {
                 const dev = u.deviation_pct;
                 const bad = dev != null && Math.abs(dev) > 10;
+                const src = (u as typeof u & { flow_source?: FlowSource }).flow_source ?? null;
                 return (
                   <tr key={u.sensor_id} className={bad ? "alarm-active" : undefined}>
                     <td>{u.name} <span className="dim">{u.model_unit}</span></td>
@@ -50,7 +59,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
                     <td className="mono">{fmtValue(u.expected_mw)}</td>
                     <td className="mono">{dev == null ? "—" : <span className={bad ? "error" : ""}>{dev > 0 ? "+" : ""}{dev.toFixed(1)} %</span>}</td>
                     <td className="mono">{u.efficiency == null ? "—" : `${(u.efficiency * 100).toFixed(1)} %`} / {u.expected_efficiency == null ? "—" : `${(u.expected_efficiency * 100).toFixed(1)} %`}</td>
-                    <td className="mono">{u.flow_m3s == null ? "—" : fmtValue(u.flow_m3s)}</td>
+                    <td className="mono">{u.flow_m3s == null ? "—" : fmtValue(u.flow_m3s)}{src === "estimated" && <div className="dim small" title={FLOW_SRC_NOTE.estimated} data-testid="twin-flow-estimated">hisoblangan (o'lchanmagan)</div>}{src === "split" && <div className="dim small" title={FLOW_SRC_NOTE.split}>taqsimlangan</div>}</td>
                     <td className="mono">{fmtValue(u.head_net_m)}</td>
                   </tr>
                 );

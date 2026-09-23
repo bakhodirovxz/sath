@@ -1176,6 +1176,22 @@ class ReadingHourly(Base):
     n_bad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
+class HistorianDirty(Base):
+    """SCADA-10: qatlam suv belgisidan (lookback oynasidan) oldingi davrga kech kelgan xom o'lchovlar
+    oralig'i — rollup shu oraliqni (sensor, qatlam) qayta yig'adi; purge yig'ilmagan oraliqni o'chirmaydi.
+    ts_min — qayta yig'ilmagan qismning boshi (rollup bosqichma-bosqich oldinga suradi)."""
+
+    __tablename__ = "historian_dirty"
+    __table_args__ = (Index("ix_historian_dirty_tier_sensor", "tier", "sensor_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tier: Mapped[str] = mapped_column(String(8))
+    sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id", ondelete="CASCADE"))
+    ts_min: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ts_max: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Notification(Base):
     """Ilova ichidagi bildirishnoma (qo'ng'iroq): tasdiqlash, issue, alarm, tizim."""
 

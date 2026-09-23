@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from ges_sim.penstock import PenstockSpec, net_head
@@ -39,6 +40,8 @@ log = logging.getLogger("ges_server.twin")
 G = 9.81
 # Agregat "ishlayapti" chegarasi: high_alarm ning 1 % i yoki 0.5 MW
 RUN_THRESHOLD = 0.5
+MAX_UNITS = 12  # mimika sxemasi (SchemeIn.units ≤ 12)
+_UNIT_SLOT = re.compile(r"unit(\d+)_(power|flow)")
 
 
 def _slots(db: Session, project: Project, sensors: list[Sensor]) -> dict[str, Sensor]:
@@ -50,6 +53,70 @@ def _slots(db: Session, project: Project, sensors: list[Sensor]) -> dict[str, Se
     _auto_mimic(mimic, sensors)
     by_id = {s.id: s for s in sensors}
     return {slot: by_id[sid] for slot, sid in mimic.items() if sid in by_id}
+
+
+def unit_sensors(
+    project: Project, slots: dict[str, Sensor], sensors: list[Sensor]
+) -> list[tuple[int, Sensor, Sensor | None]]:
+    """SCADA-14: agregatlar ro'yxati — (raqam 1…MAX_UNITS, quvvat sensori, sarf sensori | None), raqam
+    bo'yicha tartiblangan va BARQAROR (bo'sh raqam o'tkazib yuborilsa ham 3-agregat 3 bo'lib qoladi —
+    pasport `units[n−1]` va kalibrovka `eff[n]` shu raqamga bog'lanadi). Manbalar (ustuvorlik bilan):
+    qo'lda mimika slotlari `unitN_power` / `unitN_flow` → sxema (`dashboard.scheme`) `unit` elementlari
+    (`sensor_id` — quvvat, `extra.flow` — sarf) → avto-taklif qilingan slotlar."""
+    by_id = {s.id: s for s in sensors}
+    cfg = project.dashboard or {}
+    power: dict[int, Sensor] = {}
+    flow: dict[int, Sensor] = {}
+    used: set[int] = set()
+
+    def put(target: dict[int, Sensor], n: int | None, sensor: Sensor | None) -> None:
+        if sensor is None or n is None or not 1 <= n <= MAX_UNITS or n in target or sensor.id in used:
+            return
+        target[n] = sensor
+        used.add(sensor.id)
+
+    def from_slots(mapping: dict) -> None:
+        for slot, ref in mapping.items():
+            m = _UNIT_SLOT.fullmatch(str(slot))
+            if not m:
+                continue
+            sensor = ref if isinstance(ref, Sensor) else by_id.get(ref)
+            put(power if m.group(2) == "power" else flow, int(m.group(1)), sensor)
+
+    from_slots({k: v for k, v in (cfg.get("mimic") or {}).items() if v})
+    for e in (cfg.get("scheme") or {}).get("elements") or []:
+        if e.get("type") != "unit":
+            continue
+        n = e.get("unit")
+        if n is None:
+            m = re.search(r"(\d+)$", str(e.get("id") or ""))
+            n = int(m.group(1)) if m else None
+        put(power, n, by_id.get(e.get("sensor_id")))
+        put(flow, n, by_id.get((e.get("extra") or {}).get("flow")))
+    from_slots(slots)
+    return [(n, power[n], flow.get(n)) for n in sorted(power)]
+
+
+def split_flow(
+    q_total: float | None, running: dict[int, tuple[float, TurbineSpec]], measured: dict[int, float]
+) -> dict[int, float]:
+    """Umumiy quvur sarfini o'z sarf sensori yo'q ishlayotgan agregatlar orasida taqsimlash.
+    O'lchangan agregat sarflari ayiriladi; qolgani quvvatga va nominal Q/P nisbatiga proporsional:
+        q_i = Q_qolgan · w_i / Σw,   w_i = P_i · Q_nom,i / P_nom,i
+    (bir xil napor va o'xshash FIK da sarf quvvatga proporsional; turli o'lchamli agregatlar uchun
+    nominal Q/P bilan tuzatiladi). q_total yo'q yoki qoldiq ≤ 0 → {} (taqsimlab bo'lmaydi)."""
+    if q_total is None:
+        return {}
+    rest = q_total - sum(measured.values())
+    weights = {
+        n: p * spec.rated_flow_m3s / spec.rated_power_mw
+        for n, (p, spec) in running.items()
+        if n not in measured and spec.rated_power_mw > 0
+    }
+    tot = sum(weights.values())
+    if rest <= 0 or tot <= 0:
+        return {}
+    return {n: rest * w / tot for n, w in weights.items()}
 
 
 def model_params(db: Session, project_id: int) -> dict | None:
@@ -192,8 +259,9 @@ def _validation_status(db: Session, project: Project) -> dict:
 
 
 def compute(db: Session, project: Project, overrides: dict | None = None) -> dict:
-    """Joriy egizak holati (saqlamaydi). units: [{name, measured_mw, expected_mw, deviation_pct,
-    efficiency, flow_m3s}], head_gross_m, head_net_m, status.
+    """Joriy egizak holati (saqlamaydi). units: [{unit, name, measured_mw, expected_mw, deviation_pct,
+    efficiency, flow_m3s, flow_source}], head_gross_m, head_net_m, status.
+    flow_source: "measured" | "split" | "estimated" (estimated — og'ish va FIK None, aylanma hisob).
     overrides — «nima bo'lsa» sinovi: slot → qiymat (upstream_level, downstream_level, penstock_flow,
     unitN_power) jonli o'rniga ishlatiladi, hech narsa yozilmaydi."""
     ov = overrides or {}
@@ -208,8 +276,7 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
 
     up, down = val("upstream_level"), val("downstream_level")
     q_total = val("penstock_flow")
-    unit_sensors = [slots.get(f"unit{i}_power") for i in (1, 2, 3, 4)]
-    unit_sensors = [s for s in unit_sensors if s is not None]
+    units = unit_sensors(project, slots, sensors)
     if params is None or up is None or down is None:
         return {
             "status": "insufficient",
@@ -228,44 +295,62 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
     spec_p = (
         PenstockSpec(pen[0]["length_m"], pen[0]["diameter_m"], roughness) if pen else None
     )
-    slot_of = {s.id: k for k, s in slots.items()}
 
-    def unit_val(s: Sensor) -> float | None:
-        return val(slot_of.get(s.id, ""))
+    def sensor_val(sensor: Sensor | None, slot: str) -> float | None:
+        if slot in ov and ov[slot] is not None:
+            return float(ov[slot])
+        return _live(sensor)
 
-    running = [s for s in unit_sensors if (unit_val(s) or 0) > RUN_THRESHOLD]
-    units_out = []
     specs = params["units"]
-    for i, s in enumerate(unit_sensors):
-        spec_d = specs[min(i, len(specs) - 1)]
+    rows = []  # (n, power sensor, spec, measured, own flow)
+    for n, ps, fs in units:
+        spec_d = specs[min(n - 1, len(specs) - 1)]  # barqaror: n-agregat → pasportdagi n-agregat
         spec = TurbineSpec(
             name=spec_d["name"],
             type=spec_d.get("type", "Francis"),
             rated_power_mw=spec_d["rated_power_mw"],
             rated_head_m=spec_d["rated_head_m"],
             rated_flow_m3s=spec_d["rated_flow_m3s"],
-            max_efficiency=cal_eff.get(i + 1, spec_d.get("max_efficiency", 0.92)),
+            max_efficiency=cal_eff.get(n, spec_d.get("max_efficiency", 0.92)),
         )
-        measured = unit_val(s)
-        is_running = measured is not None and measured > RUN_THRESHOLD
-        # Sarf: umumiy quvur sarfi ishlayotganlar orasida teng (alohida sarf sensori bo'lmasa)
-        q = (q_total / len(running)) if (q_total is not None and running and is_running) else None
-        if q is None and is_running:
-            # sarf sensori yo'q — nominal FIK bilan quvvatdan teskari hisob (taxminiy)
+        rows.append((n, ps, spec, sensor_val(ps, f"unit{n}_power"), sensor_val(fs, f"unit{n}_flow")))
+    running = {n: (m, spec) for n, _ps, spec, m, _qf in rows if m is not None and m > RUN_THRESHOLD}
+    own_q = {n: qf for n, _ps, _spec, m, qf in rows if n in running and qf is not None and qf > 0}
+    split = split_flow(q_total, running, own_q)
+    units_out = []
+    for n, s, spec, measured, _qf in rows:
+        is_running = n in running
+        # Sarf manbasi (SCADA-14): measured — agregat sarf sensori; split — umumiy quvur sarfidan
+        # taqsimlangan; estimated — sarf o'lchovi yo'q, quvvatdan NOMINAL FIK bilan teskari hisob
+        # (aylanma: kutilgan quvvat va FIK o'lchovdan kelib chiqadi → og'ish/FIK ko'rsatilmaydi)
+        if not is_running:
+            q, source = None, None
+        elif n in own_q:
+            q, source = own_q[n], "measured"
+        elif n in split:
+            q, source = split[n], "split"
+        else:
             h_est = net_head(head_gross, spec.rated_flow_m3s, spec_p)
             q = measured * 1e6 / (spec.max_efficiency * RHO * G * max(h_est, 1e-3))
+            source = "estimated"
         h_net = net_head(head_gross, q if q else 0.0, spec_p) if spec_p else head_gross
         op = spec.output(q, h_net) if q else None  # hill-chart + generator + mexanik yo'qotishlar
         expected = op.electrical_mw if op else 0.0
+        circular = source == "estimated"
         # o'lchangan umumiy FIK (klemma quvvati / gidravlik quvvat) — kutilgan eta_total bilan solishtiriladi
-        eff = (measured * 1e6 / (RHO * G * q * h_net)) if (q and h_net > 0 and measured) else None
+        eff = (
+            (measured * 1e6 / (RHO * G * q * h_net))
+            if (q and h_net > 0 and measured and not circular)
+            else None
+        )
         dev = (
             ((measured - expected) / expected * 100)
-            if (expected and measured is not None)
+            if (expected and measured is not None and not circular)
             else None
         )
         units_out.append(
             {
+                "unit": n,
                 "sensor_id": s.id,
                 "name": s.name,
                 "model_unit": spec.name,
@@ -280,6 +365,7 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
                 "rough_zone": bool(op.rough_zone) if op else False,
                 "head_factor": round(spec.head_factor(h_net), 4) if q else None,
                 "flow_m3s": round(q, 3) if q else None,
+                "flow_source": source,
                 "head_net_m": round(h_net, 3),
             }
         )

@@ -21,6 +21,12 @@ from typing import Any
 
 MAX_STEPS = 200_000
 MAX_EXPR = 4000
+# SIM-02: resurs limitlari — ro'yxat uzunligi, butun son hajmi, daraja ko'rsatkichi, saqlangan qatorlar
+MAX_SEQ = 1_000_000  # bitta ro'yxat elementlari
+MAX_INT_BITS = 4096  # butun son (≈ 1233 raqam)
+MAX_POW_EXP = 1000  # |ko'rsatkich|
+MAX_ROUND_DIGITS = 30
+MAX_SERIES_CELLS = 5_000_000  # series ichidagi jami qiymatlar (ro'yxat chiqishlari bilan)
 
 _BIN = {
     ast.Add: operator.add,
@@ -52,6 +58,71 @@ def _interp(x, xs, ys):
     return ys[-1]
 
 
+def _size_guard(v: Any) -> Any:
+    """Natija hajmi: ro'yxat ≤ MAX_SEQ, butun son ≤ MAX_INT_BITS bit (takroriy kvadratlash, [0]*10**9)."""
+    if isinstance(v, (list, tuple)):
+        if len(v) > MAX_SEQ:
+            raise ValueError(f"Ro'yxat juda katta (>{MAX_SEQ} element)")
+    elif isinstance(v, int) and not isinstance(v, bool) and v.bit_length() > MAX_INT_BITS:
+        raise ValueError("Son juda katta")
+    return v
+
+
+def _seq_len(v: Any) -> int | None:
+    return len(v) if isinstance(v, (list, tuple)) else None
+
+
+def _check_binop(op: type, a: Any, b: Any) -> None:
+    """Amal bajarilishidan OLDIN — natija hajmini oldindan baholash (xotira ajratilmasin)."""
+    if op is ast.Mult:
+        for seq, k in ((a, b), (b, a)):
+            n = _seq_len(seq)
+            if n is not None and isinstance(k, int) and n * max(k, 0) > MAX_SEQ:
+                raise ValueError(f"Ro'yxat juda katta (>{MAX_SEQ} element)")
+        if isinstance(a, int) and isinstance(b, int) and a.bit_length() + b.bit_length() > MAX_INT_BITS + 1:
+            raise ValueError("Son juda katta")
+    elif op is ast.Add:
+        na, nb = _seq_len(a), _seq_len(b)
+        if na is not None and nb is not None and na + nb > MAX_SEQ:
+            raise ValueError(f"Ro'yxat juda katta (>{MAX_SEQ} element)")
+    elif op is ast.Pow:
+        _check_pow(a, b)
+
+
+def _check_pow(a: Any, b: Any, mod: Any = None) -> None:
+    if isinstance(b, (int, float)) and not isinstance(b, bool) and abs(b) > MAX_POW_EXP:
+        raise ValueError("Daraja juda katta")
+    if (
+        mod is None
+        and isinstance(a, int)
+        and isinstance(b, int)
+        and b > 0
+        and a.bit_length() * b > MAX_INT_BITS + 64
+    ):
+        raise ValueError("Son juda katta")
+
+
+def _pow(a: Any, b: Any, mod: Any = None) -> Any:
+    _check_pow(a, b, mod)
+    return pow(a, b) if mod is None else pow(a, b, mod)
+
+
+def _sum(xs: Any, start: Any = 0) -> Any:
+    """sum(xs[, start]) — faqat sonlar (sum(ro'yxatlar, []) — kvadratik xotira o'sishi, SIM-02)."""
+    if not isinstance(start, (int, float)) or isinstance(start, bool):
+        raise ValueError("sum: boshlang'ich qiymat son bo'lishi kerak")
+    return sum(xs, start)
+
+
+def _round(v: Any, nd: Any = None) -> Any:
+    if nd is None:
+        return round(v)
+    nd = int(nd)
+    if abs(nd) > MAX_ROUND_DIGITS:  # round(5, -10**9) → 10**(10**9) hisoblanadi
+        raise ValueError("round: xonalar soni juda katta")
+    return round(v, nd)
+
+
 FUNCS: dict[str, Any] = {
     "abs": abs,
     "min": min,
@@ -65,14 +136,14 @@ FUNCS: dict[str, Any] = {
     "tan": math.tan,
     "atan": math.atan,
     "atan2": math.atan2,
-    "pow": pow,
+    "pow": _pow,
     "floor": math.floor,
     "ceil": math.ceil,
-    "round": round,
+    "round": _round,
     "clip": lambda v, lo, hi: max(lo, min(hi, v)),
     "interp": _interp,
-    "mean": lambda xs: sum(xs) / len(xs) if xs else 0.0,
-    "sum": sum,
+    "mean": lambda xs: _sum(xs) / len(xs) if xs else 0.0,
+    "sum": _sum,
     "len": len,
     "last": lambda xs: xs[-1] if xs else 0.0,
 }
@@ -152,10 +223,9 @@ def evaluate(tree: ast.Expression, env: dict[str, Any]) -> Any:
         if isinstance(n, ast.BinOp):
             a, b = ev(n.left), ev(n.right)
             op = _BIN[type(n.op)]
-            if isinstance(n.op, ast.Pow) and isinstance(b, (int, float)) and abs(b) > 1000:
-                raise ValueError("Daraja juda katta")
+            _check_binop(type(n.op), a, b)
             try:
-                return op(a, b)
+                return _size_guard(op(a, b))
             except ZeroDivisionError:
                 return float("inf") if a >= 0 else float("-inf")
         if isinstance(n, ast.UnaryOp):
@@ -179,7 +249,7 @@ def evaluate(tree: ast.Expression, env: dict[str, Any]) -> Any:
         if isinstance(n, ast.IfExp):
             return ev(n.body) if ev(n.test) else ev(n.orelse)
         if isinstance(n, ast.Call):
-            return FUNCS[n.func.id](*[ev(a) for a in n.args])
+            return _size_guard(FUNCS[n.func.id](*[ev(a) for a in n.args]))
         if isinstance(n, (ast.List, ast.Tuple)):
             return [ev(e) for e in n.elts]
         if isinstance(n, ast.Subscript):
@@ -247,6 +317,7 @@ def run(template: dict, params: dict) -> dict:
     series: dict[str, list] = {"t": []}
     for o in outputs:
         series[o] = []
+    cells = 0  # series dagi jami qiymatlar (SIM-02: ro'yxat chiqishlari xotirani to'ldirmasin)
     for i in range(steps):
         env["i"] = i
         env["t"] = i * dt
@@ -255,6 +326,11 @@ def run(template: dict, params: dict) -> dict:
         series["t"].append(round(env["t"], 6))
         for o in outputs:
             v = env.get(o, 0.0)
+            cells += len(v) if isinstance(v, (list, tuple)) else 1
+            if cells > MAX_SERIES_CELLS:
+                raise ValueError(
+                    f"Natija juda katta (>{MAX_SERIES_CELLS} qiymat) — qadamlar yoki chiqishlarni kamaytiring"
+                )
             series[o].append(round(float(v), 6) if isinstance(v, (int, float)) else v)
     senv = dict(env)
     senv["series"] = _Series(series)
