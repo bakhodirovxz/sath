@@ -437,15 +437,34 @@ Parolni foydalanuvchi o'zi o'zgartira oladi (API `/api/auth/change-password`); a
 
 Windows mashinada (o'rnatilgan FreeCAD 1.1.3, fork `../Sath-FreeCAD`, NSIS — `desktop/README.md`):
 ```bash
-python desktop/build/build_portable.py     # desktop/dist/Sath-<ver>-Windows-x86_64-installer.exe (~600 MB) va .zip
-for f in desktop/dist/Sath-0.1.0-Windows-x86_64-installer.exe desktop/dist/Sath-0.1.0-Windows-x86_64.zip; do
-  curl -X POST -H "Authorization: Bearer <admin token>" -F file=@$f http://<server>:8000/api/desktop/upload
-done
+python desktop/build/build_blender_bundle.py --installer   # yoki build_portable.py (FreeCAD fork)
+# bir martalik: imzo kalit juftligi (private — CI secret / parol menejeri; ochiq — serverga va addonga)
+python desktop/build/publish_desktop.py --gen-key ~/.sath/release-ed25519.pem
+python desktop/build/publish_desktop.py --server https://<server> --user admin --product blender \
+    --signing-key ~/.sath/release-ed25519.pem   # dist dagi eng yangi installer + zip
 ```
+Yangilanish butunligi (SEC-03):
+- Server paketni `.part` ga yozadi va faqat sha256/imzo tekshiruvidan keyin atomik `os.replace` qiladi —
+  uzilgan yuklash «latest» bo'lib ko'rinmaydi. Manifest (`<paket>.manifest.json`): product, version, kind,
+  name, size, sha256, signature, key_id.
+- Imzo — Ed25519, kanonik JSON `{"kind","name","product","sha256","size","version"}` ustidan
+  (`server/ges_server/system/release.py`). Private kalit serverda **yo'q** — server buzilsa ham soxta paket
+  imzolab bo'lmaydi. `GES_DESKTOP_SIGNING_PUBLIC_KEY` (base64) — server yuklashda imzoni tekshiradi;
+  `GES_DESKTOP_REQUIRE_SIGNATURE=true` — imzosiz paket rad etiladi.
+- `GET /api/desktop/latest?product=blender|freecad` (default `blender`) — `sha256`, `size`, `signature`,
+  `key_id`, `product`; FreeCAD va Blender paketlari serverda alohida (`data/desktop/<product>/`) — bir xil
+  nomda to'qnashmaydi. Eski yuklangan paketlar birinchi murojaatda `blender/` ga ko'chiriladi.
+- Blender addoni paketni brauzerda ochmaydi: o'zi yuklab oladi, hajm + sha256 ni, sozlamalarda
+  «Yangilanish kaliti» (yoki `SATH_UPDATE_PUBLIC_KEY`) berilgan bo'lsa Ed25519 imzoni tekshiradi; mos
+  kelmasa o'rnatishni taklif qilmaydi. Addon server manzili default `https://`.
+- Kod imzosi (Authenticode): `.github/workflows/blender-fork.yml` da `SATH_SIGN_CERT_PFX_B64` /
+  `SATH_SIGN_CERT_PASSWORD` secretlari bo'lsa signtool bilan imzolanadi (bo'lmasa qadam o'tkaziladi);
+  lokal NSIS installer — shu sertifikat bilan `signtool sign /fd SHA256 /tr <timestamp> /td SHA256`.
+
 Webda «Loyihalar» sahifasida «Sath x.y.z o'rnatish ↓ / zip ↓» tugmalari chiqadi; desktop kirishda
 `GET /api/desktop/latest` bilan tekshiradi (installer afzal). Versiya `desktop/GesWorkbench/package.xml` da —
 oshirib, `python desktop/build/sync_fork.py` bilan fork ga o'tkazing. Yadro (FreeCAD) o'zgartirilganda
-fork dagi GitHub Actions «Sath build» ishlatiladi — natija bir xil nomdagi fayllar.
+fork dagi GitHub Actions «Sath build» ishlatiladi.
 
 ## SCADA ulanishi
 

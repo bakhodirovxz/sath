@@ -3,6 +3,9 @@ Content-Length bo'yicha erta 413 (middleware)."""
 
 from __future__ import annotations
 
+import hashlib
+import os
+import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
@@ -29,18 +32,34 @@ async def read_limited(file: UploadFile, max_bytes: int) -> bytes:
 
 
 async def spool_limited(file: UploadFile, dest: Path, max_bytes: int) -> int:
-    """Diskka oqim; chegara oshsa qisman fayl o'chiriladi va 413."""
-    size = 0
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with open(dest, "wb") as fh:
-        while chunk := await file.read(CHUNK):
-            size += len(chunk)
-            if size > max_bytes:
-                fh.close()
-                dest.unlink(missing_ok=True)
-                raise too_large(max_bytes)
-            fh.write(chunk)
+    """Diskka oqim (atomik: `.part` → os.replace); chegara oshsa qisman fayl o'chiriladi va 413."""
+    size, _sha, part = await spool_atomic(file, dest, max_bytes)
+    os.replace(part, dest)
     return size
+
+
+async def spool_atomic(file: UploadFile, dest: Path, max_bytes: int) -> tuple[int, str, Path]:
+    """Diskka oqim vaqtinchalik `.part` faylga (dest bilan bir papkada, nuqta bilan boshlanadi — ro'yxatlarga
+    tushmaydi) + sha256. Qaytaradi: (hajm, sha256 hex, part yo'li). Chaqiruvchi tekshirib bo'lgach
+    `os.replace(part, dest)` (atomik) yoki `part.unlink()` qiladi. Chegara oshsa part o'chiriladi, 413."""
+    size = 0
+    h = hashlib.sha256()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.parent / f".{dest.name}.{uuid.uuid4().hex}.part"
+    try:
+        with open(part, "wb") as fh:
+            while chunk := await file.read(CHUNK):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise too_large(max_bytes)
+                h.update(chunk)
+                fh.write(chunk)
+            fh.flush()
+            os.fsync(fh.fileno())
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    return size, h.hexdigest(), part
 
 
 class MaxBodyMiddleware:

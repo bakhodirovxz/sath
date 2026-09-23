@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Web build shu papkadan tarqatiladi (bo'sh bo'lsa faqat API)
     web_dist: Path | None = None
     max_upload_mb: int = 2048
+    # SEC-03: desktop paketlari imzosi — nashr qiluvchining Ed25519 ochiq kaliti (base64, 32 bayt; bo'sh —
+    # server imzoni tekshirmaydi, faqat saqlab beradi). require — imzosiz/noto'g'ri imzoli paket rad etiladi.
+    desktop_signing_public_key: str = ""
+    desktop_require_signature: bool = False
     # L5: kichik yuklashlar chegarasi (CSV import, BCF) MB; parser sandbox rejimi: auto | bwrap | rlimit | off
     small_upload_mb: int = 50
     sandbox: str = "auto"
