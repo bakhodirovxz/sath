@@ -356,7 +356,7 @@ export interface SensorIn {
   priority?: "low" | "medium" | "high" | "critical" | undefined;
   writable?: boolean;
 }
-export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch";
+export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch" | "unknown";
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
 export interface GatewayKey { kind: GatewayKeyKind; key: string; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }

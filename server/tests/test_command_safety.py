@@ -147,14 +147,16 @@ def test_watchdog_frees_sensor_stuck_in_sent(client, users, gate, monkeypatch):
         assert control.tick(db) == 1
     cmds = client.get(f"/api/projects/{users['project_id']}/commands", headers=users["viewer"]).json()
     me = next(x for x in cmds if x["id"] == cid)
-    assert me["status"] == "failed" and "watchdog" in me["result"]
+    # SCADA-03: failed emas — bajarilgani noma'lum (unknown) + dispetcherlarga alarm
+    assert me["status"] == "unknown" and "watchdog" in me["result"]
     assert _cmd(client, users, gate["id"], 41).status_code == 201  # blok ochildi
-    # muallif bildirishnoma oldi
     n = client.get("/api/notifications", headers=users["op"]).json()
-    assert any("bajarilmadi" in x["title"] for x in n)
-    # audit
+    assert any(x["kind"] == "alarm" and "noma'lum" in x["title"] for x in n)
     acts = [a["action"] for a in client.get("/api/audit", headers=users["approver"], params={"project_id": users["project_id"]}).json()]
-    assert "command.failed" in acts and "command.expired" not in acts
+    assert "command.unknown" in acts and "command.expired" not in acts
+    # kechikkan gateway natijasi noma'lum holatni aniqlaydi
+    r = client.post(f"/api/commands/{cid}/ack", json={"status": "acked", "result": "kech"}, headers={"X-Command-Key": key})
+    assert r.status_code == 200 and r.json()["status"] == "acked"
 
 
 def test_writable_sensor_requires_finite_ordered_range(client, users):
@@ -194,3 +196,85 @@ def test_legacy_writable_without_range_cannot_be_commanded(client, users, gate):
         db.commit()
     r = _cmd(client, users, gate["id"], 10)
     assert r.status_code == 422 and "diapazon" in r.json()["detail"]
+
+
+def _status(cid):
+    with SessionLocal() as db:
+        return db.get(Command, cid).status
+
+
+def test_state_machine_rejects_invalid_transitions(client, users, gate):
+    """SCADA-03: ack faqat sent/unknown dan; yakuniy holatdan o'tish yo'q — 409."""
+    assert not control.can_transition(CommandStatus.pending, CommandStatus.acked)
+    assert not control.can_transition(CommandStatus.failed, CommandStatus.acked)
+    assert not control.can_transition(CommandStatus.mismatch, CommandStatus.acked)
+    assert control.can_transition(CommandStatus.unknown, CommandStatus.acked)
+    key = _key(client, users)
+    hk = {"X-Command-Key": key}
+    cid = _cmd(client, users, gate["id"], 30).json()["id"]
+    # pending → acked/failed (gateway olmagan) — 409
+    for st in ("acked", "failed", "sent"):
+        assert client.post(f"/api/commands/{cid}/ack", json={"status": st}, headers=hk).status_code == 409
+    assert _status(cid) == CommandStatus.pending
+    client.post(f"/api/projects/{users['project_id']}/commands/claim", headers=hk)
+    assert client.post(f"/api/commands/{cid}/ack", json={"status": "failed", "result": "x"}, headers=hk).status_code == 200
+    # failed yakuniy: acked/readback — 409
+    assert client.post(f"/api/commands/{cid}/ack", json={"status": "acked"}, headers=hk).status_code == 409
+    assert client.post(f"/api/commands/{cid}/readback", json={"value": 30}, headers=hk).status_code == 409
+    assert client.post(f"/api/commands/{cid}/cancel", headers=users["op"]).status_code == 409
+    assert _status(cid) == CommandStatus.failed
+    # mismatch yakuniy
+    cid2 = _cmd(client, users, gate["id"], 31).json()["id"]
+    client.post(f"/api/projects/{users['project_id']}/commands/claim", headers=hk)
+    assert client.post(f"/api/commands/{cid2}/readback", json={"value": 99}, headers=hk).json()["status"] == "mismatch"
+    assert client.post(f"/api/commands/{cid2}/ack", json={"status": "acked"}, headers=hk).status_code == 409
+    assert _status(cid2) == CommandStatus.mismatch
+
+
+def test_default_ttl_60s_and_two_minute_old_pending_not_dispatched(client, users):
+    """SCADA-03 qabul: default TTL 60 s; 2 daqiqa eski pending gateway ga berilmaydi."""
+    pid = users["project_id"]
+    r = client.post(
+        f"/api/projects/{pid}/sensors",
+        json={"key": "G9.SP", "name": "Zatvor 9", "writable": True, "min_setpoint": 0, "max_setpoint": 100},
+        headers=users["engineer"],
+    )
+    assert r.json()["command_ttl_s"] == 60
+    cid = _cmd(client, users, r.json()["id"], 10).json()["id"]
+    with SessionLocal() as db:
+        c = db.get(Command, cid)
+        assert 50 <= (control._aware(c.expires_at) - utcnow()).total_seconds() <= 61
+        c.created_at = utcnow() - timedelta(minutes=2)
+        c.expires_at = c.created_at + timedelta(seconds=60)
+        db.commit()
+    assert client.post(f"/api/projects/{pid}/commands/claim", headers={"X-Command-Key": _key(client, users)}).json() == []
+    assert _status(cid) == CommandStatus.expired
+
+
+def test_pending_approval_expires(client, users, gate, monkeypatch):
+    """SCADA-03: tasdiq kutish muddati — sensorni abadiy band qilmaydi; muddati o'tgach approve — 409."""
+    from conftest import add_member
+
+    monkeypatch.setattr(config.get_settings(), "command_approval_ttl_s", 120)
+    client.patch(f"/api/sensors/{gate['id']}", json={"requires_dual_approval": True}, headers=users["engineer"])
+    sup = add_member(client, users["admin"], users["project_id"], "sup", "shift_supervisor")
+    r = _cmd(client, users, gate["id"], 20)
+    assert r.json()["status"] == "pending_approval" and r.json()["expires_at"] is not None
+    cid = r.json()["id"]
+    with SessionLocal() as db:
+        c = db.get(Command, cid)
+        assert 100 <= (control._aware(c.expires_at) - utcnow()).total_seconds() <= 121
+        c.expires_at = utcnow() - timedelta(seconds=1)
+        db.commit()
+    assert client.post(f"/api/commands/{cid}/approve", headers=sup).status_code == 409
+    assert _status(cid) == CommandStatus.expired
+    assert _cmd(client, users, gate["id"], 21).status_code == 201  # sensor bo'sh
+
+
+def test_address_snapshot_used_at_dispatch(client, users, gate):
+    """SCADA-03: pending paytida manzil o'zgarsa ham gateway ga yaratilgandagi manzil beriladi."""
+    cid = _cmd(client, users, gate["id"], 30).json()["id"]
+    r = client.patch(f"/api/sensors/{gate['id']}", json={"address": {"register": 99}}, headers=users["engineer"])
+    assert r.status_code == 200
+    got = client.post(f"/api/projects/{users['project_id']}/commands/claim", headers={"X-Command-Key": _key(client, users)}).json()
+    assert [(g["id"], g["address"], g["protocol"]) for g in got] == [(cid, {"register": 10}, "modbus")]

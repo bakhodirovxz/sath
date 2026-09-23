@@ -78,7 +78,7 @@ def snapshot(db: Session, project_id: int, since: datetime, now: datetime | None
     pending = [
         {"id": c.id, "sensor_key": sensors[c.sensor_id].key if c.sensor_id in sensors else "", "value": c.value, "status": c.status.value, "author_id": c.created_by, "created_at": _aware(c.created_at).isoformat()}
         for c in db.query(Command)
-        .filter(Command.project_id == project_id, Command.status.in_([CommandStatus.pending, CommandStatus.sent, CommandStatus.pending_approval, CommandStatus.mismatch]))
+        .filter(Command.project_id == project_id, Command.status.in_([CommandStatus.pending, CommandStatus.sent, CommandStatus.pending_approval, CommandStatus.mismatch, CommandStatus.unknown]))
         .order_by(Command.id.desc())
         .all()
     ]

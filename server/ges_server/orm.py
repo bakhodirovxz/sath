@@ -615,7 +615,7 @@ class Sensor(Base):
     requires_dual_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0"
     )
-    command_ttl_s: Mapped[int] = mapped_column(Integer, default=300, server_default="300")
+    command_ttl_s: Mapped[int] = mapped_column(Integer, default=60, server_default="60")  # SCADA-03: 60 s
     # Readback: gateway yozgandan keyin o'qigan qiymat buyruqdan shu nisbiy chegaradan ko'p farq qilsa mismatch
     readback_tolerance: Mapped[float] = mapped_column(Float, default=0.01, server_default="0.01")
     last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -697,6 +697,9 @@ class CommandStatus(str, enum.Enum):
     expired = "expired"  # gateway olmasdan TTL o'tdi
     pending_approval = "pending_approval"  # ikki kishi tasdig'i kutilmoqda (B2)
     mismatch = "mismatch"  # readback: PLC dagi qiymat buyruqqa mos kelmadi (B2)
+    # SCADA-03: gateway olgan (sent), lekin watchdog muddatida natija qaytmadi — PLC ga yozilgan-yozilmagani
+    # noma'lum; dispetcherga alarm, sensor bloklanmaydi. Kechikkan ack/readback holatni aniqlaydi.
+    unknown = "unknown"
 
 
 class Command(Base):
@@ -728,6 +731,13 @@ class Command(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     readback_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     readback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # SCADA-03: yaratilgan paytdagi manzil snapshoti — pending paytida sensor manzili o'zgarsa ham
+    # gateway ga aynan tasdiqlangan nuqta beriladi
+    protocol: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    address: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    interlock_override: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # SCADA-04: gateway ga berilganda imzolangan nonce (takror yuborishdan himoya)
+    nonce: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[CommandStatus] = mapped_column(
         Enum(CommandStatus), default=CommandStatus.pending
     )

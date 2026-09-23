@@ -111,7 +111,7 @@ class SensorIn(BaseModel):
     max_setpoint: float | None = None
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
-    command_ttl_s: int = Field(300, ge=10, le=86400)
+    command_ttl_s: int = Field(60, ge=10, le=86400)
     readback_tolerance: float = Field(0.01, ge=0, le=1)
 
 
@@ -225,7 +225,7 @@ class SensorOut(BaseModel):
     max_setpoint: float | None = None
     max_rate_per_min: float | None = None
     requires_dual_approval: bool = False
-    command_ttl_s: int = 300
+    command_ttl_s: int = 60
     readback_tolerance: float = 0.01
 
     model_config = {"from_attributes": True}

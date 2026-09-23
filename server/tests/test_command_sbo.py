@@ -73,7 +73,7 @@ def test_dual_approval_author_cannot_approve(client, users, operator, gate):
     client.patch(f"/api/sensors/{gate['id']}", json={"requires_dual_approval": True}, headers=users["engineer"])
     sup = add_member(client, users["admin"], pid, "sup", "shift_supervisor")
     r = send_command(client, operator, pid, gate["id"], 55, "ikki kishi")
-    assert r.status_code == 201 and r.json()["status"] == "pending_approval" and r.json()["expires_at"] is None
+    assert r.status_code == 201 and r.json()["status"] == "pending_approval" and r.json()["expires_at"] is not None
     cid = r.json()["id"]
     key = _key(client, users)
     # gateway ga berilmaydi

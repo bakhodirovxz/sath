@@ -6,10 +6,17 @@ Buyruqlar — select-before-operate (IEC 60870-5-101/104 va ISA-101 amaliyoti, B
   2. `POST /commands/execute` — token bilan; qiymat/sensor/foydalanuvchi tokenga bog'langan.
      `requires_dual_approval` sensorlarda buyruq `pending_approval` — boshqa operator
      `POST /commands/{id}/approve` qilmaguncha gateway ga bermaydi; muallif o'zini tasdiqlay olmaydi.
-  3. Gateway `POST /commands/claim` (X-Ingest-Key) bilan navbatni oladi (sent), SCADA ga yozadi,
+  3. Gateway `POST /commands/claim` (X-Command-Key) bilan navbatni oladi (sent), SCADA ga yozadi,
      `ack` (acked/failed) va yozgandan keyin o'qigan qiymatni `readback` ga yuboradi — server
      kutilgan va haqiqiy qiymatni solishtiradi (`readback_tolerance`), farq bo'lsa `mismatch` +
      bildirishnoma. Har qadam audit va jonli oqimda. Smena jurnali: dispetcher yozuvlari.
+
+Holat mashinasi (SCADA-03) — `TRANSITIONS` dan tashqari o'tish 409:
+  pending_approval → pending | cancelled | expired (tasdiq muddati `command_approval_ttl_s`)
+  pending → sent | cancelled | expired (TTL `command_ttl_s`, default 60 s)
+  sent → acked | failed | mismatch | unknown (watchdog `command_sent_timeout_s` → unknown + alarm)
+  unknown → acked | failed | mismatch (kechikkan gateway natijasi);  acked → acked | mismatch (readback)
+  failed, cancelled, expired, mismatch — yakuniy.
 """
 
 from __future__ import annotations
@@ -176,6 +183,29 @@ class ReadbackIn(BaseModel):
 
 SELECT_TTL_S = 30
 
+_S = CommandStatus
+TRANSITIONS: dict[CommandStatus, frozenset[CommandStatus]] = {
+    _S.pending_approval: frozenset({_S.pending, _S.cancelled, _S.expired}),
+    _S.pending: frozenset({_S.sent, _S.cancelled, _S.expired}),
+    # sent → sent: gateway "hali yozmoqda" (idempotent)
+    _S.sent: frozenset({_S.sent, _S.acked, _S.failed, _S.mismatch, _S.unknown}),
+    _S.unknown: frozenset({_S.acked, _S.failed, _S.mismatch}),
+    _S.acked: frozenset({_S.acked, _S.mismatch}),
+}
+
+
+def can_transition(old: CommandStatus, new: CommandStatus) -> bool:
+    return new in TRANSITIONS.get(old, frozenset())
+
+
+def set_status(c: Command, new: CommandStatus) -> None:
+    """Qat'iy holat mashinasi: ruxsat etilmagan o'tish → 409 (holat o'zgarmaydi)."""
+    if not can_transition(c.status, new):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Buyruq #{c.id}: {c.status.value} → {new.value} o'tishi ruxsat etilmagan"
+        )
+    c.status, c.updated_at = new, utcnow()
+
 
 def _sign(payload: bytes) -> str:
     key = get_settings().ensure_secret_key().encode("utf-8")
@@ -290,18 +320,24 @@ def check_envelope(db, s: Sensor, value: float, check_rate: bool = True) -> None
 
 
 def expire_pending(db, project_id: int | None = None) -> list[Command]:
-    """TTL o'tgan pending buyruqlar → expired (gateway ga berilmaydi)."""
+    """TTL o'tgan pending (gateway olmagan) va tasdiq muddati o'tgan pending_approval buyruqlar →
+    expired (gateway ga berilmaydi, sensor bo'shaydi)."""
     now = utcnow()
     q = db.query(Command).filter(
-        Command.status == CommandStatus.pending, Command.expires_at.isnot(None)
+        Command.status.in_([CommandStatus.pending, CommandStatus.pending_approval]),
+        Command.expires_at.isnot(None),
     )
     if project_id is not None:
         q = q.filter(Command.project_id == project_id)
     out = []
     for c in q.all():
         if _aware(c.expires_at) <= now:
+            c.result = (
+                "Tasdiq muddati o'tdi — ikkinchi imzo berilmadi"
+                if c.status == CommandStatus.pending_approval
+                else "TTL o'tdi — gateway olmadi"
+            )
             c.status, c.updated_at = CommandStatus.expired, now
-            c.result = "TTL o'tdi — gateway olmadi"
             audit.log(
                 db,
                 user_id=None,
@@ -317,18 +353,20 @@ def expire_pending(db, project_id: int | None = None) -> list[Command]:
 
 
 def watchdog_sent(db, timeout_s: int) -> list[Command]:
-    """`sent` da qotgan buyruqlar (gateway ack/failed qaytarmadi) → failed, sensor bloki ochiladi."""
+    """`sent` da qotgan buyruqlar (gateway ack/failed qaytarmadi) → `unknown`: PLC ga yozilgan-yozilmagani
+    noma'lum, shuning uchun "failed" emas. Dispetcherlarga alarm (haqiqiy qiymatni tekshirish kerak),
+    sensor bloki ochiladi; kechikkan ack/readback holatni aniqlaydi."""
     now = utcnow()
     out = []
     for c in db.query(Command).filter(Command.status == CommandStatus.sent).all():
         ref = _aware(c.sent_at) or _aware(c.updated_at)
         if ref is not None and (now - ref).total_seconds() > timeout_s:
-            c.status, c.updated_at = CommandStatus.failed, now
-            c.result = f"watchdog: gateway {timeout_s} s ichida javob bermadi"
+            c.status, c.updated_at = CommandStatus.unknown, now
+            c.result = f"watchdog: gateway {timeout_s} s ichida javob bermadi — bajarilgani noma'lum"
             audit.log(
                 db,
                 user_id=None,
-                action="command.failed",
+                action="command.unknown",
                 target_type="command",
                 target_id=c.id,
                 project_id=c.project_id,
@@ -336,10 +374,10 @@ def watchdog_sent(db, timeout_s: int) -> list[Command]:
             )
             notifications.push(
                 db,
-                [c.created_by],
-                "system",
-                f"Buyruq bajarilmadi: {c.sensor.name} → {c.value:g}",
-                c.result,
+                sorted(set(member_ids_with_permission(db, c.project_id, P_SCADA_COMMAND)) | {c.created_by}),
+                "alarm",
+                f"Buyruq holati noma'lum: {c.sensor.name} → {c.value:g}",
+                c.result + ". Nuqtaning haqiqiy qiymatini tekshiring.",
                 f"/projects/{c.project_id}/dashboard",
             )
             out.append(c)
@@ -532,6 +570,7 @@ def execute_command(body: ExecuteIn, project: CommandProject, user: CurrentUser,
             f"Buyruq #{open_.id} hali bajarilmagan (kuting yoki bekor qiling)",
         )
     needs_approval = bool(s.requires_dual_approval)
+    ttl = get_settings().command_approval_ttl_s if needs_approval else (s.command_ttl_s or 60)
     c = Command(
         project_id=project.id,
         sensor_id=s.id,
@@ -539,8 +578,12 @@ def execute_command(body: ExecuteIn, project: CommandProject, user: CurrentUser,
         note=body.note,
         created_by=user.id,
         status=CommandStatus.pending_approval if needs_approval else CommandStatus.pending,
-        # TTL tasdiqdan keyin boshlanadi (approve da qayta qo'yiladi)
-        expires_at=None if needs_approval else utcnow() + timedelta(seconds=s.command_ttl_s or 300),
+        # pending_approval: tasdiq kutish muddati; tasdiqdan keyin gateway TTL (approve da qayta qo'yiladi)
+        expires_at=utcnow() + timedelta(seconds=ttl),
+        # manzil snapshoti: pending paytida sensor manzili o'zgarsa ham aynan shu nuqta yoziladi
+        protocol=s.protocol,
+        address=dict(s.address or {}),
+        interlock_override=bool(tok.get("o")),
     )
     db.add(c)
     try:
@@ -600,16 +643,19 @@ def approve_command(command_id: int, user: CurrentUser, db: DB):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
     if not has_permission(db, c.project_id, user, P_SCADA_COMMAND_APPROVE):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Buyruqni tasdiqlash huquqi kerak (smena boshlig'i)")
-    if c.status != CommandStatus.pending_approval:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — tasdiq kutilmayapti")
     if c.created_by == user.id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Muallif o'z buyrug'ini tasdiqlay olmaydi (ikki kishi qoidasi)"
         )
-    now = utcnow()
-    c.status, c.updated_at = CommandStatus.pending, now
+    expired = expire_pending(db, c.project_id)  # tasdiq muddati o'tgan bo'lsa — expired (saqlanadi)
+    if expired:
+        db.commit()
+        for x in expired:
+            _publish(x)
+    set_status(c, CommandStatus.pending)
+    now = c.updated_at
     c.approved_by, c.approved_at = user.id, now
-    c.expires_at = now + timedelta(seconds=c.sensor.command_ttl_s or 300)
+    c.expires_at = now + timedelta(seconds=c.sensor.command_ttl_s or 60)
     audit.log(
         db,
         user_id=user.id,
@@ -633,11 +679,11 @@ def cancel_command(command_id: int, user: CurrentUser, db: DB):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Buyruq huquqi kerak (dispetcher)")
     if c.status not in (CommandStatus.pending, CommandStatus.pending_approval):
         # sent — gateway allaqachon olgan, PLC ga yozilishi mumkin: bekor qilish yolg'on xavfsizlik beradi;
-        # javob kelmasa watchdog (command_sent_timeout_s) failed ga o'tkazadi
+        # javob kelmasa watchdog (command_sent_timeout_s) unknown ga o'tkazadi
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Faqat kutayotgan (pending / tasdiq kutayotgan) buyruq bekor qilinadi"
         )
-    c.status, c.updated_at = CommandStatus.cancelled, utcnow()
+    set_status(c, CommandStatus.cancelled)
     audit.log(
         db,
         user_id=user.id,
@@ -682,15 +728,16 @@ def claim_commands(
     )
     out = []
     for c in rows:
-        c.status, c.updated_at = CommandStatus.sent, utcnow()
+        set_status(c, CommandStatus.sent)
         c.sent_at = c.updated_at
         out.append(
             {
                 "id": c.id,
                 "key": c.sensor.key,
                 "value": c.value,
-                "protocol": c.sensor.protocol,
-                "address": c.sensor.address,
+                # yaratilgan paytdagi snapshot (eski qatorlarda — sensordan)
+                "protocol": c.protocol if c.protocol is not None else c.sensor.protocol,
+                "address": c.address if c.address is not None else c.sensor.address,
             }
         )
     db.commit()  # buyruqlar + kalitning last_used_at
@@ -711,13 +758,11 @@ def ack_command(
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
     _gateway_project(db, c.project_id, x_command_key)
-    if c.status in (CommandStatus.cancelled, CommandStatus.acked, CommandStatus.expired):
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq allaqachon {c.status.value}")
-    if c.status == CommandStatus.failed and body.status != "failed":
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Buyruq watchdog bilan failed — qayta yuboring"
-        )
-    c.status, c.result, c.updated_at = CommandStatus(body.status), body.result[:400], utcnow()
+    if c.status not in (CommandStatus.sent, CommandStatus.unknown):
+        # ack faqat gateway olgan buyruqqa: pending/pending_approval/yakuniy holatlarga — 409
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — ack kutilmaydi")
+    set_status(c, CommandStatus(body.status))
+    c.result = body.result[:400]
     audit.log(
         db,
         user_id=None,
@@ -755,13 +800,13 @@ def readback_command(
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
     _gateway_project(db, c.project_id, x_command_key)
-    if c.status not in (CommandStatus.sent, CommandStatus.acked):
+    if c.status not in (CommandStatus.sent, CommandStatus.acked, CommandStatus.unknown):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — readback kutilmaydi")
-    now = utcnow()
-    c.readback_value, c.readback_at, c.updated_at = body.value, now, now
     tol = max(abs(c.value) * (c.sensor.readback_tolerance or 0.0), 1e-6)
     ok = abs(body.value - c.value) <= tol
-    c.status = CommandStatus.acked if ok else CommandStatus.mismatch
+    set_status(c, CommandStatus.acked if ok else CommandStatus.mismatch)
+    now = c.updated_at
+    c.readback_value, c.readback_at = body.value, now
     if not ok:
         c.result = f"readback {body.value:g} ≠ buyruq {c.value:g} (chegara ±{tol:g})"
     audit.log(
