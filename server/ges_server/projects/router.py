@@ -208,15 +208,36 @@ def list_members(project: ViewerProject, db: DB, limit: int = Query(500, gt=0, l
     return [MemberOut(user_id=m.user_id, username=u.username, full_name=u.full_name, role=m.role) for m, u in rows]
 
 
+def _approver_rank(role) -> bool:
+    """Tasdiqlovchi yoki undan yuqori rol. Noma'lum (yangi, masalan SCADA `shift_supervisor`) rollar —
+    tasdiqlovchidan past hisoblanadi (AUTH-04)."""
+    try:
+        return has_role(role, Role.approver)
+    except (KeyError, ValueError):
+        return False
+
+
+def _check_grant(user: User, new_role, current_role=None) -> None:
+    """AUTH-04: tasdiqlovchi rolini faqat administrator beradi/oladi; tasdiqlovchi faqat o'zidan past rollarni
+    boshqaradi (boshqa tasdiqlovchini pasaytira yoki chiqara olmaydi)."""
+    if user.is_admin:
+        return
+    if new_role is not None and _approver_rank(new_role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tasdiqlovchi rolini faqat administrator beradi")
+    if current_role is not None and _approver_rank(current_role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tasdiqlovchini faqat administrator o'zgartiradi yoki chiqaradi")
+
+
 @router.put("/{project_id}/members", response_model=MemberOut)
 def set_member(body: MemberSet, project: ApproverProject, user: CurrentUser, db: DB):
-    """A'zo qo'shish yoki rolini o'zgartirish."""
+    """A'zo qo'shish yoki rolini o'zgartirish. Tasdiqlovchi rolini faqat administrator beradi/oladi (AUTH-04)."""
     target = db.get(User, body.user_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Foydalanuvchi topilmadi")
     member = (
         db.query(ProjectMember).filter_by(project_id=project.id, user_id=body.user_id).one_or_none()
     )
+    _check_grant(user, body.role, member.role if member is not None else None)
     if member is None:
         member = ProjectMember(project_id=project.id, user_id=body.user_id, role=body.role)
         db.add(member)
@@ -244,6 +265,7 @@ def remove_member(user_id: int, project: ApproverProject, user: CurrentUser, db:
     member = db.query(ProjectMember).filter_by(project_id=project.id, user_id=user_id).one_or_none()
     if member is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "A'zo topilmadi")
+    _check_grant(user, None, member.role)
     db.delete(member)
     sessions.revoke_all(db, user_id, reason="member_removed")
     audit.log(
