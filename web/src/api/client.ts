@@ -366,6 +366,32 @@ export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
 /** SCADA-04: `key` faqat yaratilganda/almashtirilganda (bir marta), aks holda null — `key_prefix` ko'rsatiladi. */
+export interface MeshImportOptions {
+  message?: string;
+  unit?: string;
+  /** null/undefined — fayldan avto aniqlash */
+  y_up?: boolean | null;
+  merge?: boolean;
+  onto_current?: boolean;
+  extrude_m?: number;
+  unit_override?: boolean;
+}
+
+export interface MeshImportInfo {
+  unit: string;
+  scale: number;
+  unit_source: string;
+  units_uncertain: boolean;
+  unit_note: string;
+  up_axis: string | null;
+  axis_uncertain: boolean;
+  y_up: boolean;
+  dxf?: { skipped_2d?: number; skipped_types?: Record<string, number>; inserts?: number; linework?: boolean } | null;
+  warnings: string[];
+}
+
+export type MeshImportResult = Version & { imported: number; names: string[]; import_info?: MeshImportInfo; warnings?: string[]; units_uncertain?: boolean };
+
 export interface GatewayKey { kind: GatewayKeyKind; key: string | null; key_prefix: string | null; shown_once: boolean; exists: boolean; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
 export interface InterlockResult { interlock_id: number; name: string; ok: boolean; message: string }
 export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean; interlocks?: InterlockResult[]; override?: boolean }
@@ -871,16 +897,19 @@ export const api = {
     if (parentId != null) fd.append("parent_id", String(parentId));
     return request<Version>(`/api/models/${modelId}/versions`, { method: "POST", body: fd });
   },
-  importMeshVersion: (modelId: number, file: File, opts: { message?: string; unit?: string; y_up?: boolean; merge?: boolean; onto_current?: boolean; extrude_m?: number }) => {
+  /** Mesh/CAD import (CAD-03/04). `y_up` berilmasa — server fayldan aniqlaydi (glTF avto-o'girish); `unit_override` —
+   * foydalanuvchi birligi fayldagidan ustun. Javobda `units_uncertain` bo'lsa — foydalanuvchidan so'raladi. */
+  importMeshVersion: (modelId: number, file: File, opts: MeshImportOptions) => {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("message", opts.message ?? "");
     fd.append("unit", opts.unit ?? "m");
-    fd.append("y_up", String(!!opts.y_up));
+    if (typeof opts.y_up === "boolean") fd.append("y_up", String(opts.y_up));
     fd.append("merge", String(!!opts.merge));
     fd.append("onto_current", String(opts.onto_current ?? true));
     fd.append("extrude_m", String(opts.extrude_m ?? 0));
-    return request<Version & { imported: number; names: string[] }>(`/api/models/${modelId}/versions/import-mesh`, { method: "POST", body: fd });
+    if (opts.unit_override) fd.append("unit_override", "true");
+    return request<MeshImportResult>(`/api/models/${modelId}/versions/import-mesh`, { method: "POST", body: fd });
   },
   importImageVersion: (modelId: number, file: File, opts: { mode: "drawing" | "heightmap" | "photo"; message?: string; width_m?: number; extrude_m?: number; z_min?: number; z_max?: number; grid?: number; min_area_px?: number; invert?: boolean; onto_current?: boolean }) => {
     const fd = new FormData();

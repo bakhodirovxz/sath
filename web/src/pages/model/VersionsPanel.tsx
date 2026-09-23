@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { dialogs } from "../../ui/dialogs";
 import Icon from "../../ui/Icon";
-import { api, HEAD_MOVED_TEXT, isHeadMoved, type Diff, type Model, type Version } from "../../api/client";
+import { api, HEAD_MOVED_TEXT, isHeadMoved, type Diff, type MeshImportOptions, type Model, type Version } from "../../api/client";
 import { fmtDate, fmtSize, ifcLabel, label } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { BBadge, BList, BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { notify } from "../../ui/notice";
+import MeshUnitCheck from "./MeshUnitCheck";
+import { MESH_UNITS, meshFollowUp, type MeshFollowUp } from "./meshImport";
 
 interface Props {
   model: Model;
@@ -32,7 +34,10 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
   // Blender: ro'yxatda tanlash (faol) — ochishdan alohida; ikki marta bosish/Enter/«Ochish» — modelni yuklaydi
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = versions.find((v) => v.id === selectedId) ?? current ?? versions[0] ?? null;
-  const [meshOpts, setMeshOpts] = useState({ unit: "m", y_up: false, merge: false, onto_current: true, extrude_m: 0 });
+  // y_up: "auto" — server fayldan aniqlaydi (glTF avto-o'girish); unit_override — tanlangan birlik fayldagidan ustun
+  const [meshOpts, setMeshOpts] = useState<{ unit: string; axis: "auto" | "y" | "z"; unit_override: boolean; merge: boolean; onto_current: boolean; extrude_m: number }>({ unit: "m", axis: "auto", unit_override: false, merge: false, onto_current: true, extrude_m: 0 });
+  const [unitCheck, setUnitCheck] = useState<{ file: File; opts: MeshImportOptions; version: Version; baseHeadId: number | null; follow: MeshFollowUp } | null>(null);
+  const [reimporting, setReimporting] = useState(false);
   const isCad = !!file && /\.(dxf|dwg)$/i.test(file.name);
   const isImage = !!file && /\.(png|jpe?g|tiff?|bmp|webp)$/i.test(file.name);
   const isMesh = !!file && !isImage && !file.name.toLowerCase().endsWith(".ifc");
@@ -44,11 +49,19 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
     setBusy(true);
     setError("");
     try {
-      const v = isImage
-        ? await api.importImageVersion(model.id, file, { message, ...imgOpts })
-        : isMesh
-          ? await api.importMeshVersion(model.id, file, { message, ...meshOpts })
-          : await api.uploadVersion(model.id, file, message, current?.id);
+      let v: Version;
+      if (isMesh) {
+        const { axis, ...rest } = meshOpts;
+        const opts: MeshImportOptions = { message, ...rest, y_up: axis === "auto" ? null : axis === "y" };
+        const baseHeadId = versions[0]?.id ?? null;
+        const res = await api.importMeshVersion(model.id, file, opts);
+        const follow = meshFollowUp(res);
+        if (follow.uncertain) setUnitCheck({ file, opts, version: res, baseHeadId, follow });
+        else reportMesh(follow);
+        v = res;
+      } else {
+        v = isImage ? await api.importImageVersion(model.id, file, { message, ...imgOpts }) : await api.uploadVersion(model.id, file, message, current?.id);
+      }
       setUploading(false);
       setFile(null);
       setMessage("");
@@ -60,8 +73,31 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
     }
   }
 
+  /** Birlik shubhali: boshqa birlik bilan qayta import. Joriy model ustiga qo'shilgan bo'lsa — avval import oldidagi
+   * holat tiklanadi (aks holda obyektlar ikki marta qo'shiladi), keyin unit_override bilan import. */
+  async function reimport(unit: string) {
+    if (!unitCheck) return;
+    setReimporting(true);
+    try {
+      const { file: f, opts, version, baseHeadId } = unitCheck;
+      if (opts.onto_current && baseHeadId != null) await api.restoreVersion(baseHeadId, version.id);
+      const res = await api.importMeshVersion(model.id, f, { ...opts, unit, unit_override: true, message: `${opts.message || f.name} (birlik: ${unit})` });
+      setUnitCheck(null);
+      reportMesh(meshFollowUp(res), `Qayta import: ${unit}`);
+      onUploaded(res);
+    } catch (err) {
+      notify(isHeadMoved(err) ? HEAD_MOVED_TEXT : err instanceof Error ? err.message : "Qayta import amalga oshmadi", isHeadMoved(err) ? "warning" : "error");
+    } finally {
+      setReimporting(false);
+    }
+  }
+
   return (
     <div>
+      {unitCheck && (
+        <MeshUnitCheck fileName={unitCheck.file.name} info={unitCheck.follow.info} warnings={unitCheck.follow.warnings} busy={reimporting}
+          onAccept={() => { reportMesh({ ...unitCheck.follow, uncertain: false }); setUnitCheck(null); }} onReimport={(u) => void reimport(u)} />
+      )}
       <BPanel id="versions" title="Versiyalar" count={versions.length} right={canEdit && (
         <>
           <button className="btn sm primary" onClick={() => setUploading(true)} title="IFC / CAD / mesh / rasm yuklash — yangi versiya"><Icon name="upload" size={12} /> Yangi</button>
@@ -169,8 +205,9 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
               <div className="section-box small">
                 <div className="dim mb-6">Fayl IFC ga aylantiriladi: har obyekt — alohida element (nomi, rangi saqlanadi); obyekt nomida «togon/dam», «penstock/quvur», «turbina», «spillway» bo'lsa GES turi va Pset avtomatik. Birlik glTF/DXF dan avto aniqlanadi. Rang uchun OBJ ni MTL bilan ZIP qilib yuklang. STEP/IGES — har jism alohida, nomi va rangi bilan (mm). FBX/3DS/LWO — obyekt nomlari va materiallar (assimp). .max/.skp — dasturdan FBX/glTF/OBJ ga eksport qiling. AutoCAD DXF/DWG: 3DFACE/MESH/polyface o'qiladi (qatlam = element nomi, rangi), 3DSOLID (ACIS) — AutoCAD da MESHSMOOTH yoki EXPORT → OBJ; 2D chizma (plan/kesim) AutoCAD dagidek — o'lchamlar, matn, shtrix, ranglar bilan — tekis varaq bo'lib chiqadi; devor/plita qilish uchun «ko'tarish» balandligini kiriting.</div>
                 <div className="row wrap">
-                  <label className="field w-120"><span>Fayl birligi</span><select className="select" value={meshOpts.unit} onChange={(e) => setMeshOpts({ ...meshOpts, unit: e.target.value })}><option value="m">metr</option><option value="cm">santimetr</option><option value="mm">millimetr</option><option value="in">dyuym</option><option value="ft">fut</option></select></label>
-                  <label className="row small field-check"><input type="checkbox" checked={meshOpts.y_up} onChange={(e) => setMeshOpts({ ...meshOpts, y_up: e.target.checked })} /> Y yuqoriga (glTF, ba'zi eksportlar)</label>
+                  <label className="field w-150"><span>Fayl birligi (aniqlanmasa)</span><select className="select" value={meshOpts.unit} onChange={(e) => setMeshOpts({ ...meshOpts, unit: e.target.value })}>{MESH_UNITS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}</select></label>
+                  <label className="row small field-check" title="Belgilanmasa — fayldagi birlik ($INSUNITS, FBX, glTF) ustun"><input type="checkbox" checked={meshOpts.unit_override} onChange={(e) => setMeshOpts({ ...meshOpts, unit_override: e.target.checked })} /> birlikni majburlash</label>
+                  <label className="field w-150"><span>Yuqori o'q</span><select className="select" value={meshOpts.axis} onChange={(e) => setMeshOpts({ ...meshOpts, axis: e.target.value as "auto" | "y" | "z" })} data-testid="mesh-axis"><option value="auto">avto (fayldan)</option><option value="y">Y yuqoriga</option><option value="z">Z yuqoriga</option></select></label>
                   <label className="row small field-check"><input type="checkbox" checked={meshOpts.merge} onChange={(e) => setMeshOpts({ ...meshOpts, merge: e.target.checked })} /> bitta elementga birlashtirish</label>
                   <label className="row small field-check"><input type="checkbox" checked={meshOpts.onto_current} onChange={(e) => setMeshOpts({ ...meshOpts, onto_current: e.target.checked })} /> joriy model ustiga qo'shish</label>
                   {isCad && <label className="field w-200"><span>2D konturlarni ko'tarish (m; 0 — faqat 3D)</span><input className="input" type="number" step="any" min="0" value={meshOpts.extrude_m} onChange={(e) => setMeshOpts({ ...meshOpts, extrude_m: Number(e.target.value) || 0 })} /></label>}
@@ -208,6 +245,14 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
       )}
     </div>
   );
+}
+
+/** Ogohlantirishlar — bildirishnoma (xato emas); 2D elementlar tashlab ketilgan bo'lsa — aytiladi. */
+function reportMesh(f: MeshFollowUp, prefix = "") {
+  const parts = [...f.warnings];
+  if (f.skipped2d > 0 && !parts.some((w) => /2D/.test(w))) parts.push(`${f.skipped2d} ta 2D element (chiziq, matn, o'lcham) import qilinmadi`);
+  if (parts.length) notify(`${prefix ? `${prefix}. ` : ""}${parts.join("; ")}`, "warning");
+  else if (prefix) notify(prefix);
 }
 
 async function download(v: Version) {
