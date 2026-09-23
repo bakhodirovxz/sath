@@ -298,7 +298,7 @@ def update_work_order(wo_id: int, body: WorkOrderPatch, user: CurrentUser, db: D
             changes.get("failure_mode"), changes.get("failure_cause"), changes.get("detection_method")
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     old_status = w.status
     new_status = changes.get("status", w.status)
     if new_status in (WorkOrderStatus.done, WorkOrderStatus.cancelled) and w.loto_active:

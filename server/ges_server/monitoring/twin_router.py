@@ -431,7 +431,7 @@ def _check_hierarchy(db, project_id: int, data: dict, self_id: int | None = None
         try:
             data["kks_code"] = kks.validate(data["kks_code"])
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
         if data["kks_code"]:
             dup = db.query(Asset).filter_by(project_id=project_id, kks_code=data["kks_code"]).first()
             if dup is not None and dup.id != self_id:
@@ -440,7 +440,7 @@ def _check_hierarchy(db, project_id: int, data: dict, self_id: int | None = None
         try:
             data["taxonomy_level"] = kks.level_for(data.get("kks_code"), data["taxonomy_level"])
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     if "parent_id" in data:
         if data["parent_id"] in (0, None):
             data["parent_id"] = None
@@ -637,7 +637,7 @@ def asset_document_upload(asset_id: int, file: UploadFile, user: CurrentUser, db
     try:
         sha, size = storage.store(file.file, ext=ext, max_bytes=get_settings().small_upload_mb * 1024 * 1024)
     except ValueError as e:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(e)) from e
     d = AssetDocument(asset_id=a.id, kind=kind, title=title.strip() or name, file_name=name, file_sha256=sha, file_size=size, ext=ext, uploaded_by=user.id)
     db.add(d)
     db.flush()
@@ -734,7 +734,7 @@ def assets_import_kks(project: EngineerProject, user: CurrentUser, db: DB, file:
 
     raw = file.file.read(get_settings().small_upload_mb * 1024 * 1024 + 1)
     if len(raw) > get_settings().small_upload_mb * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "CSV juda katta")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "CSV juda katta")
     rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig", errors="replace"))))
     if not rows or "kks_code" not in rows[0]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV: kks_code, name[, parent_kks, taxonomy_level, element_guid, sensor_key, function_location]")

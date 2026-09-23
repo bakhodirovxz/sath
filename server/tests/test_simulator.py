@@ -106,6 +106,25 @@ def test_record_and_replay(sim, tmp_path):
     assert got == [r["tags"]["RES.H"] for r in rows]
 
 
+def test_modbus_server_stop_twice_no_orphan_coroutine(sim):
+    """Aloqa uzilganda stop(), keyin `finally` da yana stop(): ikkinchisi to'xtagan siklga shutdown()
+    korutinasini yubormasin («coroutine ModbusBaseServer.shutdown was never awaited»); sikl yopiladi."""
+    import warnings
+
+    pytest.importorskip("pymodbus")
+    ms = sim.ModbusServer("127.0.0.1:5023")
+    ms.start()
+    loop = ms._loop
+    ms.stop()
+    assert not ms._thread.is_alive() and loop.is_closed()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ms.stop()
+    ms.start()  # aloqa tiklanganda qayta ishga tushadi
+    assert ms._running and ms._loop is not loop and ms._loop.is_running()
+    ms.stop()
+
+
 def test_gateway_config_matches_registers(sim):
     cfg = sim.gateway_config(modbus="127.0.0.1:5021")
     tags = cfg["sources"][0]["tags"]

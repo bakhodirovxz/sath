@@ -1,8 +1,8 @@
 """Hosilaviy artefaktlar navbati (L3): IFC → fragments (.frag) va QTO/to'qnashuv oldindan hisoblash.
 Ilgari `BackgroundTasks` (restartda yo'qolar edi); endi `jobs` navbati — idempotent (`<tur>:<sha>`).
 
-OPS-03: GET /fragments, /qto, /clashes keshda natija bo'lmasa so'rov ichida hisoblamaydi — shu navbatga
-`fragments`, `qto`, `clash` ishini qo'yib 202 qaytaradi; katta IFC metadata si (`meta`) ham shu yerda."""
+OPS-03: GET /fragments, /qto, /clashes (versiya va federatsiya) keshda natija bo'lmasa so'rov ichida
+hisoblamaydi — shu navbatga `fragments`, `qto`, `clash`, `fedclash` ishini qo'yib 202 qaytaradi; katta IFC metadata si (`meta`) ham shu yerda."""
 
 from __future__ import annotations
 
@@ -37,6 +37,13 @@ def _clash(payload: dict) -> None:
     geometry.cached(payload["sha"], geometry.clash_kind(ta, tb), lambda: geometry.compute_clashes(path, 0.0, ta, tb))
 
 
+def _fedclash(payload: dict) -> None:
+    """Federatsiya to'qnashuvlari (G5) — a'zolar so'rov paytida hal qilingan holatda (sha + siljish) keladi."""
+    from . import federation
+
+    federation.cached_clashes(payload["members"], float(payload.get("tolerance") or 0.0), bool(payload.get("cross_only", True)))
+
+
 def _meta(payload: dict) -> None:
     """Katta IFC ning to'liq metadata si (yuklashda faqat sarlavha o'qilgan) — shu fayldagi versiyalarga."""
     from ..db import SessionLocal
@@ -69,6 +76,7 @@ jobs.HANDLERS.setdefault("geometry", _geometry)
 jobs.HANDLERS.setdefault("ids", _ids)
 jobs.HANDLERS.setdefault("qto", _qto)
 jobs.HANDLERS.setdefault("clash", _clash)
+jobs.HANDLERS.setdefault("fedclash", _fedclash)
 jobs.HANDLERS.setdefault("meta", _meta)
 
 

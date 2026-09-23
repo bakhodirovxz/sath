@@ -91,7 +91,7 @@ def check_sensor_guid(
         return  # versiya yo'q — tekshirib bo'lmaydi
     if guid not in guids:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"element_guid «{guid}» joriy model versiyasida (id {', '.join(map(str, used))}) topilmadi — "
             "GUID ni tekshiring yoki hali modelda yo'q element uchun force=true bilan saqlang",
         )
@@ -114,7 +114,7 @@ def unlinked(db: Session, project_id: int, version_id: int | None = None) -> dic
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Versiya topilmadi")
         guids = version_guids(v)
         if guids is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Versiya faylidan GUID o'qib bo'lmadi")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Versiya faylidan GUID o'qib bo'lmadi")
         for s in sensors:
             if s.model_id not in (None, v.model_id):
                 continue

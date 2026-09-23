@@ -118,3 +118,45 @@ def test_subscribe_reconnects_after_session_loss(opc_server):
         assert ok is not None and ok["value"] == 910.0
     finally:
         src.close()
+
+
+def test_closed_client_not_called_after_disconnect():
+    """asyncua.sync klienti yopilgach (ThreadLoop to'xtagan) close()/read() unga chaqiruv yubormaydi —
+    aks holda korutina yaratilib, siklga qo'yilmaydi («coroutine Node.read_value was never awaited»)."""
+    gw = _load_gateway()
+    calls = []
+
+    class DeadLoop:
+        def is_running(self):
+            return False
+
+    class TLoop:
+        loop = DeadLoop()
+
+        def is_alive(self):
+            return False
+
+    class Dead:
+        tloop = TLoop()
+
+        def disconnect(self):
+            calls.append("disconnect")
+
+        def get_node(self, _nid):
+            calls.append("get_node")
+
+    class Sub:
+        def delete(self):
+            calls.append("sub.delete")
+
+    src = gw.OpcUaSource.__new__(gw.OpcUaSource)
+    gw.Source.__init__(src)
+    src.cfg, src.mode, src.client, src.sub, src.nodes = {"url": "opc.tcp://x"}, "subscribe", Dead(), Sub(), [("RES.H", None)]
+    src._latest, src._changed = {}, set()
+    reconnects = []
+    src._connect = lambda: reconnects.append(1)
+    assert src._loop_alive() is False
+    src.close()
+    assert calls == [] and src.sub is None
+    bad = src.read_safe()  # o'lik klient → qayta ulanish, bitta bad yozuv
+    assert reconnects == [1] and calls == [] and bad[0]["quality"] == "bad"

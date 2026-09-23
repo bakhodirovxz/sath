@@ -4,6 +4,8 @@ import math
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "desktop" / "blender"))
 
@@ -67,6 +69,22 @@ def test_seismic_displacement_and_envelope():
     assert 0 < physics.envelope(12) < 1 and physics.envelope(100) == 0.0
     assert physics.ground_motion(0.5, 0.4, 0.0) == 0.0
     assert abs(physics.ground_motion(0.5, 0.4, 2.1, scale=20)) <= 0.0199 * 20
+
+
+def test_seismic_struct_roles_match_sim_output():
+    """sim_twin regressiyasi: ges_sim.seismic nomlari J3 da o'zgargan, egizak to'g'on/quvurni animatsiya qilmay qo'ygan edi."""
+    assert physics.seismic_struct_roles("To'g'on — elastik spektral S_e(T)·m (dinamik ordinata)")[0] == "dam"
+    assert physics.seismic_struct_roles("To'g'on — pseudo-statik k_h·W (barqarorlik)") is None
+    assert physics.seismic_struct_roles("To'g'on") == ("dam", "intake", "spillway")  # eski nom
+    assert physics.seismic_struct_roles("Bosimli quvur (tayanch)") == ("penstock:",)
+    assert "gen:" in physics.seismic_struct_roles("Mashina zali")
+    assert physics.seismic_struct_roles("Noma'lum") is None
+    catalog = pytest.importorskip("ges_sim.catalog")
+    out = catalog.run("seismic", {"intensity": "9", "ground": "C", "dam_height_m": 58.0, "ph_height_m": 22.0})
+    covered = {r for st in out["structures"] for r in (physics.seismic_struct_roles(st["name"]) or ())}
+    assert {"dam", "powerhouse", "penstock:"} <= covered, [st["name"] for st in out["structures"]]
+    dam_rows = [st for st in out["structures"] if (physics.seismic_struct_roles(st["name"]) or ("",))[0] == "dam"]
+    assert len(dam_rows) == 1  # faqat dinamik (elastik) qator — ikki marta animatsiya yo'q
 
 
 def test_heat_color_gradient():

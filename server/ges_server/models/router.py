@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -431,13 +431,13 @@ def upload_version(
     # G4: konteyner nomlash qoidasi (ISO 19650-2 §5.1.6 — loyiha shabloni)
     naming_warning = iso19650.check_name(file.filename or "", model.project.naming_template or "")
     if naming_warning and model.project.naming_required:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, naming_warning)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, naming_warning)
 
     settings = get_settings()
     try:
         sha, size = storage.store(file.file, max_bytes=settings.max_upload_mb * 1024 * 1024)
     except ValueError as e:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(e)) from e
 
     try:
         # OPS-03: katta fayl so'rov ichida to'liq parse qilinmaydi (faqat sarlavha) — to'liq metadata navbatda
@@ -589,7 +589,7 @@ def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: D
                     iso19650.check_revision(rev, v.state)
                 v.revision_code = rev
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     audit.log(
         db,
         user_id=user.id,
@@ -783,11 +783,11 @@ def version_clashes(
     from . import geometry
 
     if kind is not None and kind not in ("hard", "possible", "touch"):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind: hard | possible | touch")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "kind: hard | possible | touch")
     try:
         ta, tb = geometry.normalize_types(types_a), geometry.normalize_types(types_b)
     except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     version, _path = _version_path(db, version_id, user)
     key = geometry.clash_kind(ta, tb)
     data = geometry.peek(version.file_sha256, key)
@@ -990,14 +990,34 @@ def get_federation(fed_id: int, user: CurrentUser, db: DB):
 
 
 @router.get("/federations/{fed_id}/clashes")
-def federation_clashes(fed_id: int, user: CurrentUser, db: DB, tolerance: float = 0.0, cross_only: bool = True):
-    """Federatsiya ustida to'qnashuvlar (G5): a'zolar siljitilgan holda, default faqat modellar orasida; kesh."""
+def federation_clashes(
+    fed_id: int,
+    user: CurrentUser,
+    db: DB,
+    tolerance: float = Query(0.0, ge=0.0, le=1.0, description="AABB zaxirasi, m (katta qiymat juftlar sonini portlatadi)"),
+    cross_only: bool = True,
+):
+    """Federatsiya ustida to'qnashuvlar (G5): a'zolar siljitilgan holda, default faqat modellar orasida; kesh.
+    OPS-03: keshda bo'lmasa so'rov ichida hisoblanmaydi — navbatga (`fedclash`), 202 `{job_id, status}` +
+    `Retry-After`; tayyor bo'lgach shu URL 200. Yangi hisob — foydalanuvchi bo'yicha `rate_derived_per_min`
+    (429). A'zo/fayl topilmasa yoki hisob yiqilgan bo'lsa — 409."""
     fed = _get_fed(db, fed_id, user, Role.viewer)
     try:
         resolved = federation.resolve_members(db, fed.members)
-        return federation.cached_clashes(resolved, tolerance, cross_only)
+        for m in resolved:
+            storage.resolve(m["sha"])
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    data = federation.peek_clashes(resolved, tolerance, cross_only)
+    if data is None:
+        key = federation.clash_cache_key(resolved, tolerance, cross_only)
+        return _accepted(
+            _derived_job(
+                db, user, kind="fedclash", payload={"members": resolved, "tolerance": tolerance, "cross_only": cross_only},
+                key=f"fedclash:{key}", project_id=fed.project_id, failed_status=status.HTTP_409_CONFLICT,
+            )
+        )
+    return data
 
 
 @router.get("/federations/{fed_id}/ifc")

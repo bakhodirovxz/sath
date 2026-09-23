@@ -99,7 +99,7 @@ def create_underlay(
     settings = get_settings()
     data = file.file.read(settings.max_upload_mb * 1024 * 1024 + 1)
     if len(data) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Fayl juda katta")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Fayl juda katta")
     try:
         import io
 

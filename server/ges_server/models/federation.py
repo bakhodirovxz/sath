@@ -82,8 +82,17 @@ def clashes(resolved: list[dict], tolerance: float = 0.0, cross_only: bool = Tru
     return rep
 
 
+def clash_cache_key(resolved: list[dict], tolerance: float = 0.0, cross_only: bool = True) -> str:
+    return cache_key(resolved, f"{tolerance}:{cross_only}")
+
+
+def peek_clashes(resolved: list[dict], tolerance: float = 0.0, cross_only: bool = True) -> dict | None:
+    """Keshlangan federatsiya to'qnashuvlari (hisoblamasdan) — yo'q bo'lsa None (OPS-03: navbatga)."""
+    return geometry.peek(clash_cache_key(resolved, tolerance, cross_only), "fedclash")
+
+
 def cached_clashes(resolved: list[dict], tolerance: float = 0.0, cross_only: bool = True) -> dict:
-    key = cache_key(resolved, f"{tolerance}:{cross_only}")
+    key = clash_cache_key(resolved, tolerance, cross_only)
     return geometry.cached(key, "fedclash", lambda: clashes(resolved, tolerance, cross_only))
 
 

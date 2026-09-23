@@ -98,7 +98,7 @@ def _check_mesh(mesh: dict | None) -> None:
         return
     v = mesh.get("vertices") or []
     if len(v) > MAX_MESH_VERTICES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Mesh juda katta")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Mesh juda katta")
 
 
 @router.get("/models/{model_id}/drafts", response_model=list[DraftOut])
@@ -353,7 +353,7 @@ def import_mesh_version(
             while chunk := file.file.read(1 << 20):
                 size += len(chunk)
                 if size > settings.max_upload_mb * 1024 * 1024:
-                    raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Fayl juda katta")
+                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Fayl juda katta")
                 fh.write(chunk)
         try:
             objects, imp = mesh_import.load_objects_ex(
@@ -451,7 +451,7 @@ def import_image_version(
             while chunk := file.file.read(1 << 20):
                 size += len(chunk)
                 if size > settings.max_upload_mb * 1024 * 1024:
-                    raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Fayl juda katta")
+                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Fayl juda katta")
                 fh.write(chunk)
         try:
             objects = image_import.load_image(

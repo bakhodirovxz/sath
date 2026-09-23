@@ -5,10 +5,11 @@ H1 ierarxiyasidan olinadi."""
 import math
 from datetime import datetime, timedelta, timezone
 
+from conftest import ingest_headers, manual_headers
 from ges_server.db import SessionLocal
 from ges_server.monitoring import cm
 from ges_server.monitoring.cm import da, dm, sd
-from ges_server.orm import Asset, Project, Spectrum
+from ges_server.orm import Asset, AuditLog, CmResult, Project, Spectrum
 
 
 def _asset(client, users, **kw):
@@ -52,13 +53,14 @@ def test_machine_group_from_hierarchy(client, users):
 
 def test_spectrum_api_and_features(client, users):
     pid = users["project_id"]
-    h = users["engineer"]
+    h = ingest_headers(client, users)  # SCADA-07: spektr — gateway ingest kaliti bilan
     a = _asset(client, users, name="Agregat 1", config={"bearing": {"n": 8, "d_mm": 20, "D_mm": 100}, "rated_speed_rpm": 600})
     vals = [0.02] * 101
     vals[32] = 0.9
     body = {"asset_id": a["id"], "kind": "envelope", "unit": "g", "rpm": 600, "f_min": 0, "f_max": 100, "values": vals, "source": "CM gateway"}
-    # ko'ruvchi yoza olmaydi
+    # ko'ruvchi ham, muhandis ham token bilan jonli ma'lumot yubora olmaydi (SCADA-07)
     assert client.post(f"/api/projects/{pid}/cm/spectra", json=body, headers=users["viewer"]).status_code == 403
+    assert client.post(f"/api/projects/{pid}/cm/spectra", json=body, headers=users["engineer"]).status_code == 403
     r = client.post(f"/api/projects/{pid}/cm/spectra", json=body, headers=h)
     assert r.status_code == 201, r.text
     sid = r.json()["id"]
@@ -79,13 +81,13 @@ def test_spectrum_api_and_features(client, users):
     assert blocks["score"] <= 65 and blocks["blocks"]["SD"]["state"] == "alarm"
     assert blocks["blocks"]["DA"]["spectra"] == 1 and blocks["blocks"]["AG"]["problems"] >= 1
     assert client.delete(f"/api/cm/spectra/{sid}", headers=users["viewer"]).status_code == 403
-    assert client.delete(f"/api/cm/spectra/{sid}", headers=h).status_code == 204
+    assert client.delete(f"/api/cm/spectra/{sid}", headers=users["engineer"]).status_code == 204
 
 
 def test_external_cm_result_affects_health(client, users):
     """Qabul mezoni: tashqi tizim natijasi qabul qilinadi va sog'liq indeksiga qo'shiladi."""
     pid = users["project_id"]
-    h = users["engineer"]
+    h = ingest_headers(client, users)
     a = _asset(client, users, name="Agregat 2")
     before = client.get(f"/api/assets/{a['id']}/cm", headers=users["viewer"]).json()
     assert before["score"] == 100 and before["external"] == [] and before["external_score"] is None
@@ -100,6 +102,7 @@ def test_external_cm_result_affects_health(client, users):
         "confidence": 0.8,
     }
     assert client.post(f"/api/projects/{pid}/cm/results", json=body, headers=users["viewer"]).status_code == 403
+    assert client.post(f"/api/projects/{pid}/cm/results", json=body, headers=users["engineer"]).status_code == 403
     r = client.post(f"/api/projects/{pid}/cm/results", json=body, headers=h)
     assert r.status_code == 201, r.text
     after = client.get(f"/api/assets/{a['id']}/cm", headers=users["viewer"]).json()
@@ -117,8 +120,6 @@ def test_external_cm_result_affects_health(client, users):
     assert lst[0]["source"] == "Bently Nevada 3500" and lst[0]["block"] == "HA"
     # eskirgan natija hisobga olinmaydi (valid_hours)
     with SessionLocal() as db:
-        from ges_server.orm import CmResult
-
         row = db.query(CmResult).filter_by(asset_id=a["id"]).one()
         row.ts = datetime.now(timezone.utc) - timedelta(hours=48)
         db.commit()
@@ -141,3 +142,36 @@ def test_ingest_key_can_post_cm_results(client, users, admin):
     item = next(x for x in rep["assets"] if x["asset_id"] == a["id"])
     assert item["score"] == 60 and item["state"] == "alarm"  # tashqi alarm: −40
     assert any("SKF IMx" in p for p in item["problems"])
+
+
+def test_cm_submission_scada07_manual_entry_and_engineer_configures(client, users):
+    """SCADA-07: CM ma'lumoti — faqat gateway kaliti yoki `scada.manual_entry` (qo'lda, manba `manual: …`,
+    audit foydalanuvchi bilan); muhandis tokeni 403, lekin muhandis aktiv/chegaralarni sozlay oladi."""
+    pid = users["project_id"]
+    a = _asset(client, users, name="Agregat 4")
+    assert a.get("id"), a
+    # muhandis CM ni sozlaydi (podshipnik geometriyasi, nominal tezlik) — o'zgarmagan huquq
+    cfg = {"bearing": {"n": 9, "d_mm": 22, "D_mm": 110}, "rated_speed_rpm": 500}
+    r = client.patch(f"/api/assets/{a['id']}", json={"config": cfg}, headers=users["engineer"])
+    assert r.status_code == 200, r.text
+    body = {"asset_id": a["id"], "source": "Voith OnCare", "block": "HA", "state": "alert", "health_score": 70}
+    assert client.post(f"/api/projects/{pid}/cm/results", json=body, headers=users["engineer"]).status_code == 403
+    assert client.post(f"/api/projects/{pid}/cm/results", json=body, headers=users["approver"]).status_code == 403
+    assert client.post(f"/api/projects/{pid}/cm/results", json=body).status_code == 401
+    mh = manual_headers(client, users)
+    r = client.post(f"/api/projects/{pid}/cm/results", json=body, headers=mh)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert out["source"] == "manual: Voith OnCare" and out["detail"]["entry"] == "manual"
+    spec = {"asset_id": a["id"], "kind": "spectrum", "f_min": 0, "f_max": 50, "values": [0.1] * 51, "source": "qo'l analizatori"}
+    r = client.post(f"/api/projects/{pid}/cm/spectra", json=spec, headers=mh)
+    assert r.status_code == 201, r.text
+    assert r.json()["source"] == "manual: qo'l analizatori" and r.json()["meta"]["entry"] == "manual"
+    with SessionLocal() as db:
+        acts = {x.action: x for x in db.query(AuditLog).filter(AuditLog.project_id == pid).all()}
+        assert acts["cm.result.manual"].user_id is not None and acts["cm.result.manual"].detail["auth"] == "manual"
+        assert acts["cm.spectrum.manual"].user_id == acts["cm.result.manual"].user_id
+        assert db.get(Spectrum, r.json()["id"]).meta["entered_by"] == acts["cm.result.manual"].user_id
+    # gateway kaliti bilan yuborilgan natija «manual» belgisiz
+    r = client.post(f"/api/projects/{pid}/cm/results", json=body, headers=ingest_headers(client, users))
+    assert r.status_code == 201 and r.json()["source"] == "Voith OnCare" and "entry" not in r.json()["detail"]
