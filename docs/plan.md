@@ -36,6 +36,20 @@ Litsenziya: ichki foydalanish — GPL/LGPL/AGPL komponentlar bemalol ishlatiladi
 | + Toshqin prognozi, ish buyruqlari | ✅ | yog'in prognozi + jonli sath → sath/tavsiya; CMMS-lite (KPI MTTR/MTBF, avto buyruq sog'liqdan), 3D sog'liq rangi |
 | + Ehtiyot qismlar, elektr, ML nuqtasi | ✅ | ombor (kirim/sarf, min zaxira), transformator IEC 60076-7 (sim + sog'liq), `/ml/predictions` → ML.* sensorlar |
 | + Holat monitoringi | ✅ | sog'liq indeksi (ISO 20816-5, harorat, FIK trendi, anomaliya, RUL, kavitatsiya), «nima bo'lsa», optimal rejim |
+| + Audit: desktop/CAD (2026-09-23) | ✅ | CAD-01..09 (CAD-10 — secops), CODE-01..05; desktop asosiy yo'li — Blender extension, FreeCAD workbench/fork — legacy |
+
+Desktop/CAD audit (SATH_AUDIT.md 2.3, 4) natijasi, qisqa:
+- Import: DXF 3D yuzalar to'g'ri tartibda (SOLID 0-1-3-2), bloklar rekursiv, aralash 2D/3D da tashlangan 2D soni javobda;
+  birlik/o'q `cad_common.detect_units_and_axis` (DXF `$INSUNITS`, FBX `UnitScaleFactor`/`UpAxis`, glTF) — jimgina
+  ×1000 yo'q, `units_uncertain` + `unit_override`; `Asl_siljish_X/Y` metrda; GUID (`"Nom [GUID]"`, glTF extras,
+  FBX `sath_guid`) qayta importda saqlanadi; glb eksport Y-up.
+- Blender: import qilingan mesh lar IFC elementi (Bonsai), commit da «IFC ga kirmagan obyektlar: N»; DXF FreeCAD siz
+  (ezdxf); DWG konverter vaqtinchalik papkada, qaytish kodi tekshiriladi; parol `.blend` ga yozilmaydi;
+  `platforms` (windows-x64, linux-x64, macos-arm64 — Linux/macOS sinalmagan, assimp faqat Windows).
+- Repo: umumiy modullar `common/sath_common` (nusxalar CI da tekshiriladi), katta binar fayllar Git LFS da,
+  paket nomlari `Sath-<ver>` (Blender) / `Sath-FreeCAD-<ver>` (legacy), build metama'lumotida `product`.
+- Qolgan: `sath-common` wheel (K1, alohida qaror); server `.blend` uchun sandbox da `BLENDER_USER_RESOURCES`
+  (secops); web import dialogi `units_uncertain` da birlik so'rashi (web).
 
 Ma'lum cheklovlar: desktop FreeCAD 1.1.3 forki (yadro C++ o'zgartirilmagan; paket hozircha rasmiy 1.1.3 binaridan overlay bilan yig'iladi, to'liq kompilyatsiya — fork CI);
 katta IFC (>100 MB) — serverdagi fragments konvertatsiya va geometriya tahlili bir necha daqiqa olishi mumkin (fonda);
