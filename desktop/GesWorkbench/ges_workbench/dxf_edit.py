@@ -460,19 +460,27 @@ def _add_hatch(ctx: _Ctx, h):
 
 
 def _add_solid(ctx: _Ctx, e):
+    """SOLID/TRACE (DXF da uchlar 0-1-3-2) va 3DFACE (0-1-2-3) → yuza; tartib cad_common da (CAD-02)."""
     import Part
 
-    pts = [_vec(e.dxf.vtx0), _vec(e.dxf.vtx1), _vec(e.dxf.vtx3), _vec(e.dxf.vtx2)]
-    uniq = [pts[0]]
+    from ges_workbench.cad_common import dxf_face_vertices, fan
+
+    pts = [_vec(p) for p in dxf_face_vertices(e)]
+    uniq = [pts[0]] if pts else []
     for q in pts[1:]:
         if (q - uniq[-1]).Length > 1e-9:
             uniq.append(q)
+    if len(uniq) > 1 and (uniq[-1] - uniq[0]).Length <= 1e-9:
+        uniq.pop()
     if len(uniq) < 3:
         return
     try:
         face = Part.Face(Part.makePolygon(uniq + [uniq[0]]))
-    except Exception:  # noqa: BLE001
-        return
+    except Exception:  # noqa: BLE001 — tekis bo'lmagan 3DFACE → ikki uchburchak
+        try:
+            face = Part.makeShell([Part.Face(Part.makePolygon([*t, t[0]])) for t in fan(uniq)])
+        except Exception:  # noqa: BLE001
+            return
     obj = ctx.doc.addObject("Part::Feature", "Yuza")
     obj.Shape = face
     ctx.style(obj, e, "Yuza")

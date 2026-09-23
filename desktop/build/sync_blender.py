@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "common" / "sath_common"
 DST = ROOT / "desktop" / "blender" / "sath" / "shared"
-FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py"]
+FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py", "cad_common.py"]
 WB_SRC = ROOT / "desktop" / "GesWorkbench" / "ges_workbench"
 WB_FILES = ["ges_objects.py"]  # fc_engine uchun: sath/wb/ (manba — GesWorkbench, FreeCAD ga bog'liq)
 WB_DST = ROOT / "desktop" / "blender" / "sath" / "wb"
@@ -28,7 +28,7 @@ SERVER_DST = ROOT / "server" / "ges_server" / "models"
 # Addondan tashqari nusxalar: papka → fayllar (manba SRC)
 EXTRA: dict[Path, list[str]] = {
     WB_SRC: FILES,
-    SERVER_DST: ["dxf_prepare.py", "assimp_load.py"],
+    SERVER_DST: ["dxf_prepare.py", "assimp_load.py", "cad_common.py"],
 }
 INIT = '"""common/sath_common dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'
 WB_INIT = '"""GesWorkbench dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'

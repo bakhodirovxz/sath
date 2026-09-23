@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from .. import sandbox
+from . import cad_common
 from .assimp_load import ASSIMP_EXTS
 from .cad_import import CAD_EXTS
 
@@ -340,55 +341,14 @@ def _load_dxf(
     layers: dict[str, list[list[list[float]]]] = {}  # layer → [triangles (3 nuqta)]
     acis = 0
 
-    def add(layer: str, pts: list) -> None:
-        pts = [list(map(float, tuple(p)[:3])) for p in pts]  # Vec3 kesilmaydi → tuple
-        if len(pts) < 3:
-            return
-        tris = layers.setdefault(layer, [])
-        for k in range(1, len(pts) - 1):
-            tris.append([pts[0], pts[k], pts[k + 1]])
-
     for e in msp:
         t = e.dxftype()
         try:
-            if t in ("3DFACE", "SOLID", "TRACE"):
-                pts = [e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2, e.dxf.vtx3]
-                uniq = []
-                for p in pts:
-                    if not uniq or tuple(p) != tuple(uniq[-1]):
-                        uniq.append(p)
-                add(e.dxf.layer, uniq)
-            elif t == "MESH":
-                md = e.get_data()
-                vs = [list(v) for v in md.vertices]
-                for face in md.faces:
-                    add(e.dxf.layer, [vs[int(i)] for i in face])
-            elif t == "POLYLINE" and (e.is_poly_face_mesh or e.is_polygon_mesh):
-                if e.is_poly_face_mesh:
-                    vs = [list(v.dxf.location) for v in e.vertices if v.is_poly_face_mesh_vertex]
-                    for f in e.vertices:
-                        if f.is_face_record:
-                            idx = [abs(int(getattr(f.dxf, f"vtx{k}", 0))) for k in range(4)]
-                            idx = [i - 1 for i in idx if i > 0]
-                            add(e.dxf.layer, [vs[i] for i in idx if i < len(vs)])
-                else:
-                    m = (
-                        e.get_polygon_mesh_vertex_matrix()
-                        if hasattr(e, "get_polygon_mesh_vertex_matrix")
-                        else None
-                    )
-                    if m is not None:
-                        for i in range(m.m - 1):
-                            for j in range(m.n - 1):
-                                add(
-                                    e.dxf.layer,
-                                    [
-                                        list(m[i, j]),
-                                        list(m[i + 1, j]),
-                                        list(m[i + 1, j + 1]),
-                                        list(m[i, j + 1]),
-                                    ],
-                                )
+            # 3DFACE (0-1-2-3), SOLID/TRACE (DXF da 0-1-3-2), MESH, polyface/polymesh → uchburchaklar (CAD-02)
+            tris = cad_common.dxf_triangles(e)
+            if tris is not None:
+                if tris:
+                    layers.setdefault(e.dxf.layer, []).extend([list(q) for q in tri] for tri in tris)
             elif extrude_m > 0 and t in ("LWPOLYLINE", "POLYLINE", "CIRCLE"):
                 if t == "CIRCLE":
                     import math
