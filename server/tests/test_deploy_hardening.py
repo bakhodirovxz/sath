@@ -181,3 +181,21 @@ def test_bind_default_loopback_and_caddy_csp_same_host():
     for name in ("Caddyfile", "Caddyfile.ha"):
         caddy = (DEPLOY / name).read_text(encoding="utf-8")
         assert "connect-src 'self' wss://{host} blob: data:;" in caddy and " ws: " not in caddy
+
+
+def test_all_services_drop_caps_and_no_new_privileges():
+    """OPS-02: har servis cap_drop ALL + no-new-privileges; kerakli qobiliyatlar faqat aniq cap_add bilan;
+    ildiz FS faqat o'qish — ges, cfd, caddy, simulyator (postgres entrypoint i yozadi — istisno)."""
+    for fname in ("docker-compose.yml", "docker-compose.ha.yml"):
+        for name, svc in _compose(fname)["services"].items():
+            if fname.endswith("ha.yml") and name in ("ges", "caddy"):
+                continue  # asosiy compose ustiga qo'shimcha (merge) — kalitlar asosiy faylda
+            assert svc.get("cap_drop") == ["ALL"], (fname, name)
+            assert "no-new-privileges:true" in svc.get("security_opt", []), (fname, name)
+            assert set(svc.get("cap_add", [])) <= {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "NET_BIND_SERVICE"}
+    c = _compose()["services"]
+    for name in ("ges", "cfd", "caddy", "simulator", "sim-gateway"):
+        assert c[name].get("read_only") is True, name
+    assert c["caddy"]["cap_add"] == ["NET_BIND_SERVICE"]
+    sim = (DEPLOY / "simulator" / "Dockerfile").read_text(encoding="utf-8")
+    assert [ln.strip() for ln in sim.splitlines() if ln.startswith("USER ")][-1] == "USER sath"

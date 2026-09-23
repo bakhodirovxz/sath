@@ -70,6 +70,10 @@ services:
       - ./pg-replica/entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
     depends_on: [postgres]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
 
 volumes:
   pg_replica_data:

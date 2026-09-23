@@ -58,6 +58,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    # OPS-02: entrypoint root sifatida boshlanib gosu bilan postgres ga o'tadi — faqat shunga kerakli qobiliyatlar
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ges"]
       interval: 10s
@@ -78,6 +83,13 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [ges]
+    # OPS-02: faqat 80/443 ni ochish qobiliyati; ildiz FS faqat o'qish (sertifikatlar — /data, /config hajmlari)
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
   cfd:
     build:
@@ -103,6 +115,9 @@ services:
     cpus: "${CFD_CPUS:-4}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    # OPS-02: faqat o'qiladigan ildiz FS — yoziladi: /data/cfd (hajm), /tmp va $HOME (OpenFOAM foydalanuvchi sozlamalari)
+    read_only: true
+    tmpfs: ["/tmp:size=1g", "/home/sath:size=64m"]
     pids_limit: 1024
     mem_limit: "${CFD_MEM_LIMIT:-8g}"
 
@@ -118,6 +133,11 @@ services:
     restart: unless-stopped
     command: ["python", "ges_simulator.py", "--scenario", "${SIM_SCENARIO:-normal}", "--modbus", "0.0.0.0:5020", "--opcua", "opc.tcp://0.0.0.0:4840/sath-sim/", "--speed", "${SIM_SPEED:-1}"]
     ports: ["5020:5020", "4840:4840"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
   sim-gateway:
     image: sath-simulator:latest
@@ -130,7 +150,13 @@ services:
       GES_GATEWAY_INGEST_KEY: "${GES_GATEWAY_INGEST_KEY:-}"
       GES_GATEWAY_COMMAND_KEY: "${GES_GATEWAY_COMMAND_KEY:-}"
       GES_GATEWAY_COMMANDS: "${GES_GATEWAY_COMMANDS:-false}"
-    command: ["sh", "-c", "python ges_simulator.py --print-gateway-config --modbus simulator:5020 --opcua opc.tcp://simulator:4840/sath-sim/ > /tmp/gw.json && python ges_gateway.py /tmp/gw.json"]
+    # ish papkasi /tmp — gateway spool (gateway_spool.db) yoziladigan joyda (ildiz FS faqat o'qish)
+    command: ["sh", "-c", "cd /tmp && python /app/ges_simulator.py --print-gateway-config --modbus simulator:5020 --opcua opc.tcp://simulator:4840/sath-sim/ > /tmp/gw.json && python /app/ges_gateway.py /tmp/gw.json"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    pids_limit: 256
 
 volumes:
   ges_data:
