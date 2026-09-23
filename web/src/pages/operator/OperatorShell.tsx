@@ -11,6 +11,8 @@ import { summarize, type AlarmSummary } from "./model";
 import { priorityLabel } from "../../i18n/labels";
 import { can } from "../../api/permissions";
 import { PriorityMark } from "../../ui/AlarmMark";
+import ConnectionBanner, { LiveBadge } from "./ConnectionBanner";
+import { t } from "../../i18n";
 
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
  * Umumiy qobiq: jonli sensorlar (WebSocket), alarm jamlanmasi, navigatsiya (pastga/yuqoriga, tezkor tugmalar). */
@@ -73,7 +75,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   }, [pid]);
   useEffect(() => { void reload(); }, [reload]);
   // Jonli oqim — umumiy store (bitta soket); annunciator ham store da (yangi kvitlanmagan alarm)
-  const live = useProjectLive(pid);
+  useProjectLive(pid);
   const online = useOnline();
   const summary = useLiveSelector(pid, summarize, sameSummary);
   const ctx: OpsStatic = { projectId: pid, project, dash, reload, error };
@@ -82,7 +84,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
     <Ctx.Provider value={ctx}>
       <div className="page ops" data-level={level}>
         <TopBar alarms={{ pid, role: project?.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
-          <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
+          <LiveBadge pid={pid} />
           <AnnunciatorControl projectId={pid} canOperate={can(project?.my_role, "scada.ack")} />
         </TopBar>
         <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
@@ -99,9 +101,10 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />
         </nav>
+        <ConnectionBanner pid={pid} />
         {error && <p className="error my-6 mx-16">{error}</p>}
         {openHandover && <div className="verdict warn my-6 mx-16" data-testid="handover-banner">Smena topshirish #{openHandover.id} ({openHandover.handed_by_username}) qabul qilinmagan — <Link to={opsPath(pid, "shift")}>qabul qiluvchi imzolasin</Link></div>}
-        {!online && <div className="verdict warn my-6 mx-16" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Qiymatlar oxirgi ma'lum holat.</div>}
+        {!online && <div className="verdict warn my-6 mx-16" data-testid="offline-banner">{t("live.browserOffline")}</div>}
         <div className="page-body ops-body"><ErrorBoundary name={`L${level} ekran`}>{children}</ErrorBoundary></div>
       </div>
     </Ctx.Provider>

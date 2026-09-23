@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api, type AlarmEvent, type Command, type LiveMessage, type Sensor } from "../api/client";
 import { openLiveConnection, type LiveState } from "../hooks/liveConnection";
 import { annunciator, type Priority } from "../ui/annunciator";
@@ -115,6 +115,8 @@ function setEventsInternal(p: ProjectLive, events: AlarmEvent[]) {
 }
 
 function onMessage(p: ProjectLive, m: LiveMessage) {
+  // oxirgi xabar vaqti (UX-04: "aloqa yo'q" bannerida yoshi) — obunachilar holat o'zgarganda xabardor qilinadi
+  p.lastLiveAt = Date.now();
   if (m.type === "snapshot" && m.sensors) {
     for (const u of m.sensors) patchSensor(p, u.sensor_id, { last_value: u.value, last_ts: u.ts, alarm: u.alarm, ...(u.stale != null ? { stale: u.stale } : {}), ...(u.quality ? { last_quality: u.quality } : {}) });
   } else if (m.type === "reading" && m.sensor_id != null) {
@@ -296,6 +298,18 @@ export function useAlarmEvents(pid: number): AlarmEvent[] {
   const p = get(pid);
   useEffect(() => { if (!p.eventsLoaded && Number.isFinite(pid) && pid > 0) void loadEvents(pid); }, [p, pid]);
   return useSyncExternalStore(useSub(p.eventSubs), () => p.events, () => p.events);
+}
+
+/** Birinchi ulanish uchun muhlat: sahifa ochilganda soket hali ulanmagan — bu "aloqa yo'q" emas. */
+export const CONNECT_GRACE_MS = 8000;
+
+/** Aloqa yo'qolganmi (UX-04): OFFLINE va (avval ulangan edi yoki muhlat o'tdi). Qiymatlar eskirgan ko'rsatiladi. */
+export function useLiveLost(pid: number, graceMs = CONNECT_GRACE_MS): boolean {
+  const state = useLiveState(pid);
+  const lastAt = useLastLiveAt(pid);
+  const [grace, setGrace] = useState(true);
+  useEffect(() => { setGrace(true); const id = setTimeout(() => setGrace(false), graceMs); return () => clearTimeout(id); }, [pid, graceMs]);
+  return state === "OFFLINE" && (lastAt != null || !grace);
 }
 
 /** Kvitlanmagan alarmli sensorlar (mimika/kartalarda belgi miltillaydi — ISA-18.2). */

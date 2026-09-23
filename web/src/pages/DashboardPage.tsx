@@ -18,8 +18,10 @@ import AnnunciatorControl from "../ui/AnnunciatorControl";
 import AlarmTable from "./operator/AlarmTable";
 import { sortAlarms, toRows } from "./operator/alarms";
 import { alignNearest } from "../ui/trendMath";
-import { applyEvent, loadEvents, putSensors, unackedSensorIds, useAlarmEvents, useLiveMessages, useLiveState, useProjectLive, useSensors } from "../store/live";
+import { applyEvent, loadEvents, putSensors, unackedSensorIds, useAlarmEvents, useLiveLost, useLiveMessages, useProjectLive, useSensors } from "../store/live";
 import { can } from "../api/permissions";
+import ConnectionBanner, { LiveBadge } from "./operator/ConnectionBanner";
+import { t } from "../i18n";
 
 const RANGES: { label: string; hours: number }[] = [
   { label: "1 soat", hours: 1 },
@@ -69,7 +71,7 @@ export default function DashboardPage() {
   const canEdit = project?.my_role === "engineer" || project?.my_role === "approver";
   const canOperate = can(project?.my_role, "scada.ack");
   const online = useOnline();
-  const live = useProjectLive(pid);
+  useProjectLive(pid);
 
   const load = useCallback(async () => {
     try {
@@ -128,7 +130,7 @@ export default function DashboardPage() {
   return (
     <div className="page">
       <TopBar alarms={{ pid, role: project.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
-        {historyAt ? <span className="badge high"><Icon name="history" size={12} /> TARIX REJIMI</span> : <span className={`badge live-${live.toLowerCase()} ${live === "LIVE" ? "published" : live === "STALE" ? "shared" : "rejected"}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan"><Icon name={live === "OFFLINE" ? "wifi-off" : "wifi"} size={12} /> {live}</span>}
+        {historyAt ? <span className="badge high"><Icon name="history" size={12} /> {t("live.history")}</span> : <LiveBadge pid={pid} />}
         <span className="row small" title="Vaqt mashinasi: tanlangan vaqtdagi holatni ko'rish (sxema, qiymatlar)">
           <DateTimeField className="history-at" aria-label="Vaqt mashinasi: sana va vaqt" value={historyAt ?? ""} onChange={(iso) => setHistoryAt(iso || null)} />
           {historyAt && <button className="btn sm primary" onClick={() => setHistoryAt(null)}>Jonli</button>}
@@ -138,7 +140,8 @@ export default function DashboardPage() {
         {editing && <><button className="btn sm primary" onClick={saveMimic}>Saqlash</button><button className="btn sm" onClick={() => { setEditing(false); setMimic(dash.mimic); setScheme(loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3))); setSelEl(null); }}>Bekor</button></>}
       </TopBar>
       <div className="page-body dash">
-        {!online && <div className="verdict warn" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Ko'rsatilayotgan qiymatlar oxirgi ma'lum holat, yangilanmaydi.</div>}
+        {!historyAt && <ConnectionBanner pid={pid} />}
+        {!online && <div className="verdict warn" data-testid="offline-banner">{t("live.browserOffline")}</div>}
         {error && <p className="error">{error}</p>}
         {historyAt && <div className="dash-history"><Icon name="history" size={14} /> Tarix rejimi: {fmtDate(historyAt)} holati ko'rsatilmoqda. <button type="button" className="link-btn" onClick={() => setHistoryAt(null)}>Jonli rejimga qaytish</button></div>}
         <UnackedTabs pid={pid} section={section} onSection={setSection} />
@@ -204,7 +207,7 @@ function SchemeSection({ pid, dash, scheme, editing, selEl, onSelect, onScheme, 
   const activeAlarms = events.filter((e) => !e.ended_at).length;
   const unacked = events.filter((e) => !e.acked_at).length;
   const unackedIds = useMemo(() => unackedSensorIds(events), [events]);
-  const live = useLiveState(pid);
+  const lost = useLiveLost(pid);
   const kpi = useMemo(() => {
     const power = sensors.filter((s) => s.kind === "power");
     return {
@@ -225,7 +228,7 @@ function SchemeSection({ pid, dash, scheme, editing, selEl, onSelect, onScheme, 
 
     <div className="dash-main">
       <div className="dash-mimic">
-        <ErrorBoundary name="Mimika">{scheme && <div className="mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unackedIds} offline={!historySensors && live === "OFFLINE"} editing={editing} selected={selEl} onSelect={onSelect} onChange={onScheme} onOpen={onOpen} /></div>}</ErrorBoundary>
+        <ErrorBoundary name="Mimika">{scheme && <div className="mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unackedIds} offline={!historySensors && lost} editing={editing} selected={selEl} onSelect={onSelect} onChange={onScheme} onOpen={onOpen} /></div>}</ErrorBoundary>
         {editing && scheme && <MimicEditor scheme={scheme} sensors={sensors} selected={selEl} onSelect={onSelect} onChange={onScheme} />}
       </div>
       <div className="dash-alarms">

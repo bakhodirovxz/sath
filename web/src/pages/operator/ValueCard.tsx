@@ -5,6 +5,7 @@ import { alarmStyle, qualityStyle } from "../../ui/tokens";
 import { ageSeconds, fmtAge } from "./model";
 import { opsPath } from "./OperatorShell";
 import AlarmMark from "../../ui/AlarmMark";
+import { useLiveLost } from "../../store/live";
 
 /** Qiymat kartasi (ISA-101): qiymat + birlik, alarm belgisi (shakl + kod), sifat kodi, yosh.
  * Eskirgan/yaroqsiz qiymat hech qachon "normal" ko'rinmaydi: `?`/`✕` belgisi va yosh matni. */
@@ -12,7 +13,9 @@ export default function ValueCard({ s, pid, compact = false, now, unacked = fals
   const st = alarmStyle(s.alarm, s.priority);
   const q = qualityStyle(s.last_quality);
   const age = ageSeconds(s.last_ts, now);
-  const stale = !!s.stale || (age != null && age > s.stale_after_s);
+  // UX-04: jonli ulanish uzilgan — barcha qiymatlar eskirgan (kulrang, shtrix), "hozirgi" deb o'qilmaydi
+  const offline = useLiveLost(pid);
+  const stale = offline || !!s.stale || (age != null && age > s.stale_after_s);
   const bad = s.last_quality === "bad";
   const mode = s.alarm_mode && s.alarm_mode !== "normal" ? s.alarm_mode : s.suppressed ? "suppressed" : null;
   return (
@@ -27,7 +30,7 @@ export default function ValueCard({ s, pid, compact = false, now, unacked = fals
         {q.code && <span className={`quality-mark q-${s.last_quality}`} title={`Sifat: ${q.label}`}>{q.code}</span>}
         {stale && <span className="alarm-mark c-stale" title="aloqa yo'q / eskirgan">?</span>}
       </div>
-      {!compact && <div className="vcard-age dim">{s.key} · {fmtAge(age)}{stale ? " · ESKIRGAN" : ""}</div>}
+      {compact ? <div className="vcard-age dim">{fmtAge(age)}{stale ? " · ESKIRGAN" : ""}</div> : <div className="vcard-age dim">{s.key} · {fmtAge(age)}{stale ? " · ESKIRGAN" : ""}</div>}
     </Link>
   );
 }

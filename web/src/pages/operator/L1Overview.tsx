@@ -5,7 +5,7 @@ import type { Sensor } from "../../api/client";
 import { fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
 import AlarmMark from "../../ui/AlarmMark";
-import { unackedSensorIds } from "../../store/live";
+import { unackedSensorIds, useLiveLost } from "../../store/live";
 import Mimic from "./Mimic";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { loadScheme } from "./scheme";
@@ -23,7 +23,8 @@ export default function L1Overview() {
 }
 
 function Body() {
-  const { projectId: pid, sensors, dash, summary, events, live } = useOps();
+  const { projectId: pid, sensors, dash, summary, events } = useOps();
+  const lost = useLiveLost(pid);
   const unacked = useMemo(() => unackedSensorIds(events), [events]);
   const nav = useNavigate();
   const scheme = useMemo(() => (dash ? loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3)) : null), [dash]);
@@ -60,7 +61,7 @@ function Body() {
         {key.grid && <div className="tile"><div className="tile-t">Chastota</div><div className="tile-v">{key.grid.last_value == null ? "—" : fmtValue(key.grid.last_value)} <span className="tile-u">{key.grid.unit}</span></div></div>}
       </div>
 
-      {scheme && <ErrorBoundary name="Mimika"><div className="panel l1-mimic mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unacked} offline={live === "OFFLINE"} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div></ErrorBoundary>}
+      {scheme && <ErrorBoundary name="Mimika"><div className="panel l1-mimic mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unacked} offline={lost} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div></ErrorBoundary>}
       <div className="l1-grid">
         <section className="panel">
           <div className="row"><b>Agregatlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>L2 Mashina zali →</Link></div>
