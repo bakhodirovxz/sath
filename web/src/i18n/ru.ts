@@ -53,6 +53,7 @@ export const ru: Partial<Record<MessageKey, string>> = {
   "enum.cmd.expired": "истекла",
   "enum.cmd.pending_approval": "ожидает подтверждения",
   "enum.cmd.mismatch": "обратное чтение не совпало",
+  "enum.cmd.unknown": "результат неизвестен",
   "enum.role.viewer": "Наблюдатель",
   "enum.role.operator": "Диспетчер",
   "enum.role.shift_supervisor": "Начальник смены",

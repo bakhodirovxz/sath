@@ -4,7 +4,7 @@ import { useOnline } from "../hooks/useOnline";
 import Icon from "../ui/Icon";
 import { ForecastPanel, HealthPanel, PartsPanel, WhatIfPanel, WorkOrdersPanel } from "./dashboard/HealthPanels";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, type AlarmEvent, type Command, type Dashboard, type JournalEntry, type Project, type ReadingPoint, type Report, type Sensor, type Member } from "../api/client";
+import { api, canCommandRole, type AlarmEvent, type Command, type Dashboard, type JournalEntry, type Project, type ReadingPoint, type Report, type Sensor, type Member } from "../api/client";
 import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from "./dashboard/TwinPanels";
 import TopBar from "../ui/TopBar";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
@@ -19,6 +19,7 @@ import AlarmTable from "./operator/AlarmTable";
 import { sortAlarms, toRows } from "./operator/alarms";
 import { alignNearest } from "../ui/trendMath";
 import { applyEvent, loadEvents, putSensors, useAlarmEvents, useLiveMessages, useProjectLive, useSensors } from "../store/live";
+import { can } from "../api/permissions";
 
 const RANGES: { label: string; hours: number }[] = [
   { label: "1 soat", hours: 1 },
@@ -67,7 +68,7 @@ export default function DashboardPage() {
   const [historySensors, setHistorySensors] = useState<Sensor[] | null>(null);
 
   const canEdit = project?.my_role === "engineer" || project?.my_role === "approver";
-  const canOperate = canEdit || project?.my_role === "operator";
+  const canOperate = can(project?.my_role, "scada.ack");
   const online = useOnline();
   const live = useProjectLive(pid);
 
@@ -172,7 +173,7 @@ export default function DashboardPage() {
         {section === "workorders" && <ErrorBoundary name="Ish buyruqlari"><WorkOrdersPanel projectId={pid} members={members} canOperate={canOperate} canEdit={canEdit} canApprove={project?.my_role === "approver"} /></ErrorBoundary>}
         {section === "parts" && <ErrorBoundary name="Ehtiyot qismlar"><PartsPanel projectId={pid} canOperate={canOperate} canEdit={canEdit} /></ErrorBoundary>}
         {section === "assets" && <ErrorBoundary name="Aktivlar"><AssetsPanel projectId={pid} sensors={dash.sensors} canEdit={canEdit} canMaint={canOperate} /></ErrorBoundary>}
-        {section === "control" && <ErrorBoundary name="Boshqaruv"><LiveCommands pid={pid} canCommand={canOperate && !historyAt} canOverride={project?.my_role === "approver"} /></ErrorBoundary>}
+        {section === "control" && <ErrorBoundary name="Boshqaruv"><LiveCommands pid={pid} canCommand={canCommandRole(project?.my_role) && !historyAt} canOverride={can(project?.my_role, "scada.command.approve")} /></ErrorBoundary>}
         {section === "journal" && <ErrorBoundary name="Smena jurnali"><LiveJournal pid={pid} canWrite={canOperate} /></ErrorBoundary>}
         {section === "soe" && <ErrorBoundary name="SOE"><SoePanel projectId={pid} /></ErrorBoundary>}
         <p className="dim small">Sensorlarni qo'shish/bog'lash — model sahifasidagi <Link to={`/projects/${pid}`}>Monitoring</Link> panelida; SCADA ulanishi — <code>deploy/gateway</code>.</p>

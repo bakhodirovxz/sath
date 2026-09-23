@@ -7,6 +7,7 @@ import { fmtDate, fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { alarmModeLabel, commandStatusLabel } from "../../i18n/labels";
+import { can } from "../../api/permissions";
 
 /** Smena jurnali va navbat topshirish (F9): tuzilgan varaqa (faol alarmlar, ochiq ish buyruqlari, blokirovka
  * chetlab o'tishlari, shelved/OOS/o'chirilgan nuqtalar, kutilayotgan buyruqlar, aloqasiz sensorlar — avtomatik),
@@ -31,7 +32,7 @@ function Body() {
   const [dlg, setDlg] = useState<null | "hand" | "receive">(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const canOperate = ["operator", "engineer", "approver"].includes(project?.my_role ?? "");
+  const canOperate = can(project?.my_role, "scada.ack"); // smena topshirish/qabul (server: operator+)
   const load = useCallback(async () => {
     try {
       const [s, h, f] = await Promise.all([api.shiftSnapshot(pid), api.shiftHandovers(pid), api.shiftFeed(pid, 12)]);

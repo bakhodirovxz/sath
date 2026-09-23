@@ -10,6 +10,7 @@ import { alarmStyle } from "../../ui/tokens";
 import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
 import { priorityLabel } from "../../i18n/labels";
+import { can } from "../../api/permissions";
 
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
  * Umumiy qobiq: jonli sensorlar (WebSocket), alarm jamlanmasi, navigatsiya (pastga/yuqoriga, tezkor tugmalar). */
@@ -82,7 +83,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
       <div className="page ops" data-level={level}>
         <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
           <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
-          <AnnunciatorControl projectId={pid} canOperate={["operator", "engineer", "approver"].includes(project?.my_role ?? "")} />
+          <AnnunciatorControl projectId={pid} canOperate={can(project?.my_role, "scada.ack")} />
         </TopBar>
         <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
           <span className="ops-level">L{level}</span>

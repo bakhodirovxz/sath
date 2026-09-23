@@ -4,15 +4,17 @@ import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AlarmState, type GatewayKey, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { api, canCommandRole, type AlarmState, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
-import { fmtDate, fmtDay, fmtShort, isAlarm } from "../../ui/format";
-import { alarmLabel, keyKindLabel, sensorKindLabel } from "../../i18n/labels";
+import { fmtDate, fmtShort, isAlarm } from "../../ui/format";
+import { alarmLabel, sensorKindLabel } from "../../i18n/labels";
 import { putSensors, useLiveMessages, useProjectLive, useSensorsByIds } from "../../store/live";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
 import { ApiError, type UnlinkedReport } from "../../api/client";
+import { can } from "../../api/permissions";
+import GatewayKeys from "../../ui/GatewayKeys";
 
 interface Props {
   projectId: number;
@@ -57,8 +59,7 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<SensorIn | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  const [gwKeys, setGwKeys] = useState<GatewayKey[] | null>(null);
-  const loadKeys = () => Promise.all([api.projectKey(projectId, "ingest"), api.projectKey(projectId, "command")]).then(setGwKeys).catch((e) => setError(e.message));
+  const [showKeys, setShowKeys] = useState(false);
   const [manual, setManual] = useState("");
   const [cmdTarget, setCmdTarget] = useState<Sensor | null>(null); // boshqaruv buyrug'i (F8: ControlBlock dialogda)
   // 3D da element tanlansa — unga bog'langan sensor ochiladi (BIM → SCADA)
@@ -162,6 +163,9 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
   }, [view, viewer, animOn]);
   useEffect(() => () => { void viewer?.colorByGuids({}); void viewer?.setValueLabels(null); void viewer?.setLiveBindings(null); }, [viewer]);
 
+  /** Yoziladigan nuqta chegaralari: chekli min ≤ max (SCADA-02) — aks holda saqlanmaydi (server ham 422). */
+  const spError = editing?.writable ? setpointRangeError(editing.min_setpoint, editing.max_setpoint) : null;
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -210,7 +214,7 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
         <BOps>
           {canEdit && <button className="btn sm primary" onClick={() => { setEditing({ ...EMPTY, element_guid: selection[0]?.guid ?? null }); setEditId(null); setTopic(""); }}><Icon name="plus" size={12} /> Sensor</button>}
           {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi"><Icon name="upload" size={12} /> CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { setError(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
-          {role === "approver" && <button className="btn sm" onClick={() => void loadKeys()}><Icon name="lock" size={12} /> Ulanish kalitlari</button>}
+          {can(role, "gateway.keys") && <button className="btn sm" onClick={() => setShowKeys(true)}><Icon name="lock" size={12} /> Ulanish kalitlari</button>}
         </BOps>
       </BPanel>
       {replay.on && (
@@ -230,25 +234,11 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
         </div>
       )}
       {error && <p className="error small">{error} <button type="button" className="link-btn" onClick={() => setError("")}>yopish</button></p>}
-      {gwKeys && (
+      {showKeys && (
         <div className="section-box small">
-          <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (muhit o'zgaruvchilari: <code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
-          {gwKeys.map((k) => (
-            <div key={k.kind} style={{ marginTop: 6 }}>
-              <div className="row wrap" style={{ gap: 6, alignItems: "center" }}>
-                <b>{keyKindLabel(k.kind)}</b>
-                <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${fmtDay(k.expires_at)} (${k.days_left} kun)` : "muddatsiz"}</span>
-                <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? fmtDate(k.last_used_at) : "hali yo'q"}</span>
-                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then(() => loadKeys())}>Almashtirish (365 kun)</button>
-              </div>
-              <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
-                ? `curl -X POST ${location.origin}${k.url} \
-  -H "${k.header}: ${k.key}" -H "Content-Type: application/json" \
-  -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`
-                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key}"`}</pre>
-            </div>
-          ))}
-          <div className="row"><button className="btn sm" onClick={() => setGwKeys(null)}>Yopish</button></div>
+          <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (<code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
+          <GatewayKeys projectId={projectId} canManage={can(role, "gateway.keys")} />
+          <div className="row"><button className="btn sm" onClick={() => setShowKeys(false)}>Yopish</button></div>
         </div>
       )}
 
@@ -279,22 +269,22 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}
                 {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${alarmLabel(s.alarm)}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${alarmLabel(s.alarm)} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
                 {canEdit && <button className="btn sm" onClick={() => bindToSelection(s)} title="Tanlangan elementga bog'lash">Tanlanganga bog'lash</button>}
-                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
+                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable, min_setpoint: s.min_setpoint ?? null, max_setpoint: s.max_setpoint ?? null, max_rate_per_min: s.max_rate_per_min ?? null }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
                 {role === "approver" && <button className="btn sm danger" onClick={() => void dialogs.confirm("Sensorni o'chirish", { text: `${s.name} (${s.key}) — tarix ham o'chadi.`, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) void api.deleteSensor(s.id).then(load); })}>O'chirish</button>}
               </div>
               {history.length > 1 ? (
                 <LineChart title={s.name} unit={s.unit} x={history.map((p) => fmtShort(p.ts))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
-              {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
+              {s.writable && canCommandRole(role) && (
                 <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
                   <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
                   <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
-              {canEdit && (
-                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }}>
+              {can(role, "scada.manual_entry") && (
+                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }} title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
                   <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
                   <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
@@ -345,6 +335,14 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
                 </select>
               </label>
             </div>
+            {editing.writable && (
+              <div className="row" title="SCADA-02: boshqaruv chegaralari majburiy — server min ≤ max bo'lmasa rad etadi (422)">
+                <label className="field grow"><span>Min topshiriq, {editing.unit || "birlik"}</span><input className="input" type="number" step="any" required value={editing.min_setpoint ?? ""} onChange={(e) => setEditing({ ...editing, min_setpoint: e.target.value === "" ? null : Number(e.target.value) })} data-testid="sp-min" /></label>
+                <label className="field grow"><span>Maks topshiriq, {editing.unit || "birlik"}</span><input className="input" type="number" step="any" required value={editing.max_setpoint ?? ""} onChange={(e) => setEditing({ ...editing, max_setpoint: e.target.value === "" ? null : Number(e.target.value) })} data-testid="sp-max" /></label>
+                <label className="field grow"><span>Tezlik ≤, /daq (ixtiyoriy)</span><input className="input" type="number" step="any" min={0} value={editing.max_rate_per_min ?? ""} onChange={(e) => setEditing({ ...editing, max_rate_per_min: e.target.value === "" ? null : Math.abs(Number(e.target.value)) || null })} /></label>
+              </div>
+            )}
+            {spError && <p className="error small" role="alert" data-testid="sp-error">{spError}</p>}
             <div className="row">
               <label className="field grow"><span>Manba</span>
                 <select className="select" value={editing.protocol} onChange={(e) => setEditing({ ...editing, protocol: e.target.value as SensorIn["protocol"] })}>
@@ -362,14 +360,14 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
             {editId == null && selection[0]?.guid && <label className="row small"><input type="checkbox" defaultChecked onChange={(e) => setEditing({ ...editing, element_guid: e.target.checked ? selection[0].guid : null })} /> tanlangan elementga bog'lash</label>}
             <div className="actions">
               <button type="button" className="btn" onClick={() => setEditing(null)}>Bekor qilish</button>
-              <button type="submit" className="btn primary">Saqlash</button>
+              <button type="submit" className="btn primary" disabled={!!spError}>Saqlash</button>
             </div>
           </form>
         </Dialog>
       )}
       {cmdTarget && (
         <Dialog title={`Buyruq: ${cmdTarget.name}`} onClose={() => setCmdTarget(null)}>
-          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={role === "operator" || canEdit} canOverride={role === "approver"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
+          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={canCommandRole(role)} canOverride={can(role, "scada.interlock.override")} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
         </Dialog>
       )}
     </div>
@@ -400,6 +398,12 @@ function UnlinkedSensors({ projectId, versionId, refresh, canEdit, selectionGuid
       </div>
     </div>
   );
+}
+
+export function setpointRangeError(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) return "Yoziladigan nuqta uchun min va maks topshiriq chegaralari majburiy";
+  if (min > max) return "Min topshiriq maksimaldan katta bo'lmasligi kerak";
+  return null;
 }
 
 function fmtVal(v: number) {

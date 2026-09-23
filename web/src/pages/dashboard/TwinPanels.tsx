@@ -106,12 +106,17 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
         {canCommand && writable.length === 0 && <span className="dim small">Boshqaruv nuqtasi yo'q — sensor sozlamasida «Yozish mumkin»</span>}
       </div>
       {err && <p className="error small">{err}</p>}
+      {cmds.some((c) => c.status === "unknown") && (
+        <div className="verdict bad" role="alert" data-testid="cmd-unknown-banner">
+          <b>{cmds.filter((c) => c.status === "unknown").length} ta buyruq natijasi noma'lum</b> — gateway tasdiq bermadi; jihoz holatini tekshiring (smena jurnaliga yozing).
+        </div>
+      )}
       {cmds.length === 0 ? <p className="muted">Buyruqlar yo'q</p> : (
         <table className="grid small">
           <thead><tr><th>Vaqt</th><th>Nuqta</th><th>Qiymat</th><th>Kim</th><th>Holat</th><th>Natija</th><th /></tr></thead>
           <tbody>
             {cmds.slice(0, 30).map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className={c.status === "unknown" ? "row-unknown" : undefined}>
                 <td className="mono">{fmtDate(c.created_at)}</td>
                 <td>{c.sensor_name} <span className="dim">{c.sensor_key}</span></td>
                 <td className="mono">{fmtValue(c.value)} {c.unit}</td>
@@ -120,7 +125,7 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
                 <td className="dim small">{c.result}{c.readback_value != null && <div>readback: <span className="mono">{fmtValue(c.readback_value)} {c.unit}</span></div>}{c.approved_by_username && <div>tasdiq: {c.approved_by_username}</div>}</td>
                 <td>
                   {(c.status === "pending" || c.status === "pending_approval") && canCommand && <button className="btn sm" onClick={() => api.cancelCommand(c.id).then((u) => setCmds((p) => p.map((x) => (x.id === u.id ? u : x))))}>Bekor</button>}
-                  {c.status === "pending_approval" && canCommand && <button className="btn sm primary" title="Ikki kishi qoidasi: muallif o'zini tasdiqlay olmaydi" onClick={() => approve(c.id)}>Tasdiqlash</button>}
+                  {c.status === "pending_approval" && canOverride && <button className="btn sm primary" title="Ikki kishi qoidasi: muallif o'zini tasdiqlay olmaydi" onClick={() => approve(c.id)}>Tasdiqlash</button>}
                 </td>
               </tr>
             ))}

@@ -23,8 +23,8 @@ export function validateSetpoint(s: Pick<Sensor, "min_setpoint" | "max_setpoint"
   return { ok: true };
 }
 
-export const CMD_LABEL: Record<string, string> = { pending: "navbatda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi", pending_approval: "tasdiq kutilmoqda", mismatch: "readback mos emas" };
-export const CMD_CLASS: Record<string, string> = { pending: "open", sent: "shared", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived", pending_approval: "high", mismatch: "rejected" };
+export const CMD_LABEL: Record<string, string> = { pending: "navbatda", sent: "yuborildi", acked: "bajarildi", failed: "xato", cancelled: "bekor", expired: "muddati o'tdi", pending_approval: "tasdiq kutilmoqda", mismatch: "readback mos emas", unknown: "natija noma'lum" };
+export const CMD_CLASS: Record<string, string> = { pending: "open", sent: "shared", acked: "published", failed: "rejected", cancelled: "archived", expired: "archived", pending_approval: "high", mismatch: "rejected", unknown: "high" };
 
 export default function ControlBlock({ projectId, sensor, canCommand, canOverride = false, liveCommand, onCommand }: { projectId: number; sensor: Sensor; canCommand: boolean; canOverride?: boolean; liveCommand?: Command | null; onCommand?: (c: Command) => void }) {
   const [value, setValue] = useState(sensor.last_value == null ? "" : String(sensor.last_value));
@@ -84,7 +84,7 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
           </div>
           {!check.ok && value !== "" && <p className="error small" data-testid="ctl-invalid">Rad: {check.reason} (server ham rad etadi)</p>}
           {check.ok && check.warn && <p className="small" style={{ color: "var(--warn)" }}>{check.warn}</p>}
-          {blocked.length > 0 && !sel && <p className="error small">Blokirovka: {blocked.map((b) => b.name).join(", ")} — buyruq rad etiladi{canOverride ? " (tasdiqlovchi sabab bilan chetlab o'ta oladi)" : ""}</p>}
+          {blocked.length > 0 && !sel && <p className="error small">Blokirovka: {blocked.map((b) => b.name).join(", ")} — buyruq rad etiladi{canOverride ? " (smena boshlig'i sabab bilan chetlab o'ta oladi)" : ""}</p>}
           {sel && <p className="small" style={{ color: "var(--warn)" }} data-testid="ctl-selected">Tanlandi: {fmtValue(sel.value)} {sensor.unit}. Bajarish uchun <b>{left} s</b> qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}{sel.override ? " · blokirovka chetlab o'tildi" : ""}</p>}
           {sel?.interlocks && sel.interlocks.length > 0 && <ul className="small" style={{ margin: "4px 0", paddingLeft: 16 }}>{sel.interlocks.map((il) => <li key={il.interlock_id} style={{ color: il.ok ? "var(--ok)" : "var(--danger)" }}>{il.ok ? "✓" : "✗"} {il.name}{il.message ? ` — ${il.message}` : ""}</li>)}</ul>}
           {err && <p className="error small">{err}</p>}
@@ -95,7 +95,12 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
               : <><button className="btn primary" onClick={() => void execute()} data-testid="ctl-execute">2. Bajarish ({left} s)</button><button className="btn" onClick={() => setSel(null)}>Bekor</button></>}
           </div>
         </>
-      ) : <p className="muted small">Boshqaruv uchun operator huquqi kerak</p>}
+      ) : <p className="muted small">Boshqaruv — faqat dispetcher va smena boshlig'i (loyihalash rollari buyruq bermaydi)</p>}
+      {last?.status === "unknown" && (
+        <div className="verdict bad" role="alert" data-testid="ctl-unknown">
+          <b>Buyruq #{last.id} natijasi noma'lum</b> — gateway tasdiq bermadi (nazorat taymeri). Jihoz holatini joyida yoki qayta o'qish bilan tekshiring; tekshirmasdan buyruqni takrorlamang.
+        </div>
+      )}
       {last && (
         <div className="small" style={{ marginTop: 6 }} data-testid="ctl-status">
           <b>Oxirgi buyruq:</b> {fmtValue(last.value)} {last.unit} · <span className={`badge ${CMD_CLASS[last.status] ?? ""}`}>{CMD_LABEL[last.status] ?? last.status}</span> · {last.author_username} · {fmtDate(last.created_at)}

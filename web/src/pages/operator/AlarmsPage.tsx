@@ -9,6 +9,7 @@ import { AREAS, type AreaId } from "./model";
 import { EMPTY_FILTER, FLOOD_PRIORITIES, counters, filterAlarms, groupAlarms, sortAlarms, toRows, type AlarmFilter, type ViewMode } from "./alarms";
 import { priorityLabel } from "../../i18n/labels";
 import { areaTitle } from "./model";
+import { can } from "../../api/permissions";
 
 /** Alarm sahifasi (F5, ISA-18.2): saralash ustuvorlik → vaqt, filtr (ustuvorlik, uchastka, holat), guruhlash,
  * qidiruv; kvitlash Dialog bilan; «Hammasini kvitlash» — tasdiqlash, faqat filtrlangan to'plam; toshqin rejimida
@@ -36,8 +37,8 @@ function Body() {
   const [comment, setComment] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const canOperate = ["operator", "engineer", "approver"].includes(project?.my_role ?? "");
-  const canEngineer = ["engineer", "approver"].includes(project?.my_role ?? "");
+  const canOperate = can(project?.my_role, "scada.ack");
+  const canEngineer = can(project?.my_role, "sensor.oos");
   const flood = !!dash?.alarm_flood;
   const loadHistory = useCallback(() => api.alarmEvents(pid, false, hours).then(setHistory).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [pid, hours]);
   useEffect(() => { if (filter.view === "history" || filter.view === "suppressed") void loadHistory(); }, [filter.view, loadHistory]);

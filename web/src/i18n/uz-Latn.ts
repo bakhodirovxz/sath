@@ -145,6 +145,7 @@ export const uzLatn = {
   "enum.cmd.expired": "muddati o'tdi",
   "enum.cmd.pending_approval": "tasdiq kutilmoqda",
   "enum.cmd.mismatch": "qayta o'qish mos emas",
+  "enum.cmd.unknown": "natija noma'lum",
   // --- Enum: rol ---
   "enum.role.viewer": "Ko'ruvchi",
   "enum.role.operator": "Dispetcher",
