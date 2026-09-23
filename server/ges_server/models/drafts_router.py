@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from .. import audit
-from ..auth.deps import DB, CurrentUser
+from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
 from ..downloads import content_disposition
 from ..orm import DraftObject, Role, Version, utcnow
@@ -140,23 +140,36 @@ def create_draft(model_id: int, body: DraftIn, user: CurrentUser, db: DB):
     return _out(d)
 
 
-def _get_draft(db, draft_id: int, user, role: Role) -> DraftObject:
+def _get_own_draft(db, draft_id: int, user) -> tuple[DraftObject, int]:
+    """VCS-04: qoralamani faqat muallifi (yoki loyiha tasdiqlovchisi) o'zgartiradi/o'chiradi.
+    Qaytaradi: (qoralama, project_id)."""
     d = db.get(DraftObject, draft_id)
     if d is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Qoralama topilmadi")
-    get_model_checked(db, d.model_id, user, role)
-    return d
+    model = get_model_checked(db, d.model_id, user, Role.engineer)
+    if d.author_id != user.id and not has_role(get_project_role(db, model.project_id, user), Role.approver):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Qoralamani muallifi yoki tasdiqlovchi o'zgartiradi")
+    return d, model.project_id
 
 
 @router.patch("/drafts/{draft_id}", response_model=DraftOut)
 def update_draft(draft_id: int, body: DraftPatch, user: CurrentUser, db: DB):
-    d = _get_draft(db, draft_id, user, Role.engineer)
+    d, project_id = _get_own_draft(db, draft_id, user)
     changes = body.model_dump(exclude_none=True)
     _check_mesh(changes.get("mesh"))
     for k in DraftPatch.model_fields:
         if k in changes:
             setattr(d, k, changes[k])
     d.updated_at = utcnow()
+    audit.log(
+        db,
+        user_id=user.id,
+        action="draft.update",
+        target_type="draft",
+        target_id=d.id,
+        project_id=project_id,
+        detail={"fields": sorted(changes), "author_id": d.author_id, "name": d.name},
+    )
     db.commit()
     db.refresh(d)
     return _out(d)
@@ -164,15 +177,15 @@ def update_draft(draft_id: int, body: DraftPatch, user: CurrentUser, db: DB):
 
 @router.delete("/drafts/{draft_id}", status_code=204)
 def delete_draft(draft_id: int, user: CurrentUser, db: DB):
-    d = _get_draft(db, draft_id, user, Role.engineer)
+    d, project_id = _get_own_draft(db, draft_id, user)
     audit.log(
         db,
         user_id=user.id,
         action="draft.delete",
         target_type="draft",
         target_id=d.id,
-        project_id=get_model_checked(db, d.model_id, user, Role.viewer).project_id,
-        detail={"kind": d.kind, "name": d.name},
+        project_id=project_id,
+        detail={"kind": d.kind, "name": d.name, "author_id": d.author_id},
     )
     db.delete(d)
     db.commit()
@@ -181,7 +194,8 @@ def delete_draft(draft_id: int, user: CurrentUser, db: DB):
 class CommitIn(BaseModel):
     message: str = Field(default="", max_length=2000)
     base_version_id: int | None = None  # qaysi versiya ustiga (default: oxirgi)
-    draft_ids: list[int] | None = None  # None — hammasi
+    # None — o'z qoralamalarim (VCS-04); boshqaning qoralamasini faqat tasdiqlovchi aniq id bilan qo'sha oladi
+    draft_ids: list[int] | None = None
     keep_drafts: bool = False  # commitdan keyin qoralamalarni saqlab qolish
 
 
@@ -196,7 +210,13 @@ def commit_drafts(
     q = db.query(DraftObject).filter_by(model_id=model.id)
     if body.draft_ids:
         q = q.filter(DraftObject.id.in_(body.draft_ids))
+    else:
+        q = q.filter(DraftObject.author_id == user.id)  # hammaning emas — faqat o'zimniki
     rows = q.order_by(DraftObject.id).all()
+    if any(d.author_id != user.id for d in rows) and not has_role(
+        get_project_role(db, model.project_id, user), Role.approver
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Boshqa foydalanuvchining qoralamasini faqat tasdiqlovchi commit qiladi")
     if not rows:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Commit uchun qoralama obyekt yo'q")
     missing = [d.name or d.kind for d in rows if not d.mesh and d.kind != "deleted"]

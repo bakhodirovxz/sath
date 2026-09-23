@@ -225,3 +225,39 @@ def test_published_and_archived_versions_immutable(client, users, mid, tmp_path)
     # wip versiya izohi hali o'zgaradi
     v3 = upload(client, users["engineer"], mid, make_ifc(tmp_path / "c.ifc", wall_names=("C",)), "v3").json()
     assert client.patch(f"/api/versions/{v3['id']}", json={"message": "tuzatildi"}, headers=users["engineer"]).status_code == 200
+
+
+# ---------------------------------------------------------------- VCS-04 + yangi xato (c)
+
+
+def test_drafts_owner_only_and_audited(client, users, mid, admin):
+    from conftest import login, make_user
+
+    uid = make_user(client, admin, "eng2")
+    client.put(f"/api/projects/{users['project_id']}/members", json={"user_id": uid, "role": "engineer"}, headers=admin)
+    eng2 = login(client, "eng2", "pass1234")
+    did = _draft(client, users, mid)
+    # boshqa muhandis o'zgartira/o'chira olmaydi
+    assert client.patch(f"/api/drafts/{did}", json={"name": "x"}, headers=eng2).status_code == 403
+    assert client.delete(f"/api/drafts/{did}", headers=eng2).status_code == 403
+    # muallif — ha; tasdiqlovchi — ha
+    assert client.patch(f"/api/drafts/{did}", json={"name": "A"}, headers=users["engineer"]).status_code == 200
+    assert client.patch(f"/api/drafts/{did}", json={"name": "B"}, headers=users["approver"]).status_code == 200
+    acts = client.get("/api/audit", params={"action": "draft.update"}, headers=admin).json()
+    assert len(acts) == 2 and acts[0]["detail"]["fields"] == ["name"]
+    assert client.delete(f"/api/drafts/{did}", headers=users["approver"]).status_code == 204
+
+
+def test_commit_without_ids_commits_only_own_drafts(client, users, mid, tmp_path):
+    upload(client, users["engineer"], mid, make_ifc(tmp_path / "a.ifc"), "v1")
+    mine = _draft(client, users, mid, "engineer")
+    theirs = _draft(client, users, mid, "approver")
+    r = client.post(f"/api/models/{mid}/drafts/commit", json={}, headers=users["engineer"])
+    assert r.status_code == 201, r.text
+    left = [d["id"] for d in client.get(f"/api/models/{mid}/drafts", headers=users["viewer"]).json()]
+    assert left == [theirs] and mine not in left
+    # boshqaning qoralamasini aniq id bilan — muhandis 403, tasdiqlovchi mumkin
+    assert client.post(f"/api/models/{mid}/drafts/commit", json={"draft_ids": [theirs]}, headers=users["engineer"]).status_code == 403
+    # muhandisda o'z qoralamasi yo'q — 400
+    assert client.post(f"/api/models/{mid}/drafts/commit", json={}, headers=users["engineer"]).status_code == 400
+    assert client.post(f"/api/models/{mid}/drafts/commit", json={"draft_ids": [theirs]}, headers=users["approver"]).status_code == 201
