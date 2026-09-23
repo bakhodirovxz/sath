@@ -17,6 +17,7 @@ describe("tokens: WCAG AA kontrast (UX-05)", () => {
       if (contrast(t.text, t["attention-bg"]) < 4.5) bad.push("text on attention-bg");
       if (contrast(t["on-accent"], t.accent) < 4.5) bad.push("on-accent on accent");
       if (contrast(t["on-danger"], t["danger-strong"]) < 4.5) bad.push(`on-danger on danger-strong ${contrast(t["on-danger"], t["danger-strong"]).toFixed(2)}`);
+      if (contrast(t["mimic-on-ink"], t["mimic-on"]) < 4.5) bad.push("state-tag.on: mimic-on-ink on mimic-on");
       if (contrast(t.text, t.sel) < 4.5) bad.push("text on sel");
       for (const p of PRIOS) {
         const fill = t[`alarm-${p}`], ink = t[`alarm-${p}-ink`], outline = t["alarm-outline"];

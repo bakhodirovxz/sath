@@ -18,7 +18,7 @@ import AnnunciatorControl from "../ui/AnnunciatorControl";
 import AlarmTable from "./operator/AlarmTable";
 import { sortAlarms, toRows } from "./operator/alarms";
 import { alignNearest } from "../ui/trendMath";
-import { applyEvent, loadEvents, putSensors, useAlarmEvents, useLiveMessages, useProjectLive, useSensors } from "../store/live";
+import { applyEvent, loadEvents, putSensors, unackedSensorIds, useAlarmEvents, useLiveMessages, useLiveState, useProjectLive, useSensors } from "../store/live";
 import { can } from "../api/permissions";
 
 const RANGES: { label: string; hours: number }[] = [
@@ -217,6 +217,8 @@ function SchemeSection({ pid, dash, scheme, editing, selEl, onSelect, onScheme, 
   const [prioOnly, setPrioOnly] = useState(false); // toshqinda faqat yuqori/kritik (EEMUA-191)
   const activeAlarms = events.filter((e) => !e.ended_at).length;
   const unacked = events.filter((e) => !e.acked_at).length;
+  const unackedIds = useMemo(() => unackedSensorIds(events), [events]);
+  const live = useLiveState(pid);
   const kpi = useMemo(() => {
     const power = sensors.filter((s) => s.kind === "power");
     return {
@@ -237,7 +239,7 @@ function SchemeSection({ pid, dash, scheme, editing, selEl, onSelect, onScheme, 
 
     <div className="dash-main">
       <div className="dash-mimic">
-        <ErrorBoundary name="Mimika">{scheme && <Mimic scheme={scheme} sensors={sensors} editing={editing} selected={selEl} onSelect={onSelect} onChange={onScheme} onOpen={onOpen} />}</ErrorBoundary>
+        <ErrorBoundary name="Mimika">{scheme && <div className="mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unackedIds} offline={!historySensors && live === "OFFLINE"} editing={editing} selected={selEl} onSelect={onSelect} onChange={onScheme} onOpen={onOpen} /></div>}</ErrorBoundary>
         {editing && scheme && <MimicEditor scheme={scheme} sensors={sensors} selected={selEl} onSelect={onSelect} onChange={onScheme} />}
       </div>
       <div className="dash-alarms">

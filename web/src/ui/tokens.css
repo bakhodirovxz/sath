@@ -65,6 +65,7 @@
   --mimic-concrete: #5b616b;
   --mimic-outline: #8b9098;
   --mimic-on: #9aa0a8;
+  --mimic-on-ink: #1d1d1d;
   --mimic-off: #3d3d3d;
   --mimic-hall: #353535;
   --mimic-unbound: #9296a0;
@@ -136,6 +137,7 @@
   --mimic-concrete: #b8bcc2;
   --mimic-outline: #5c626b;
   --mimic-on: #5c626b;
+  --mimic-on-ink: #ffffff;
   --mimic-off: #e4e5e7;
   --mimic-hall: #d6d8db;
   --mimic-unbound: #5f646c;
@@ -207,6 +209,7 @@
   --mimic-concrete: #c4c4c4;
   --mimic-outline: #333333;
   --mimic-on: #333333;
+  --mimic-on-ink: #ffffff;
   --mimic-off: #ffffff;
   --mimic-hall: #ededed;
   --mimic-unbound: #333333;

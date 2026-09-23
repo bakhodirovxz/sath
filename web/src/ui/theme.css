@@ -537,7 +537,8 @@ button.tile { color: inherit; font: inherit; text-align: left; cursor: pointer; 
 .dash { width: 100%; max-width: 1440px; margin: 0 auto; }
 .dash-tabs { margin: var(--sp-1-5) 0 var(--sp-2); height: auto; min-height: 30px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .dash-kpi { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.dash-main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sp-2-5); align-items: start; }
+/* Mimika to'liq kenglikda (1000 birlik ≥ 1000 px — yorliqlar 14 px dan kichraymaydi), alarm jadvali ostida */
+.dash-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2-5); align-items: start; }
 .dash-mimic, .dash-alarms, .dash-block { border: 1px solid var(--line); background: var(--panel); padding: var(--sp-2) var(--sp-2-5); min-width: 0; }
 .dash-block { margin-top: var(--sp-2-5); }
 .dash-alarms { max-height: 420px; overflow: auto; }
@@ -561,9 +562,98 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .fp-dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-1) var(--sp-2-5); margin: var(--sp-1-5) 0 0; font-size: var(--fs-sm); }
 .fp-dl dt { color: var(--text-muted); }
 .fp-dl dd { margin: 0; }
-.l1-mimic { margin-top: var(--sp-2-5); }
+.l1-mimic { margin-top: var(--sp-2-5); padding: 0; overflow: hidden; }
+/* Kartalar (L1/L2): normal — kulrang kontur; alarm — 2 px kontur ustuvorlik rangida + shakl belgisi */
+.unit-card, .area-card, .vcard { display: block; border: 1px solid var(--line-strong); background: var(--panel); padding: var(--sp-1-5) var(--sp-2); border-radius: var(--radius); color: var(--text); text-decoration: none; }
+.unit-card:hover, .area-card:hover, .vcard:hover { text-decoration: none; background: var(--surface-hover); }
+.unit-card:focus-visible, .area-card:focus-visible, .vcard:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.unit-card.alarm, .area-card.alarm, .vcard.alarm { border-width: 2px; padding: calc(var(--sp-1-5) - 1px) calc(var(--sp-2) - 1px); }
+.alarm.prio-critical { border-color: var(--alarm-critical); } .alarm.prio-high { border-color: var(--alarm-high); }
+.alarm.prio-medium { border-color: var(--alarm-medium); } .alarm.prio-low { border-color: var(--alarm-low); }
+.vcard.stale { border-style: dashed; background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--overlay) 6px 7px); }
+.vcard.bad .vcard-v { text-decoration: line-through; text-decoration-color: var(--quality-bad); }
+.vcard-t { display: flex; gap: var(--sp-1-5); align-items: center; font-size: var(--fs-body); color: var(--text-muted); }
+.vcard-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vcard-v { font-size: var(--fs-value); font-weight: 600; display: flex; gap: var(--sp-1-5); align-items: baseline; font-variant-numeric: tabular-nums; }
+.vcard-u { font-size: var(--fs-body); color: var(--text-muted); font-weight: 400; }
+.vcard-age { font-size: var(--fs-sm); }
+.vcard.compact { padding: var(--sp-1) var(--sp-1-5); }
+/* Holat yorlig'i: ishlayapti/to'xtagan — rang emas, kontur va to'ldirish (kulrang) */
+.state-tag { display: inline-block; font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); padding: 1px var(--sp-1-5); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text-muted); }
+.state-tag.on { background: var(--mimic-on); border-color: var(--mimic-on); color: var(--mimic-on-ink); }
+.alarm-strip { display: inline-flex; gap: var(--sp-2-5); align-items: center; padding: var(--sp-0-5) var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); text-decoration: none; }
+.alarm-strip:hover { text-decoration: none; background: var(--surface-hover); }
+.alarm-strip .zero { color: var(--text-dim); font-family: var(--mono); font-weight: 700; }
+.live-dot { font-size: var(--fs-sm); color: var(--text-muted); }
+.live-dot.stale { color: var(--attention); font-weight: 600; }
+.live-dot.offline { color: var(--danger); font-weight: 700; }
 .mimic-editor { margin-top: var(--sp-2); }
 .mimic-el-props { border-top: 1px solid var(--line); padding-top: var(--sp-1-5); margin-top: var(--sp-1-5); }
+
+/* ============ 11b. Alarm belgisi va mimika (ISA-101 / HP-HMI, UX-01) ============ */
+.alarm-mark { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; font-family: var(--mono); font-weight: 700; font-size: var(--fs-xs); line-height: 1; }
+.alarm-mark .am-svg { display: block; overflow: visible; }
+.alarm-mark .am-code { color: var(--text); }
+.alarm-mark.stale { padding: 0 3px; border: 1px dashed var(--alarm-stale); border-radius: 2px; color: var(--alarm-stale); }
+.am-shape { stroke: var(--alarm-outline); stroke-width: 1.2; }
+.am-shape.prio-critical { fill: var(--alarm-critical); } .am-shape.prio-high { fill: var(--alarm-high); }
+.am-shape.prio-medium { fill: var(--alarm-medium); } .am-shape.prio-low { fill: var(--alarm-low); }
+.am-num { font: 700 9px var(--font); pointer-events: none; }
+.am-num.prio-critical { fill: var(--alarm-critical-ink); } .am-num.prio-high { fill: var(--alarm-high-ink); }
+.am-num.prio-medium { fill: var(--alarm-medium-ink); } .am-num.prio-low { fill: var(--alarm-low-ink); }
+/* Kvitlanmagan alarm — 1 Hz miltillash (ISA-18.2: kvitlangunga qadar); boshqa hech narsa harakatlanmaydi */
+.alarm-mark.unacked .am-svg, .alarm-mark-svg.unacked { animation: alarm-blink 1s steps(1, end) infinite; }
+@keyframes alarm-blink { 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) {
+  /* Harakatsiz muqobil: qalin qo'sh kontur */
+  .alarm-mark.unacked .am-shape, .alarm-mark-svg.unacked .am-shape { stroke-width: 2.6; }
+}
+/* Mimika: 1260 birlik kenglik — konteyner kichik bo'lsa gorizontal suriladi (matn kichraymaydi) */
+.mimic-wrap { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.mimic { display: block; width: 100%; min-width: 1260px; height: auto; background: var(--canvas); border: 1px solid var(--line); font-family: var(--font); }
+.mimic-cap { font-size: 14px; font-weight: 600; letter-spacing: var(--tracking-caps); fill: var(--text-muted); }
+.mimic-lbl { font-size: 14px; fill: var(--text-muted); }
+.mimic-val { font-size: 18px; font-weight: 600; fill: var(--text); font-variant-numeric: tabular-nums; }
+.mimic-val.stale { fill: var(--alarm-stale); font-style: italic; }
+.mimic-val.none { font-size: 14px; font-weight: 400; fill: var(--text-dim); }
+.mimic-age { font-size: 14px; fill: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mimic-code { font: 700 14px var(--mono); fill: var(--text); }
+.m-liquid { fill: var(--mimic-liquid); }
+.m-surface { fill: none; stroke: var(--mimic-outline); stroke-width: 2; }
+.m-concrete { fill: var(--mimic-concrete); stroke: var(--mimic-outline); stroke-width: 1.5; }
+.m-outline { fill: none; stroke: var(--mimic-outline); stroke-width: 2; }
+.m-outline.dashed { stroke-width: 1; stroke-dasharray: 3 3; }
+.m-line { fill: none; stroke: var(--mimic-outline); stroke-width: 2; }
+.m-line.dashed { stroke-dasharray: 6 5; }
+.m-line.strong { stroke: var(--text); }
+.m-arrow { fill: var(--mimic-outline); }
+.m-pipe { fill: none; stroke: var(--mimic-outline); stroke-width: 12; stroke-linejoin: round; }
+.m-pipe-core { fill: none; stroke: var(--canvas); stroke-width: 7; stroke-linejoin: round; }
+.m-bus { stroke: var(--mimic-on); stroke-width: 5; }
+.m-hall { fill: var(--mimic-hall); stroke: var(--mimic-outline); stroke-width: 1.5; }
+.m-hall.has-alarm { stroke: var(--alarm-outline); stroke-width: 2.5; }
+.m-unit { stroke: var(--mimic-outline); stroke-width: 2.5; }
+.m-unit.on { fill: var(--mimic-on); }
+.m-unit.off { fill: var(--mimic-off); }
+.m-unit.nodata { fill: url(#nodata); stroke: var(--mimic-unbound); stroke-dasharray: 4 3; }
+.m-unit-glyph { font-size: 18px; font-weight: 700; fill: var(--mimic-outline); }
+.m-unit-glyph.on { fill: var(--mimic-on-ink); }
+.m-switch { stroke: var(--mimic-outline); stroke-width: 2; }
+.m-switch.on { fill: var(--mimic-on); }
+.m-switch.off { fill: var(--mimic-off); }
+.m-switch.nodata { fill: url(#nodata); stroke: var(--mimic-unbound); stroke-dasharray: 3 3; }
+.m-gate { fill: var(--mimic-concrete); stroke: var(--mimic-outline); stroke-width: 1.5; }
+.m-gate.nodata { fill: url(#nodata); }
+.m-hatch { stroke: var(--line-strong); stroke-width: 1.2; }
+.m-hatch.light { stroke: var(--line); stroke-width: 1; }
+.m-box { fill: var(--field); stroke: var(--mimic-outline); stroke-width: 1; }
+.m-box.unbound { stroke: var(--mimic-unbound); stroke-dasharray: 3 3; }
+.mimic-slot.in-alarm .m-box { stroke: var(--alarm-outline); stroke-width: 2.5; }
+.mimic-slot.clickable { cursor: pointer; }
+.mimic-slot.clickable:hover .m-box, .mimic-slot.clickable:focus-visible .m-box { stroke: var(--accent); stroke-width: 2.5; }
+.mimic-slot:focus-visible { outline: none; }
+.mimic.editing .mimic-el.draggable { cursor: move; pointer-events: bounding-box; }
+.mimic .mimic-el.selected > * { outline: 2px dashed var(--accent); }
 
 /* Kichik yordamchilar (UX-08: inline style o'rniga) */
 .rel { position: relative; }

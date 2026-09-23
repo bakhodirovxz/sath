@@ -4,6 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import type { Sensor } from "../../api/client";
 import { fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
+import AlarmMark from "../../ui/AlarmMark";
+import { unackedSensorIds } from "../../store/live";
 import Mimic from "./Mimic";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { loadScheme } from "./scheme";
@@ -21,7 +23,8 @@ export default function L1Overview() {
 }
 
 function Body() {
-  const { projectId: pid, sensors, dash, summary, events } = useOps();
+  const { projectId: pid, sensors, dash, summary, events, live } = useOps();
+  const unacked = useMemo(() => unackedSensorIds(events), [events]);
   const nav = useNavigate();
   const scheme = useMemo(() => (dash ? loadScheme(dash.scheme, dash.mimic, Math.max(1, dash.units.length || 3)) : null), [dash]);
   const enabled = useMemo(() => sensors.filter((s) => s.enabled), [sensors]);
@@ -57,7 +60,7 @@ function Body() {
         {key.grid && <div className="tile"><div className="tile-t">Chastota</div><div className="tile-v">{key.grid.last_value == null ? "—" : fmtValue(key.grid.last_value)} <span className="tile-u">{key.grid.unit}</span></div></div>}
       </div>
 
-      {scheme && <ErrorBoundary name="Mimika"><div className="panel l1-mimic"><Mimic scheme={scheme} sensors={sensors} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div></ErrorBoundary>}
+      {scheme && <ErrorBoundary name="Mimika"><div className="panel l1-mimic mimic-wrap"><Mimic scheme={scheme} sensors={sensors} unacked={unacked} offline={live === "OFFLINE"} onOpen={(sid) => nav(opsPath(pid, "sensor", sid))} /></div></ErrorBoundary>}
       <div className="l1-grid">
         <section className="panel">
           <div className="row"><b>Agregatlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "area", "powerhouse")}>L2 Mashina zali →</Link></div>
@@ -70,8 +73,8 @@ function Body() {
               const st = sm.worst ? alarmStyle(sm.worst.alarm, sm.worst.priority) : null;
               const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && (p.last_value ?? 0) > 0.05 && !p.stale;
               return (
-                <Link key={n} to={opsPath(pid, "unit", n)} className={`unit-card ${sm.total ? "alarm" : ""}`} data-testid="unit-card" style={st ? { borderColor: st.color } : undefined}>
-                  <div className="row"><b>Agregat {n}</b><span className="grow" />{st && <span className="alarm-mark" style={{ color: st.color }}>{st.glyph}{st.code}</span>}<span className={`badge ${on ? "published" : "archived"}`}>{on ? "ISHLAYAPTI" : "TO'XTAGAN"}</span></div>
+                <Link key={n} to={opsPath(pid, "unit", n)} className={`unit-card ${st?.priority ? `alarm prio-${st.priority}` : ""}`} data-testid="unit-card">
+                  <div className="row"><b>Agregat {n}</b><span className="grow" />{sm.worst && <AlarmMark state={sm.worst.alarm} priority={sm.worst.priority} unacked={unacked.has(sm.worst.id)} />}<span className={`state-tag ${on ? "on" : ""}`}>{on ? "ISHLAYAPTI" : "TO'XTAGAN"}</span></div>
                   <div className="tile-v">{p?.last_value == null ? "—" : fmtValue(p.last_value)} <span className="tile-u">{p?.unit ?? ""}</span></div>
                   <div className="dim small">{ss.length} sensor{sm.total ? ` · ${sm.total} alarm` : ""}{sm.stale ? ` · ${sm.stale} aloqasiz` : ""}</div>
                 </Link>
@@ -87,8 +90,8 @@ function Body() {
               const sm = summarize(a.sensors);
               const st = sm.worst ? alarmStyle(sm.worst.alarm, sm.worst.priority) : null;
               return (
-                <Link key={a.id} to={opsPath(pid, "area", a.id)} className={`area-card ${sm.total ? "alarm" : ""}`} data-testid="area-card" style={st ? { borderColor: st.color } : undefined}>
-                  <div className="row"><b>{a.title}</b><span className="grow" />{st ? <span className="alarm-mark" style={{ color: st.color }}>{st.glyph}{sm.total}</span> : <span className="badge published">normal</span>}</div>
+                <Link key={a.id} to={opsPath(pid, "area", a.id)} className={`area-card ${st?.priority ? `alarm prio-${st.priority}` : ""}`} data-testid="area-card">
+                  <div className="row"><b>{a.title}</b><span className="grow" />{sm.worst ? <span className="row gap-4"><AlarmMark state={sm.worst.alarm} priority={sm.worst.priority} showCode={false} unacked={a.sensors.some((x) => unacked.has(x.id) && x.alarm !== "ok")} /><b className="mono">{sm.total}</b></span> : <span className="state-tag">normal</span>}</div>
                   <div className="dim small">{a.sensors.length} sensor{sm.stale ? ` · ${sm.stale} aloqasiz` : ""}</div>
                 </Link>
               );

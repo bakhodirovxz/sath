@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { api, type AlarmEvent, type Command, type LiveMessage, type Sensor } from "../api/client";
 import { openLiveConnection, type LiveState } from "../hooks/liveConnection";
 import { annunciator, type Priority } from "../ui/annunciator";
@@ -295,6 +295,18 @@ export function useAlarmEvents(pid: number): AlarmEvent[] {
   const p = get(pid);
   useEffect(() => { if (!p.eventsLoaded && Number.isFinite(pid) && pid > 0) void loadEvents(pid); }, [p, pid]);
   return useSyncExternalStore(useSub(p.eventSubs), () => p.events, () => p.events);
+}
+
+/** Kvitlanmagan alarmli sensorlar (mimika/kartalarda belgi miltillaydi — ISA-18.2). */
+export function unackedSensorIds(events: readonly AlarmEvent[]): Set<number> {
+  const out = new Set<number>();
+  for (const e of events) if (!e.acked_at) out.add(e.sensor_id);
+  return out;
+}
+
+export function useUnackedSensorIds(pid: number): ReadonlySet<number> {
+  const events = useAlarmEvents(pid);
+  return useMemo(() => unackedSensorIds(events), [events]);
 }
 
 /** Xom jonli xabarlar (buyruq, jurnal, o'qishlar — trend chizig'i uchun). */

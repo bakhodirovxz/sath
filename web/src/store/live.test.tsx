@@ -2,7 +2,7 @@ import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlarmEvent, Sensor } from "../api/client";
 import { annunciator } from "../ui/annunciator";
-import { configureLive, liveDebug, putSensors, resetLive, useAlarmEvents, useLiveSelector, useProjectLive, useSensor, useSensorsByIds } from "./live";
+import { configureLive, liveDebug, putSensors, resetLive, unackedSensorIds, useAlarmEvents, useLiveSelector, useProjectLive, useSensor, useSensorsByIds } from "./live";
 
 /** UX-11: loyiha uchun bitta soket, komponentlar faqat o'z sensorlariga obuna. */
 
@@ -92,5 +92,13 @@ describe("umumiy jonli store", () => {
     expect(ack).toHaveBeenCalledWith(11);
     act(() => { ws.send({ type: "alarm", event: { ...ev, acked_at: "x", ended_at: "y" } }); });
     expect(seen).toEqual([]);
+  });
+});
+
+describe("kvitlanmagan alarmli sensorlar (UX-01: mimikada belgi miltillaydi)", () => {
+  it("faqat acked_at bo'sh hodisalar sensori", () => {
+    const ev = (id: number, sensor_id: number, acked: boolean) => ({ id, sensor_id, acked_at: acked ? "2026-01-01T00:00:00Z" : null } as AlarmEvent);
+    expect([...unackedSensorIds([ev(1, 5, false), ev(2, 6, true), ev(3, 5, false), ev(4, 7, false)])].sort()).toEqual([5, 7]);
+    expect(unackedSensorIds([]).size).toBe(0);
   });
 });

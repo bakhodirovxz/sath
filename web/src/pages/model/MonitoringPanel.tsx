@@ -44,7 +44,7 @@ function hexOf(token: string): string {
 function alarmHex(s: Sensor): string {
   const st = alarmStyle(s.alarm, s.priority);
   const m = /var\(--([\w-]+)\)/.exec(st.color);
-  return hexOf(m ? m[1] : "ok");
+  return hexOf(m ? m[1] : "text-muted"); // normal — kulrang (UX-01: rang faqat anomaliya uchun)
 }
 const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: "http", address: {}, low_alarm: null, high_alarm: null, stale_after_s: 600, enabled: true };
 

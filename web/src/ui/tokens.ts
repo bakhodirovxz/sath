@@ -85,6 +85,7 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "mimic-concrete": "#5b616b",
     "mimic-outline": "#8b9098",
     "mimic-on": "#9aa0a8",
+    "mimic-on-ink": "#1d1d1d",
     "mimic-off": "#3d3d3d",
     "mimic-hall": "#353535",
     "mimic-unbound": "#9296a0",
@@ -160,6 +161,7 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "mimic-concrete": "#b8bcc2",
     "mimic-outline": "#5c626b",
     "mimic-on": "#5c626b",
+    "mimic-on-ink": "#ffffff",
     "mimic-off": "#e4e5e7",
     "mimic-hall": "#d6d8db",
     "mimic-unbound": "#5f646c",
@@ -232,6 +234,7 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "mimic-concrete": "#c4c4c4",
     "mimic-outline": "#333333",
     "mimic-on": "#333333",
+    "mimic-on-ink": "#ffffff",
     "mimic-off": "#ffffff",
     "mimic-hall": "#ededed",
     "mimic-unbound": "#333333",
@@ -311,7 +314,7 @@ export function isActiveAlarm(state: string | null | undefined): boolean {
 export function alarmStyle(state: AlarmStateName | string, priority: PriorityName | string = "medium"): AlarmStyle {
   const st = (state in STATE_CODE ? state : "ok") as AlarmStateName;
   const pr = (priority in PRIO_RANK ? priority : "medium") as PriorityName;
-  if (st === "ok") return { color: "var(--ok)", ink: "var(--text)", bg: "transparent", shape: "none", priority: null, code: "", rank: 0, label: alarmLabel("ok"), glyph: "" };
+  if (st === "ok") return { color: "var(--text-muted)", ink: "var(--text)", bg: "transparent", shape: "none", priority: null, code: "", rank: 0, label: alarmLabel("ok"), glyph: "" };
   if (st === "stale") return { color: "var(--alarm-stale)", ink: "var(--text)", bg: "transparent", shape: "none", priority: null, code: "?", rank: 0, label: alarmLabel("stale"), glyph: "?" };
   return {
     color: `var(--alarm-${pr})`,
