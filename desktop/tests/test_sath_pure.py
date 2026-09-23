@@ -187,3 +187,12 @@ def test_unassigned_objects_warning_text():
     assert flows.unassigned_text(names) == "IFC ga kirmagan obyektlar: 2 — FBX_Togon, DXF_OQ_chiziq"
     assert flows.unassigned_text([f"o{i}" for i in range(6)], limit=2).endswith("o0, o1 … (+4)")
     assert flows.unassigned_text([]) == ""
+
+
+def test_legacy_parts_are_marked():
+    """CODE-02: legacy qismlar belgilangan (papkalar ko'chirilmagan — skriptlar yo'llariga tayanadi)."""
+    assert "legacy" in (ROOT / "desktop" / "GesWorkbench" / "LEGACY.md").read_text(encoding="utf-8").lower()
+    assert "legacy" in (ROOT / "desktop" / "blender" / "spike" / "LEGACY.md").read_text(encoding="utf-8").lower()
+    for f in ("sync_fork.py", "build_portable.py"):
+        head = (ROOT / "desktop" / "build" / f).read_text(encoding="utf-8")[:300]
+        assert head.startswith('"""LEGACY (CODE-02)'), f

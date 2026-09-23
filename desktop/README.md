@@ -1,5 +1,10 @@
 # Sath Desktop
 
+> **Asosiy desktop — Blender 5.2 extension (`blender/sath`, pastda).** FreeCAD forki, `GesWorkbench/` GUI,
+> `build/sync_fork.py`, `build/build_portable.py` va `blender/spike/` — **legacy** (CODE-02): faqat xato tuzatishlar,
+> qarang `GesWorkbench/LEGACY.md`, `blender/spike/LEGACY.md`. Paket nomlari (CODE-03): Blender —
+> `Sath-<ver>-Windows-x86_64.zip`, FreeCAD (legacy) — `Sath-FreeCAD-<ver>-Windows-x86_64.zip`.
+
 O'z dasturimiz — **FreeCAD 1.1.3 forki** (`../Sath-FreeCAD`, LGPL) + shu papkadagi GES workbench.
 Ishchi bitta installer o'rnatadi: dastur «Sath» nomi, o'z ikonkasi/splash i bilan, qora tema,
 metr birliklari, CAD navigatsiya, Sath workbench bilan ochiladi; profil `%APPDATA%\Sath`

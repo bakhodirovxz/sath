@@ -1,4 +1,7 @@
-"""Sath desktop paketini yig'ish (Windows): portable zip + NSIS installer.
+"""LEGACY (CODE-02): FreeCAD asosidagi eski desktop paketi (desktop/GesWorkbench/LEGACY.md). Asosiy desktop —
+Blender bundle: desktop/build/build_blender_bundle.py. Faqat xato tuzatishlar.
+
+Sath desktop paketini yig'ish (Windows): portable zip + NSIS installer.
 
 Fork (Sath-FreeCAD) overlay skripti bilan tayyor FreeCAD 1.1.3 binarini Sath ga aylantiradi
 (brending, Mod/Ges, Sath.exe, keraksiz modullar olib tashlanadi), so'ng:
