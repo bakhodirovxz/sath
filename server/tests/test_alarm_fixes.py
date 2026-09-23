@@ -27,8 +27,8 @@ def test_50_ws_connections_send_no_email_and_no_stale_events(client, users, monk
         db.commit()
     calls = []
     monkeypatch.setattr(notify, "send_async", lambda *a, **k: calls.append(a))
-    token = ws_ticket(client, users["viewer"])
     for _ in range(50):
+        token = ws_ticket(client, users["viewer"])  # AUTH-02: chipta bir martalik — har ulanishga yangisi
         with client.websocket_connect(f"/api/projects/{pid}/live?ticket={token}") as ws:
             snap = ws.receive_json()
             assert snap["type"] == "snapshot"
