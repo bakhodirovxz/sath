@@ -62,13 +62,13 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
         </>
       )}
       {t.safety && t.safety.length > 0 && (
-        <div style={{ marginTop: 8 }}>
+        <div className="mt-8">
           <div className="row"><b>Xavfsizlik ko'rsatkichlari</b><span className="muted small">maydon pasporti + jonli sath (gerb zaxirasi, suv tashlagich, to'g'on barqarorligi, inshoot balandligi)</span><span className="grow" /><Link to={`/projects/${projectId}/site`} className="small">Maydon pasporti</Link></div>
           <table className="grid small">
             <tbody>
               {t.safety.map((r) => (
                 <tr key={r.name} className={r.ok ? undefined : "alarm-active"}>
-                  <td style={{ width: 22 }}><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td>
+                  <td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td>
                   <td>{r.name}</td>
                   <td className="mono">{r.value} {r.unit}</td>
                   <td className="dim">{r.note}</td>
@@ -78,7 +78,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
           </table>
         </div>
       )}
-      {(!t.safety || t.safety.length === 0) && <p className="dim small" style={{ marginTop: 6 }}>Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
+      {(!t.safety || t.safety.length === 0) && <p className="dim small mt-6">Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
     </div>
       <EstimatorPanel projectId={projectId} canEdit={canRun} />
       <ValidationPanel projectId={projectId} canApprove={canApprove} />
@@ -162,8 +162,8 @@ export function JournalPanel({ projectId, canWrite, live }: { projectId: number;
         {canWrite && <><button className="btn sm" onClick={() => add("shift_start", "Smenani qabul qildim")}>Smena qabul</button><button className="btn sm" onClick={() => add("shift_end", "Smenani topshirdim")}>Smena topshirish</button></>}
       </div>
       {canWrite && (
-        <form className="row" style={{ margin: "6px 0" }} onSubmit={(e) => { e.preventDefault(); void add(); }}>
-          <select className="select" style={{ width: 130 }} value={kind} onChange={(e) => setKind(e.target.value as JournalEntry["kind"])}><option value="note">Yozuv</option><option value="event">Hodisa</option></select>
+        <form className="row my-6 mx-0" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <select className="select w-130" value={kind} onChange={(e) => setKind(e.target.value as JournalEntry["kind"])}><option value="note">Yozuv</option><option value="event">Hodisa</option></select>
           <input className="input grow" placeholder="Jurnalga yozuv… (Enter)" value={text} onChange={(e) => setText(e.target.value)} />
           <button className="btn" type="submit" disabled={!text.trim()}>Yozish</button>
         </form>
@@ -208,7 +208,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
     <div className="dash-block">
       <div className="row"><b>Aktivlar (agregatlar)</b><span className="muted small">ish soatlari, ishga tushishlar, texnik xizmat</span><span className="grow" />
         {canEdit && models.some((m) => m.versions.length) && (
-          <select className="select" style={{ width: "auto" }} value="" data-testid="assets-from-ifc" title="IFC dan aktiv registri (COBie): turbina, generator, transformator — pasport ma'lumotlari bilan" onChange={(e) => { const vid = Number(e.target.value); if (!vid) return; setSyncMsg(""); api.assetsFromIfc(projectId, vid).then((r) => { setSyncMsg(`IFC dan: ${r.created} yangi, ${r.updated} yangilandi (${r.components} komponent)`); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }}>
+          <select className="select w-auto" value="" data-testid="assets-from-ifc" title="IFC dan aktiv registri (COBie): turbina, generator, transformator — pasport ma'lumotlari bilan" onChange={(e) => { const vid = Number(e.target.value); if (!vid) return; setSyncMsg(""); api.assetsFromIfc(projectId, vid).then((r) => { setSyncMsg(`IFC dan: ${r.created} yangi, ${r.updated} yangilandi (${r.components} komponent)`); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }}>
             <option value="">IFC dan aktivlar…</option>
             {models.filter((m) => m.versions.length).map((m) => <option key={m.id} value={m.versions[0]?.id}>{m.name} v{m.versions[0]?.number}</option>)}
           </select>
@@ -217,10 +217,10 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
         {canEdit && <button className="btn sm" onClick={() => setAdding(true)}>+ Aktiv</button>}</div>
       {syncMsg && <p className="small verdict ok" data-testid="assets-sync-msg">{syncMsg}</p>}
       {err && <p className="error small">{err}</p>}
-      <div className="row" style={{ gap: 6, margin: "4px 0" }}>
+      <div className="row gap-6 my-4 mx-0">
         <button className={`btn sm ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>Ro'yxat</button>
         <button className={`btn sm ${view === "tree" ? "active" : ""}`} onClick={() => setView("tree")} data-testid="assets-tree-btn">Ierarxiya (KKS)</button>
-        {canEdit && <label className="btn sm" title="CSV: kks_code, name, parent_kks, taxonomy_level, element_guid, sensor_key, function_location">KKS CSV import<input type="file" accept=".csv" style={{ display: "none" }} data-testid="kks-csv" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.importKks(projectId, f).then((r) => { setSyncMsg(`KKS: ${r.created} yangi, ${r.updated} yangilandi${r.errors.length ? `, ${r.errors.length} xato: ${r.errors[0]}` : ""}`); void load(); void loadTree(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>}
+        {canEdit && <label className="btn sm" title="CSV: kks_code, name, parent_kks, taxonomy_level, element_guid, sensor_key, function_location">KKS CSV import<input type="file" accept=".csv" className="is-hidden" data-testid="kks-csv" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.importKks(projectId, f).then((r) => { setSyncMsg(`KKS: ${r.created} yangi, ${r.updated} yangilandi${r.errors.length ? `, ${r.errors.length} xato: ${r.errors[0]}` : ""}`); void load(); void loadTree(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>}
       </div>
       {view === "tree" && tree && (
         <div data-testid="assets-tree">
@@ -286,11 +286,11 @@ export function SoePanel({ projectId }: { projectId: number }) {
   const fmtMs = fmtDateMs;
   return (
     <div className="panel">
-      <div className="row wrap" style={{ gap: 6 }}>
+      <div className="row wrap gap-6">
         <b>Hodisalar ketma-ketligi (SOE)</b>
         <select className="select" value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[1, 6, 24, 168, 720].map((h) => <option key={h} value={h}>{h} soat</option>)}</select>
-        <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={onlySoe} onChange={(e) => setOnlySoe(e.target.checked)} /> faqat SOE</label>
-        {onlySoe && <input className="input" style={{ width: 160 }} placeholder="nuqta, masalan AGG1.*" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        <label className="row gap-4"><input type="checkbox" checked={onlySoe} onChange={(e) => setOnlySoe(e.target.checked)} /> faqat SOE</label>
+        {onlySoe && <input className="input w-160" placeholder="nuqta, masalan AGG1.*" value={filter} onChange={(e) => setFilter(e.target.value)} />}
         <span className="grow" />
         <span className="muted small">{rows.length} ta · ms aniqlik · 15 s da yangilanadi</span>
       </div>
@@ -350,10 +350,10 @@ function AssetDocsDialog({ asset, canEdit, canDelete, onClose }: { asset: AssetS
         </table>
       )}
       {canEdit && (
-        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          <select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as AssetDocKind)}>{ASSET_DOC_KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}</select>
-          <input className="input" placeholder="Sarlavha" value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: 200 }} />
-          <label className="btn sm">Fayl tanlash<input type="file" style={{ display: "none" }} accept=".pdf,.docx,.xlsx,.doc,.xls,.txt,.md,.csv,.zip,.png,.jpg,.jpeg" data-testid="asset-doc-file" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.uploadAssetDocument(asset.id, f, kind, title).then(() => { setTitle(""); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>
+        <div className="row gap-6 mt-8 flex-wrap">
+          <select className="select w-auto" value={kind} onChange={(e) => setKind(e.target.value as AssetDocKind)}>{ASSET_DOC_KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}</select>
+          <input className="input w-200" placeholder="Sarlavha" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <label className="btn sm">Fayl tanlash<input type="file" className="is-hidden" accept=".pdf,.docx,.xlsx,.doc,.xls,.txt,.md,.csv,.zip,.png,.jpg,.jpeg" data-testid="asset-doc-file" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.uploadAssetDocument(asset.id, f, kind, title).then(() => { setTitle(""); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>
         </div>
       )}
       <div className="actions"><button className="btn" onClick={onClose}>Yopish</button></div>

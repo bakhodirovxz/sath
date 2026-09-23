@@ -19,6 +19,20 @@ export type QualityName = "good" | "uncertain" | "bad" | "substituted" | "manual
  * tokens.css da, temadan mustaqil). */
 export const THEMES: Record<ThemeName, Record<string, string>> = {
   engineer: {
+    // Sirtlar (Blender: panel ichidagi bo'limlar, sarlavhalar), qoplamalar, viewport
+    "canvas-2": "#2b2b2b",
+    "surface-1": "#383838",
+    "surface-2": "#424242",
+    "surface-hover": "#4a4a4a",
+    "on-sel": "#ffffff",
+    overlay: "rgba(48, 48, 48, 0.75)",
+    "overlay-strong": "rgba(32, 33, 36, 0.94)",
+    "vp-ink": "#111111",
+    "vp-shadow": "#000000",
+    // BIM versiya farqi (qo'shilgan / o'zgargan / o'chirilgan) — faqat diff ko'rinishida
+    "diff-add": "#2ecc71",
+    "diff-change": "#f1c40f",
+    "diff-del": "#e74c3c",
     // Blender 4.x "Blender Dark" neytrallari
     canvas: "#3d3d3d",
     panel: "#303030",
@@ -83,6 +97,18 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "pen-6": "#7fd9e6",
   },
   operator: {
+    "canvas-2": "#d6d8db",
+    "surface-1": "#d6d8db",
+    "surface-2": "#cdd0d4",
+    "surface-hover": "#c2c6cb",
+    "on-sel": "#16181b",
+    overlay: "rgba(228, 229, 231, 0.8)",
+    "overlay-strong": "rgba(244, 245, 246, 0.96)",
+    "vp-ink": "#111111",
+    "vp-shadow": "#ffffff",
+    "diff-add": "#1c6b3f",
+    "diff-change": "#8a6d00",
+    "diff-del": "#b3261e",
     // ISA-101 / HP-HMI: neytral kulrang; rang FAQAT anomaliya uchun
     canvas: "#dcdddf",
     panel: "#e4e5e7",
@@ -145,6 +171,18 @@ export const THEMES: Record<ThemeName, Record<string, string>> = {
     "pen-6": "#0f6e7e",
   },
   "operator-hc": {
+    "canvas-2": "#ededed",
+    "surface-1": "#ededed",
+    "surface-2": "#e0e0e0",
+    "surface-hover": "#d4d4d4",
+    "on-sel": "#000000",
+    overlay: "rgba(255, 255, 255, 0.85)",
+    "overlay-strong": "rgba(255, 255, 255, 0.97)",
+    "vp-ink": "#000000",
+    "vp-shadow": "#ffffff",
+    "diff-add": "#1c6b3f",
+    "diff-change": "#7a5f00",
+    "diff-del": "#8a130e",
     // Kunduzgi / yuqori kontrast: oqroq fon, qora matn, qalinroq konturlar
     canvas: "#f2f2f2",
     panel: "#ffffff",

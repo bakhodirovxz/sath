@@ -34,7 +34,7 @@ export default function Login() {
     <div className="login">
       <form onSubmit={submit}>
         <h1>Sath</h1>
-        <p className="muted" style={{ marginTop: -8 }}>Modellar, versiyalar va tasdiqlash</p>
+        <p className="muted mt-0">Modellar, versiyalar va tasdiqlash</p>
         <label className="field">
           <span>Login</span>
           <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} ref={focusOnMount} autoComplete="username" />
@@ -50,7 +50,7 @@ export default function Login() {
           </label>
         )}
         {error && <p className="error small">{error}</p>}
-        <button className="btn primary" type="submit" disabled={busy || !username || !password || (needOtp && otp.length < 6)} style={{ width: "100%" }}>
+        <button className="btn primary w-full" type="submit" disabled={busy || !username || !password || (needOtp && otp.length < 6)}>
           {busy ? "Tekshirilmoqda…" : "Kirish"}
         </button>
       </form>

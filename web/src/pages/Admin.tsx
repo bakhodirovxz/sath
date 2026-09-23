@@ -68,11 +68,11 @@ export default function Admin() {
               <tr key={u.id}>
                 <td className="mono">{u.username}</td>
                 <td>{u.full_name}</td>
-                <td><input className="input" style={{ width: 180 }} defaultValue={u.email ?? ""} placeholder="—" onBlur={(e) => e.target.value !== (u.email ?? "") && api.updateUser(u.id, { email: e.target.value }).then(load).catch((err) => setError(err.message))} /></td>
+                <td><input className="input w-180" defaultValue={u.email ?? ""} placeholder="—" onBlur={(e) => e.target.value !== (u.email ?? "") && api.updateUser(u.id, { email: e.target.value }).then(load).catch((err) => setError(err.message))} /></td>
                 <td><input type="checkbox" checked={u.is_admin} disabled={u.id === me.id} onChange={() => toggle(u, "is_admin")} /></td>
                 <td><input type="checkbox" checked={u.is_active} disabled={u.id === me.id} onChange={() => toggle(u, "is_active")} /></td>
                 <td>{u.mfa_enabled ? <button className="btn sm" title="MFA ni bekor qilish (telefon yo'qolganda)" onClick={() => api.updateUser(u.id, { mfa_reset: true }).then(load).catch((err) => setError(err.message))}>yoqilgan · bekor</button> : <span className="dim small">—</span>}</td>
-                <td className="row" style={{ gap: 6 }}>
+                <td className="row gap-6">
                   <button className="btn sm" onClick={() => setResetFor(u)}>Parolni almashtirish</button>
                   {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${fmtDate(u.locked_until)} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
                 </td>
@@ -123,7 +123,7 @@ function RationalizationSection() {
   useEffect(() => { api.adminRationalization().then(setRep).catch((e) => setError(e.message)); }, []);
   return (
     <>
-      <h1 style={{ marginTop: 28 }}>Alarm ratsionalizatsiyasi</h1>
+      <h1 className="mt-24">Alarm ratsionalizatsiyasi</h1>
       {error && <p className="error">{error}</p>}
       {rep && (
         <>
@@ -165,12 +165,12 @@ function AuditSection({ users }: { users: User[] }) {
   useEffect(() => { void load(); }, [load]);
   return (
     <>
-      <h1 style={{ marginTop: 28 }}>Audit jurnali</h1>
+      <h1 className="mt-24">Audit jurnali</h1>
       <div className="row wrap">
-        <select className="select" style={{ width: 160 }} value={action} onChange={(e) => setAction(e.target.value)}>
+        <select className="select w-160" value={action} onChange={(e) => setAction(e.target.value)}>
           {ACTIONS.map((a) => <option key={a} value={a}>{a || "barcha amallar"}</option>)}
         </select>
-        <select className="select" style={{ width: 200 }} value={userId} onChange={(e) => setUserId(e.target.value)}>
+        <select className="select w-200" value={userId} onChange={(e) => setUserId(e.target.value)}>
           <option value="">barcha foydalanuvchilar</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
         </select>
@@ -193,7 +193,7 @@ function AuditSection({ users }: { users: User[] }) {
           ))}
         </tbody>
       </table>
-      {rows.length >= 100 && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => load(rows[rows.length - 1].id)}>Yana</button>}
+      {rows.length >= 100 && <button className="btn sm mt-8" onClick={() => load(rows[rows.length - 1].id)}>Yana</button>}
     </>
   );
 }

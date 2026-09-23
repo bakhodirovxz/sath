@@ -34,7 +34,7 @@ export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; ch
       <Link to="/" className="brand">Sath</Link>
       <div className="crumbs">
         {crumbs.map((c, i) => (
-          <span key={i} className="row" style={{ gap: 6 }}>
+          <span key={i} className="row gap-6">
             {i > 0 && <span className="sep">›</span>}
             {c.to ? <Link to={c.to}>{c.label}</Link> : <span>{c.label}</span>}
           </span>

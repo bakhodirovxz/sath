@@ -26,7 +26,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
   if (!rep) return <p className="muted">{err || "Yuklanmoqda…"}</p>;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Holat monitoringi</b>
         <span className="muted small">ISO 13374 (OSA-CBM): yig'ish → qayta ishlash → holat → sog'liq → prognoz → tavsiya; tebranish ISO 20816-5, kavitatsiya Toma σ</span>
         <span className="grow" />
@@ -38,7 +38,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
       <div className="health-cards">
         {rep.assets.map((a) => (
           <div key={a.asset_id} className={`health-card ${a.level}`}>
-            <div className="row" style={{ alignItems: "center" }}>
+            <div className="row items-center">
               <b>{a.name}</b>
               <span className={`badge ${LEVEL_CLS[a.level]}`}>{a.level}</span>
               <span className="grow" />
@@ -149,10 +149,10 @@ export function WhatIfPanel({ projectId }: { projectId: number }) {
     } catch (e) { setErr(e instanceof Error ? e.message : "Xatolik"); } finally { setBusy(false); }
   };
   const num = (k: string, label: string, hint?: string) => (
-    <label className="field" style={{ width: 170 }}><span>{label}</span><input className="input" type="number" step="any" placeholder={hint} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></label>
+    <label className="field w-170"><span>{label}</span><input className="input" type="number" step="any" placeholder={hint} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></label>
   );
   const dispatchTable = (d: DispatchResult | null | undefined) => d && d.status === "ok" ? (
-    <table className="grid small" style={{ marginTop: 4 }}>
+    <table className="grid small mt-4">
       <thead><tr><th>Agregat</th><th>MW</th><th>yuk</th><th>sarf, m³/s</th><th>FIK</th></tr></thead>
       <tbody>{d.units.map((u) => <tr key={u.name} className={u.power_mw > 0 ? undefined : "dim"}><td>{u.name}</td><td className="mono">{u.power_mw}</td><td className="mono">{u.load_pct} %</td><td className="mono">{u.flow_m3s}</td><td className="mono">{u.efficiency != null ? `${(u.efficiency * 100).toFixed(1)} %` : "—"}</td></tr>)}</tbody>
       <tfoot><tr><td>Jami</td><td className="mono">{d.target_mw}</td><td /><td className="mono">{d.total_flow_m3s}</td><td className="dim">{d.saving_pct != null ? `joriyga nisbatan ${d.saving_pct > 0 ? "−" : "+"}${Math.abs(d.saving_pct)} % suv` : ""}</td></tr></tfoot>
@@ -162,7 +162,7 @@ export function WhatIfPanel({ projectId }: { projectId: number }) {
     <div className="dash-block">
       <div className="row"><b>Bugungi optimal rejim</b><span className="muted small">jonli napor va joriy umumiy quvvat uchun agregatlar yuk taqsimoti (minimal suv sarfi)</span><span className="grow" /><button className="btn sm" onClick={() => api.twinDispatch(projectId).then(setDisp).catch((e) => setErr(e.message))}>Yangilash</button></div>
       {dispatchTable(disp)}
-      <div className="row" style={{ marginTop: 14 }}><b>«Nima bo'lsa» sinovi</b><span className="muted small">sath / sarf / quvvatni o'zgartiring — egizak, xavfsizlik ko'rsatkichlari va optimal taqsimot qayta hisoblanadi; jonli ma'lumotga tegilmaydi (mashq, rejalashtirish)</span></div>
+      <div className="row mt-12"><b>«Nima bo'lsa» sinovi</b><span className="muted small">sath / sarf / quvvatni o'zgartiring — egizak, xavfsizlik ko'rsatkichlari va optimal taqsimot qayta hisoblanadi; jonli ma'lumotga tegilmaydi (mashq, rejalashtirish)</span></div>
       {live && <p className="dim small">Jonli: brutto napor {live.head_gross_m != null ? fmtValue(live.head_gross_m) : "—"} m · sarf {live.flow_total_m3s != null ? fmtValue(live.flow_total_m3s) : "—"} m³/s · quvvat {live.measured_total_mw != null ? fmtValue(live.measured_total_mw) : "—"} MW</p>}
       <div className="row wrap">
         {num("upstream_level", "Yuqori byef sathi, m", "jonli")}
@@ -170,7 +170,7 @@ export function WhatIfPanel({ projectId }: { projectId: number }) {
         {num("penstock_flow", "Quvur sarfi, m³/s", "jonli")}
         {num("inflow", "Kiruvchi sarf, m³/s", "jonli")}
         {num("target_mw", "Kerakli quvvat, MW", "joriy")}
-        <button className="btn primary" style={{ alignSelf: "flex-end", marginBottom: 10 }} disabled={busy} onClick={run}>{busy ? "…" : "Sinash"}</button>
+        <button className="btn primary self-end mb-8" disabled={busy} onClick={run}>{busy ? "…" : "Sinash"}</button>
       </div>
       {err && <p className="error small">{err}</p>}
       {res && (
@@ -182,9 +182,9 @@ export function WhatIfPanel({ projectId }: { projectId: number }) {
               <tbody>{res.units.map((u) => <tr key={u.sensor_id}><td>{u.name}</td><td className="mono">{fmtValue(u.expected_mw)}</td><td className="mono">{u.flow_m3s ?? "—"}</td><td className="mono">{fmtValue(u.head_net_m)}</td></tr>)}</tbody></table>
           )}
           {res.safety && res.safety.length > 0 && (
-            <table className="grid small" style={{ marginTop: 6 }}><tbody>{res.safety.map((r) => <tr key={r.name} className={r.ok ? undefined : "alarm-active"}><td style={{ width: 22 }}><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>)}</tbody></table>
+            <table className="grid small mt-6"><tbody>{res.safety.map((r) => <tr key={r.name} className={r.ok ? undefined : "alarm-active"}><td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>)}</tbody></table>
           )}
-          <div style={{ marginTop: 6 }}><b className="small">Optimal taqsimot (sinov sharoitida)</b>{dispatchTable(res.dispatch)}</div>
+          <div className="mt-6"><b className="small">Optimal taqsimot (sinov sharoitida)</b>{dispatchTable(res.dispatch)}</div>
         </div>
       )}
     </div>
@@ -216,14 +216,14 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
   const setStatus = (w: WorkOrder, status: WorkOrder["status"]) => api.updateWorkOrder(w.id, { status }).then(load).catch((e) => setErr(e.message));
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Ish buyruqlari</b><span className="muted small">texnik xizmat / ta'mirlash vazifalari — qo'lda, sog'liq indeksidan (avto), alarmdan</span><span className="grow" />
         <select className="select" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="active">Faol</option><option value="open">Ochiq</option><option value="in_progress">Bajarilmoqda</option><option value="done">Bajarilgan</option><option value="all">Hammasi</option></select>
         {canOperate && <button className="btn sm primary" onClick={() => setAdding(true)}>+ Buyruq</button>}
       </div>
       {err && <p className="error small">{err}</p>}
       {kpi && (
-        <div className="tiles" style={{ gridTemplateColumns: "repeat(6, 1fr)" }}>
+        <div className="tiles cols-6">
           <div className="tile"><div className="tile-v">{kpi.open + kpi.in_progress}</div><div className="tile-t">faol {kpi.overdue > 0 && <span className="error">· {kpi.overdue} muddati o'tgan</span>}</div></div>
           <div className="tile"><div className="tile-v">{kpi.by_priority.critical + kpi.by_priority.high}</div><div className="tile-t">kritik/muhim</div></div>
           <div className="tile"><div className="tile-v">{kpi.done_90d}</div><div className="tile-t">bajarildi (90 kun)</div></div>
@@ -238,13 +238,13 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
           <tbody>{shown.map((w) => (
             <tr key={w.id} className={w.overdue ? "alarm-active" : undefined}>
               <td className="dim">{w.id}</td>
-              <td><b>{w.title}</b>{w.loto_active && <span className="badge rejected" title="Izolyatsiya qo'yilgan — boshqaruv buyruqlari taqiqlangan">LOTO</span>}{w.permit_status !== "none" && <span className={`badge ${w.permit_status === "issued" ? "published" : "shared"}`}>PTW {w.permit_status}</span>}{w.description && <div className="dim" style={{ maxWidth: 420, whiteSpace: "pre-wrap" }}>{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "plan" ? "profilaktik reja" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}{w.cost ? ` · xarajat ${w.cost}` : ""}{w.tasks.length ? ` · ${w.tasks.filter((t) => t.done).length}/${w.tasks.length} vazifa` : ""}</div></td>
+              <td><b>{w.title}</b>{w.loto_active && <span className="badge rejected" title="Izolyatsiya qo'yilgan — boshqaruv buyruqlari taqiqlangan">LOTO</span>}{w.permit_status !== "none" && <span className={`badge ${w.permit_status === "issued" ? "published" : "shared"}`}>PTW {w.permit_status}</span>}{w.description && <div className="dim maxw-420 pre-wrap">{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "plan" ? "profilaktik reja" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}{w.cost ? ` · xarajat ${w.cost}` : ""}{w.tasks.length ? ` · ${w.tasks.filter((t) => t.done).length}/${w.tasks.length} vazifa` : ""}</div></td>
               <td>{w.asset_name ?? "—"}</td>
               <td><span className={`badge ${PRIO_CLS[w.priority]}`}>{priorityLabel(w.priority)}</span></td>
               <td><span className={`badge ${WO_STATUS[w.status][1]}`}>{WO_STATUS[w.status][0]}</span></td>
               <td>{canEdit ? <select className="select" value={w.assignee_id ?? ""} onChange={(e) => api.updateWorkOrder(w.id, { assignee_id: e.target.value ? Number(e.target.value) : null }).then(load).catch((er) => setErr(er.message))}><option value="">—</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.username}</option>)}</select> : (w.assignee_username ?? "—")}</td>
               <td className="dim">{w.due_at ? fmtDate(w.due_at) : "—"}</td>
-              <td className="row" style={{ gap: 4 }}>
+              <td className="row gap-4">
                 {canOperate && w.status === "open" && <button className="btn sm" onClick={() => setStatus(w, "in_progress")}>Boshlash</button>}
                 {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm primary" data-testid={`wo-close-${w.id}`} onClick={() => { setClosing(w); setCloseForm({ resolution: "", downtime_hours: "0", extra_cost: String(w.extra_cost || 0), failure_mode: w.failure_mode ?? "", failure_cause: w.failure_cause ?? "", detection_method: w.detection_method ?? "" }); }}>Yopish</button>}
                 {canOperate && (w.status === "open" || w.status === "in_progress") && <button className="btn sm" title="Bekor qilish" onClick={() => setStatus(w, "cancelled")}><Icon name="x" size={12} /></button>}
@@ -306,15 +306,15 @@ export function ForecastPanel({ projectId }: { projectId: number }) {
   return (
     <div className="dash-block">
       <div className="row"><b>Toshqin prognozi</b><span className="muted small">ob-havo prognozidagi yog'in + jonli sath/sarf + maydon pasporti (havza CN, ombor, suv tashlagich) → sath 3–5 kun, gerbdan oshish vaqti, oldindan sath tushirish tavsiyasi (SCS-CN → Puls)</span></div>
-      <div className="row wrap" style={{ marginTop: 6 }}>
-        <label className="field" style={{ width: 130 }}><span>Yog'in, mm</span><input className="input" type="number" value={f.rain_mm} onChange={(e) => setF({ ...f, rain_mm: e.target.value })} /></label>
-        <label className="field" style={{ width: 110 }}><span>Davomiylik, soat</span><input className="input" type="number" value={f.rain_hours} onChange={(e) => setF({ ...f, rain_hours: e.target.value })} /></label>
-        <label className="field" style={{ width: 170 }}><span>Oldingi namlik</span><select className="select" value={f.amc} onChange={(e) => setF({ ...f, amc: e.target.value })}><option value="I">I — quruq</option><option value="II">II — o'rtacha</option><option value="III">III — nam (yomg'ir yoqqan)</option></select></label>
-        <label className="field" style={{ width: 130 }}><span>Darvozalar (0–1)</span><input className="input" type="number" step="0.1" min="0" max="1" value={f.gate_opening} onChange={(e) => setF({ ...f, gate_opening: e.target.value })} /></label>
+      <div className="row wrap mt-6">
+        <label className="field w-130"><span>Yog'in, mm</span><input className="input" type="number" value={f.rain_mm} onChange={(e) => setF({ ...f, rain_mm: e.target.value })} /></label>
+        <label className="field w-110"><span>Davomiylik, soat</span><input className="input" type="number" value={f.rain_hours} onChange={(e) => setF({ ...f, rain_hours: e.target.value })} /></label>
+        <label className="field w-170"><span>Oldingi namlik</span><select className="select" value={f.amc} onChange={(e) => setF({ ...f, amc: e.target.value })}><option value="I">I — quruq</option><option value="II">II — o'rtacha</option><option value="III">III — nam (yomg'ir yoqqan)</option></select></label>
+        <label className="field w-130"><span>Darvozalar (0–1)</span><input className="input" type="number" step="0.1" min="0" max="1" value={f.gate_opening} onChange={(e) => setF({ ...f, gate_opening: e.target.value })} /></label>
         <label className="row small field-check"><input type="checkbox" checked={f.snowmelt} onChange={(e) => setF({ ...f, snowmelt: e.target.checked })} /> qor erishi</label>
-        {f.snowmelt && <label className="field" style={{ width: 100 }}><span>Harorat, °C</span><input className="input" type="number" value={f.air_temp} onChange={(e) => setF({ ...f, air_temp: e.target.value })} /></label>}
+        {f.snowmelt && <label className="field w-100"><span>Harorat, °C</span><input className="input" type="number" value={f.air_temp} onChange={(e) => setF({ ...f, air_temp: e.target.value })} /></label>}
         <label className="row small field-check" title="Muzlik ko'li toshqini (pasportdagi hajm)"><input type="checkbox" checked={f.glof} onChange={(e) => setF({ ...f, glof: e.target.checked })} /> GLOF</label>
-        <button className="btn primary" style={{ alignSelf: "flex-end", marginBottom: 10 }} disabled={busy} onClick={run}>{busy ? "…" : "Prognoz"}</button>
+        <button className="btn primary self-end mb-8" disabled={busy} onClick={run}>{busy ? "…" : "Prognoz"}</button>
       </div>
       {err && <p className="error small">{err}</p>}
       {res && s && (
@@ -352,7 +352,7 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
   const low = items.filter((p) => p.low).length;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Ehtiyot qismlar</b><span className="muted small">ombor qoldig'i, minimal zaxira, sarf ish buyrug'iga bog'lanadi (xarajat avtomatik)</span>
         {low > 0 && <span className="badge rejected">{low} ta kam</span>}
         <span className="grow" />
@@ -366,12 +366,12 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
             <tr key={p.id} className={p.low ? "alarm-active" : undefined}>
               <td><b>{p.name}</b>{p.notes && <div className="dim">{p.notes}</div>}</td>
               <td className="mono dim">{p.code}</td>
-              <td className="mono">{p.qty} {p.unit}{p.low && <Icon name="alert-triangle" size={12} style={{ color: "var(--danger)", marginLeft: 4 }} />}</td>
+              <td className="mono">{p.qty} {p.unit}{p.low && <Icon name="alert-triangle" size={12} className="c-danger ml-4" />}</td>
               <td className="mono dim">{p.min_qty}</td>
               <td className="dim">{p.location}</td>
               <td className="mono dim">{p.unit_cost}</td>
               <td className="dim">{p.asset_name ?? "—"}</td>
-              <td className="row" style={{ gap: 4 }}>
+              <td className="row gap-4">
                 {canOperate && <button className="btn sm" title="Sarf (−)" onClick={() => { setMoving({ part: p, dir: -1 }); setMv({ qty: "1", work_order_id: "", note: "" }); }}><Icon name="minus" size={12} /></button>}
                 {canEdit && <button className="btn sm" title="Kirim (+)" onClick={() => { setMoving({ part: p, dir: 1 }); setMv({ qty: "1", work_order_id: "", note: "" }); }}><Icon name="plus" size={12} /></button>}
                 <button className="btn sm" title="Harakatlar tarixi" onClick={() => api.partMovements(p.id).then((rows) => setHist({ part: p, rows })).catch((e) => setErr(e.message))}><Icon name="history" size={12} /></button>

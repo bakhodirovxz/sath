@@ -47,19 +47,19 @@ export default function ProfileDialog({ onClose }: { onClose: () => void }) {
       {user.mfa_enabled ? (
         <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.mfaDisable(pw, code); setPw(""); setCode(""); await refresh(); }, "MFA o'chirildi"); }}>
           <p className="small">Yoqilgan. O'chirish uchun parol va ilovadagi joriy kod:</p>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row gap-8">
             <input className="input" type="password" placeholder="Parol" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
-            <input className="input" placeholder="Kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} style={{ width: 100 }} />
+            <input className="input w-100" placeholder="Kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
             <button className="btn danger" type="submit" disabled={busy || !pw || code.length < 6}>O'chirish</button>
           </div>
         </form>
       ) : setup ? (
         <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.mfaEnable(code); setSetup(null); setCode(""); await refresh(); }, "MFA yoqildi"); }}>
           <p className="small">Google Authenticator / Aegis / FreeOTP ilovasiga kalitni kiriting (yoki havolani oching), so'ng ilovadagi 6 raqamli kodni tasdiqlang:</p>
-          <p className="mono" style={{ wordBreak: "break-all", userSelect: "all" }} data-testid="mfa-secret">{setup.secret}</p>
+          <p className="mono break-all select-all" data-testid="mfa-secret">{setup.secret}</p>
           <p className="small"><a href={setup.otpauth_url}>otpauth havolasi</a></p>
-          <div className="row" style={{ gap: 8 }}>
-            <input className="input" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} ref={focusOnMount} style={{ width: 140 }} data-testid="mfa-code" />
+          <div className="row gap-8">
+            <input className="input w-140" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} ref={focusOnMount} data-testid="mfa-code" />
             <button className="btn primary" type="submit" disabled={busy || code.length < 6}>Tasdiqlash va yoqish</button>
             <button className="btn" type="button" onClick={() => { setSetup(null); setCode(""); }}>Bekor</button>
           </div>

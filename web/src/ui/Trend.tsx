@@ -73,7 +73,7 @@ export default function Trend({ series: raw, height = 260, mode = "multi", domai
   const xTicks = niceTicks(domain[0], domain[1], Math.max(3, Math.floor(plotW / 110)));
   return (
     <div ref={wrap} className="trend" data-testid="trend" data-mode={mode}>
-      <svg width={width} height={height} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => { setHover(null); drag.current = null; }} style={{ cursor: "crosshair", touchAction: "none" }}>
+      <svg width={width} height={height} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => { setHover(null); drag.current = null; }} className="trend-plot">
         <rect x={plotX} y={PAD.t} width={plotW} height={plotH} fill="var(--field)" stroke="var(--line)" />
         {xTicks.map((t) => <g key={t}><line x1={x(t)} x2={x(t)} y1={PAD.t} y2={PAD.t + plotH} stroke="var(--line)" /><text x={x(t)} y={height - 8} textAnchor="middle" className="trend-tick">{fmtTick(t, domain[1] - domain[0])}</text></g>)}
         {units.map(([unit, ss], ui) => {
@@ -100,8 +100,8 @@ export default function Trend({ series: raw, height = 260, mode = "multi", domai
         {cursorA != null && <line x1={x(cursorA)} x2={x(cursorA)} y1={PAD.t} y2={PAD.t + plotH} stroke="var(--accent-2)" strokeWidth={1.5} />}
         {cursorB != null && <line x1={x(cursorB)} x2={x(cursorB)} y1={PAD.t} y2={PAD.t + plotH} stroke="var(--warn)" strokeWidth={1.5} />}
       </svg>
-      <div className="trend-legend row wrap" style={{ gap: 10 }}>
-        {raw.map((s, i) => { const h = rH?.[i]?.p; return <span key={s.id} className="row" style={{ gap: 4 }}><i style={{ background: series[i].color, width: 10, height: 3, display: "inline-block" }} /> {s.name} <span className="mono dim">{h && h.v != null ? `${fmtNum(h.v)} ${s.unit}` : s.points.length ? "" : "ma'lumot yo'q"}</span></span>; })}
+      <div className="trend-legend row wrap gap-8">
+        {raw.map((s, i) => { const h = rH?.[i]?.p; return <span key={s.id} className="row gap-4"><i className="trend-swatch" style={{ background: series[i].color }} /> {s.name} <span className="mono dim">{h && h.v != null ? `${fmtNum(h.v)} ${s.unit}` : s.points.length ? "" : "ma'lumot yo'q"}</span></span>; })}
         <span className="grow" />
         <span className="dim small">g'ildirak — zoom · surish — pan · bosish — kursor A · Shift+bosish — kursor B{cursorA || cursorB ? " · " : ""}{(cursorA || cursorB) && <button className="btn sm" onClick={() => { setCursorA(null); setCursorB(null); }}>kursorlarni tozalash</button>}</span>
       </div>

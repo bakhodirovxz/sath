@@ -59,14 +59,14 @@ function Body({ sensorId }: { sensorId: number | null }) {
           )}
           {bad.length > 0 && (
             <>
-              <div className="row" style={{ marginTop: 8 }}><b>Sifat</b></div>
+              <div className="row mt-8"><b>Sifat</b></div>
               <table className="grid small"><tbody>{bad.map((x) => { const q = qualityStyle(x.last_quality); return <tr key={x.id}><td><Link to={opsPath(pid, "sensor", x.id)}>{x.name}</Link></td><td className="alarm-mark" style={{ color: q.color }}>{q.code} {q.label}</td></tr>; })}</tbody></table>
             </>
           )}
         </section>
         <section className="panel">
           <div className="row"><b>Xom qiymatlar (oxirgi 1 soat)</b><span className="grow" />
-            <select className="select" style={{ width: 220 }} value={sel ?? ""} onChange={(e) => setSel(e.target.value ? Number(e.target.value) : null)}>
+            <select className="select w-220" value={sel ?? ""} onChange={(e) => setSel(e.target.value ? Number(e.target.value) : null)}>
               <option value="">sensor tanlang…</option>{sensors.map((x) => <option key={x.id} value={x.id}>{x.key} — {x.name}</option>)}
             </select>
           </div>

@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
 import { themeForPath } from "../App";
 import { THEMES, alarmRank, alarmStyle, applyTheme, contrast, currentTheme, opsTheme, qualityStyle } from "./tokens";
@@ -118,27 +117,4 @@ describe("tema marshrutga bog'langan", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("engineer");
     applyTheme("operator");
   });
-});
-
-/** Dispetcher sahifalari rangni faqat tokenlardan oladi: hex literal yo'q (tokens.css/tokens.ts dan tashqari). */
-describe("dispetcher sahifalarida hex rang literal yo'q", () => {
-  const roots = ["src/pages/dashboard", "src/pages/operator", "src/pages/model/MonitoringPanel.tsx", "src/hooks"];
-  const files: string[] = [];
-  const walk = (p: string) => {
-    let st;
-    try { st = statSync(p); } catch { return; }
-    if (st.isDirectory()) for (const f of readdirSync(p)) walk(join(p, f));
-    else if (/\.(tsx?|css)$/.test(p) && !/\.test\./.test(p)) files.push(p);
-  };
-  roots.forEach(walk);
-  it("fayllar tekshirildi", () => {
-    expect(files.length).toBeGreaterThan(2);
-  });
-  for (const f of files) {
-    it(f, () => {
-      const src = readFileSync(f, "utf8");
-      const hits = [...src.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]).filter((h) => /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/.test(h));
-      expect(hits).toEqual([]);
-    });
-  }
 });

@@ -166,9 +166,9 @@ export default function TreePanel({ viewer, modelKey, selectedIds }: { viewer: V
   }
   return (
     <div className="tree">
-      <div className="row" style={{ marginBottom: 4, gap: 4 }}>
-        <input className="input" placeholder="Qidirish…" value={q} onChange={(e) => setQ(e.target.value.toLowerCase())} style={{ padding: "2px 6px" }} />
-        <select className="vp-select" value={cat} onChange={(e) => setCat(e.target.value)} title="Tur bo'yicha filtr" style={{ maxWidth: 110 }}>
+      <div className="row mb-4 gap-4">
+        <input className="input py-2 px-6" placeholder="Qidirish…" value={q} onChange={(e) => setQ(e.target.value.toLowerCase())} />
+        <select className="vp-select maxw-110" value={cat} onChange={(e) => setCat(e.target.value)} title="Tur bo'yicha filtr">
           <option value="">Barcha turlar</option>
           {cats.map((c) => <option key={c} value={c}>{ifcLabel(c)}</option>)}
         </select>

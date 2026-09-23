@@ -38,7 +38,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
   const cur = st?.status;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Model validatsiyasi</b>
         <span className="muted small">qabul mezonlari, imzo va amal qilish muddati — egizak natijasiga tayanish uchun asos</span>
         {cur && <span className={`badge ${VAL_CLS[cur.status]}`} data-testid="val-status">{VAL_TXT[cur.status]}</span>}

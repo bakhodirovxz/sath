@@ -218,14 +218,14 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
         </BOps>
       </BPanel>
       {replay.on && (
-        <div className="section-box small" style={{ marginBottom: 8 }}>
-          <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="section-box small mb-8">
+          <div className="row items-center gap-8 flex-wrap">
             <b>Vaqt mashinasi</b>
             <select className="select sm" value={replay.hours} onChange={(e) => setReplay((r) => ({ ...r, hours: Number(e.target.value) }))}>{[6, 24, 72, 168, 720].map((h) => <option key={h} value={h}>{h < 24 ? `${h} soat` : `${h / 24} kun`}</option>)}</select>
             <span className="mono small">{replayTime != null ? fmtDate(new Date(replayTime).toISOString()) : ""}</span>
             {replay.loading && <span className="dim small">yuklanmoqda…</span>}
           </div>
-          <div className="row" style={{ alignItems: "center", gap: 6 }}>
+          <div className="row items-center gap-6">
             <button className="btn sm" title="1 qadam orqaga" onClick={() => setReplay((r) => ({ ...r, t: Math.max(0, r.t - 0.01) }))}>◀</button>
             <input type="range" className="grow" min={0} max={1000} value={Math.round(replay.t * 1000)} onChange={(e) => setReplay((r) => ({ ...r, t: Number(e.target.value) / 1000 }))} aria-label="Vaqt" />
             <button className="btn sm" title="1 qadam oldinga" onClick={() => setReplay((r) => ({ ...r, t: Math.min(1, r.t + 0.01) }))}>▶</button>
@@ -264,7 +264,7 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
           </button>
           {selected === s.id && (
             <div className="list-item-body">
-              <div className="row wrap" style={{ marginBottom: 6 }}>
+              <div className="row wrap mb-6">
                 {[1, 24, 168, 720].map((h) => <button key={h} className={`btn sm${hours === h ? " active" : ""}`} onClick={() => setHours(h)}>{h === 1 ? "1 soat" : h === 24 ? "1 kun" : h === 168 ? "1 hafta" : "1 oy"}</button>)}
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}
                 {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${alarmLabel(s.alarm)}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${alarmLabel(s.alarm)} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
@@ -277,15 +277,15 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
               {s.writable && canCommandRole(role) && (
-                <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
+                <div className="row mt-6 items-center gap-6 flex-wrap" title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
                   <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
                   <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
               {can(role, "scada.manual_entry") && (
-                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }} title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
-                  <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
+                <div className="row mt-4 flex-wrap gap-4" title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
+                  <input className="input w-120" placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
                   <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
                 </div>
@@ -308,7 +308,7 @@ export default function MonitoringPanel({ projectId, modelId, versionId, role, v
                   {KINDS.map((k) => <option key={k.id} value={k.id}>{sensorKindLabel(k.id)}</option>)}
                 </select>
               </label>
-              <label className="field" style={{ width: 90 }}><span>Birlik</span><input className="input" value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} /></label>
+              <label className="field w-90"><span>Birlik</span><input className="input" value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} /></label>
             </div>
             <div className="row">
               <label className="field grow"><span>Past alarm</span><input className="input" type="number" step="any" value={editing.low_alarm ?? ""} onChange={(e) => setEditing({ ...editing, low_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>

@@ -62,14 +62,14 @@ function Body() {
   };
   return (
     <div className="trends-page">
-      <div className="row wrap panel" style={{ gap: 6, marginBottom: 8 }}>
+      <div className="row wrap panel gap-6 mb-8">
         {PERIODS.map((p) => <button key={p.h} className={`btn sm ${hours === p.h ? "active" : ""}`} onClick={() => setHours(p.h)}>{p.label}</button>)}
         <span className="sep" />
         <button className={`btn sm ${mode === "multi" ? "active" : ""}`} onClick={() => setMode("multi")} title="Har birlik uchun alohida Y o'qi">Ko'p o'qli</button>
         <button className={`btn sm ${mode === "normalized" ? "active" : ""}`} onClick={() => setMode("normalized")} title="Har seriya 0…100 % (o'z diapazonida)">Normallashtirilgan</button>
         <span className="sep" />
         <span className="dim small">Guruhlar:</span>
-        {groups.map((g) => <span key={g.name} className="row" style={{ gap: 2 }}><button className="btn sm" onClick={() => setPens(g.sensor_ids.filter((id) => sensors.some((s) => s.id === id)))} data-testid="pen-group">{g.name}</button>{canEdit && <button className="btn sm danger" title="Guruhni o'chirish" onClick={() => removeGroup(g)}>×</button>}</span>)}
+        {groups.map((g) => <span key={g.name} className="row gap-2"><button className="btn sm" onClick={() => setPens(g.sensor_ids.filter((id) => sensors.some((s) => s.id === id)))} data-testid="pen-group">{g.name}</button>{canEdit && <button className="btn sm danger" title="Guruhni o'chirish" onClick={() => removeGroup(g)}>×</button>}</span>)}
         {canEdit && pens.length > 0 && <button className="btn sm" onClick={() => setSaveDlg(true)}>+ Guruhni saqlash</button>}
         <span className="grow" />
         <span className="dim small">{series.reduce((a, s) => a + s.points.length, 0)} nuqta (serverdan siyraklashtirilgan)</span>
@@ -78,11 +78,11 @@ function Body() {
       <div className="panel">
         {series.length ? <Trend series={series} height={340} mode={mode} /> : <p className="muted">Qalam tanlang (≤ 6)</p>}
       </div>
-      <div className="panel" style={{ marginTop: 8 }}>
+      <div className="panel mt-8">
         <div className="row"><b>Qalamlar</b><span className="dim small">{pens.length}/6</span></div>
         <div className="vgrid">
           {sensors.filter((s) => s.enabled).map((s) => (
-            <label key={s.id} className={`vcard compact ${pens.includes(s.id) ? "alarm" : ""}`} style={{ cursor: "pointer" }}>
+            <label key={s.id} className={`vcard compact ${pens.includes(s.id) ? "alarm" : ""} cursor-pointer`}>
               <input type="checkbox" checked={pens.includes(s.id)} onChange={() => toggle(s.id)} disabled={!pens.includes(s.id) && pens.length >= 6} /> {s.name} <span className="dim mono">{s.key} {s.unit}</span>
             </label>
           ))}

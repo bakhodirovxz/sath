@@ -66,30 +66,30 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
   return (
     <section className="panel control-block" data-testid="control-block">
       <div className="row"><b>Boshqaruv</b><span className="dim small">select → execute · audit</span></div>
-      <table className="grid small" style={{ margin: "6px 0" }}><tbody>
+      <table className="grid small my-6 mx-0"><tbody>
         <tr><td>Joriy qiymat</td><td className="mono">{sensor.last_value == null ? "—" : fmtValue(sensor.last_value)} {sensor.unit}</td></tr>
         <tr><td>Ruxsat etilgan diapazon</td><td className="mono">{sensor.min_setpoint ?? "−∞"} … {sensor.max_setpoint ?? "+∞"} {sensor.unit}{sensor.max_rate_per_min != null ? ` · ≤ ${sensor.max_rate_per_min}/daq` : ""}</td></tr>
         {sensor.requires_dual_approval && <tr><td>Tasdiq</td><td>ikki kishi qoidasi (muallif o'zini tasdiqlay olmaydi)</td></tr>}
       </tbody></table>
       {interlocks.length > 0 && (
-        <ul className="small" style={{ margin: "4px 0", paddingLeft: 16 }} data-testid="interlocks">
-          {interlocks.map((i) => <li key={i.id} style={{ color: i.current_ok === false ? "var(--danger)" : i.current_ok ? "var(--ok)" : "var(--text-muted)" }}>{i.current_ok === false ? "✗" : i.current_ok ? "✓" : "?"} {i.name}: <span className="mono">{i.condition}</span>{i.current_ok === false && i.current_message ? ` — ${i.current_message}` : ""}</li>)}
+        <ul className="small my-4 mx-0 pl-16" data-testid="interlocks">
+          {interlocks.map((i) => <li key={i.id} className={i.current_ok === false ? "c-danger" : i.current_ok ? "c-ok" : "muted"}>{i.current_ok === false ? "✗" : i.current_ok ? "✓" : "?"} {i.name}: <span className="mono">{i.condition}</span>{i.current_ok === false && i.current_message ? ` — ${i.current_message}` : ""}</li>)}
         </ul>
       )}
       {canCommand ? (
         <>
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row gap-6">
             <label className="field grow"><span>Yangi qiymat, {sensor.unit}</span><input className="input" type="number" step="any" min={sensor.min_setpoint ?? undefined} max={sensor.max_setpoint ?? undefined} value={value} onChange={(e) => { setValue(e.target.value); setSel(null); }} disabled={!!sel} data-testid="ctl-value" /></label>
             <label className="field grow"><span>Sabab</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="dispetcher ko'rsatmasi, rejim…" data-testid="ctl-note" /></label>
           </div>
           {!check.ok && value !== "" && <p className="error small" data-testid="ctl-invalid">Rad: {check.reason} (server ham rad etadi)</p>}
-          {check.ok && check.warn && <p className="small" style={{ color: "var(--warn)" }}>{check.warn}</p>}
+          {check.ok && check.warn && <p className="small c-warn">{check.warn}</p>}
           {blocked.length > 0 && !sel && <p className="error small">Blokirovka: {blocked.map((b) => b.name).join(", ")} — buyruq rad etiladi{canOverride ? " (smena boshlig'i sabab bilan chetlab o'ta oladi)" : ""}</p>}
-          {sel && <p className="small" style={{ color: "var(--warn)" }} data-testid="ctl-selected">Tanlandi: {fmtValue(sel.value)} {sensor.unit}. Bajarish uchun <b>{left} s</b> qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}{sel.override ? " · blokirovka chetlab o'tildi" : ""}</p>}
-          {sel?.interlocks && sel.interlocks.length > 0 && <ul className="small" style={{ margin: "4px 0", paddingLeft: 16 }}>{sel.interlocks.map((il) => <li key={il.interlock_id} style={{ color: il.ok ? "var(--ok)" : "var(--danger)" }}>{il.ok ? "✓" : "✗"} {il.name}{il.message ? ` — ${il.message}` : ""}</li>)}</ul>}
+          {sel && <p className="small c-warn" data-testid="ctl-selected">Tanlandi: {fmtValue(sel.value)} {sensor.unit}. Bajarish uchun <b>{left} s</b> qoldi{sel.requires_approval ? " · ikkinchi operator tasdig'i talab qilinadi" : ""}{sel.override ? " · blokirovka chetlab o'tildi" : ""}</p>}
+          {sel?.interlocks && sel.interlocks.length > 0 && <ul className="small my-4 mx-0 pl-16">{sel.interlocks.map((il) => <li key={il.interlock_id} className={il.ok ? "c-ok" : "c-danger"}>{il.ok ? "✓" : "✗"} {il.name}{il.message ? ` — ${il.message}` : ""}</li>)}</ul>}
           {err && <p className="error small">{err}</p>}
-          {err && /[Bb]lokirovka/.test(err) && canOverride && !sel && <div className="row" style={{ gap: 6 }}><input className="input" placeholder="Chetlab o'tish sababi (majburiy)" value={ovReason} onChange={(e) => setOvReason(e.target.value)} /><button className="btn sm danger" disabled={ovReason.trim().length < 3} onClick={() => void select({ reason: ovReason.trim() })}>Chetlab o'tish</button></div>}
-          <div className="row" style={{ gap: 6 }}>
+          {err && /[Bb]lokirovka/.test(err) && canOverride && !sel && <div className="row gap-6"><input className="input" placeholder="Chetlab o'tish sababi (majburiy)" value={ovReason} onChange={(e) => setOvReason(e.target.value)} /><button className="btn sm danger" disabled={ovReason.trim().length < 3} onClick={() => void select({ reason: ovReason.trim() })}>Chetlab o'tish</button></div>}
+          <div className="row gap-6">
             {!sel
               ? <button className="btn" disabled={!check.ok || note.trim().length < 2} title={note.trim().length < 2 ? "Sabab majburiy" : undefined} onClick={() => void select()} data-testid="ctl-select">1. Tanlash</button>
               : <><button className="btn primary" onClick={() => void execute()} data-testid="ctl-execute">2. Bajarish ({left} s)</button><button className="btn" onClick={() => setSel(null)}>Bekor</button></>}
@@ -102,13 +102,13 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
         </div>
       )}
       {last && (
-        <div className="small" style={{ marginTop: 6 }} data-testid="ctl-status">
+        <div className="small mt-6" data-testid="ctl-status">
           <b>Oxirgi buyruq:</b> {fmtValue(last.value)} {last.unit} · <span className={`badge ${CMD_CLASS[last.status] ?? ""}`}>{CMD_LABEL[last.status] ?? last.status}</span> · {last.author_username} · {fmtDate(last.created_at)}
           <div className="dim">
-            {(["pending", "sent", "acked"] as const).map((st, i) => <span key={st} style={{ marginRight: 6 }}>{i ? "→ " : ""}<span className={["pending", "sent", "acked"].indexOf(last.status) >= i || last.status === "mismatch" ? "" : "dim"}>{CMD_LABEL[st]}</span></span>)}
+            {(["pending", "sent", "acked"] as const).map((st, i) => <span key={st} className="mr-6">{i ? "→ " : ""}<span className={["pending", "sent", "acked"].indexOf(last.status) >= i || last.status === "mismatch" ? "" : "dim"}>{CMD_LABEL[st]}</span></span>)}
             → {last.readback_value != null ? `readback ${fmtValue(last.readback_value)} ${last.unit}${last.status === "mismatch" ? " ✗" : " ✓"}` : "readback kutilmoqda"}
             {last.result && <div>{last.result}</div>}
-            {last.status === "pending_approval" && <div style={{ color: "var(--warn)" }}>Ikkinchi operator tasdig'i kutilmoqda — dispetcherlarga bildirishnoma yuborildi</div>}
+            {last.status === "pending_approval" && <div className="c-warn">Ikkinchi operator tasdig'i kutilmoqda — dispetcherlarga bildirishnoma yuborildi</div>}
           </div>
           {(last.status === "pending" || last.status === "pending_approval") && canCommand && <button className="btn sm" onClick={() => void cancel()}>Bekor qilish</button>}
         </div>

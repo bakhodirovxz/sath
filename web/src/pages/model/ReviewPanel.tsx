@@ -77,7 +77,7 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
         <button className="btn sm primary" onClick={() => setCreating(true)} title={`v${current.number} ni tasdiqqa yuborish`}><Icon name="send" size={12} /> v{current.number} ni tasdiqqa yuborish</button>
       )}>
         {!canOpen && isEngineer && current && current.state !== "wip" && (
-          <p className="dim small" style={{ margin: "0 0 4px" }}>v{current.number} holati: {label(current.state)} — faqat «Ishda» versiya tasdiqqa yuboriladi.</p>
+          <p className="dim small mt-0 mr-0 mb-4 ml-0">v{current.number} holati: {label(current.state)} — faqat «Ishda» versiya tasdiqqa yuboriladi.</p>
         )}
         <BList
           items={crs} keyOf={(c) => c.id} activeKey={cr?.id ?? null} rows={5} empty="Tasdiqlash so'rovlari yo'q"
@@ -101,12 +101,12 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
           {active && (
             <BRow label="Xavfsizlik">
               {crSafety ? (
-                <span className="row" style={{ gap: 6 }} title="Standart xavfsizlik ssenariylari shu versiya uchun">
-                  <span className="badge" style={{ background: crSafety.counts.fail ? "var(--danger)" : crSafety.counts.warn ? "var(--warn)" : "var(--ok)", color: "#fff" }}>{crSafety.score ?? "—"}/100</span>
+                <span className="row gap-6" title="Standart xavfsizlik ssenariylari shu versiya uchun">
+                  <span className={`badge score-badge ${crSafety.counts.fail ? "fail" : crSafety.counts.warn ? "warn" : "ok"}`}>{crSafety.score ?? "—"}/100</span>
                   <span className={`small ${crSafety.counts.fail ? "error" : "dim"}`}>{crSafety.counts.fail ? `${crSafety.counts.fail} mezon bajarilmadi: ${crSafety.fails.join("; ")}` : crSafety.counts.warn ? `${crSafety.counts.warn} ogohlantirish` : "hammasi bajarildi"}</span>
                 </span>
               ) : (
-                <span className="row" style={{ gap: 6 }}>
+                <span className="row gap-6">
                   <span className="dim small">tekshirilmagan</span>
                   <button className="btn sm" disabled={checking} onClick={() => void runSafety(cr.version_id)}>{checking ? "…" : "Tekshirish"}</button>
                 </span>
@@ -114,7 +114,7 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
             </BRow>
           )}
           {cr.reviews.length > 0 && (
-            <div style={{ marginTop: 6 }}>
+            <div className="mt-6">
               {cr.reviews.map((r) => (
                 <div key={r.id} className="comment">
                   <span className="who">{r.reviewer_username} · {fmtDate(r.created_at)} · </span>
@@ -127,8 +127,8 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
             </div>
           )}
           {active && (
-            <div style={{ marginTop: 8 }}>
-              <textarea className="textarea" style={{ minHeight: 44 }} placeholder="Izoh…" value={comment[cr.id] ?? ""} onChange={(e) => setComment({ ...comment, [cr.id]: e.target.value })} />
+            <div className="mt-8">
+              <textarea className="textarea minh-44" placeholder="Izoh…" value={comment[cr.id] ?? ""} onChange={(e) => setComment({ ...comment, [cr.id]: e.target.value })} />
               <BOps>
                 <button className="btn sm" disabled={busy || !(comment[cr.id] ?? "").trim()} onClick={() => act(() => api.reviewCR(cr.id, "comment", comment[cr.id]).then(() => setComment({ ...comment, [cr.id]: "" })))}>Izoh qoldirish</button>
                 {isApprover && !mine && (

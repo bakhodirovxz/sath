@@ -42,7 +42,7 @@ export default function PropertiesPanel({ viewer, selection, canEdit, onEdit, on
         <BRow label="Turi" value={<>{ifcLabel(props?.category || first.category)} <span className="dim">{props?.category || first.category}</span></>} />
         {props?.guid && <BRow label="GUID" value={props.guid} mono />}
         {canEdit && selection.length === 1 && (
-          <div className="row" style={{ marginTop: 6, gap: 6 }}>
+          <div className="row mt-6 gap-6">
             <button className="btn sm primary" title="Tahrirlash: surish (G), burish (R), masshtab (S), nom, Pset — yangi versiyada GUID saqlanadi (Tab)" onClick={() => onEdit?.(first.localId)}><Icon name="move" size={12} /> Tahrirlash</button>
             <button className="btn sm" title="O'chirish — yangi versiyada olib tashlanadi (X)" onClick={() => onDelete?.(first.localId)}><Icon name="trash" size={12} /> O'chirish</button>
           </div>

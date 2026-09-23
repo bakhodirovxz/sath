@@ -18,7 +18,7 @@ export function EstimatorPanel({ projectId, canEdit }: { projectId: number; canE
   const bal = est?.balance;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Holat baholash va ortiqchalik</b>
         <span className="muted small">suv balansi bo'yicha sath bahosi (Kalman) va bir kattalikning bir nechta manbasini solishtirish</span>
         {est?.frozen && <span className="badge rejected" data-testid="est-frozen">sensor qotgan</span>}

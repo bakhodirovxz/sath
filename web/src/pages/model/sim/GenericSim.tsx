@@ -7,6 +7,8 @@ import Icon from "../../../ui/Icon";
 import LineChart, { CHART_COLORS } from "../../../ui/LineChart";
 import { fmtDate } from "../../../ui/format";
 import SimForm, { fieldDefaults } from "./SimForm";
+import { openPrintWindow } from "../../../ui/print";
+import { PAL, utilizationColor } from "../../../viewer/palette";
 
 interface Props {
   kind: SimKind;
@@ -152,27 +154,15 @@ export default function GenericSim({ kind, modelId, projectId, current, viewer, 
       const svg = el.querySelector("svg")?.outerHTML ?? "";
       return `<div class="chart"><div class="ct">${esc(title)} <span class="dim">${esc(unit)}</span></div>${svg}</div>`;
     }).join("");
-    const html = `<!doctype html><html lang="uz"><head><meta charset="utf-8"><title>${esc(kind.title)} — ${esc(active.name || "#" + active.id)}</title>
-<style>body{font:13px/1.45 system-ui,Segoe UI,sans-serif;color:#111;margin:28px;max-width:900px}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:18px 0 6px;border-bottom:1px solid #ccc}
-.meta{color:#555;margin-bottom:10px}.verdict{padding:8px 12px;border-left:4px solid ${s.ok === false ? "#c0392b" : "#27ae60"};background:#f6f7f8;margin:10px 0}
-.tiles{display:flex;flex-wrap:wrap;gap:8px}.tile{border:1px solid #ddd;border-radius:6px;padding:8px 12px;min-width:140px}.tile b{font-size:18px}.tile div{color:#555;font-size:12px}
-table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px solid #e3e3e3;padding:3px 6px;text-align:left}td.n{text-align:right;font-family:ui-monospace,monospace}.dim{color:#777}
-.chart{margin:10px 0;page-break-inside:avoid;max-width:520px}.ct{font-weight:600;margin-bottom:2px}svg{width:100%;height:auto;background:#fff}
-.chart-grid{stroke:#e5e5e5}.chart-tick{fill:#666;font-size:10px;font-family:ui-monospace,monospace}.chart-ref{stroke:#999;stroke-dasharray:4 3}.chart-cursor{display:none}
-.mono{font-family:ui-monospace,monospace;font-size:12px;color:#333}footer{margin-top:20px;color:#777;font-size:11px}@media print{body{margin:10mm}}</style></head><body>
-<h1>${esc(kind.title)}</h1>
+    const body = `<h1>${esc(kind.title)}</h1>
 <div class="meta">${esc(active.name || "#" + active.id)} · #${active.id} · ${esc(fmtDate(active.created_at))} · ${esc(active.author_username ?? "")}${current ? ` · model versiyasi v${current.number}` : ""}</div>
-<div class="verdict">${esc(s.verdict ?? "")}</div>${Array.isArray(s.warnings) && s.warnings.length ? `<div class="verdict" style="border-left-color:#b98626"><b>Ogohlantirishlar:</b><ul>${(s.warnings as unknown[]).map((w) => `<li>${esc(String(w))}</li>`).join("")}</ul></div>` : ""}
+<div class="verdict ${s.ok === false ? "bad" : ""}">${esc(s.verdict ?? "")}</div>${Array.isArray(s.warnings) && s.warnings.length ? `<div class="verdict warn"><b>Ogohlantirishlar:</b><ul>${(s.warnings as unknown[]).map((w) => `<li>${esc(String(w))}</li>`).join("")}</ul></div>` : ""}
 <h2>Asosiy ko'rsatkichlar</h2><div class="tiles">${tiles}</div>
 <h2>Kirish parametrlari</h2><table><thead><tr><th>Parametr</th><th>Qiymat</th><th>Birlik</th><th>Manba</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>Grafiklar</h2>${charts || "<div class='dim'>—</div>"}
 <h2>Formulalar va manbalar</h2>${kind.formulas.map((f) => `<div class="mono">${esc(f)}</div>`).join("")}
-<footer>Sath · ${esc(fmtDate(Date.now()))} · hisob serverda bajarilgan (ges_sim ${esc(kind.id)})</footer>
-<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),300))</script></body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) { setError("Brauzer yangi oynani bloklagan — ruxsat bering"); return; }
-    w.document.write(html);
-    w.document.close();
+<footer>Sath · ${esc(fmtDate(Date.now()))} · hisob serverda bajarilgan (ges_sim ${esc(kind.id)})</footer>`;
+    if (!openPrintWindow(`${kind.title} — ${active.name || "#" + active.id}`, body)) setError("Brauzer yangi oynani bloklagan — ruxsat bering");
   }
   function floodCsv() {
     if (!flood) return;
@@ -327,14 +317,14 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
     const ok = result.summary.ok !== false;
     const colors: Record<string, string> = {};
     const target = kind.viz.color_by === "dam" || kind.viz.color_by === "structures" ? guids.dams : kind.viz.penstock_profile ? guids.pens : [];
-    for (const g of target) colors[g] = ok ? "#3aa864" : "#d95c5c";
-    if (kind.viz.color_by === "structures") for (const g of guids.pens) colors[g] = ok ? "#3aa864" : "#d95c5c";
+    for (const g of target) colors[g] = ok ? PAL.pass : PAL.fail;
+    if (kind.viz.color_by === "structures") for (const g of guids.pens) colors[g] = ok ? PAL.pass : PAL.fail;
     // Dispetcherlik: agregatlar yuklanish bo'yicha (0 % — kulrang, 100 % — to'q yashil)
     if (result.units && guids.units.length) {
       result.units.forEach((u, i) => {
         const g = guids.units[i];
         const pct = Number(u.load_pct ?? 0);
-        if (g) colors[g] = pct <= 0 ? "#6b7280" : `hsl(${120 - Math.max(0, pct - 100)} ${40 + Math.min(pct, 100) * 0.5}% ${55 - Math.min(pct, 100) * 0.2}%)`;
+        if (g) colors[g] = utilizationColor(pct);
       });
     }
     void viewer.colorByGuids(colors);
@@ -466,7 +456,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
   );
   const formulas = showFormulas && (
     <div className="section-box small">
-      <div className="muted" style={{ marginBottom: 4 }}>{kind.description}</div>
+      <div className="muted mb-4">{kind.description}</div>
       {kind.formulas.map((f, i) => <div key={i} className="mono">{f}</div>)}
     </div>
   );
@@ -482,7 +472,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
       <div className="sim">
         {head}
         {formulas}
-        <div className="row small" style={{ marginBottom: 6, alignItems: "center" }}><b>{active.name || `#${active.id}`}</b><span className="dim">{fmtDate(active.created_at)}</span><span className="grow" />
+        <div className="row small mb-6 items-center"><b>{active.name || `#${active.id}`}</b><span className="dim">{fmtDate(active.created_at)}</span><span className="grow" />
           <button className="btn sm" onClick={printReport} title="Hisobot: chop etish / PDF ga saqlash (xulosa, ko'rsatkichlar, parametrlar, grafiklar, formulalar)"><Icon name="printer" size={12} /> Hisobot</button>
           {myJobs.filter((j) => j.id !== active.id && j.status === "done").length > 0 && (
             <select className="select sm" value={cmp?.job.id ?? 0} onChange={(e) => void pickCompare(Number(e.target.value))} title="Boshqa ssenariy bilan solishtirish — grafiklarda punktir chiziq">
@@ -492,9 +482,9 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           )}
         </div>
         {cmp && (
-          <div className="section-box small" style={{ marginBottom: 6 }}>
-            <div className="row" style={{ alignItems: "center" }}><b>Solishtirish: #{cmp.job.id} {cmp.job.name}</b><span className="grow" /><button className="btn sm" onClick={() => setCmp(null)}><Icon name="x" size={11} /></button></div>
-            <table style={{ marginTop: 4 }}><thead><tr><th>Ko'rsatkich</th><th>#{active.id}</th><th>#{cmp.job.id}</th><th>Farq</th></tr></thead><tbody>
+          <div className="section-box small mb-6">
+            <div className="row items-center"><b>Solishtirish: #{cmp.job.id} {cmp.job.name}</b><span className="grow" /><button className="btn sm" onClick={() => setCmp(null)}><Icon name="x" size={11} /></button></div>
+            <table className="mt-4"><thead><tr><th>Ko'rsatkich</th><th>#{active.id}</th><th>#{cmp.job.id}</th><th>Farq</th></tr></thead><tbody>
               {kind.outputs.map((o) => { const a = s[o.key], b = cmp.result.summary[o.key]; const na = typeof a === "number", nb = typeof b === "number"; return (
                 <tr key={o.key}><td>{o.label}</td><td className="mono">{na ? fmtNum(a as number) : String(a ?? "—")} {o.unit}</td><td className="mono">{nb ? fmtNum(b as number) : String(b ?? "—")} {o.unit}</td><td className="mono">{na && nb ? `${(a as number) - (b as number) >= 0 ? "+" : ""}${fmtNum((a as number) - (b as number))}` : ""}</td></tr>
               ); })}
@@ -519,7 +509,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           {kind.outputs.map((o) => <Tile key={o.key} v={s[o.key]} u={o.unit} t={o.label} />)}
         </div>
         {(frames || result.field || kind.id === "seismic" || kind.id === "flood" || kind.id === "rainfall" || kind.id === "landslide" || kind.id === "dam_stability" || kind.id === "seepage") && (
-          <div className="row small wrap" style={{ gap: 6, marginBottom: 6, alignItems: "center" }}>
+          <div className="row small wrap gap-6 mb-6 items-center">
             <span className="dim">3D:</span>
             {(kind.id === "flood" || kind.id === "rainfall" || kind.id === "landslide") && (
               <button className={`btn sm${dyn ? " active" : ""}`} onClick={() => (dyn ? stopLiveWater() : startLiveWater())} title="Sayoz suv gidrodinamikasi relyefda: toshqin to'lqini, gerbdan oshish, yorilish oqimi, ko'chki to'lqini — jonli"><Icon name="waves" size={12} /> {dyn ? "Jonli suvni to'xtatish" : "Jonli suv (oqim)"}</button>
@@ -543,22 +533,22 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           </div>
         )}
         {floodOn && flood && (
-          <div className="section-box small" style={{ marginBottom: 8 }}>
-            <div className="row" style={{ alignItems: "center", marginBottom: 4 }}><b>Toshqin xaritasi</b> <span className="dim">t = {(flood.sum.t / 3600).toFixed(1)} soat</span><span className="grow" /><button className="btn sm" onClick={() => void refreshFloodMap()} title="Joriy holat bo'yicha yangilash"><Icon name="rotate" size={11} /></button><button className="btn sm" onClick={floodCsv} disabled={!flood.elements.length}><Icon name="download" size={11} /> CSV</button><button className="btn sm" onClick={() => void floodIssue()} disabled={!flood.elements.length} title="Suv bosgan inshootlar bo'yicha issue (BCF) — ko'rinish va elementlar bilan"><Icon name="flag" size={11} /> Issue</button></div>
+          <div className="section-box small mb-8">
+            <div className="row items-center mb-4"><b>Toshqin xaritasi</b> <span className="dim">t = {(flood.sum.t / 3600).toFixed(1)} soat</span><span className="grow" /><button className="btn sm" onClick={() => void refreshFloodMap()} title="Joriy holat bo'yicha yangilash"><Icon name="rotate" size={11} /></button><button className="btn sm" onClick={floodCsv} disabled={!flood.elements.length}><Icon name="download" size={11} /> CSV</button><button className="btn sm" onClick={() => void floodIssue()} disabled={!flood.elements.length} title="Suv bosgan inshootlar bo'yicha issue (BCF) — ko'rinish va elementlar bilan"><Icon name="flag" size={11} /> Issue</button></div>
             <div className="tiles">
               <Tile v={flood.sum.flooded_area_m2 / 1e4} u="ga" t="Suv bosgan maydon (ombor tashqarisi)" />
               <Tile v={flood.sum.h_max} u="m" t="Maks. chuqurlik" />
               <Tile v={flood.sum.v_max} u="m/s" t="Maks. tezlik" />
               <Tile v={flood.sum.t_arrive_far_s >= 0 ? flood.sum.t_arrive_far_s / 3600 : "—"} u="soat" t="Quyi chegaraga yetib kelish" />
             </div>
-            <div className="row small wrap" style={{ gap: 8, margin: "4px 0" }}>
-              {["Past (h·v<0.3)", "O'rtacha (<0.6, odam)", "Yuqori (<1.2, mashina)", "O'ta yuqori (bino)"].map((l, i) => <span key={l}><i style={{ display: "inline-block", width: 10, height: 10, background: ["#f2d94e", "#f0902e", "#d9392b", "#7a1010"][i], marginRight: 4, verticalAlign: "middle" }} />{l}: {(flood.sum.classes_m2[i] / 1e4).toFixed(1)} ga</span>)}
+            <div className="row small wrap gap-8 my-4 mx-0">
+              {["Past (h·v<0.3)", "O'rtacha (<0.6, odam)", "Yuqori (<1.2, mashina)", "O'ta yuqori (bino)"].map((l, i) => <span key={l}><i className={`hm-swatch hazard-${i}`} />{l}: {(flood.sum.classes_m2[i] / 1e4).toFixed(1)} ga</span>)}
             </div>
             <div className="dim">Xavf sinfi — AIDR (2017) / NZ ko'rsatmalari: h·v (chuqurlik × tezlik) bo'yicha.</div>
             {flood.elements.length > 0 ? (
-              <table style={{ marginTop: 4 }}><thead><tr><th>Suv bosgan inshoot</th><th>Chuqurlik</th><th>Kelish</th><th>Xavf</th></tr></thead><tbody>
+              <table className="mt-4"><thead><tr><th>Suv bosgan inshoot</th><th>Chuqurlik</th><th>Kelish</th><th>Xavf</th></tr></thead><tbody>
                 {flood.elements.slice(0, 30).map((e) => (
-                  <tr key={e.localId} style={{ cursor: "pointer" }} onClick={() => void viewer?.selectLocalIds([e.localId], true)} title={e.category}>
+                  <tr key={e.localId} className="cursor-pointer" onClick={() => void viewer?.selectLocalIds([e.localId], true)} title={e.category}>
                     <td><button type="button" className="link-btn" onClick={(ev) => { ev.stopPropagation(); void viewer?.selectLocalIds([e.localId], true); }}>{e.name || e.category}</button></td><td className="mono">{e.depth.toFixed(1)} m</td><td className="mono">{e.t_arrive >= 0 ? `${(e.t_arrive / 3600).toFixed(1)} soat` : "—"}</td><td>{hazardLabel(e.hv)}</td>
                   </tr>
                 ))}
@@ -569,19 +559,19 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         {sedSeries && (
           <div className="sim-player" title="Yil kursori — 3D da ombor tubidagi loyqa qatlami (jigarrang) shu yilgacha yig'ilgan cho'kindi">
             <input type="range" min={0} max={sedSeries.length - 1} value={cursor ?? sedSeries.length - 1} onChange={(e) => setCursor(Number(e.target.value))} className="grow" aria-label="Yil" />
-            <span className="mono small" style={{ minWidth: 150 }}>{String(x[cursor ?? sedSeries.length - 1])}-yil · sig'im {sedSeries[cursor ?? sedSeries.length - 1]?.toFixed(0)} mln m³</span>
+            <span className="mono small minw-150">{String(x[cursor ?? sedSeries.length - 1])}-yil · sig'im {sedSeries[cursor ?? sedSeries.length - 1]?.toFixed(0)} mln m³</span>
           </div>
         )}
         {levelSeries && (
           <div className="sim-player">
             <input type="range" min={0} max={levelSeries.length - 1} value={i} onChange={(e) => setCursor(Number(e.target.value))} className="grow" aria-label="Vaqt" />
-            <span className="mono small" style={{ minWidth: 120 }}>{String(x[i]).slice(0, 10)} · {levelSeries[i]?.toFixed(2)} m</span>
+            <span className="mono small minw-120">{String(x[i]).slice(0, 10)} · {levelSeries[i]?.toFixed(2)} m</span>
           </div>
         )}
         {ySeries.map((k, n) => {
           const [t, u] = lbl(k);
           const other = cmp && Array.isArray(cmp.result.series[k]) ? resample(cmp.result.series[xKey] as number[], cmp.result.series[k] as number[], x as number[]) : null;
-          return <LineChart key={k} title={`${t}${xKey !== "t" ? ` (${X_LABEL[xKey] ?? xKey})` : ""}`} unit={u} x={x} series={[{ name: t, values: result.series[k] as number[], color: CHART_COLORS[n % CHART_COLORS.length] }, ...(other ? [{ name: `${t} · #${cmp!.job.id}`, values: other, color: "#9aa3ad", dashed: true }] : [])]} cursor={levelSeries ? cursor : undefined} onCursor={levelSeries ? setCursor : undefined} />;
+          return <LineChart key={k} title={`${t}${xKey !== "t" ? ` (${X_LABEL[xKey] ?? xKey})` : ""}`} unit={u} x={x} series={[{ name: t, values: result.series[k] as number[], color: CHART_COLORS[n % CHART_COLORS.length] }, ...(other ? [{ name: `${t} · #${cmp!.job.id}`, values: other, color: "var(--text-dim)", dashed: true }] : [])]} cursor={levelSeries ? cursor : undefined} onCursor={levelSeries ? setCursor : undefined} />;
         })}
         {result.profile && "x" in result.profile && (
           <LineChart title="Napor epyurasi quvur bo'ylab (max/min)" unit="m" x={result.profile.x as number[]} series={[{ name: "Maksimal", values: result.profile.h_max_x as number[], color: CHART_COLORS[4] }, { name: "Minimal", values: result.profile.h_min_x as number[], color: CHART_COLORS[0] }, ...(Array.isArray(result.profile.p_head_min_x) ? [{ name: "Minimal bosim napori (H − z)", values: result.profile.p_head_min_x as number[], color: CHART_COLORS[2] }] : [])]} />
@@ -610,12 +600,12 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         {result.prone && result.prone.length > 0 && (
           <div className="section-box">
             <b>Yorilishga moyil joylar</b>
-            <table className="grid small" style={{ marginTop: 4 }}>
+            <table className="grid small mt-4">
               <tbody>{result.prone.map((x, i) => (
                 <tr key={i} className={x.severity === "kritik" ? "alarm-active" : undefined}>
-                  <td style={{ width: 22 }}><Icon name={x.severity === "kritik" || x.severity === "yuqori" ? "alert-triangle" : x.severity === "o'rtacha" ? "alert-circle" : "info"} size={13} style={{ color: x.severity === "kritik" ? "var(--danger)" : x.severity === "yuqori" ? "var(--danger)" : x.severity === "o'rtacha" ? "var(--warn)" : "var(--text-dim)" }} /></td>
+                  <td className="w-22"><Icon name={x.severity === "kritik" || x.severity === "yuqori" ? "alert-triangle" : x.severity === "o'rtacha" ? "alert-circle" : "info"} size={13} style={{ color: x.severity === "kritik" ? "var(--danger)" : x.severity === "yuqori" ? "var(--danger)" : x.severity === "o'rtacha" ? "var(--warn)" : "var(--text-dim)" }} /></td>
                   <td><b>{x.where}</b><div className="dim">{x.why}</div></td>
-                  <td className="dim" style={{ whiteSpace: "nowrap" }}>{x.severity}</td>
+                  <td className="dim nowrap">{x.severity}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -625,16 +615,16 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           <div className="ranking">
             {result.ranking.map((r, i) => (
               <details key={r.type} className="section-box" open={i === 0}>
-                <summary className="row" style={{ alignItems: "center" }}>
+                <summary className="row items-center">
                   <b>{i + 1}. {r.name}</b><span className="grow" />
                   <span className={`badge ${r.verdict === "mos" ? "published" : r.verdict === "shartli" ? "shared" : "rejected"}`}>{r.verdict}</span>
                   <span className="mono">{r.score} ball</span>
                 </summary>
-                <div className="small" style={{ marginTop: 6 }}>
+                <div className="small mt-6">
                   <div><b className="ok-text">Yaxshi:</b> {r.good.join(" · ")}</div>
                   <div><b className="bad-text">Yomon:</b> {r.bad.join(" · ")}</div>
                   <div><b>Yorilishga moyil:</b> {r.cracks.join(" · ")}</div>
-                  <div className="dim" style={{ marginTop: 4 }}>{r.reasons.join("; ")}</div>
+                  <div className="dim mt-4">{r.reasons.join("; ")}</div>
                 </div>
               </details>
             ))}
@@ -643,7 +633,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         {result.units && <KVTable rows={result.units} cols={[["name", "Agregat"], ["power_mw", "MW"], ["load_pct", "yuk, %"], ["flow_m3s", "sarf, m³/s"], ["efficiency", "FIK"], ["head_net_m", "netto napor, m"]]} />}
         {result.forces && <KVTable rows={result.forces} cols={[["name", "Kuch"], ["v_kn", "V, kN/m"], ["h_kn", "H, kN/m"], ["arm_v_m", "yelka V, m"], ["arm_h_m", "yelka H, m"]]} />}
         {result.structures && <KVTable rows={result.structures} cols={[["name", "Inshoot"], ["period_s", "T, s"], ["sa_g", "S_a, g"], ["mass_t", "massa, t"], ["force_kn", "kuch, kN"]]} />}
-        <details style={{ marginTop: 8 }}>
+        <details className="mt-8">
           <summary className="muted small">Barcha natijalar</summary>
           <table className="grid small"><tbody>{Object.entries(s).filter(([k]) => k !== "verdict" && k !== "warnings").map(([k, v]) => <tr key={k}><td className="dim">{k}</td><td className="mono">{typeof v === "number" ? v.toLocaleString("uz-UZ", { maximumFractionDigits: 4 }) : String(v)}</td></tr>)}</tbody></table>
         </details>
@@ -655,7 +645,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
     <div className="sim">
       {head}
       {formulas}
-      {!showFormulas && <p className="dim small" style={{ marginTop: 0 }}>{kind.description}</p>}
+      {!showFormulas && <p className="dim small mt-0">{kind.description}</p>}
       {error && <p className="error small">{error}</p>}
       {info && <p className="muted small"><Icon name="info" size={12} /> {info}</p>}
       {myJobs.length > 0 && (
@@ -663,18 +653,18 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           <summary>Oldingi hisoblar ({myJobs.length})</summary>
           {myJobs.map((j) => (
             <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={() => openResult(j)}>
-              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span>{j.status === "done" && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={13} style={{ color: j.summary.ok === false ? "var(--danger)" : "var(--ok)" }} />}<span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span>{j.status === "done" && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={13} className={j.summary.ok === false ? "c-danger" : "c-ok"} />}<span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
               <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && j.summary.verdict ? ` · ${String(j.summary.verdict).slice(0, 80)}` : ""}{j.error && <span className="error"> · {j.error}</span>}</span>
             </button>
           ))}
         </details>
       )}
       <form onSubmit={run}>
-        <div className="row" style={{ marginBottom: 8 }}>
+        <div className="row mb-8">
           <input className="input grow" placeholder="Hisob nomi (ixtiyoriy)" value={name} onChange={(e) => setName(e.target.value)} />
           <button className="btn primary" type="submit" disabled={!canRun || busy || prefilling || active?.status === "running" || active?.status === "queued"} title={prefilling ? "Maydon pasporti yuklanmoqda…" : undefined}>{busy ? "…" : prefilling ? "Pasport…" : "Hisoblash"}</button>
         </div>
-        <div className="row" style={{ marginBottom: 8 }}>
+        <div className="row mb-8">
           {current && <button type="button" className="btn sm" title="IFC dagi Pset_GES_* va 3D da yaratilgan qoralama obyektlardan (to'g'on o'lchamlari, beton klassi…)" onClick={() => applyPrefill("model")}><Icon name="box" size={12} /> Modeldan (v{current.number} + qoralamalar)</button>}
           {projectId && <button type="button" className="btn sm" title="Raqamli egizak: joriy sath/sarf SCADA dan" onClick={() => applyPrefill("live")}><Icon name="activity" size={12} /> Jonli holatdan</button>}
           <button type="button" className="btn sm" onClick={() => { setValues(fieldDefaults(kind.fields)); setSources({}); }}>Standart qiymatlar</button>
@@ -724,14 +714,14 @@ function Sweep({ kind, values, canRun }: { kind: SimKind; values: GenericParams;
   }
   if (!numeric.length) return null;
   return (
-    <details className="section-box small" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
+    <details className="section-box small mt-8" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
       <summary title="Bitta parametrni oraliqda o'zgartirib, natijalar qanday o'zgarishini ko'rish (masalan sath → zaxira koeffitsienti)"><b>Sezgirlik tahlili</b> <span className="dim">— parametr → ko'rsatkichlar</span></summary>
-      <div className="row wrap" style={{ alignItems: "flex-end", gap: 6, marginTop: 6 }}>
-        <label className="field" style={{ minWidth: 200 }}><span>Parametr</span>
+      <div className="row wrap items-end gap-6 mt-6">
+        <label className="field minw-200"><span>Parametr</span>
           <select className="select" value={key} onChange={(e) => setKey(e.target.value)}>{numeric.map((f) => <option key={f.key} value={f.key}>{f.label}{f.unit ? ` (${f.unit})` : ""}</option>)}</select></label>
-        <label className="field" style={{ width: 90 }}><span>dan</span><input className="input" type="number" step="any" value={range.min} onChange={(e) => setRange({ ...range, min: e.target.value })} /></label>
-        <label className="field" style={{ width: 90 }}><span>gacha</span><input className="input" type="number" step="any" value={range.max} onChange={(e) => setRange({ ...range, max: e.target.value })} /></label>
-        <label className="field" style={{ width: 70 }}><span>nuqta</span><input className="input" type="number" min={2} max={60} value={range.n} onChange={(e) => setRange({ ...range, n: Number(e.target.value) || 9 })} /></label>
+        <label className="field w-90"><span>dan</span><input className="input" type="number" step="any" value={range.min} onChange={(e) => setRange({ ...range, min: e.target.value })} /></label>
+        <label className="field w-90"><span>gacha</span><input className="input" type="number" step="any" value={range.max} onChange={(e) => setRange({ ...range, max: e.target.value })} /></label>
+        <label className="field w-70"><span>nuqta</span><input className="input" type="number" min={2} max={60} value={range.n} onChange={(e) => setRange({ ...range, n: Number(e.target.value) || 9 })} /></label>
         <button type="button" className="btn sm primary" disabled={busy || !canRun} title={canRun ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"} onClick={() => void run()}>{busy ? "…" : "Hisoblash"}</button>
       </div>
       {err && <div className="error small">{err}</div>}
@@ -758,7 +748,7 @@ function Tile({ v, u, t }: { v: unknown; u: string; t: string }) {
 
 function KVTable({ rows, cols }: { rows: Record<string, unknown>[]; cols: [string, string][] }) {
   return (
-    <table className="grid small" style={{ marginTop: 8 }}>
+    <table className="grid small mt-8">
       <thead><tr>{cols.map(([k, t]) => <th key={k}>{t}</th>)}</tr></thead>
       <tbody>{rows.map((r, i) => <tr key={i}>{cols.map(([k]) => <td key={k} className={typeof r[k] === "number" ? "mono" : ""}>{typeof r[k] === "number" ? (r[k] as number).toLocaleString("uz-UZ", { maximumFractionDigits: 2 }) : String(r[k] ?? "")}</td>)}</tr>)}</tbody>
     </table>
@@ -773,13 +763,13 @@ function DamProfile({ profile }: { profile: { points: [number, number][]; h1: nu
   const X = (x: number) => 40 + x * sc, Y = (y: number) => 20 + (H - y) * sc;
   const h1y = Y(Math.min(profile.h1, H)), h2y = Y(Math.min(profile.h2, H));
   return (
-    <svg className="dam-profile" viewBox={`0 0 340 ${40 + H * sc}`} width="100%" style={{ maxHeight: 220, marginTop: 8 }}>
-      <rect x={0} y={h1y} width={X(0)} height={Y(0) - h1y} fill="#3d8ee6" opacity={0.35} />
-      <rect x={X(W)} y={h2y} width={340 - X(W)} height={Y(0) - h2y} fill="#3d8ee6" opacity={0.35} />
-      <polygon points={pts.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ")} fill="#8a8f98" stroke="#d0d3d8" strokeWidth={1} />
-      <line x1={0} y1={Y(0)} x2={340} y2={Y(0)} stroke="#6a6e76" />
-      <text x={4} y={h1y - 3} fontSize={10} fill="#9ab">h₁ = {profile.h1.toFixed(1)} m</text>
-      <text x={X(W) + 4} y={h2y - 3} fontSize={10} fill="#9ab">h₂ = {profile.h2.toFixed(1)} m</text>
+    <svg className="dam-profile mt-8" viewBox={`0 0 340 ${40 + H * sc}`} width="100%">
+      <rect x={0} y={h1y} width={X(0)} height={Y(0) - h1y} className="dp-water" />
+      <rect x={X(W)} y={h2y} width={340 - X(W)} height={Y(0) - h2y} className="dp-water" />
+      <polygon points={pts.map((p) => `${X(p[0])},${Y(p[1])}`).join(" ")} className="dp-body" />
+      <line x1={0} y1={Y(0)} x2={340} y2={Y(0)} className="dp-ground" />
+      <text x={4} y={h1y - 3} className="dp-lbl">h₁ = {profile.h1.toFixed(1)} m</text>
+      <text x={X(W) + 4} y={h2y - 3} className="dp-lbl">h₂ = {profile.h2.toFixed(1)} m</text>
     </svg>
   );
 }

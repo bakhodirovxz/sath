@@ -18,7 +18,7 @@ export default class ErrorBoundary extends Component<{ name?: string; children: 
       return (
         <div className={`panel error-boundary ${this.props.compact ? "small" : ""}`} role="alert" data-testid="panel-error">
           <b>{this.props.name ?? "Panel"}</b> ishlamadi: <span className="mono">{this.state.error.message}</span>
-          <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => this.setState({ error: null })}>Qayta urinish</button>
+          <button className="btn sm ml-8" onClick={() => this.setState({ error: null })}>Qayta urinish</button>
         </div>
       );
     }

@@ -677,8 +677,8 @@ export default function ModelPage() {
         <div ref={containerRef} className="ws-canvas-host" />
         {progress !== null && (
           <div className="overlay">
-            <div style={{ width: 240 }}>
-              <div style={{ marginBottom: 6 }}>Model yuklanmoqda… {Math.round(progress * 100)}%</div>
+            <div className="w-240">
+              <div className="mb-6">Model yuklanmoqda… {Math.round(progress * 100)}%</div>
               <div className="progress"><i style={{ width: `${progress * 100}%` }} /></div>
             </div>
           </div>
@@ -686,7 +686,7 @@ export default function ModelPage() {
         {ready && versions.length === 0 && model && (
           <div className="overlay"><div>{canEdit ? "Bu modelda hali versiya yo'q — o'ngdagi «Versiyalar» dan IFC yuklang." : "Bu modelda hali versiya yo'q."}</div></div>
         )}
-        {error && <div className="overlay" style={{ pointerEvents: "auto", placeItems: "start center" }}><div className="section-box error" style={{ marginTop: 20 }}>{error} <button className="btn sm" onClick={() => setError("")}>Yopish</button></div></div>}
+        {error && <div className="overlay interactive"><div className="section-box error mt-16">{error} <button className="btn sm" onClick={() => setError("")}>Yopish</button></div></div>}
         <NavGizmo viewer={viewer.current} ready={ready} />
         {addMenu && <AddMenu x={addMenu.x} y={addMenu.y} onPick={startAdd} onClose={() => setAddMenu(null)} />}
         {hover && hover.name !== undefined && <div className="vp-tip" style={{ left: hover.x + 14, top: hover.y + 14 }}><b>{hover.name || "nomsiz"}</b><div className="dim">{ifcLabel(hover.category ?? "")}</div></div>}

@@ -33,7 +33,7 @@ function UnitBody({ unit }: { unit: number }) {
   const p = mine.find((s) => s.kind === "power");
   return (
     <div className="l3">
-      <div className="row" style={{ marginBottom: 8 }}><h2 style={{ margin: 0 }}>Agregat {unit}</h2><span className="grow" />{p && <span className="tile-v">{p.last_value == null ? "—" : fmtValue(p.last_value)} <span className="tile-u">{p.unit}</span></span>}</div>
+      <div className="row mb-8"><h2 className="m-0">Agregat {unit}</h2><span className="grow" />{p && <span className="tile-v">{p.last_value == null ? "—" : fmtValue(p.last_value)} <span className="tile-u">{p.unit}</span></span>}</div>
       <section className="panel"><div className="row"><b>Sensorlar</b></div><div className="vgrid">{mine.map((s) => <ValueCard key={s.id} s={s} pid={pid} />)}</div>{mine.length === 0 && <p className="muted">Sensor yo'q</p>}</section>
       <section className="panel">
         <div className="row"><b>Ochiq ish buyruqlari</b><span className="grow" /><Link className="btn sm" to={`/projects/${pid}/dashboard`}>Ish buyruqlari →</Link></div>
@@ -72,8 +72,8 @@ function SensorBody({ sensorId }: { sensorId: number }) {
   };
   return (
     <div className="l3" data-testid="faceplate">
-      <div className="row wrap" style={{ marginBottom: 8, gap: 10 }}>
-        <h2 style={{ margin: 0 }}>{s.name}</h2>
+      <div className="row wrap mb-8 gap-8">
+        <h2 className="m-0">{s.name}</h2>
         <span className="mono dim">{s.key}</span>
         <Link className="btn sm" to={opsPath(pid, "area", area.id)}>L2 {area.short}</Link>
         {unitOf(s) != null && <Link className="btn sm" to={opsPath(pid, "unit", unitOf(s)!)}>Agregat {unitOf(s)}</Link>}
@@ -82,12 +82,12 @@ function SensorBody({ sensorId }: { sensorId: number }) {
       <div className="l3-grid">
         <section className={`panel fp-value ${st.rank ? "alarm" : ""}`} style={st.rank ? { borderColor: st.color } : undefined}>
           <div className="fp-big">{s.last_value == null ? "—" : fmtValue(s.last_value)} <span className="tile-u">{s.unit}</span></div>
-          <div className="row wrap" style={{ gap: 8 }}>
+          <div className="row wrap gap-8">
             {st.code ? <span className="alarm-mark" style={{ color: st.color, fontSize: 14 }}>{st.glyph}{st.code} {st.label} · {s.priority}</span> : <span className="badge published">normal</span>}
             <span className="alarm-mark" style={{ color: q.color }} title="sifat">{q.code || "✓"} {q.label}</span>
             <span className={`dim ${age != null && age > s.stale_after_s ? "error" : ""}`}>yosh {fmtAge(age)} {s.last_ts ? `(${fmtDate(s.last_ts)})` : ""}</span>
           </div>
-          <table className="grid small" style={{ marginTop: 8 }}>
+          <table className="grid small mt-8">
             <tbody>
               {limits.map((l) => <tr key={l.label}><td>{l.label}</td><td className="mono">{l.v == null ? "—" : `${l.v} ${s.unit}`}</td></tr>)}
               <tr><td>O'lik zona / kechikish</td><td className="mono">{s.deadband ?? 0} · {s.on_delay_s ?? 0}s / {s.off_delay_s ?? 0}s</td></tr>
@@ -95,7 +95,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
               <tr><td>Alarm rejimi</td><td>{s.alarm_mode ?? "normal"}{s.alarm_mode_reason ? ` — ${s.alarm_mode_reason}` : ""}{s.alarm_mode_until ? ` (${fmtDate(s.alarm_mode_until)} gacha)` : ""}{s.suppressed ? " · shart bo'yicha bostirilgan" : ""}</td></tr>
             </tbody>
           </table>
-          <div className="row wrap" style={{ marginTop: 8, gap: 6 }}>
+          <div className="row wrap mt-8 gap-6">
             {canOperate && s.alarm_mode !== "shelved" && s.alarm_mode !== "out_of_service" && <button className="btn sm" onClick={() => setDlg("shelve")}>Shelve</button>}
             {canOperate && s.alarm_mode === "shelved" && <button className="btn sm" onClick={() => run(() => api.unshelveSensor(s.id))} disabled={busy}>Shelve dan qaytarish</button>}
             {canEngineer && s.alarm_mode !== "out_of_service" && <button className="btn sm" onClick={() => setDlg("oos")}>Xizmatdan chiqarish</button>}

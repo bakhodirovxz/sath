@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import type { Viewer } from "./Viewer";
 import { DRAFT_KIND_BY_ID, defaultParams, derivePset, fromIfcMesh, toIfcMesh, type DraftKind } from "./draftKinds";
+import { PAL } from "./palette";
 
 export interface DraftTransform { x: number; y: number; z: number; rz: number; sx: number; sy: number; sz: number }
 export interface Draft {
@@ -327,7 +328,7 @@ export class DraftManager {
     const m = uid ? this.meshes.get(uid) : null;
     if (!m) return;
     const mat = m.material as THREE.MeshStandardMaterial;
-    mat.emissive = new THREE.Color(on ? "#f5a623" : "#000000"); // Blender uslubi: tanlangan — to'q sariq tus
+    mat.emissive = new THREE.Color(on ? PAL.highlight : PAL.noEmissive); // Blender uslubi: tanlangan — to'q sariq tus
     mat.emissiveIntensity = on ? 0.35 : 0;
   }
 

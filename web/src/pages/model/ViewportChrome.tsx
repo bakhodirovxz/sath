@@ -3,6 +3,7 @@ import Icon from "../../ui/Icon";
 import type { Quaternion } from "three";
 import type { NavMode, Shading, ViewName, Viewer } from "../../viewer/Viewer";
 import { onActivateKey } from "../../ui/a11y";
+import { PAL } from "../../viewer/palette";
 
 /* Blender/3ds Max uslubidagi viewport atrofi: menyu satri, viewport sarlavhasi, navigatsiya gizmosi. */
 
@@ -116,9 +117,9 @@ export function NavGizmo({ viewer, ready }: { viewer: Viewer | null; ready: bool
   };
   // IFC o'qlari three fazoda: X→x, Y→-z, Z→y
   const axes: { name: string; v: [number, number, number]; color: string; view: ViewName; neg: ViewName }[] = [
-    { name: "X", v: [1, 0, 0], color: "#e0656a", view: "right", neg: "left" },
-    { name: "Y", v: [0, 0, -1], color: "#3aa864", view: "back", neg: "front" },
-    { name: "Z", v: [0, 1, 0], color: "#3d8ee6", view: "top", neg: "bottom" },
+    { name: "X", v: [1, 0, 0], color: PAL.axisX, view: "right", neg: "left" },
+    { name: "Y", v: [0, 0, -1], color: PAL.axisY, view: "back", neg: "front" },
+    { name: "Z", v: [0, 1, 0], color: PAL.axisZ, view: "top", neg: "bottom" },
   ];
   const R = 34, C = 44;
   const pts = axes.flatMap((a) => {

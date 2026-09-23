@@ -99,9 +99,9 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
           <span className="grow" />
           <AlarmStrip summary={summary} flood={!!dash?.alarm_flood} pid={pid} />
         </nav>
-        {error && <p className="error" style={{ margin: "6px 16px" }}>{error}</p>}
-        {openHandover && <div className="verdict warn" style={{ margin: "6px 16px" }} data-testid="handover-banner">Smena topshirish #{openHandover.id} ({openHandover.handed_by_username}) qabul qilinmagan — <Link to={opsPath(pid, "shift")}>qabul qiluvchi imzolasin</Link></div>}
-        {!online && <div className="verdict warn" style={{ margin: "6px 16px" }} data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Qiymatlar oxirgi ma'lum holat.</div>}
+        {error && <p className="error my-6 mx-16">{error}</p>}
+        {openHandover && <div className="verdict warn my-6 mx-16" data-testid="handover-banner">Smena topshirish #{openHandover.id} ({openHandover.handed_by_username}) qabul qilinmagan — <Link to={opsPath(pid, "shift")}>qabul qiluvchi imzolasin</Link></div>}
+        {!online && <div className="verdict warn my-6 mx-16" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Qiymatlar oxirgi ma'lum holat.</div>}
         <div className="page-body ops-body"><ErrorBoundary name={`L${level} ekran`}>{children}</ErrorBoundary></div>
       </div>
     </Ctx.Provider>
@@ -123,7 +123,7 @@ export function AlarmStrip({ summary, flood, pid }: { summary: AlarmSummary; flo
           </span>
         );
       })}
-      {summary.stale > 0 && <span className="alarm-mark" style={{ color: "var(--alarm-stale)" }} title="aloqa yo'q">?{summary.stale}</span>}
+      {summary.stale > 0 && <span className="alarm-mark c-stale" title="aloqa yo'q">?{summary.stale}</span>}
     </Link>
   );
 }

@@ -20,7 +20,7 @@ export function PlansPanel({ projectId, assets, canEdit }: { projectId: number; 
   const due = items.filter((p) => p.due_reason).length;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Profilaktik xizmat rejalari</b>
         <span className="muted small">davriylik: kun yoki ish soati (agregat hisoblagichi) — muddati kelganda ish buyrug'i avtomatik yaratiladi</span>
         {due > 0 && <span className="badge high" data-testid="plans-due">{due} ta muddati keldi</span>}
@@ -40,7 +40,7 @@ export function PlansPanel({ projectId, assets, canEdit }: { projectId: number; 
               <td className="mono">{p.interval_days ? `${p.interval_days} kun` : ""}{p.interval_days && p.interval_hours ? " / " : ""}{p.interval_hours ? `${p.interval_hours} soat` : ""}</td>
               <td className="dim">{p.last_generated_at ? fmtDate(p.last_generated_at) : "—"}</td>
               <td>{p.due_reason ? <span className="badge high" title={p.due_reason}>muddati keldi</span> : <span className={`badge ${p.active ? "published" : "archived"}`}>{p.active ? "faol" : "o'chirilgan"}</span>}{p.permit_required && <span className="badge shared" title="Ruxsatnoma talab qilinadi">PTW</span>}</td>
-              <td className="row" style={{ gap: 4 }}>
+              <td className="row gap-4">
                 {canEdit && <button className="btn sm" title={p.active ? "O'chirish (faolsizlantirish)" : "Faollashtirish"} onClick={() => api.updatePlan(p.id, { active: !p.active }).then(load).catch((e) => setErr(e.message))}><Icon name={p.active ? "pause" : "play"} size={12} /></button>}
                 {canEdit && <button className="btn sm" title="Rejani o'chirish" onClick={() => void dialogs.confirm("Reja o'chirilsinmi?", { text: p.name, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) api.deletePlan(p.id).then(load).catch((e) => setErr(e.message)); })}><Icon name="trash" size={12} /></button>}
               </td>
@@ -103,7 +103,7 @@ export function WorkOrderDetail({ wo, parts, members, canApprove, onClose, onCha
   return (
     <Dialog title={`#${wo.id} ${wo.title}`} onClose={onClose}>
       {err && <p className="error small">{err}</p>}
-      <div className="tiles" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="tiles cols-4">
         <div className="tile"><div className="tile-v">{wo.labor_hours}<span className="tile-u"> soat</span></div><div className="tile-t">mehnat · {wo.labor_cost}</div></div>
         <div className="tile"><div className="tile-v">{wo.parts_cost}</div><div className="tile-t">ehtiyot qism</div></div>
         <div className="tile"><div className="tile-v">{wo.extra_cost}</div><div className="tile-t">qo'shimcha</div></div>
@@ -111,7 +111,7 @@ export function WorkOrderDetail({ wo, parts, members, canApprove, onClose, onCha
       </div>
 
       <h4>Ruxsatnoma va izolyatsiya</h4>
-      <div className="row" style={{ gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row gap-6 items-center flex-wrap">
         <span className={`badge ${wo.permit_status === "issued" ? "published" : wo.permit_status === "requested" ? "high" : "archived"}`}>PTW: {wo.permit_status}</span>
         {open && wo.permit_status === "none" && <button className="btn sm" onClick={() => api.setPermit(wo.id, { status: "requested", note: wo.title }).then(onChange).catch((e) => setErr(e.message))}>Ruxsatnoma so'rash</button>}
         {open && canApprove && wo.permit_status === "requested" && <button className="btn sm primary" onClick={() => api.setPermit(wo.id, { status: "issued" }).then(onChange).catch((e) => setErr(e.message))}>Ruxsatnoma berish</button>}
@@ -139,7 +139,7 @@ export function WorkOrderDetail({ wo, parts, members, canApprove, onClose, onCha
           ))}</tbody></table>
       )}
       {open && (
-        <div className="row" style={{ gap: 6 }}>
+        <div className="row gap-6">
           <label className="field"><span>Soat</span><input className="input" type="number" step="any" min="0" value={lf.hours} data-testid="labor-hours" onChange={(e) => setLf({ ...lf, hours: e.target.value })} /></label>
           <label className="field grow"><span>Izoh</span><input className="input" value={lf.note} onChange={(e) => setLf({ ...lf, note: e.target.value })} /></label>
           <label className="field"><span>Xodim</span><select className="select" value={lf.user_id} onChange={(e) => setLf({ ...lf, user_id: e.target.value })}><option value="">o'zim</option>{members.map((m) => <option key={m.user_id} value={m.user_id}>{m.username}</option>)}</select></label>
@@ -153,7 +153,7 @@ export function WorkOrderDetail({ wo, parts, members, canApprove, onClose, onCha
           <tbody>{lines.map((l) => <tr key={l.part_id}><td>{l.part_name}</td><td className="mono">{l.reserved} {l.unit}</td><td className="mono">{l.consumed}</td><td className="mono dim">{l.stock}</td><td className="mono dim">{l.free}</td></tr>)}</tbody></table>
       )}
       {open && (
-        <div className="row" style={{ gap: 6 }}>
+        <div className="row gap-6">
           <label className="field grow"><span>Qism</span><select className="select" value={pf.part_id} data-testid="wo-part-select" onChange={(e) => setPf({ ...pf, part_id: e.target.value })}><option value="">—</option>{parts.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.qty} {p.unit})</option>)}</select></label>
           <label className="field"><span>Miqdor</span><input className="input" type="number" step="any" min="0" value={pf.qty} data-testid="wo-part-qty" onChange={(e) => setPf({ ...pf, qty: e.target.value })} /></label>
           <button className="btn sm" data-testid="wo-part-reserve" disabled={!pf.part_id} onClick={() => api.reserveWorkOrderPart(wo.id, { part_id: Number(pf.part_id), qty: Number(pf.qty) || 0 }).then(setLines).catch((e) => setErr(e.message))}>Bandlash</button>
@@ -176,7 +176,7 @@ export function AssetHistoryDialog({ assetId, onClose }: { assetId: number; onCl
       {err && <p className="error small">{err}</p>}
       {hist && (
         <>
-          <div className="tiles" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+          <div className="tiles cols-5">
             <div className="tile"><div className="tile-v">{hist.totals.work_orders}</div><div className="tile-t">ish buyrug'i</div></div>
             <div className="tile"><div className="tile-v">{hist.totals.failures}</div><div className="tile-t">nosozlik (kodlangan)</div></div>
             <div className="tile"><div className="tile-v">{hist.totals.labor_hours}<span className="tile-u"> soat</span></div><div className="tile-t">mehnat</div></div>

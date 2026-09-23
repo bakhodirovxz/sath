@@ -73,7 +73,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
           empty={canEdit ? "Hali versiya yo'q — IFC yoki Blender/AutoCAD fayl yuklang" : "Hali versiya yo'q"}
           render={(v) => (
             <>
-              <b style={{ minWidth: 28 }}>v{v.number}</b>
+              <b className="minw-28">v{v.number}</b>
               {current?.id === v.id && <Icon name="eye" size={12} title="ochiq" />}
               <span className="grow">{v.message || <span className="dim">izohsiz</span>}</span>
               {v.suitability_code && <BBadge kind={v.state === "published" ? "approved" : "open"} title={`ISO 19650 yaroqlilik: ${v.suitability_label ?? ""}`}>{v.suitability_code}{v.revision_code ? ` ${v.revision_code}` : ""}</BBadge>}
@@ -122,16 +122,16 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
       {demOpen && (
         <Dialog title="Haqiqiy relyef (DEM) import" onClose={() => setDemOpen(false)}>
           <form onSubmit={async (e) => { e.preventDefault(); setBusy(true); setError(""); try { const v = await api.importDem(model.id, { ...dem, message: `Haqiqiy relyef (DEM): ${dem.lat}, ${dem.lon}` }); setDemOpen(false); onUploaded(v); } catch (err) { setError(err instanceof Error ? err.message : "Xatolik"); } finally { setBusy(false); } }}>
-            <div className="dim small" style={{ marginBottom: 6 }}>Manba: AWS Terrain Tiles (Mapzen terrarium — SRTM/ASTER/GMTED), zoom 12 ≈ 30 m, 13 ≈ 15 m, 14 ≈ 7 m piksel. X o'qi — to'g'on gerbi yo'nalishi (burilish sharqdan gradus), +Y — yuqori byef. «Relyef (vodiy)» / eski DEM o'rniga qo'yiladi. Chorvoq to'g'oni ≈ 41.622, 69.981.</div>
+            <div className="dim small mb-6">Manba: AWS Terrain Tiles (Mapzen terrarium — SRTM/ASTER/GMTED), zoom 12 ≈ 30 m, 13 ≈ 15 m, 14 ≈ 7 m piksel. X o'qi — to'g'on gerbi yo'nalishi (burilish sharqdan gradus), +Y — yuqori byef. «Relyef (vodiy)» / eski DEM o'rniga qo'yiladi. Chorvoq to'g'oni ≈ 41.622, 69.981.</div>
             <div className="row wrap">
-              <label className="field" style={{ width: 120 }}><span>Kenglik (lat)</span><input className="input" type="number" step="any" value={dem.lat} onChange={(e) => setDem({ ...dem, lat: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 120 }}><span>Uzunlik (lon)</span><input className="input" type="number" step="any" value={dem.lon} onChange={(e) => setDem({ ...dem, lon: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 110 }}><span>X o'lcham, m</span><input className="input" type="number" min="200" value={dem.width_m} onChange={(e) => setDem({ ...dem, width_m: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 110 }}><span>Y o'lcham, m</span><input className="input" type="number" min="200" value={dem.height_m} onChange={(e) => setDem({ ...dem, height_m: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 100 }}><span>Burilish, °</span><input className="input" type="number" step="any" value={dem.rotation_deg} onChange={(e) => setDem({ ...dem, rotation_deg: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 80 }}><span>Zoom</span><input className="input" type="number" min="8" max="14" value={dem.zoom} onChange={(e) => setDem({ ...dem, zoom: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 90 }}><span>Panjara</span><input className="input" type="number" min="8" max="400" value={dem.nx} onChange={(e) => setDem({ ...dem, nx: Number(e.target.value) })} /></label>
-              <label className="field" style={{ width: 100 }}><span>Z siljish, m</span><input className="input" type="number" step="any" value={dem.z_offset_m} onChange={(e) => setDem({ ...dem, z_offset_m: Number(e.target.value) })} /></label>
+              <label className="field w-120"><span>Kenglik (lat)</span><input className="input" type="number" step="any" value={dem.lat} onChange={(e) => setDem({ ...dem, lat: Number(e.target.value) })} /></label>
+              <label className="field w-120"><span>Uzunlik (lon)</span><input className="input" type="number" step="any" value={dem.lon} onChange={(e) => setDem({ ...dem, lon: Number(e.target.value) })} /></label>
+              <label className="field w-110"><span>X o'lcham, m</span><input className="input" type="number" min="200" value={dem.width_m} onChange={(e) => setDem({ ...dem, width_m: Number(e.target.value) })} /></label>
+              <label className="field w-110"><span>Y o'lcham, m</span><input className="input" type="number" min="200" value={dem.height_m} onChange={(e) => setDem({ ...dem, height_m: Number(e.target.value) })} /></label>
+              <label className="field w-100"><span>Burilish, °</span><input className="input" type="number" step="any" value={dem.rotation_deg} onChange={(e) => setDem({ ...dem, rotation_deg: Number(e.target.value) })} /></label>
+              <label className="field w-80"><span>Zoom</span><input className="input" type="number" min="8" max="14" value={dem.zoom} onChange={(e) => setDem({ ...dem, zoom: Number(e.target.value) })} /></label>
+              <label className="field w-90"><span>Panjara</span><input className="input" type="number" min="8" max="400" value={dem.nx} onChange={(e) => setDem({ ...dem, nx: Number(e.target.value) })} /></label>
+              <label className="field w-100"><span>Z siljish, m</span><input className="input" type="number" step="any" value={dem.z_offset_m} onChange={(e) => setDem({ ...dem, z_offset_m: Number(e.target.value) })} /></label>
             </div>
             {error && <p className="error small">{error}</p>}
             <div className="actions">
@@ -144,14 +144,14 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
       {diff && (
         <BPanel id="diff" title={`Farq: v${versions.find((x) => x.id === diff.from_version_id)?.number} → v${versions.find((x) => x.id === diff.to_version_id)?.number}`} icon="git-branch">
           <div className="diff-legend">
-            <span><i style={{ background: "#2ecc71" }} />Qo'shilgan {diff.summary.added}</span>
-            <span><i style={{ background: "#f1c40f" }} />O'zgargan {diff.summary.changed}</span>
-            <span><i style={{ background: "#e74c3c" }} />O'chirilgan {diff.summary.deleted}</span>
+            <span><i className="diff-add-bg" />Qo'shilgan {diff.summary.added}</span>
+            <span><i className="diff-change-bg" />O'zgargan {diff.summary.changed}</span>
+            <span><i className="diff-del-bg" />O'chirilgan {diff.summary.deleted}</span>
           </div>
           <div className="diff-list">
-            {diff.added.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span style={{ color: "#2ecc71" }}>+</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></button>)}
-            {diff.changed.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span style={{ color: "#f1c40f" }}>~</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.changes?.join(", ")}</span></button>)}
-            {diff.deleted.map((d) => <div key={d.guid} title="Joriy modelda yo'q"><span style={{ color: "#e74c3c" }}>−</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></div>)}
+            {diff.added.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span className="diff-add">+</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></button>)}
+            {diff.changed.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span className="diff-change">~</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.changes?.join(", ")}</span></button>)}
+            {diff.deleted.map((d) => <div key={d.guid} title="Joriy modelda yo'q"><span className="diff-del">−</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></div>)}
           </div>
         </BPanel>
       )}
@@ -166,27 +166,27 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
             </label>
             {isMesh && (
               <div className="section-box small">
-                <div className="dim" style={{ marginBottom: 6 }}>Fayl IFC ga aylantiriladi: har obyekt — alohida element (nomi, rangi saqlanadi); obyekt nomida «togon/dam», «penstock/quvur», «turbina», «spillway» bo'lsa GES turi va Pset avtomatik. Birlik glTF/DXF dan avto aniqlanadi. Rang uchun OBJ ni MTL bilan ZIP qilib yuklang. STEP/IGES — har jism alohida, nomi va rangi bilan (mm). FBX/3DS/LWO — obyekt nomlari va materiallar (assimp). .max/.skp — dasturdan FBX/glTF/OBJ ga eksport qiling. AutoCAD DXF/DWG: 3DFACE/MESH/polyface o'qiladi (qatlam = element nomi, rangi), 3DSOLID (ACIS) — AutoCAD da MESHSMOOTH yoki EXPORT → OBJ; 2D chizma (plan/kesim) AutoCAD dagidek — o'lchamlar, matn, shtrix, ranglar bilan — tekis varaq bo'lib chiqadi; devor/plita qilish uchun «ko'tarish» balandligini kiriting.</div>
+                <div className="dim mb-6">Fayl IFC ga aylantiriladi: har obyekt — alohida element (nomi, rangi saqlanadi); obyekt nomida «togon/dam», «penstock/quvur», «turbina», «spillway» bo'lsa GES turi va Pset avtomatik. Birlik glTF/DXF dan avto aniqlanadi. Rang uchun OBJ ni MTL bilan ZIP qilib yuklang. STEP/IGES — har jism alohida, nomi va rangi bilan (mm). FBX/3DS/LWO — obyekt nomlari va materiallar (assimp). .max/.skp — dasturdan FBX/glTF/OBJ ga eksport qiling. AutoCAD DXF/DWG: 3DFACE/MESH/polyface o'qiladi (qatlam = element nomi, rangi), 3DSOLID (ACIS) — AutoCAD da MESHSMOOTH yoki EXPORT → OBJ; 2D chizma (plan/kesim) AutoCAD dagidek — o'lchamlar, matn, shtrix, ranglar bilan — tekis varaq bo'lib chiqadi; devor/plita qilish uchun «ko'tarish» balandligini kiriting.</div>
                 <div className="row wrap">
-                  <label className="field" style={{ width: 120 }}><span>Fayl birligi</span><select className="select" value={meshOpts.unit} onChange={(e) => setMeshOpts({ ...meshOpts, unit: e.target.value })}><option value="m">metr</option><option value="cm">santimetr</option><option value="mm">millimetr</option><option value="in">dyuym</option><option value="ft">fut</option></select></label>
+                  <label className="field w-120"><span>Fayl birligi</span><select className="select" value={meshOpts.unit} onChange={(e) => setMeshOpts({ ...meshOpts, unit: e.target.value })}><option value="m">metr</option><option value="cm">santimetr</option><option value="mm">millimetr</option><option value="in">dyuym</option><option value="ft">fut</option></select></label>
                   <label className="row small field-check"><input type="checkbox" checked={meshOpts.y_up} onChange={(e) => setMeshOpts({ ...meshOpts, y_up: e.target.checked })} /> Y yuqoriga (glTF, ba'zi eksportlar)</label>
                   <label className="row small field-check"><input type="checkbox" checked={meshOpts.merge} onChange={(e) => setMeshOpts({ ...meshOpts, merge: e.target.checked })} /> bitta elementga birlashtirish</label>
                   <label className="row small field-check"><input type="checkbox" checked={meshOpts.onto_current} onChange={(e) => setMeshOpts({ ...meshOpts, onto_current: e.target.checked })} /> joriy model ustiga qo'shish</label>
-                  {isCad && <label className="field" style={{ width: 200 }}><span>2D konturlarni ko'tarish (m; 0 — faqat 3D)</span><input className="input" type="number" step="any" min="0" value={meshOpts.extrude_m} onChange={(e) => setMeshOpts({ ...meshOpts, extrude_m: Number(e.target.value) || 0 })} /></label>}
+                  {isCad && <label className="field w-200"><span>2D konturlarni ko'tarish (m; 0 — faqat 3D)</span><input className="input" type="number" step="any" min="0" value={meshOpts.extrude_m} onChange={(e) => setMeshOpts({ ...meshOpts, extrude_m: Number(e.target.value) || 0 })} /></label>}
                 </div>
               </div>
             )}
             {isImage && (
               <div className="section-box small">
-                <div className="dim" style={{ marginBottom: 6 }}><b>Rasmdan raqamli egizak.</b> Chizma (skanerlangan plan/kesim): qora chiziqlar konturlarga ajratilib berilgan balandlikka ko'tariladi — devor/to'g'on konturi bo'ladi (har kontur alohida element). Balandlik xaritasi (DEM, kulrang): yorug'lik → balandlik, relyef yuzasi. Foto: taxminiy relyef (faqat ko'rgazma). Masshtab — rasm kengligi metrda.</div>
+                <div className="dim mb-6"><b>Rasmdan raqamli egizak.</b> Chizma (skanerlangan plan/kesim): qora chiziqlar konturlarga ajratilib berilgan balandlikka ko'tariladi — devor/to'g'on konturi bo'ladi (har kontur alohida element). Balandlik xaritasi (DEM, kulrang): yorug'lik → balandlik, relyef yuzasi. Foto: taxminiy relyef (faqat ko'rgazma). Masshtab — rasm kengligi metrda.</div>
                 <div className="row wrap">
-                  <label className="field" style={{ width: 200 }}><span>Rejim</span><select className="select" value={imgOpts.mode} onChange={(e) => setImgOpts({ ...imgOpts, mode: e.target.value as "drawing" | "heightmap" | "photo" })}><option value="drawing">Chizma (plan/kesim) → devorlar</option><option value="heightmap">Balandlik xaritasi (DEM) → relyef</option><option value="photo">Foto → taxminiy relyef</option></select></label>
-                  <label className="field" style={{ width: 150 }}><span>Rasm kengligi, m</span><input className="input" type="number" step="any" min="0.1" value={imgOpts.width_m} onChange={(e) => setImgOpts({ ...imgOpts, width_m: Number(e.target.value) || 100 })} /></label>
-                  {imgOpts.mode === "drawing" && <label className="field" style={{ width: 150 }}><span>Ko'tarish balandligi, m</span><input className="input" type="number" step="any" min="0.01" value={imgOpts.extrude_m} onChange={(e) => setImgOpts({ ...imgOpts, extrude_m: Number(e.target.value) || 3 })} /></label>}
-                  {imgOpts.mode === "drawing" && <label className="field" style={{ width: 150 }}><span>Minimal kontur, px²</span><input className="input" type="number" min="1" value={imgOpts.min_area_px} onChange={(e) => setImgOpts({ ...imgOpts, min_area_px: Number(e.target.value) || 40 })} /></label>}
-                  {imgOpts.mode !== "drawing" && <label className="field" style={{ width: 120 }}><span>Z min, m</span><input className="input" type="number" step="any" value={imgOpts.z_min} onChange={(e) => setImgOpts({ ...imgOpts, z_min: Number(e.target.value) || 0 })} /></label>}
-                  {imgOpts.mode !== "drawing" && <label className="field" style={{ width: 120 }}><span>Z max, m</span><input className="input" type="number" step="any" value={imgOpts.z_max} onChange={(e) => setImgOpts({ ...imgOpts, z_max: Number(e.target.value) || 100 })} /></label>}
-                  {imgOpts.mode !== "drawing" && <label className="field" style={{ width: 120 }}><span>Panjara (8–400)</span><input className="input" type="number" min="8" max="400" value={imgOpts.grid} onChange={(e) => setImgOpts({ ...imgOpts, grid: Number(e.target.value) || 160 })} /></label>}
+                  <label className="field w-200"><span>Rejim</span><select className="select" value={imgOpts.mode} onChange={(e) => setImgOpts({ ...imgOpts, mode: e.target.value as "drawing" | "heightmap" | "photo" })}><option value="drawing">Chizma (plan/kesim) → devorlar</option><option value="heightmap">Balandlik xaritasi (DEM) → relyef</option><option value="photo">Foto → taxminiy relyef</option></select></label>
+                  <label className="field w-150"><span>Rasm kengligi, m</span><input className="input" type="number" step="any" min="0.1" value={imgOpts.width_m} onChange={(e) => setImgOpts({ ...imgOpts, width_m: Number(e.target.value) || 100 })} /></label>
+                  {imgOpts.mode === "drawing" && <label className="field w-150"><span>Ko'tarish balandligi, m</span><input className="input" type="number" step="any" min="0.01" value={imgOpts.extrude_m} onChange={(e) => setImgOpts({ ...imgOpts, extrude_m: Number(e.target.value) || 3 })} /></label>}
+                  {imgOpts.mode === "drawing" && <label className="field w-150"><span>Minimal kontur, px²</span><input className="input" type="number" min="1" value={imgOpts.min_area_px} onChange={(e) => setImgOpts({ ...imgOpts, min_area_px: Number(e.target.value) || 40 })} /></label>}
+                  {imgOpts.mode !== "drawing" && <label className="field w-120"><span>Z min, m</span><input className="input" type="number" step="any" value={imgOpts.z_min} onChange={(e) => setImgOpts({ ...imgOpts, z_min: Number(e.target.value) || 0 })} /></label>}
+                  {imgOpts.mode !== "drawing" && <label className="field w-120"><span>Z max, m</span><input className="input" type="number" step="any" value={imgOpts.z_max} onChange={(e) => setImgOpts({ ...imgOpts, z_max: Number(e.target.value) || 100 })} /></label>}
+                  {imgOpts.mode !== "drawing" && <label className="field w-120"><span>Panjara (8–400)</span><input className="input" type="number" min="8" max="400" value={imgOpts.grid} onChange={(e) => setImgOpts({ ...imgOpts, grid: Number(e.target.value) || 160 })} /></label>}
                   <label className="row small field-check"><input type="checkbox" checked={imgOpts.invert} onChange={(e) => setImgOpts({ ...imgOpts, invert: e.target.checked })} /> teskari (oq chiziqlar / pastlik och)</label>
                   <label className="row small field-check"><input type="checkbox" checked={imgOpts.onto_current} onChange={(e) => setImgOpts({ ...imgOpts, onto_current: e.target.checked })} /> joriy model ustiga qo'shish</label>
                 </div>

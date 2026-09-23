@@ -42,7 +42,7 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
   return (
     <>
       <table className={`grid ${compact ? "small" : ""} alarm-table`} data-testid="alarm-table">
-        <thead><tr><th style={{ width: 28 }} /><th>Vaqt</th><th>Sensor</th><th>Holat</th><th>Qiymat</th><th>ISA</th><th /></tr></thead>
+        <thead><tr><th className="w-28" /><th>Vaqt</th><th>Sensor</th><th>Holat</th><th>Qiymat</th><th>ISA</th><th /></tr></thead>
         <tbody>
           {rows.map((e) => {
             const st = alarmStyle(e.state, e.priority ?? "medium");
@@ -50,14 +50,14 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
             const isOpen = open === e.id;
             return (
               <FragmentRow key={e.id}>
-                <tr className={!e.ended_at && !e.suppressed ? "alarm-active" : undefined} data-testid="alarm-row" data-priority={e.priority} data-state={e.state} onClick={() => setOpen(isOpen ? null : e.id)} style={{ cursor: "pointer" }}>
+                <tr className={`${!e.ended_at && !e.suppressed ? "alarm-active" : undefined} cursor-pointer`} data-testid="alarm-row" data-priority={e.priority} data-state={e.state} onClick={() => setOpen(isOpen ? null : e.id)}>
                   <td><button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={`${e.sensor_name}: tafsilotlar (ratsionalizatsiya)`} onClick={(ev) => { ev.stopPropagation(); setOpen(isOpen ? null : e.id); }}><span className="alarm-mark" style={{ color: st.color, fontSize: 14 }} title={priorityLabel(e.priority)}>{st.glyph || "·"}</span></button></td>
                   <td className="mono">{fmtDate(e.started_at)}{e.ended_at && <div className="dim">→ {fmtDate(e.ended_at)}</div>}</td>
                   <td><Link to={opsPath(pid, "sensor", e.sensor_id)} onClick={(ev) => ev.stopPropagation()}>{e.sensor_name}</Link><div className="dim">{e.sensor_key}{e.area ? ` · ${areaTitle(e.area)}` : ""}</div></td>
-                  <td><span className="alarm-mark" style={{ color: st.color }}>{st.code || "—"}</span> {st.label}{e.suppressed && <span className="badge archived" style={{ marginLeft: 4 }}>{alarmModeLabel(e.suppressed)}</span>}</td>
+                  <td><span className="alarm-mark" style={{ color: st.color }}>{st.code || "—"}</span> {st.label}{e.suppressed && <span className="badge archived ml-4">{alarmModeLabel(e.suppressed)}</span>}</td>
                   <td className="mono">{e.value == null ? "—" : `${fmtValue(e.value)} ${e.unit}`}</td>
                   <td><span className={`badge ${e.alarm_state === "unack" ? "rejected" : e.alarm_state === "acked" ? "shared" : "archived"}`}>{isaStateLabel(e.alarm_state ?? (e.acked_at ? "acked" : "unack"))}</span></td>
-                  <td className="row" style={{ gap: 4 }} onClick={(ev) => ev.stopPropagation()}>
+                  <td className="row gap-4" onClick={(ev) => ev.stopPropagation()}>
                     {e.acked_at ? <span className="dim" title={e.comment}>kvitlangan</span> : canOperate ? <button className="btn sm" onClick={() => setDlg({ kind: "ack", row: e })}>Kvitlash</button> : null}
                     {canOperate && s && !e.ended_at && s.alarm_mode === "normal" && <button className="btn sm" onClick={() => setDlg({ kind: "shelve", row: e })}>Shelve</button>}
                     {canOperate && s && s.alarm_mode === "shelved" && <button className="btn sm" onClick={() => run(() => api.unshelveSensor(s.id))} disabled={busy}>Qaytarish</button>}

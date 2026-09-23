@@ -50,7 +50,7 @@ export function DialogHost() {
   };
   return (
     <Dialog title={cur.title} onClose={() => done(cur.kind === "confirm" ? false : null)}>
-      {cur.text && <p className="small" style={{ whiteSpace: "pre-wrap" }}>{cur.text}</p>}
+      {cur.text && <p className="small pre-wrap">{cur.text}</p>}
       {cur.kind === "prompt" && (
         <form onSubmit={(e) => { e.preventDefault(); done(value); }}>
           {cur.multiline ? <textarea className="textarea" value={value} onChange={(e) => setValue(e.target.value)} data-autofocus data-testid="dlg-prompt" /> : <input className="input" value={value} onChange={(e) => setValue(e.target.value)} data-autofocus data-testid="dlg-prompt" />}

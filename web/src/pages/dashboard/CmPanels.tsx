@@ -51,7 +51,7 @@ export function CmDialog({ projectId, asset, onClose }: { projectId: number; ass
       {err && <p className="error small">{err}</p>}
       {!cm ? <p className="muted">Yuklanmoqda…</p> : (
         <>
-          <div className="row" style={{ alignItems: "center", gap: 8 }}>
+          <div className="row items-center gap-8">
             <span className="health-score">{cm.score}</span>
             <CmBadge state={cm.state} />
             <span className="dim small">ichki {cm.internal_score}{cm.external_score != null ? ` · tashqi ${cm.external_score}` : ""}</span>

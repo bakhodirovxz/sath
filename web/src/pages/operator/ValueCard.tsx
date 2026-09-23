@@ -24,7 +24,7 @@ export default function ValueCard({ s, pid, compact = false, now }: { s: Sensor;
       <div className="vcard-v">
         {s.last_value == null ? "—" : fmtValue(s.last_value)} <span className="vcard-u">{s.unit}</span>
         {q.code && <span className="alarm-mark" style={{ color: q.color }} title={`Sifat: ${q.label}`}>{q.code}</span>}
-        {stale && <span className="alarm-mark" style={{ color: "var(--alarm-stale)" }} title="aloqa yo'q / eskirgan">?</span>}
+        {stale && <span className="alarm-mark c-stale" title="aloqa yo'q / eskirgan">?</span>}
       </div>
       {!compact && <div className="vcard-age dim">{s.key} · {fmtAge(age)}{stale ? " · ESKIRGAN" : ""}</div>}
     </Link>

@@ -86,7 +86,7 @@ export default function ViewportSidebar(p: SidebarProps) {
             )}
             {first && (
               <Panel title="Amallar">
-                <div className="row wrap" style={{ gap: 4 }}>
+                <div className="row wrap gap-4">
                   <button className="btn sm" onClick={() => p.onAction("fit")}>Moslash (.)</button>
                   <button className="btn sm" onClick={() => p.onAction("props")}>Xususiyatlar</button>
                   <button className="btn sm" onClick={() => p.onAction("issue")}>Muammo</button>
@@ -113,7 +113,7 @@ export default function ViewportSidebar(p: SidebarProps) {
               <div className="bgrid">
                 {VIEWS.map((v) => <button key={v.id} className="btn sm" title={v.key} onClick={() => void p.viewer?.setView(v.id)}>{v.label}</button>)}
               </div>
-              <button className="btn sm" style={{ marginTop: 6 }} onClick={() => p.onAction("fit")}>Hammasiga moslash (Home)</button>
+              <button className="btn sm mt-6" onClick={() => p.onAction("fit")}>Hammasiga moslash (Home)</button>
             </Panel>
           </>
         )}
@@ -124,7 +124,7 @@ export default function ViewportSidebar(p: SidebarProps) {
               <Row label="Versiya"><span className="bval">{p.version ? `v${p.version.number} · ${p.version.state}` : "—"}</span></Row>
             </Panel>
             <Panel title="Server">
-              <div className="row wrap" style={{ gap: 4 }}>
+              <div className="row wrap gap-4">
                 {p.canEdit && <button className="btn sm primary" onClick={() => p.onAction("upload")}>Yangi versiya</button>}
                 {p.canEdit && <button className="btn sm" onClick={() => p.onAction("submit")}>Tasdiqqa</button>}
                 <button className="btn sm" onClick={() => p.onAction("diff")}>Ota bilan farq</button>

@@ -241,7 +241,7 @@ function SchemeSection({ pid, dash, scheme, editing, selEl, onSelect, onScheme, 
         {editing && scheme && <MimicEditor scheme={scheme} sensors={sensors} selected={selEl} onSelect={onSelect} onChange={onScheme} />}
       </div>
       <div className="dash-alarms">
-        {dash.alarm_flood && <div className="verdict warn" style={{ marginBottom: 6 }}>Alarm toshqini: 10 daqiqada 10 dan ko'p alarm (EEMUA-191). <button className={`btn sm ${prioOnly ? "active" : ""}`} onClick={() => setPrioOnly((v) => !v)}>{prioOnly ? "Hammasini ko'rsatish" : "Faqat yuqori/kritik"}</button></div>}
+        {dash.alarm_flood && <div className="verdict warn mb-6">Alarm toshqini: 10 daqiqada 10 dan ko'p alarm (EEMUA-191). <button className={`btn sm ${prioOnly ? "active" : ""}`} onClick={() => setPrioOnly((v) => !v)}>{prioOnly ? "Hammasini ko'rsatish" : "Faqat yuqori/kritik"}</button></div>}
         <div className="row"><b>Faol alarmlar</b><span className="dim small">{unacked} kvitlanmagan</span><span className="grow" />
           <Link className="btn sm" to={`/projects/${pid}/ops/alarms`}>Alarm sahifasi (tarix, filtr, hammasini kvitlash) →</Link>
         </div>
@@ -316,7 +316,7 @@ const ReportSection = memo(function ReportSection({ pid, onError }: { pid: numbe
     <div className="dash-block">
       <div className="row wrap">
         <b>Hisobot</b>
-        <select className="select" style={{ width: 120 }} value={period} onChange={(e) => setPeriod(e.target.value as Report["period"])} aria-label="Davr">
+        <select className="select w-120" value={period} onChange={(e) => setPeriod(e.target.value as Report["period"])} aria-label="Davr">
           {(["day", "week", "month"] as const).map((p) => <option key={p} value={p}>{periodLabel(p)}</option>)}
         </select>
         <DateField className="report-date" aria-label="Davr boshi" title="Davr boshi, kk.oo.yyyy (bo'sh — joriy)" value={date} onChange={setDate} />

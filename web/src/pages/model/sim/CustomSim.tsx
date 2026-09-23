@@ -107,12 +107,12 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
         <button className="btn sm" onClick={onBack} title="Katalogga qaytish"><Icon name="chevron-left" size={13} /></button>
         <Icon name="code" size={14} /><b className="grow">Maxsus simulyatsiya (formulalar)</b>
       </div>
-      <p className="dim small" style={{ marginTop: 0 }}>Kirishlar → boshlang'ich holat → har qadamda tenglamalar (tartib bilan) → chiqishlar (vaqt qatori) → xulosa va tekshiruvlar.
+      <p className="dim small mt-0">Kirishlar → boshlang'ich holat → har qadamda tenglamalar (tartib bilan) → chiqishlar (vaqt qatori) → xulosa va tekshiruvlar.
         Ifodalar: + − × / ** , taqqoslash, <span className="mono">a if shart else b</span>, funksiyalar <span className="mono">abs min max sqrt exp log sin cos clip interp mean sum last</span>; o'zgaruvchilar <span className="mono">t dt i g rho pi</span>.</p>
       {error && <p className="error small">{error}</p>}
       {info && <p className="muted small"><Icon name="info" size={12} /> {info}</p>}
 
-      <div className="row wrap" style={{ marginBottom: 8 }}>
+      <div className="row wrap mb-8">
         <select className="select" value={sel ?? ""} onChange={(e) => { const id = Number(e.target.value); const tp = templates.find((x) => x.id === id); if (tp) load(tp.template, tp.id); }}>
           <option value="">Saqlangan shablon…</option>
           {templates.map((tp) => <option key={tp.id} value={tp.id}>{tp.name} — {tp.author_username}</option>)}
@@ -124,15 +124,15 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
 
       {raw ? (
         <div>
-          <textarea className="textarea mono" style={{ minHeight: 260 }} value={rawText} onChange={(e) => setRawText(e.target.value)} />
+          <textarea className="textarea mono minh-260" value={rawText} onChange={(e) => setRawText(e.target.value)} />
           <div className="row"><button className="btn sm primary" onClick={applyRaw}>Qo'llash</button><button className="btn sm" onClick={() => setRaw(false)}>Bekor</button></div>
         </div>
       ) : (
         <>
           <div className="row">
             <label className="field grow"><span>Nomi</span><input className="input" value={t.name ?? ""} onChange={(e) => setT({ ...t, name: e.target.value })} /></label>
-            <label className="field" style={{ width: 90 }}><span>Qadamlar</span><input className="input" type="number" value={t.steps} onChange={(e) => setT({ ...t, steps: Number(e.target.value) })} /></label>
-            <label className="field" style={{ width: 90 }}><span>dt</span><input className="input" type="number" step="any" value={t.dt} onChange={(e) => setT({ ...t, dt: Number(e.target.value) })} /></label>
+            <label className="field w-90"><span>Qadamlar</span><input className="input" type="number" value={t.steps} onChange={(e) => setT({ ...t, steps: Number(e.target.value) })} /></label>
+            <label className="field w-90"><span>dt</span><input className="input" type="number" step="any" value={t.dt} onChange={(e) => setT({ ...t, dt: Number(e.target.value) })} /></label>
           </div>
           <label className="field"><span>Tavsif</span><input className="input" value={t.description ?? ""} onChange={(e) => setT({ ...t, description: e.target.value })} /></label>
 
@@ -142,10 +142,10 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
               <tr key={i}>
                 <td><input className="input mono" value={inp.key} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, key: e.target.value } : x)))} /></td>
                 <td><input className="input" value={inp.label ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} /></td>
-                <td><input className="input" style={{ width: 60 }} value={inp.unit ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, unit: e.target.value } : x)))} /></td>
-                <td><input className="input" type="number" step="any" style={{ width: 80 }} value={inp.default ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, default: Number(e.target.value) } : x)))} /></td>
-                <td><input className="input" type="number" step="any" style={{ width: 70 }} value={inp.min ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, min: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} /></td>
-                <td><input className="input" type="number" step="any" style={{ width: 70 }} value={inp.max ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, max: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} /></td>
+                <td><input className="input w-60" value={inp.unit ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, unit: e.target.value } : x)))} /></td>
+                <td><input className="input w-80" type="number" step="any" value={inp.default ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, default: Number(e.target.value) } : x)))} /></td>
+                <td><input className="input w-70" type="number" step="any" value={inp.min ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, min: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} /></td>
+                <td><input className="input w-70" type="number" step="any" value={inp.max ?? ""} onChange={(e) => setRows("inputs", t.inputs.map((x, k) => (k === i ? { ...x, max: e.target.value === "" ? undefined : Number(e.target.value) } : x)))} /></td>
                 <td><button className="btn sm" type="button" onClick={() => setRows("inputs", t.inputs.filter((_, k) => k !== i))} aria-label="O'chirish"><Icon name="x" size={12} /></button></td>
               </tr>))}</tbody></table>
 
@@ -170,19 +170,19 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
           <h3>Kirish qiymatlari</h3>
           <div className="row wrap">
             {t.inputs.map((inp) => (
-              <label key={inp.key} className="field" style={{ width: 150 }}><span>{inp.label || inp.key}{inp.unit && <em className="unit">{inp.unit}</em>}</span>
+              <label key={inp.key} className="field w-150"><span>{inp.label || inp.key}{inp.unit && <em className="unit">{inp.unit}</em>}</span>
                 <input className="input" type="number" step="any" value={String(inputs[inp.key] ?? inp.default ?? 0)} onChange={(e) => setInputs({ ...inputs, [inp.key]: Number(e.target.value) })} /></label>
             ))}
           </div>
         </>
       )}
 
-      <div className="row wrap" style={{ margin: "8px 0" }}>
+      <div className="row wrap my-8 mx-0">
         <button className="btn sm" onClick={preview} disabled={busy}><Icon name="play" size={12} /> Sinov</button>
         {canEdit && <button className="btn sm" onClick={save} disabled={busy}><Icon name="save" size={12} /> {sel ? "Shablonni yangilash" : "Shablonni saqlash"}</button>}
         {canEdit && sel && <button className="btn sm" onClick={remove}><Icon name="trash" size={12} /></button>}
         <span className="grow" />
-        <input className="input" style={{ width: 160 }} placeholder="Hisob nomi" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input w-160" placeholder="Hisob nomi" value={name} onChange={(e) => setName(e.target.value)} />
         <button className="btn sm primary" onClick={run} disabled={busy}>Hisoblash (saqlanadi)</button>
       </div>
 
@@ -195,7 +195,7 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
       )}
 
       {myJobs.length > 0 && (
-        <details className="section-box" style={{ marginTop: 8 }}>
+        <details className="section-box mt-8">
           <summary>Oldingi hisoblar ({myJobs.length})</summary>
           {myJobs.map((j) => (
             <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={async () => { if (j.status !== "done") return; const full = await api.simJob(j.id); if (full.params?.template) load(full.params.template as CustomTemplate, (full.params.template_id as number) ?? null); setInputs((full.params?.inputs as GenericParams) ?? {}); setResult(await api.genericResult(j.id)); }}>
@@ -211,8 +211,8 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
 
 function ExprRow({ k, v, kLabel = "o'zgaruvchi", vLabel = "ifoda", onChange, onDel }: { k: string; v: string; kLabel?: string; vLabel?: string; onChange: (k: string, v: string) => void; onDel: () => void }) {
   return (
-    <div className="row" style={{ marginBottom: 4 }}>
-      <input className="input mono" style={{ width: 130 }} placeholder={kLabel} value={k} onChange={(e) => onChange(e.target.value, v)} />
+    <div className="row mb-4">
+      <input className="input mono w-130" placeholder={kLabel} value={k} onChange={(e) => onChange(e.target.value, v)} />
       <span className="dim">=</span>
       <input className="input mono grow" placeholder={vLabel} value={v} onChange={(e) => onChange(k, e.target.value)} />
       <button className="btn sm" type="button" onClick={onDel} aria-label="O'chirish"><Icon name="x" size={12} /></button>

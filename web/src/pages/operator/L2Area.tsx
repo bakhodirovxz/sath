@@ -32,15 +32,15 @@ function Body({ area, title }: { area: AreaId; title: string }) {
   }, [mine, area]);
   return (
     <div className="l2">
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>{title}</h2>
+      <div className="row mb-8">
+        <h2 className="m-0">{title}</h2>
         <span className="grow" />
         {sm.worst ? <span className="alarm-mark" style={{ color: alarmStyle(sm.worst.alarm, sm.worst.priority).color }}>{alarmStyle(sm.worst.alarm, sm.worst.priority).glyph} {sm.total} faol alarm</span> : <span className="badge published">alarm yo'q</span>}
         {sm.stale > 0 && <span className="badge archived">{sm.stale} aloqasiz</span>}
       </div>
       {mine.length === 0 && <p className="muted">Bu uchastkada sensor yo'q. Sensor kaliti (masalan RES.H, AGG1.P, TR1.OIL) yoki turi bo'yicha tasniflanadi.</p>}
       {groups.map(([g, ss]) => (
-        <section key={g || "all"} className="panel" style={{ marginBottom: 10 }}>
+        <section key={g || "all"} className="panel mb-8">
           {g && <div className="row"><b>{g}</b><span className="grow" />{/^Agregat (\d+)$/.test(g) && <Link className="btn sm" to={opsPath(pid, "unit", g.replace(/\D/g, ""))}>L3 Faceplate →</Link>}</div>}
           <div className="vgrid">{ss.map((s) => <ValueCard key={s.id} s={s} pid={pid} />)}</div>
         </section>

@@ -95,7 +95,7 @@ export default function IssuesPanel(p: Props) {
       {error && <p className="error small">{error}</p>}
       <BPanel id="issues" title="Muammolar" count={list.length} right={
         <>
-          <select className="select" style={{ width: "auto", padding: "1px 4px", fontSize: 11 }} value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
+          <select className="select w-auto py-0 px-4 fs-xs" value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
             <option value="active">Faol</option>
             <option value="all">Hammasi</option>
           </select>
@@ -154,9 +154,9 @@ export default function IssuesPanel(p: Props) {
               <div>{c.body}</div>
             </div>
           ))}
-          <form onSubmit={addComment} style={{ marginTop: 8 }}>
-            <textarea className="textarea" style={{ minHeight: 44 }} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Izoh…" />
-            <div className="row" style={{ marginTop: 6 }}>
+          <form onSubmit={addComment} className="mt-8">
+            <textarea className="textarea minh-44" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Izoh…" />
+            <div className="row mt-6">
               <label className="row small"><input type="checkbox" checked={withView} onChange={(e) => setWithView(e.target.checked)} /> joriy ko'rinish bilan</label>
               <span className="grow" />
               <button className="btn sm primary" type="submit" disabled={!comment.trim()}>Yuborish</button>

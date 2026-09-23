@@ -60,33 +60,33 @@ function Body() {
       {flood && (
         <div className="verdict warn" data-testid="flood-banner">
           Alarm toshqini (EEMUA-191: 10 daqiqada 10 dan ko'p). Tavsiya — ustuvorlik bo'yicha filtr.
-          <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => setFilter((f) => ({ ...f, priorities: new Set(FLOOD_PRIORITIES) }))}>Faqat kritik/yuqori</button>
+          <button className="btn sm ml-8" onClick={() => setFilter((f) => ({ ...f, priorities: new Set(FLOOD_PRIORITIES) }))}>Faqat kritik/yuqori</button>
         </div>
       )}
-      <div className="dash-kpi l1-kpi" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="dash-kpi l1-kpi cols-4">
         <div className={`tile ${c.active ? "tile-alarm" : ""}`} data-testid="cnt-active"><div className="tile-t">Faol</div><div className="tile-v">{c.active}</div></div>
         <div className={`tile ${c.unacked ? "tile-alarm" : ""}`} data-testid="cnt-unacked"><div className="tile-t">Kvitlanmagan</div><div className="tile-v">{c.unacked}</div></div>
         <div className={`tile ${c.critical ? "tile-alarm" : ""}`}><div className="tile-t">Kritik</div><div className="tile-v">{c.critical}</div></div>
         <div className="tile"><div className="tile-t">Ko'rinishda</div><div className="tile-v">{rows.length} <span className="tile-u">{VIEW_LABEL[filter.view]}</span></div></div>
       </div>
-      <div className="row wrap panel" style={{ gap: 6, margin: "8px 0" }}>
+      <div className="row wrap panel gap-6 my-8 mx-0">
         {(["active", "unack", "acked", "suppressed", "history"] as ViewMode[]).map((v) => <button key={v} className={`btn sm ${filter.view === v ? "active" : ""}`} onClick={() => setFilter((f) => ({ ...f, view: v }))}>{VIEW_LABEL[v]}</button>)}
-        {filter.view === "history" && <select className="select" style={{ width: 110 }} value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[24, 72, 168, 720].map((h) => <option key={h} value={h}>{h / 24} kun</option>)}</select>}
+        {filter.view === "history" && <select className="select w-110" value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[24, 72, 168, 720].map((h) => <option key={h} value={h}>{h / 24} kun</option>)}</select>}
         <span className="sep" />
         {(["critical", "high", "medium", "low"] as const).map((p) => { const st = alarmStyle("high", p); return <button key={p} className={`btn sm ${filter.priorities.has(p) ? "active" : ""}`} style={{ color: filter.priorities.has(p) ? undefined : st.color }} onClick={() => togglePrio(p)} title={priorityLabel(p)}>{st.glyph} {priorityLabel(p)}</button>; })}
-        <select className="select" style={{ width: 160 }} value={filter.area} onChange={(e) => setFilter((f) => ({ ...f, area: e.target.value as AreaId | "" }))}>
+        <select className="select w-160" value={filter.area} onChange={(e) => setFilter((f) => ({ ...f, area: e.target.value as AreaId | "" }))}>
           <option value="">barcha uchastkalar</option>{AREAS.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
         </select>
-        <select className="select" style={{ width: 130 }} value={group} onChange={(e) => setGroup(e.target.value as "none" | "sensor" | "area")}>
+        <select className="select w-130" value={group} onChange={(e) => setGroup(e.target.value as "none" | "sensor" | "area")}>
           <option value="none">guruhsiz</option><option value="sensor">sensor bo'yicha</option><option value="area">uchastka bo'yicha</option>
         </select>
-        <input className="input" style={{ width: 180 }} placeholder="qidiruv (nom, kalit)" value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} data-testid="alarm-search" />
+        <input className="input w-180" placeholder="qidiruv (nom, kalit)" value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} data-testid="alarm-search" />
         <span className="grow" />
         {canOperate && unackedFiltered.length > 0 && <button className="btn sm" onClick={() => setAckAll(true)} data-testid="ack-all">Hammasini kvitlash ({unackedFiltered.length})</button>}
       </div>
       {err && <p className="error">{err}</p>}
       {groups.map((g) => (
-        <section key={g.key} className="panel" style={{ marginBottom: 8 }}>
+        <section key={g.key} className="panel mb-8">
           {g.title && <div className="row"><b>{g.title}</b></div>}
           <AlarmTable rows={g.rows} pid={pid} canOperate={canOperate} canEngineer={canEngineer} onChanged={onChanged} onError={setErr} />
         </section>
