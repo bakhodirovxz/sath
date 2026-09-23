@@ -6,7 +6,6 @@ import math
 from datetime import datetime, timedelta, timezone
 
 from conftest import ingest_headers, manual_headers
-
 from ges_server.db import SessionLocal
 from ges_server.monitoring import cm
 from ges_server.monitoring.cm import da, dm, sd
