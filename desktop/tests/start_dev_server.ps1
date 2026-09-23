@@ -8,6 +8,7 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $env:GES_DATA_DIR = $d
 $env:GES_DATABASE_URL = "sqlite:///" + $d.Replace("\", "/") + "/ges.db"
 $env:GES_ADMIN_PASSWORD = "admin123"
+$env:GES_DEV_MODE = "true"
 $env:GES_SECRET_KEY = "e2e-secret-key-that-is-at-least-32-bytes-long"
 $env:GES_CFD_MODE = "off"
 $p = Start-Process -FilePath (Join-Path $root ".venv\Scripts\python.exe") -ArgumentList "-m", "uvicorn", "ges_server.main:app", "--port", "8000" -WorkingDirectory (Join-Path $root "server") -RedirectStandardOutput (Join-Path $d "server.out") -RedirectStandardError (Join-Path $d "server.err") -PassThru

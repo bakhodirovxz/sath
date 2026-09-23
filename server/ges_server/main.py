@@ -15,7 +15,7 @@ from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
     jobs,
 )
 from .auth.router import router as auth_router
-from .auth.security import hash_password
+from .auth.security import hash_password, password_problems, verify_password
 from .config import SERVER_ENV_FILE, get_settings, legacy_cwd_env, write_private
 from .db import SessionLocal, assert_at_head, migrate
 from .http_security import SecurityHeadersMiddleware
@@ -52,7 +52,14 @@ def init_db() -> None:
         migrate()
     else:
         assert_at_head()
+    weak = admin_password_problems()
     with SessionLocal() as db:
+        if weak and not settings.dev_mode:
+            # Muhitdagi zaif parol bilan yaratilgan (mavjud) admin — almashtirish majburiy (CODE-08)
+            u = db.query(User).filter_by(username=settings.admin_username, is_admin=True).one_or_none()
+            if u is not None and not u.must_change_password and verify_password(settings.admin_password, u.password_hash):
+                u.must_change_password = True
+                db.commit()
         if db.query(User).filter_by(is_admin=True).first() is None:
             password = settings.admin_password
             if not password:
@@ -71,16 +78,57 @@ def init_db() -> None:
                     full_name="Administrator",
                     password_hash=hash_password(password),
                     is_admin=True,
-                    # Muhitdan berilgan parol — ma'lum siyosat; fayldagi tasodifiy parol birinchi kirishda almashtiriladi
-                    must_change_password=not settings.admin_password,
+                    # Fayldagi tasodifiy parol va siyosatdan o'tmagan muhit paroli (CODE-08, dev rejimidan
+                    # tashqari) — birinchi kirishda almashtiriladi
+                    must_change_password=not settings.admin_password or (bool(weak) and not settings.dev_mode),
                 )
             )
             db.commit()
 
 
+def admin_password_problems() -> list[str]:
+    """GES_ADMIN_PASSWORD parol siyosatidan (uzunlik, bloklash ro'yxati, ...) o'tmasa — muammolar ro'yxati."""
+    s = get_settings()
+    if not s.admin_password:
+        return []
+    return password_problems(s.admin_password, s.admin_username)
+
+
+# Postgres uchun rad etiladigan (default/namuna) parollar — compose/.env.example dagi eski default "ges" ham
+WEAK_DB_PASSWORDS = frozenset({"", "ges", "postgres", "password", "changeme", "admin", "sath", "secret"})
+
+
+def production_problems() -> list[str]:
+    """Ishlab chiqarishda (GES_DEV_MODE=false) serverni to'xtatadigan xatolar (CODE-08)."""
+    from sqlalchemy.engine import make_url
+
+    s = get_settings()
+    out = []
+    try:
+        url = make_url(s.database_url)
+    except Exception:  # noqa: BLE001 — noto'g'ri URL ni SQLAlchemy o'zi keyinroq aytadi
+        return out
+    if url.get_backend_name() == "postgresql" and (url.password or "").lower() in WEAK_DB_PASSWORDS:
+        out.append(
+            "Postgres paroli default/zaif (masalan 'ges') — .env da kuchli POSTGRES_PASSWORD bering "
+            "(yoki faqat ishlab chiqish/sinovda GES_DEV_MODE=true)"
+        )
+    return out
+
+
 def startup_warnings() -> list[str]:
     """Konfiguratsiya ogohlantirishlari (logga; testda tekshiriladi)."""
+    s = get_settings()
     out = []
+    weak = admin_password_problems()
+    if weak:
+        out.append(
+            "!!! GES_ADMIN_PASSWORD parol siyosatidan o'tmaydi (" + "; ".join(weak) + ") — "
+            + ("GES_DEV_MODE: faqat sinov uchun qabul qilindi" if s.dev_mode else
+               "admin birinchi kirishda parolni almashtirishi SHART; .env dan GES_ADMIN_PASSWORD ni olib tashlang")
+        )
+    if s.dev_mode:
+        out.extend("GES_DEV_MODE: " + p for p in production_problems())
     legacy = legacy_cwd_env()
     if legacy is not None:
         out.append(
@@ -94,6 +142,11 @@ def startup_warnings() -> list[str]:
 async def lifespan(_: FastAPI):
     for w in startup_warnings():
         log.warning(w)
+    problems = [] if get_settings().dev_mode else production_problems()
+    if problems:
+        for p in problems:
+            log.error(p)
+        raise RuntimeError("Xavfsiz bo'lmagan konfiguratsiya: " + " | ".join(problems))
     init_db()
     stop = asyncio.Event()
     tasks: list[asyncio.Task] = []

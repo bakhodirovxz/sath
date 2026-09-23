@@ -11,6 +11,12 @@ docker compose --profile https up -d --build   # server + web: https://<GES_DOMA
 docker compose logs ges         # admin paroli bo'sh qoldirilgan bo'lsa — fayl yo'li shu yerda
 ```
 
+Parollar (CODE-08): `POSTGRES_PASSWORD` majburiy (bo'lmasa `docker compose` to'xtaydi; default/zaif parol —
+`ges`, `postgres`, ... — bilan server ishga tushmaydi). `GES_ADMIN_PASSWORD` parol siyosatidan o'tmasa
+(masalan `admin123`) admin birinchi kirishda parolni almashtirishi shart va startda logda ogohlantirish chiqadi.
+Bu tekshiruvlar faqat `GES_DEV_MODE=true` (lokal ishlab chiqish, testlar, CI) da yumshatiladi — ishlab
+chiqarishda yoqmang.
+
 Korporativ TLS proksi bo'lsa: `docker compose build --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org" --build-arg NPM_STRICT_SSL=false`.
 
 Ixtiyoriy profillar:

@@ -26,7 +26,7 @@ services:
     env_file: .env
     environment:
       # .env dagi GES_DATABASE_URL ustun; berilmasa — compose dagi Postgres
-      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
       # Caddy ortida klient IP X-Forwarded-For dan (tezlik cheklovi uchun); to'g'ridan-to'g'ri ochiq bo'lsa false
       GES_RATE_TRUST_FORWARDED: ${GES_RATE_TRUST_FORWARDED:-false}
     volumes:
@@ -55,7 +55,8 @@ services:
     environment:
       POSTGRES_DB: ges
       POSTGRES_USER: ges
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+      # CODE-08: default parol yo'q — .env da POSTGRES_PASSWORD bo'lmasa compose to'xtaydi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}
     volumes:
       - pg_data:/var/lib/postgresql/data
     # OPS-02: entrypoint root sifatida boshlanib gosu bilan postgres ga o'tadi — faqat shunga kerakli qobiliyatlar
@@ -101,7 +102,7 @@ services:
     # .env to'liq berilmaydi (SEC-01): worker ga faqat DB manzili kerak — JWT kaliti, admin/SMTP/MQTT
     # parollari OpenFOAM konteyneriga tushmaydi. DB — server bilan AYNAN bir xil (default Postgres).
     environment:
-      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
       GES_CFD_MODE: local
       GES_SECRET_KEY_REQUIRED: "false"
       GES_CFD_TIMEOUT_S: ${GES_CFD_TIMEOUT_S:-10800}

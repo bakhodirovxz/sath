@@ -29,7 +29,7 @@ services:
     env_file: .env
     environment:
       GES_ROLE: worker
-      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:-ges}@postgres:5432/ges}
+      GES_DATABASE_URL: ${GES_DATABASE_URL:-postgresql+psycopg://ges:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}@postgres:5432/ges}
     volumes:
       - ges_data:/data
       - cfd_data:/data/cfd
@@ -63,8 +63,8 @@ services:
     environment:
       PRIMARY_HOST: postgres
       REPL_USER: repl
-      REPL_PASSWORD: ${PG_REPL_PASSWORD:-repl}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ges}
+      REPL_PASSWORD: ${PG_REPL_PASSWORD:?PG_REPL_PASSWORD .env da berilishi shart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da berilishi shart}
     volumes:
       - pg_replica_data:/var/lib/postgresql/data
       - ./pg-replica/entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro

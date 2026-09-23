@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # Bo'sh bo'lsa birinchi ishga tushishda tasodifiy parol yaratilib
     # data_dir/initial-admin-password.txt ga yoziladi va logga chiqariladi
     admin_password: str = ""
+    # CODE-08: ishlab chiqish/sinov rejimi — zaif (siyosatdan o'tmaydigan) admin paroli va default DB paroli
+    # faqat ogohlantirish beradi. Ishlab chiqarishda (false, default): zaif muhit admin paroli → birinchi
+    # kirishda almashtirish majburiy; Postgres default/zaif paroli bilan server ishga TUSHMAYDI.
+    dev_mode: bool = False
     # Web build shu papkadan tarqatiladi (bo'sh bo'lsa faqat API)
     web_dist: Path | None = None
     max_upload_mb: int = 2048
