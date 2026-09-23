@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -47,9 +48,14 @@ def import_dxf(
     """DWG/DXF → FreeCAD (importDXF, ezdxf bilan tekislangan) → Blender. Qaytaradi: obyekt soni.
     unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar ro'yxati (CAD-04)."""
     FreeCAD = fc_engine.load()
-    path = Path(path)
-    work = Path(tempfile.gettempdir()) / "sath" / "dxf"
-    work.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="sath-dxf-"))  # har import o'z papkasida (CAD-06), oxirida o'chiriladi
+    try:
+        return _import_dxf_fc(FreeCAD, Path(path), work, prepare, unit, report)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _import_dxf_fc(FreeCAD, path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
     if path.suffix.lower() == ".dwg":
         path = converters.dwg_to_dxf(path, work)
     res = cad_read.resolve(path, unit, "Z", default_unit="mm")

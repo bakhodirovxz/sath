@@ -121,7 +121,7 @@ def _convert_external(path: Path, tmp: Path) -> Path:
         out = tmp / (path.stem + ".dxf")
         if t["dwg2dxf"]:
             r = sandbox.run([t["dwg2dxf"], "-y", "-o", str(out), str(path)], cwd=tmp, timeout_s=300, ro_paths=(path,))
-            if not out.exists() or out.stat().st_size == 0:
+            if r.returncode != 0 or not out.exists() or out.stat().st_size == 0:
                 raise ValueError(
                     "DWG ni o'qib bo'lmadi (dwg2dxf): "
                     + (r.stderr or r.stdout)[-300:].decode(errors="replace")
@@ -133,12 +133,15 @@ def _convert_external(path: Path, tmp: Path) -> Path:
             in_dir.mkdir()
             out_dir.mkdir()
             shutil.copy(path, in_dir / path.name)
-            sandbox.run(
+            r = sandbox.run(
                 [t["oda"], str(in_dir), str(out_dir), "ACAD2018", "DXF", "0", "1", path.name], cwd=tmp, timeout_s=600
             )
             res = out_dir / (path.stem + ".dxf")
-            if not res.exists():
-                raise ValueError("DWG ni o'qib bo'lmadi (ODA File Converter)")
+            if r.returncode != 0 or not res.exists() or res.stat().st_size == 0:  # CAD-06: qaytish kodi ham
+                raise ValueError(
+                    f"DWG ni o'qib bo'lmadi (ODA File Converter, kod {r.returncode}): "
+                    + (r.stderr or r.stdout or b"")[-300:].decode(errors="replace")
+                )
             return res
         raise ValueError(
             "DWG uchun serverda konverter yo'q: LibreDWG (dwg2dxf) yoki ODA File Converter o'rnating "

@@ -54,3 +54,94 @@ def test_resolve_dxf_units_and_freecad_factor(tmp_path):
 def test_transform_vertices():
     assert cad_read.transform_vertices([(1, 2, 3)], 0.5, True) == [(0.5, -1.5, 1.0)]
     assert cad_read.transform_vertices([(1, 2, 3)], 2.0, False) == [(2.0, 4.0, 6.0)]
+
+
+# --- CAD-06: DWG konverter — yangi papka, qaytish kodi, eski fayl qabul qilinmaydi --------------------------------
+
+from sath import converters  # noqa: E402
+
+
+class _Proc:
+    def __init__(self, rc: int, err: str = ""):
+        self.returncode, self.stderr, self.stdout = rc, err, ""
+
+
+def _setup_converter(monkeypatch, tool: str, behave):
+    monkeypatch.setattr(converters, "find_dwg2dxf", lambda: "dwg2dxf" if tool == "dwg2dxf" else None)
+    monkeypatch.setattr(converters, "find_oda", lambda: "ODAFileConverter" if tool == "oda" else None)
+    calls = []
+
+    def fake(cmd, timeout):
+        calls.append(list(cmd))
+        return behave(cmd)
+
+    monkeypatch.setattr(converters, "_run", fake)
+    return calls
+
+
+def _user_dwg(tmp_path) -> Path:
+    user = tmp_path / "loyiha"
+    user.mkdir()
+    (user / "plan.dwg").write_bytes(b"AC1032")
+    (user / "plan.dxf").write_text("eski")  # foydalanuvchi papkasidagi eski DXF
+    (user / "boshqa.dwg").write_bytes(b"AC1032")
+    return user / "plan.dwg"
+
+
+def test_dwg2dxf_fresh_output_dir(tmp_path, monkeypatch):
+    def ok(cmd):
+        Path(cmd[3]).write_text("0\nEOF\n")
+        return _Proc(0)
+
+    _setup_converter(monkeypatch, "dwg2dxf", ok)
+    out = tmp_path / "work"
+    out.mkdir()
+    (out / "plan.dxf").write_text("oldingi importdan qolgan")
+    a = converters.dwg_to_dxf(_user_dwg(tmp_path), out)
+    b = converters.dwg_to_dxf(tmp_path / "loyiha" / "plan.dwg", out)
+    assert a != b and a.parent.parent == out and a.read_text() == "0\nEOF\n"
+
+
+def test_dwg2dxf_stale_file_or_error_is_rejected(tmp_path, monkeypatch):
+    dwg = _user_dwg(tmp_path)
+    out = tmp_path / "work"
+    _setup_converter(monkeypatch, "dwg2dxf", lambda cmd: _Proc(0))  # hech narsa yozmadi
+    (tmp_path / "work").mkdir()
+    (out / "plan.dxf").write_text("eski")
+    with pytest.raises(RuntimeError, match="yaratmadi"):
+        converters.dwg_to_dxf(dwg, out)
+
+    def fail(cmd):
+        Path(cmd[3]).write_text("yarim")
+        return _Proc(1, "xato")
+
+    _setup_converter(monkeypatch, "dwg2dxf", fail)
+    with pytest.raises(RuntimeError, match="kod 1"):
+        converters.dwg_to_dxf(dwg, out)
+
+
+def test_oda_gets_isolated_input_dir_and_rc_checked(tmp_path, monkeypatch):
+    dwg = _user_dwg(tmp_path)
+    seen = {}
+
+    def oda(cmd):
+        in_dir, out_dir = Path(cmd[1]), Path(cmd[2])
+        seen["inputs"] = sorted(p.name for p in in_dir.iterdir())
+        seen["in_dir"] = in_dir
+        (out_dir / "plan.dxf").write_text("0\nEOF\n")
+        return _Proc(seen.get("rc", 0))
+
+    calls = _setup_converter(monkeypatch, "oda", oda)
+    res = converters.dwg_to_dxf(dwg, tmp_path / "work")
+    assert Path(calls[0][1]) != dwg.parent and seen["inputs"] == ["plan.dwg"]  # faqat shu DWG nusxasi
+    assert not seen["in_dir"].exists() and res.is_file()  # kirish nusxasi o'chirildi
+    seen["rc"] = 2
+    with pytest.raises(RuntimeError, match="kod 2"):
+        converters.dwg_to_dxf(dwg, tmp_path / "work")
+
+
+def test_no_converter(tmp_path, monkeypatch):
+    _setup_converter(monkeypatch, "none", lambda cmd: _Proc(0))
+    with pytest.raises(RuntimeError, match="topilmadi"):
+        converters.dwg_to_dxf(_user_dwg(tmp_path), tmp_path / "w")
+    assert list((tmp_path / "w").iterdir()) == []

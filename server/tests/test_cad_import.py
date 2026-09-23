@@ -240,3 +240,36 @@ def test_blender_cmd_disables_autoexec_and_user_startup(tmp_path, monkeypatch):
     blend.write_bytes(b"BLENDER")
     out = mesh_import._convert_external(blend, tmp_path)
     assert out.suffix == ".glb" and "--disable-autoexec" in seen["cmd"] and seen["timeout"] <= 600
+
+
+# --- CAD-06: DWG konverter qaytish kodi --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool", ["oda", "dwg2dxf"])
+def test_dwg_converter_return_code_is_checked(tmp_path, monkeypatch, tool):
+    import subprocess
+
+    calls = {}
+
+    def fake_run(cmd, *, cwd, timeout_s, **kw):
+        # konverter natija yozadi, lekin xato kodi bilan tugaydi → qabul qilinmasin
+        out = Path(cmd[2]) / "plan.dxf" if tool == "oda" else Path(cmd[3])
+        out.write_text("0\nEOF\n")
+        calls["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, calls.get("rc", 3), b"", b"xato")
+
+    tools = {"assimp": None, "blender": None, "dwg2dxf": None, "oda": None, tool: tool}
+    monkeypatch.setattr(mesh_import, "tools", lambda: tools)
+    monkeypatch.setattr(mesh_import.sandbox, "run", fake_run)
+    dwg = tmp_path / "plan.dwg"
+    dwg.write_bytes(b"AC1032")
+    work = tmp_path / "w"
+    work.mkdir()
+    with pytest.raises(ValueError, match="kod 3" if tool == "oda" else "dwg2dxf"):
+        mesh_import._convert_external(dwg, work)
+    calls["rc"] = 0
+    work2 = tmp_path / "w2"
+    work2.mkdir()
+    assert mesh_import._convert_external(dwg, work2).name == "plan.dxf"
+    if tool == "oda":
+        assert Path(calls["cmd"][1]).parent == work2  # foydalanuvchi papkasi emas — nusxa turgan yangi papka

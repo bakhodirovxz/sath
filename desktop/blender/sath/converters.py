@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
 EXE = ".exe" if os.name == "nt" else ""
@@ -51,26 +53,49 @@ def find_oda() -> str | None:
     return _find("ODAFileConverter")
 
 
+def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def _check(dxf: Path, started: float, r: subprocess.CompletedProcess, tool: str) -> Path:
+    """Natija yangi (shu chaqiruvda yozilgan), bo'sh emas va konverter xatosiz tugagan bo'lishi shart."""
+    tail = ((r.stderr or "") + (r.stdout or ""))[-300:]
+    if r.returncode != 0:
+        raise RuntimeError(f"{tool} xatosi (kod {r.returncode}): {tail}")
+    if not dxf.is_file() or dxf.stat().st_size == 0:
+        raise RuntimeError(f"{tool} DXF yaratmadi: {tail}")
+    if dxf.stat().st_mtime < started - 2:  # fayl tizimi vaqt aniqligi uchun 2 s zaxira
+        raise RuntimeError(f"{tool}: natija eski fayl ({dxf.name}) — konvertatsiya bajarilmadi")
+    return dxf
+
+
 def dwg_to_dxf(dwg: Path, out_dir: Path) -> Path:
-    """DWG → DXF (dwg2dxf, bo'lmasa ODA). RuntimeError: konverter yo'q / xato."""
+    """DWG → DXF (dwg2dxf, bo'lmasa ODA). RuntimeError: konverter yo'q / xato.
+
+    CAD-06: har chaqiruv out_dir ichida yangi papka (mkdtemp) oladi — oldingi importdan qolgan DXF natija
+    sifatida qabul qilinmaydi; ODA ga foydalanuvchi papkasi emas, faqat shu DWG nusxasi turgan yangi kirish
+    papkasi beriladi; qaytish kodi va natija vaqti tekshiriladi. Natija papkasini chaqiruvchi tozalaydi."""
+    dwg = Path(dwg)
+    out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    dxf = out_dir / (dwg.stem + ".dxf")
+    work = Path(tempfile.mkdtemp(prefix="dwg-", dir=out_dir))
+    started = time.time()
     exe = find_dwg2dxf()
     if exe:
-        r = subprocess.run(
-            [exe, "-y", "-o", str(dxf), str(dwg)], capture_output=True, text=True, timeout=300
-        )
-        if not dxf.exists():
-            raise RuntimeError(f"dwg2dxf xatosi: {r.stderr[-300:]}")
-        return dxf
+        dxf = work / (dwg.stem + ".dxf")
+        r = _run([exe, "-y", "-o", str(dxf), str(dwg)], 300)
+        return _check(dxf, started, r, "dwg2dxf")
     oda = find_oda()
     if oda:
-        subprocess.run(
-            [oda, str(dwg.parent), str(out_dir), "ACAD2018", "DXF", "0", "1", dwg.name],
-            capture_output=True,
-            timeout=600,
-        )
-        if dxf.exists():
-            return dxf
-        raise RuntimeError("ODA File Converter DXF yaratmadi")
+        # ODA File Converter: <kirish papkasi> <chiqish papkasi> <versiya> <tur> <rekursiv> <audit> [filtr]
+        in_dir, res_dir = work / "in", work / "out"
+        in_dir.mkdir()
+        res_dir.mkdir()
+        shutil.copy2(dwg, in_dir / dwg.name)
+        try:
+            r = _run([oda, str(in_dir), str(res_dir), "ACAD2018", "DXF", "0", "1", dwg.name], 600)
+        finally:
+            shutil.rmtree(in_dir, ignore_errors=True)
+        return _check(res_dir / (dwg.stem + ".dxf"), started, r, "ODA File Converter")
+    shutil.rmtree(work, ignore_errors=True)
     raise RuntimeError("DWG konverter topilmadi: LibreDWG dwg2dxf ni ~/Tools/libredwg ga qo'ying")
