@@ -25,9 +25,18 @@ ENV GES_DATABASE_URL=sqlite:////data/ges.db
 # nodejs — fragments konvertatsiya; assimp-utils — FBX/3DS/LWO import; libredwg — DWG → DXF;
 # WITH_BLENDER=1 — .blend fayllarni serverda ochish (obraz ~+400 MB)
 ARG WITH_BLENDER=0
+# WITH_DWG=1 (default) — LibreDWG (dwg2dxf) MAJBURIY: o'rnatilmasa build xato bilan to'xtaydi (CAD-10, jimgina
+# yo'qolmasin). WITH_DWG=0 — ataylab DWG siz obraz. Holat: GET /api/health → "dwg": true/false.
+# Litsenziya: LibreDWG — GPLv3 (alohida CLI dastur sifatida chaqiriladi); obrazni tashqariga tarqatsangiz
+# manba taklifi kerak — deploy/README.md.
+ARG WITH_DWG=1
 # bubblewrap — ishonchsiz CAD/IFC parserlari uchun sandbox (L5; foydalanuvchi nom maydoni yopiq bo'lsa rlimit rejimi)
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-utils bubblewrap \
-    && (apt-get install -y --no-install-recommends libredwg-utils || apt-get install -y --no-install-recommends libredwg-tools || true) \
+    && if [ "$WITH_DWG" = "1" ]; then \
+         { apt-get install -y --no-install-recommends libredwg-utils || apt-get install -y --no-install-recommends libredwg-tools; } \
+         && command -v dwg2dxf >/dev/null \
+         || { echo "XATO: WITH_DWG=1, lekin LibreDWG (dwg2dxf) o'rnatilmadi — DWG siz obraz uchun WITH_DWG=0" >&2; exit 1; }; \
+       fi \
     && (if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender; fi) \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

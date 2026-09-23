@@ -223,3 +223,40 @@ def test_config_env_file_location_and_cfd_default(monkeypatch, tmp_path):
     assert config.legacy_cwd_env() is None
     (other / ".env").write_text("GES_APP_NAME=cwd\n", encoding="utf-8")
     assert config.legacy_cwd_env() == other / ".env"  # eski joy — ishlaydi, lekin ogohlantiriladi
+
+
+def _run_block(dockerfile: str, marker: str) -> str:
+    """Dockerfile dagi `marker` li RUN buyrug'i (satr davomi `\` birlashtirilgan)."""
+    lines, block, inside = dockerfile.splitlines(), [], False
+    for ln in lines:
+        if ln.startswith("RUN ") and marker in "\n".join(lines[lines.index(ln):lines.index(ln) + 12]):
+            inside = True
+        if inside:
+            block.append(ln.rstrip().removesuffix("\\"))
+            if not ln.rstrip().endswith("\\"):
+                break
+    return " ".join(block)[4:]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh yo'q")
+def test_dwg_build_arg_fails_loudly():
+    """CAD-10: WITH_DWG=1 (default) da LibreDWG o'rnatilmasa build to'xtaydi (`|| true` yo'q); sintaksis to'g'ri."""
+    text = (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
+    assert "ARG WITH_DWG=1" in text and "libredwg" in text
+    cmd = _run_block(text, "WITH_DWG")
+    assert "|| true" not in cmd.split("WITH_BLENDER")[0] and "command -v dwg2dxf" in cmd and "exit 1" in cmd
+    r = subprocess.run(["sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    assert "GPLv3" in (DEPLOY / "README.md").read_text(encoding="utf-8")
+
+
+def test_health_reports_dwg(client, monkeypatch):
+    from ges_server import main
+    from ges_server.models import mesh_import
+
+    monkeypatch.setattr(main, "_DWG", {})
+    monkeypatch.setattr(mesh_import, "tools", lambda: {"dwg2dxf": None, "oda": None, "assimp": None, "blender": None})
+    assert client.get("/api/health").json()["dwg"] is False
+    main._DWG.clear()
+    monkeypatch.setattr(mesh_import, "tools", lambda: {"dwg2dxf": "/usr/bin/dwg2dxf", "oda": None})
+    assert client.get("/api/health").json()["dwg"] is True

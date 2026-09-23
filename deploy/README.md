@@ -22,3 +22,11 @@ docker compose logs ges          # birinchi admin paroli (agar GES_ADMIN_PASSWOR
 ```
 Firewall: Z2 dan faqat gateway IP → 443; korporativ tarmoqdan 443; admin VLAN dan 22; chiquvchi — SMTP va
 (kerak bo'lsa) DEM/Let's Encrypt — namunalar `security-zones.md` §4.
+
+Build argumentlari (`deploy/Dockerfile`):
+- `WITH_DWG=1` (default) — LibreDWG (`dwg2dxf`) majburiy: paket o'rnatilmasa build **xato bilan to'xtaydi**
+  (jimgina DWG siz obraz chiqmaydi). `WITH_DWG=0` — ataylab DWG siz. Holat: `GET /api/health` → `"dwg": true|false`.
+  **Litsenziya:** LibreDWG — GPLv3. Sath uni alohida CLI dastur (`dwg2dxf`) sifatida chaqiradi (bog'lanmaydi).
+  Ichki foydalanishda cheklov yo'q; obrazni uchinchi tomonga tarqatsangiz GPLv3 talabi bo'yicha LibreDWG manba
+  kodini taklif qiling (Debian manba paketi: `apt-get source libredwg`) yoki `WITH_DWG=0` bilan tarqating.
+- `WITH_BLENDER=1` — `.blend` importi uchun rasmiy Blender (versiya va sha256 pin — Dockerfile ga qarang).

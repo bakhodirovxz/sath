@@ -86,6 +86,22 @@ def init_db() -> None:
             db.commit()
 
 
+_DWG: dict[str, float | bool] = {}
+
+
+def dwg_available(ttl_s: float = 300.0) -> bool:
+    """DWG konverteri mavjudmi (mesh_import.tools: dwg2dxf yoki ODAFileConverter) — 5 daqiqa keshlanadi."""
+    import time
+
+    from .models import mesh_import
+
+    now = time.monotonic()
+    if not _DWG or now - float(_DWG["at"]) > ttl_s:
+        t = mesh_import.tools()
+        _DWG.update(at=now, ok=bool(t.get("dwg2dxf") or t.get("oda")))
+    return bool(_DWG["ok"])
+
+
 def admin_password_problems() -> list[str]:
     """GES_ADMIN_PASSWORD parol siyosatidan (uzunlik, bloklash ro'yxati, ...) o'tmasa — muammolar ro'yxati."""
     s = get_settings()
@@ -215,8 +231,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", tags=["system"])
     def health():
-        # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»)
-        return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role()}
+        # Tiriklik (liveness): jarayon javob beradi. web: shu serverdan tarqatiladimi (desktop «Webda ochish»);
+        # dwg: DWG import konverteri (LibreDWG dwg2dxf yoki ODA) bormi (CAD-10 — jimgina yo'qolmasin)
+        return {"status": "ok", "version": __version__, "web": web_served, "role": ha.role(), "dwg": dwg_available()}
 
     @app.get("/api/ready", tags=["system"])
     def ready():
