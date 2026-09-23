@@ -9,6 +9,10 @@
 # HTTPS kerak bo'lsa: docker compose --profile https up -d  (Caddy: GES_DOMAIN uchun avtomatik sertifikat,
 #   ichki tarmoqda o'z sertifikati — Caddyfile ga qarang); u holda GES_PUBLIC_URL=https://<domen> va
 #   .env da GES_BIND=127.0.0.1 — to'g'ridan-to'g'ri 8000 port faqat shu hostdan (TLS chegarasi aylanib o'tilmaydi, L1)
+#
+# Loyiha nomi qat'iy `sath` (SEC-02): hajmlar sath_ges_data, sath_pg_data, ... — backup.sh/restore.sh shu
+# nomlarni kutadi (papka nomi `deploy` bo'lsa ham deploy_ges_data emas).
+name: sath
 services:
   ges:
     build:

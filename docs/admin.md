@@ -373,8 +373,14 @@ dispetcherlarning emailiga.
 
 ## Ma'lumotlar
 
-Hammasi `data/` (Docker: `ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
-`sim/`, `cfd/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring).
+Hammasi `data/` (Docker: `sath_ges_data` volume) da: `ges.db` (SQLite), `files/` (IFC, sha256 bo'yicha),
+`sim/`, `desktop/`, `secret.key`, `initial-admin-password.txt` (o'chiring); CFD case papkalari — alohida
+`sath_cfd_data` (`/data/cfd`). Compose loyiha nomi qat'iy `sath` (`name: sath`) — hajm nomlari papka nomiga
+bog'liq emas. Eski deploy (nomsiz, `deploy_ges_data`) dan o'tish: `docker compose -p deploy down`, so'ng
+ma'lumotni ko'chiring (`docker run --rm -v deploy_ges_data:/from -v sath_ges_data:/to alpine cp -a /from/. /to/`;
+Postgres uchun `deploy_pg_data` → `sath_pg_data`) yoki bir martalik `COMPOSE_PROJECT=deploy ./backup.sh` va
+yangi stendda `./restore.sh`. `backup.sh` hajm topilmasa (exit 3), SQLite `ges.db` yo'q/bo'sh bo'lsa (exit 5)
+yoki `PRAGMA integrity_check` o'tmasa (exit 6) zaxira yozmaydi.
 Zaxira va tiklash — quyidagi bo'lim. Yangi versiyaga o'tish: `git pull && docker compose up -d --build` —
 sxema Alembic bilan avtomatik yangilanadi (oldin zaxira oling).
 

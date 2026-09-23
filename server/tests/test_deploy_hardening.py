@@ -137,3 +137,36 @@ def test_solver_env_drops_secrets():
         }
     )
     assert set(env) == {"PATH", "WM_PROJECT_DIR", "FOAM_RUN", "LD_LIBRARY_PATH", "DOCKER_HOST"}
+
+
+def test_compose_project_name_matches_backup_volumes():
+    """SEC-02: compose loyiha nomi qat'iy `sath` — hajm sath_ges_data (backup.sh/restore.sh kutgan nom)."""
+    assert _compose()["name"] == "sath"
+    assert _compose("docker-compose.ha.yml")["name"] == "sath"
+    for script in ("backup.sh", "restore.sh"):
+        text = (DEPLOY / script).read_text(encoding="utf-8")
+        assert 'PROJECT="${COMPOSE_PROJECT:-sath}"' in text and 'VOL="${PROJECT}_ges_data"' in text
+        assert 'docker volume inspect "$VOL"' in text
+    backup = (DEPLOY / "backup.sh").read_text(encoding="utf-8")
+    assert "pragma integrity_check" in backup and "getsize(src) == 0" in backup
+    assert '[ -s "$work/db.pgdump" ]' in backup
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="sh yo'q")
+def test_backup_fails_loudly_when_volume_missing(tmp_path):
+    """SEC-02: hajm topilmasa backup.sh bo'sh arxiv yozmaydi — exit 3 va tushunarli xabar."""
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    calls = tmp_path / "calls.txt"
+    (fake / "docker").write_text(
+        f'#!/bin/sh\necho "$*" >> "{calls.as_posix()}"\n[ "$1" = volume ] && exit 1\nexit 0\n', encoding="utf-8"
+    )
+    (fake / "docker").chmod(0o755)
+    import os
+
+    env = {**os.environ, "PATH": f"{fake.as_posix()}{os.pathsep}{os.environ.get('PATH', '')}", "BACKUP_DIR": str(tmp_path / "out")}
+    r = subprocess.run(["sh", str(DEPLOY / "backup.sh"), "--no-encrypt"], capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 3, (r.stdout, r.stderr)
+    assert "sath_ges_data" in r.stderr and "topilmadi" in r.stderr
+    assert not (tmp_path / "out").exists() or not any((tmp_path / "out").iterdir())
+    assert "run" not in calls.read_text(encoding="utf-8")  # hech qanday konteyner ishga tushmadi

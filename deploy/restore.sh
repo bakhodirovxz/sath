@@ -85,6 +85,8 @@ if [ "$YES" != "1" ]; then
   read -r ans; [ "$ans" = "ha" ] || { echo "Bekor qilindi"; exit 1; }
 fi
 docker compose -p "$PROJECT" stop ges cfd 2>/dev/null || true
+# Bo'sh stend: hajmlarni compose o'zi yaratsin (nom/yorliqlar mos — keyingi `up` ogohlantirishsiz)
+docker volume inspect "$VOL" >/dev/null 2>&1 || docker compose -p "$PROJECT" up --no-start
 if [ "$db_kind" = "postgres" ]; then
   docker compose -p "$PROJECT" up -d postgres
   i=0

@@ -8,6 +8,7 @@
 #   load balancer da yopishqoq sessiya shart emas. Tezlik cheklovi replika boshiga.
 # - Postgres: bitta primary + oqimli replika (postgres-replica, docs/admin.md «Yuqori ishonchlilik»);
 #   failover qo'lda (promote + GES_DATABASE_URL) — RTO ≈ 5 daqiqa.
+name: sath  # asosiy compose bilan bir xil (SEC-02: hajm nomlari sath_*)
 services:
   ges:
     ports: !reset []
