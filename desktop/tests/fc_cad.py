@@ -66,7 +66,24 @@ def check_dxf_face_order(tmp: Path) -> None:
     FreeCAD.closeDocument(fc.Name)
 
 
-CHECKS = [check_dxf_face_order]
+def check_mesh_open_units_axis(tmp: Path) -> None:
+    """CAD-04: FBX (Blender eksporti, UnitScaleFactor=100 → metr, UpAxis=Y) → FreeCAD mm, Z yuqoriga."""
+    import FreeCAD
+    from ges_workbench import mesh_open
+
+    fbx = ROOT / "server" / "tests" / "samples" / "box.fbx"
+    factor, y_up, warnings = mesh_open.units_and_axis(str(fbx))
+    assert (factor, y_up, warnings) == (1000.0, True, []), (factor, y_up, warnings)
+    assert mesh_open.units_and_axis(str(fbx), unit="mm")[0] == 1.0
+    doc = FreeCAD.newDocument("CadMesh")
+    objs = mesh_open.load_into(doc, str(fbx))
+    bb = objs[0].Mesh.BoundBox
+    # Blender dagi o'lcham: 0.51 × 0.53 × 0.41 m (Z yuqoriga) → mm
+    assert abs(bb.XLength - 510.6) < 2 and abs(bb.YLength - 529.3) < 2 and abs(bb.ZLength - 406.2) < 2, bb
+    FreeCAD.closeDocument(doc.Name)
+
+
+CHECKS = [check_dxf_face_order, check_mesh_open_units_axis]
 
 
 def main() -> int:

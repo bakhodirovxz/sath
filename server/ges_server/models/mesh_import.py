@@ -33,9 +33,9 @@ VIA_BLENDER = {".blend"}
 SUPPORTED = (
     DIRECT | VIA_ASSIMP | VIA_DWG | VIA_BLENDER | CAD_EXTS | {".zip"}
 )  # zip: obj+mtl, gltf+bin, dae+tekstura
-UNITS = {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254, "ft": 0.3048}
+UNITS = cad_common.UNITS  # {"m": 1.0, "cm": 0.01, "mm": 0.001, "in": 0.0254, "ft": 0.3048}
 MAX_TRIANGLES = 2_000_000
-DXF_UNITS = {1: "in", 2: "ft", 4: "mm", 5: "cm", 6: "m"}  # $INSUNITS
+DXF_UNITS = cad_common.DXF_INSUNITS  # $INSUNITS
 
 # Nom bo'yicha GES turi: (regex, ifc_class, pset nomi, kind)
 NAME_RULES: list[tuple[str, str, str, str]] = [
@@ -179,26 +179,17 @@ def _convert_external(path: Path, tmp: Path) -> Path:
 
 
 def detect_unit(path: Path) -> str | None:
-    ext = path.suffix.lower()
-    if ext in (".gltf", ".glb"):
-        return "m"  # spesifikatsiya bo'yicha metr
-    if ext == ".3mf":
-        return "mm"  # 3MF default
-    if ext in CAD_EXTS:
-        return "mm"  # OpenCASCADE STEP/IGES ni mm ga keltiradi
-    if ext == ".dxf":
-        try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[:6000]
-            for i, line in enumerate(lines):
-                if (
-                    line.strip() == "$INSUNITS"
-                    and i + 2 < len(lines)
-                    and lines[i + 1].strip() == "70"
-                ):
-                    return DXF_UNITS.get(int(lines[i + 2].strip()))
-        except (OSError, ValueError):
-            return None
-    return None
+    """Fayldagi birlik (cad_common.detect_units_and_axis) yoki None — aniqlanmasa taxmin qilinmaydi (CAD-04)."""
+    return cad_common.detect_units_and_axis(path).unit
+
+
+def _detect(orig: Path, src: Path) -> cad_common.UnitInfo:
+    """Birlik/o'q: .blend — server Blender dan Z-up glb (metr) oladi; assimp formatlari — asl fayl metama'lumoti
+    (FBX GlobalSettings); qolganlari — o'qiladigan fayl (DWG → DXF)."""
+    ext = orig.suffix.lower()
+    if ext in VIA_BLENDER:
+        return cad_common.UnitInfo("m", 1.0, "Z", "Blender (glTF eksport)", False, False)
+    return cad_common.detect_units_and_axis(orig if ext in VIA_ASSIMP else src)
 
 
 def _load_mtl(path: Path) -> dict[str, tuple]:
@@ -348,8 +339,12 @@ class ImportInfo:
 
     unit: str = "m"
     scale: float = 1.0
+    unit_source: str = ""  # "$INSUNITS", "FBX UnitScaleFactor", "glTF spetsifikatsiyasi", "foydalanuvchi" …
+    units_uncertain: bool = False  # True — birlik fayldan aniqlanmadi/shubhali: klient foydalanuvchidan so'rasin
     unit_note: str = ""
-    y_up: bool = False
+    up_axis: str | None = None  # faylda aniqlangan yuqori o'q ("Y"/"Z")
+    axis_uncertain: bool = True
+    y_up: bool = False  # Y → Z o'girish qo'llandimi
     dxf: DxfInfo | None = None
     warnings: list[str] = field(default_factory=list)
 
@@ -620,13 +615,16 @@ def load_objects(
 def load_objects_ex(
     path: Path,
     unit: str = "m",
-    y_up: bool = False,
+    y_up: bool | None = None,
     merge: bool = False,
     auto_unit: bool = True,
     classify_names: bool = True,
     extrude_m: float = 0.0,
 ) -> tuple[list[dict], ImportInfo]:
-    """load_objects + import haqida ma'lumot (ImportInfo) — holat global o'zgaruvchida emas, natija bilan."""
+    """load_objects + import haqida ma'lumot (ImportInfo) — holat global o'zgaruvchida emas, natija bilan.
+    auto_unit — birlik fayldan (cad_common.detect_units_and_axis); aniqlanmasa `unit` olinadi va
+    `units_uncertain=True` (jimgina taxmin yo'q). auto_unit=False — `unit` aniq (foydalanuvchi tanlovi).
+    y_up=None — fayldagi o'q aniq bo'lsa (glTF, FBX UpAxis) shunga ko'ra; True/False — majburiy."""
     import trimesh
 
     info = ImportInfo()
@@ -650,9 +648,18 @@ def load_objects_ex(
                 raise ValueError("ZIP ichida 3D fayl topilmadi (obj/gltf/dae/…)")
             path = sorted(cands, key=lambda q: (q.suffix.lower() != ".obj", str(q)))[0]
         src = _convert_external(path, Path(tmp))
-        if auto_unit:
-            unit = detect_unit(src) or unit
-        scale = UNITS.get(unit, 1.0)
+        det = _detect(path, src)
+        info.up_axis, info.axis_uncertain = det.up_axis, det.axis_uncertain
+        if not auto_unit:
+            scale, info.unit_source = UNITS.get(unit, 1.0), "foydalanuvchi"
+        elif det.scale:
+            scale, unit, info.unit_source = det.scale, det.unit or f"{det.scale:g} m", det.source
+        else:
+            scale, info.unit_source, info.units_uncertain = UNITS.get(unit, 1.0), "aniqlanmadi", True
+            info.unit_note = f"{det.note or 'Birlik aniqlanmadi'}: {unit} deb olindi — birlikni tasdiqlang"
+            info.warnings.append(info.unit_note)
+        if y_up is None:
+            y_up = det.up_axis == "Y" and not det.axis_uncertain
         meshes: list[tuple[str, trimesh.Trimesh, tuple | None]] = []
         loaded = None
         if src.suffix.lower() == ".obj" and not merge:
@@ -691,12 +698,16 @@ def load_objects_ex(
                     "qilinmadi. 2D chizmani alohida DXF qilib yuklang yoki yopiq konturlar uchun «balandlikka "
                     "ko'tarish» ni kiriting"
                 )
-            if dxf_info.linework and auto_unit and unit == "mm":
-                # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi: varaq (ramka) 200 mm dan
-                # kichik bo'lishi mumkin emas → bu metr
-                if (dxf_info.extent or 1e9) < 200:
-                    unit, scale = "m", 1.0
-                    info.unit_note = "m (chizma 200 mm dan kichik — metr deb olindi)"
+            ext_ = dxf_info.extent or 1e9
+            if dxf_info.linework and auto_unit and unit == "mm" and ext_ < 200:
+                # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi (varaq 200 mm dan kichik
+                # bo'lmaydi). Jimgina ×1000 qilinmaydi (CAD-04) — belgi qo'yamiz, klient foydalanuvchidan so'raydi
+                info.units_uncertain = True
+                info.unit_note = (
+                    f"Chizma o'lchami {ext_:g} mm (200 mm dan kichik) — ehtimol metrda chizilgan; "
+                    "birlikni tanlab qayta import qiling"
+                )
+                info.warnings.append(info.unit_note)
         else:
             loaded = trimesh.load(str(src), force="scene" if not merge else "mesh", process=False)
         if isinstance(loaded, trimesh.Scene):
@@ -742,8 +753,9 @@ def load_objects_ex(
                 "Birlik": unit,
                 **(
                     {
-                        "Asl_siljish_X": round(float(dxf_info.offset[0]), 3),
-                        "Asl_siljish_Y": round(float(dxf_info.offset[1]), 3),
+                        # asl (geodezik) siljish — metrda (chizma birligida emas)
+                        "Asl_siljish_X": round(float(dxf_info.offset[0]) * scale, 3),
+                        "Asl_siljish_Y": round(float(dxf_info.offset[1]) * scale, 3),
                     }
                     if dxf_info is not None and dxf_info.offset
                     else {}

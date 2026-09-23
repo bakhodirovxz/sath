@@ -30,12 +30,12 @@ def _post(client, users, model_id, path: Path, **data):
         )
 
 
-def _linework_dxf(path: Path, ox: float, oy: float, insunits: int = 6) -> Path:
+def _linework_dxf(path: Path, ox: float, oy: float, insunits: int = 6, size: float = 300) -> Path:
     doc = ezdxf.new("R2018")
     doc.header["$INSUNITS"] = insunits
     msp = doc.modelspace()
-    msp.add_line((ox, oy), (ox + 300, oy), dxfattribs={"layer": "OQ"})
-    msp.add_line((ox, oy), (ox, oy + 200), dxfattribs={"layer": "OQ"})
+    msp.add_line((ox, oy), (ox + size, oy), dxfattribs={"layer": "OQ"})
+    msp.add_line((ox, oy), (ox, oy + size * 2 / 3), dxfattribs={"layer": "OQ"})
     doc.saveas(path)
     return path
 
@@ -155,3 +155,64 @@ def test_import_api_returns_dropped_2d_warning(client, users, model_id, tmp_path
     body = r.json()
     assert body["imported"] == 1 and body["import_info"]["dxf"]["skipped_2d"] == 1
     assert body["warnings"] and "2D" in body["warnings"][0]
+
+
+# --- CAD-04: birlik jimgina taxmin qilinmaydi -----------------------------------------------------------------
+
+
+def test_small_mm_drawing_is_flagged_not_scaled(tmp_path):
+    """$INSUNITS=mm, chizma 150 birlik — avval jimgina ×1000 (metr) qilinardi; endi mm qoladi va belgi qo'yiladi."""
+    dxf = _linework_dxf(tmp_path / "kichik.dxf", 0, 0, insunits=4, size=150)
+    objs, info = mesh_import.load_objects_ex(dxf)
+    assert info.unit == "mm" and info.scale == 0.001 and info.units_uncertain
+    assert info.unit_source == "$INSUNITS" and "200 mm" in info.unit_note and info.warnings
+    # foydalanuvchi aniq tanlasa (unit_override) — metr
+    objs, info = mesh_import.load_objects_ex(dxf, unit="m", auto_unit=False)
+    assert info.unit == "m" and info.scale == 1.0 and not info.units_uncertain
+    assert info.unit_source == "foydalanuvchi"
+    assert objs[0]["psets"]["Pset_GES_Import"]["Birlik"] == "m"
+
+
+def test_dxf_offset_stored_in_metres(tmp_path):
+    """Asl_siljish_X/Y — metrda (mm chizmada ham)."""
+    dxf = _linework_dxf(tmp_path / "geo.dxf", 532_000_000, 4_400_000_000, insunits=4)
+    objs, info = mesh_import.load_objects_ex(dxf)
+    assert not info.units_uncertain
+    assert _offset(objs) == (532_000.0, 4_400_000.0)
+
+
+def test_unknown_units_are_flagged(tmp_path):
+    obj = tmp_path / "a.obj"
+    obj.write_text("o Kub\nv 0 0 0\nv 1 0 0\nv 1 1 0\nf 1 2 3\n")
+    _objs, info = mesh_import.load_objects_ex(obj)
+    assert info.units_uncertain and info.unit == "m" and info.unit_source == "aniqlanmadi"
+    assert not info.y_up  # OBJ o'qi aniq emas — taklif (Y) qo'llanmaydi
+
+
+def test_gltf_axis_from_spec_and_fbx_from_metadata(tmp_path):
+    import numpy as np
+    import trimesh
+
+    s = trimesh.Scene()
+    s.add_geometry(trimesh.creation.box(extents=(1, 2, 3)), node_name="Quti")
+    glb = tmp_path / "q.glb"
+    glb.write_bytes(s.export(file_type="glb"))
+    objs, info = mesh_import.load_objects_ex(glb)
+    assert info.y_up and info.up_axis == "Y" and not info.units_uncertain
+    ext = np.ptp(np.asarray(objs[0]["mesh"]["vertices"]), axis=0)
+    assert np.allclose(ext, (1, 3, 2))  # glTF Y (2) → Z
+    objs, info = mesh_import.load_objects_ex(glb, y_up=False)  # aniq berilgan qiymat ustun
+    assert not info.y_up
+    fbx = Path(__file__).parent / "samples" / "box.fbx"
+    _objs, info = mesh_import.load_objects_ex(fbx)
+    assert info.unit == "m" and info.unit_source == "FBX UnitScaleFactor" and info.y_up
+
+
+def test_import_api_units_uncertain_and_override(client, users, model_id, tmp_path):
+    dxf = _linework_dxf(tmp_path / "kichik.dxf", 0, 0, insunits=4, size=150)
+    r = _post(client, users, model_id, dxf)
+    assert r.status_code == 201, r.text
+    assert r.json()["units_uncertain"] is True and r.json()["import_info"]["unit"] == "mm"
+    r = _post(client, users, model_id, dxf, unit="m", unit_override=True)
+    assert r.status_code == 201, r.text
+    assert r.json()["units_uncertain"] is False and r.json()["import_info"]["unit"] == "m"
