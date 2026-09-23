@@ -28,6 +28,9 @@ pip install -e ./sim -e "./server[postgres,mqtt]"
 cd web && npm ci && npm run build && cd ..
 GES_DATA_DIR=/srv/ges-data ges-server        # http://0.0.0.0:8000 (web build avtomatik topiladi)
 ```
+Docker siz sozlamalar fayli: `GES_ENV_FILE=/etc/sath/sath.env` (tavsiya) yoki `server/.env` — joriy papkadagi
+`.env` ham (eski xatti-harakat) o'qiladi, lekin startda ogohlantiriladi. CFD rejimi default `worker`
+(`GES_CFD_MODE`; dev da Docker Desktop bilan — `docker`).
 
 ## HTTPS
 

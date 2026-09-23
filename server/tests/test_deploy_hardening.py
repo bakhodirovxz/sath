@@ -199,3 +199,27 @@ def test_all_services_drop_caps_and_no_new_privileges():
     assert c["caddy"]["cap_add"] == ["NET_BIND_SERVICE"]
     sim = (DEPLOY / "simulator" / "Dockerfile").read_text(encoding="utf-8")
     assert [ln.strip() for ln in sim.splitlines() if ln.startswith("USER ")][-1] == "USER sath"
+
+
+def test_config_env_file_location_and_cfd_default(monkeypatch, tmp_path):
+    """CODE-06: .env — GES_ENV_FILE yoki barqaror server/.env (CWD ga bog'liq emas); cfd_mode default = worker
+    (deploy/.env.example bilan bir xil)."""
+    from ges_server import config
+
+    assert config.Settings.model_fields["cfd_mode"].default == "worker"
+    assert "GES_CFD_MODE=worker" in (DEPLOY / ".env.example").read_text(encoding="utf-8")
+    env = tmp_path / "sath.env"
+    env.write_text("GES_APP_NAME=Sath-sinov\nGES_CFD_MODE=off\n", encoding="utf-8")
+    monkeypatch.setenv("GES_ENV_FILE", str(env))
+    monkeypatch.delenv("GES_CFD_MODE", raising=False)
+    s = config.load_settings()
+    assert s.app_name == "Sath-sinov" and s.cfd_mode == "off"
+    assert config.env_files() == (env,)
+    monkeypatch.delenv("GES_ENV_FILE")
+    other = tmp_path / "boshqa"
+    other.mkdir()
+    monkeypatch.chdir(other)
+    assert config.env_files()[0] == config.SERVER_ENV_FILE  # barqaror joy birinchi
+    assert config.legacy_cwd_env() is None
+    (other / ".env").write_text("GES_APP_NAME=cwd\n", encoding="utf-8")
+    assert config.legacy_cwd_env() == other / ".env"  # eski joy — ishlaydi, lekin ogohlantiriladi

@@ -16,7 +16,7 @@ from . import (  # noqa: F401  (audit: sessiya hodisalari ro'yxatdan o'tsin)
 )
 from .auth.router import router as auth_router
 from .auth.security import hash_password
-from .config import get_settings, write_private
+from .config import SERVER_ENV_FILE, get_settings, legacy_cwd_env, write_private
 from .db import SessionLocal, assert_at_head, migrate
 from .http_security import SecurityHeadersMiddleware
 from .models.drafts_router import router as drafts_router
@@ -78,8 +78,22 @@ def init_db() -> None:
             db.commit()
 
 
+def startup_warnings() -> list[str]:
+    """Konfiguratsiya ogohlantirishlari (logga; testda tekshiriladi)."""
+    out = []
+    legacy = legacy_cwd_env()
+    if legacy is not None:
+        out.append(
+            f"Joriy papkadagi .env o'qildi ({legacy}) — ishga tushirish joyiga bog'liq. "
+            f"GES_ENV_FILE=<yo'l> yoki {SERVER_ENV_FILE} ishlating (CODE-06)"
+        )
+    return out
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    for w in startup_warnings():
+        log.warning(w)
     init_db()
     stop = asyncio.Event()
     tasks: list[asyncio.Task] = []

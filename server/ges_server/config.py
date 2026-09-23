@@ -14,10 +14,32 @@ def write_private(path: Path, text: str) -> None:
         fh.write(text)
 
 
-class Settings(BaseSettings):
-    """Muhit o'zgaruvchilari orqali sozlanadi (GES_ prefiksi), masalan GES_DATABASE_URL."""
+# Barqaror .env joyi (CODE-06): server/ papkasi (pyproject yonida) — ishga tushirilgan joriy papkaga bog'liq emas
+SERVER_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
-    model_config = SettingsConfigDict(env_prefix="GES_", env_file=".env", extra="ignore")
+
+def env_files() -> tuple[Path, ...]:
+    """O'qiladigan .env fayllari (keyingisi ustun). GES_ENV_FILE berilsa — faqat u. Aks holda barqaror
+    `server/.env`, keyin eski xatti-harakat uchun joriy papkadagi `.env` (bo'lsa, startda ogohlantirish)."""
+    explicit = os.environ.get("GES_ENV_FILE")
+    if explicit:
+        return (Path(explicit),)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.resolve() == SERVER_ENV_FILE:
+        return (SERVER_ENV_FILE,)
+    return (SERVER_ENV_FILE, cwd_env)
+
+
+def legacy_cwd_env() -> Path | None:
+    """Joriy papkadagi .env ishlatilyaptimi (GES_ENV_FILE siz, server/.env emas) — ogohlantirish uchun."""
+    files = env_files()
+    return files[-1] if len(files) > 1 and files[-1].is_file() else None
+
+
+class Settings(BaseSettings):
+    """Muhit o'zgaruvchilari orqali sozlanadi (GES_ prefiksi), masalan GES_DATABASE_URL. .env — env_files()."""
+
+    model_config = SettingsConfigDict(env_prefix="GES_", env_file=None, extra="ignore")
 
     app_name: str = "Sath"
     # Berilmasa data_dir/secret.key dan o'qiladi yoki yaratiladi (pastga qarang)
@@ -55,9 +77,10 @@ class Settings(BaseSettings):
     # L5: kichik yuklashlar chegarasi (CSV import, BCF) MB; parser sandbox rejimi: auto | bwrap | rlimit | off
     small_upload_mb: int = 50
     sandbox: str = "auto"
-    # CFD (OpenFOAM): docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
-    # local — shu muhitda OpenFOAM bor; worker — alohida ges-worker konteyneri bajaradi; off — o'chiq
-    cfd_mode: str = "docker"
+    # CFD (OpenFOAM): worker (default, deploy/.env.example bilan bir xil — alohida `cfd` konteyneri bajaradi,
+    # API server solver ishga tushirmaydi); docker — API server o'zi `docker run` qiladi (Docker Desktop/dev);
+    # local — shu muhitda OpenFOAM bor; off — o'chiq
+    cfd_mode: str = "worker"
     cfd_image: str = "opencfd/openfoam-default:2406"
     cfd_cpus: float = 2.0
     # docker rejimi: konteyner xotira chegarasi (OPS-05; --memory, swap siz)
@@ -165,7 +188,7 @@ class Settings(BaseSettings):
 
 def load_settings() -> Settings:
     """Muhitdan yangi Settings (keshsiz); JWT kaliti kerak bo'lsa (default) o'qiladi/yaratiladi."""
-    settings = Settings()
+    settings = Settings(_env_file=env_files())
     if settings.secret_key_required:
         settings.ensure_secret_key()
     return settings
