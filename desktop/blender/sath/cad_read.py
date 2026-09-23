@@ -110,3 +110,94 @@ def name_and_guid(name: str, guids: dict[str, str]) -> tuple[str, str | None]:
     """Sath eksportidagi "Nom [GUID]" → ("Nom", GUID); nomda bo'lmasa fayl xususiyatlaridan."""
     clean, g = cad_common.split_guid(name)
     return clean, g or guids.get(name) or guids.get(clean)
+
+
+# --- DXF → Blender (FreeCAD siz, faqat ezdxf) ---------------------------------------------------------------------
+
+LINEWORK_TYPES = {"LINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE", "LWPOLYLINE", "POLYLINE", "HELIX"}
+
+
+@dataclass
+class DxfScene:
+    """DXF ning Blender ga tayyor geometriyasi (metrda, WCS): qatlam → uchburchaklar / polilinyalar."""
+
+    faces: dict[str, list] = field(default_factory=dict)
+    lines: dict[str, list] = field(default_factory=dict)
+    colors: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    stats: dict = field(default_factory=dict)
+
+
+def _layer_rgb(doc, layer: str) -> tuple[float, float, float]:
+    try:
+        from ezdxf import colors as dxfcolors
+
+        lay = doc.layers.get(layer)
+        aci = lay.color if lay is not None and lay.color > 0 else 7
+        if aci == 7:  # oq/qora (fonga qarab) → kulrang
+            return (0.55, 0.55, 0.55)
+        r, g, b = dxfcolors.aci2rgb(aci)
+        return (r / 255, g / 255, b / 255)
+    except Exception:  # noqa: BLE001
+        return (0.55, 0.55, 0.55)
+
+
+def read_dxf(path: str | Path, unit: str = "AUTO", prepare: bool = True, work: Path | None = None) -> DxfScene:
+    """DXF → DxfScene, faqat ezdxf bilan (FreeCAD kerak emas). 3D yuzalar (3DFACE, SOLID, MESH, polyface; bloklar
+    ichida ham) — uchburchaklar; 2D chiziqlar (bloklar, o'lchamlar, matn konturlari, shtrix — prepare bilan
+    tekislangan) — polilinyalar. Birlik — $INSUNITS yoki `unit`. `work` — vaqtinchalik papka: buzuq DXF ni
+    tuzatish nusxasi foydalanuvchi papkasiga emas, shu yerga yoziladi."""
+    import shutil
+
+    from ezdxf import path as dxfpath
+
+    from .shared import dxf_prepare
+
+    path = Path(path)
+    res = resolve(path, unit, "Z", default_unit="mm")
+    k = res.scale
+    scene = DxfScene(warnings=list(res.warnings))
+    if work is not None:
+        src = Path(work) / path.name
+        if src != path:
+            shutil.copyfile(path, src)
+        path = src
+    doc = dxf_prepare._read(path)
+    msp = doc.modelspace()
+    walk: dict = {}
+    for e in cad_common.iter_dxf_entities(msp, stats=walk):
+        try:
+            tris = cad_common.dxf_triangles(e)
+        except Exception:  # noqa: BLE001 — buzuq element importni to'xtatmasin
+            continue
+        if tris:
+            layer = str(e.dxf.get("layer", "0"))
+            scene.faces.setdefault(layer, []).extend(
+                [tuple(c * k for c in q) for q in tri] for tri in tris
+            )
+    if prepare:
+        try:
+            scene.stats.update(dxf_prepare.flatten(doc))  # bloklar, o'lchamlar, matn, shtrix → oddiy chiziqlar
+        except Exception as e:  # noqa: BLE001
+            scene.warnings.append(f"Tekislash to'liq bajarilmadi: {e}")
+    for e in cad_common.iter_dxf_entities(msp):
+        t = e.dxftype()
+        if t not in LINEWORK_TYPES or (t == "POLYLINE" and (e.is_poly_face_mesh or e.is_polygon_mesh)):
+            continue
+        try:
+            pth = dxfpath.make_path(e)
+            cv = list(pth.control_vertices())
+            if len(cv) < 2:
+                continue
+            span = max(max(q[i] for q in cv) - min(q[i] for q in cv) for i in range(3))  # o'lcham
+            pts = [(v.x * k, v.y * k, v.z * k) for v in pth.flattening(max(span, 1e-9) / 100)]
+        except Exception:  # noqa: BLE001
+            continue
+        if len(pts) >= 2:  # nol/bitta nuqtali (degenerat) chiziqlar tashlanadi
+            scene.lines.setdefault(str(e.dxf.get("layer", "0")), []).append(pts)
+    for layer in {*scene.faces, *scene.lines}:
+        scene.colors[layer] = _layer_rgb(doc, layer)
+    scene.stats["insert"] = walk.get("insert", 0)
+    if not scene.faces and not scene.lines:
+        raise ValueError("DXF da geometriya topilmadi (3DFACE/MESH yoki chiziqlar)")
+    return scene

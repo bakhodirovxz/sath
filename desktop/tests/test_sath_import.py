@@ -173,3 +173,34 @@ def test_file_guids_obj_names_truncated_by_assimp(tmp_path):
         "o Togon [2O2Fr$t4X7Zf8NOew3FLOH]\nv 0 0 0\no Devor [0K7w7JLKn3sgmPz7rVkzq1]\no Devor [1K7w7JLKn3sgmPz7rVkzq1]\n"
     )
     assert cad_read.file_guids(obj) == {"Togon": "2O2Fr$t4X7Zf8NOew3FLOH"}  # Devor — noaniq, olinmaydi
+
+
+# --- DXF FreeCAD siz (ezdxf) ------------------------------------------------------------------------------------
+
+
+def test_read_dxf_without_freecad(tmp_path):
+    ezdxf = pytest.importorskip("ezdxf")
+    doc = ezdxf.new("R2018")
+    doc.header["$INSUNITS"] = 4  # mm
+    doc.layers.add("TOGON", color=1)
+    msp = doc.modelspace()
+    blk = doc.blocks.new("QUTI")
+    blk.add_3dface([(0, 0, 0), (1000, 0, 0), (1000, 1000, 0), (0, 1000, 0)])
+    msp.add_blockref("QUTI", (5000, 0, 0), dxfattribs={"layer": "TOGON"})
+    msp.add_solid([(0, 0), (1000, 0), (0, 1000), (1000, 1000)], dxfattribs={"layer": "TOGON"})
+    msp.add_line((0, 0), (2000, 0), dxfattribs={"layer": "OQ"})
+    msp.add_line((5, 5), (5, 5), dxfattribs={"layer": "OQ"})  # nol uzunlik
+    msp.add_text("A", dxfattribs={"layer": "MATN", "height": 250})
+    dxf = tmp_path / "plan.dxf"
+    doc.saveas(dxf)
+    work = tmp_path / "w"
+    work.mkdir()
+    sc = cad_read.read_dxf(dxf, work=work)
+    assert len(sc.faces["TOGON"]) == 4  # blok ichidagi 3DFACE (2) + SOLID (2), mm → m
+    xs = [q[0] for tri in sc.faces["TOGON"] for q in tri]
+    assert max(xs) == pytest.approx(6.0) and min(xs) == pytest.approx(0.0)
+    assert any(abs(p[-1][0] - 2.0) < 1e-9 for p in sc.lines["OQ"])  # 2000 mm chiziq → 2 m
+    assert all(len(p) >= 2 for pl in sc.lines.values() for p in pl)
+    assert sc.colors["TOGON"] == (1.0, 0.0, 0.0) and sc.stats["insert"] == 1
+    assert not sc.warnings
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["plan.dxf", "w"]  # foydalanuvchi papkasiga yozilmadi

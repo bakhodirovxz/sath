@@ -1,4 +1,4 @@
-"""DXF/DWG (FreeCAD Import/Draft orqali, qatlam → collection) va mesh (assimp) import."""
+"""DXF/DWG (ezdxf yoki FreeCAD importeri orqali, qatlam → collection) va mesh (assimp) import."""
 
 from __future__ import annotations
 
@@ -57,17 +57,76 @@ def _layer_of(o):
     return None
 
 
+ENGINE_ITEMS = [
+    ("AUTO", "Avto", "FreeCAD o'rnatilgan bo'lsa FreeCAD importeri, aks holda ezdxf"),
+    ("EZDXF", "ezdxf (FreeCAD siz)", "Addon ichidagi ezdxf: 3D yuzalar → mesh, chiziqlar → egri chiziq"),
+    ("FREECAD", "FreeCAD importeri", "FreeCAD importDXF (FreeCAD kerak)"),
+]
+
+
 def import_dxf(
-    context, path: Path, prepare: bool = True, unit: str = "AUTO", report: list | None = None
+    context,
+    path: Path,
+    prepare: bool = True,
+    unit: str = "AUTO",
+    report: list | None = None,
+    engine: str = "AUTO",
 ) -> int:
-    """DWG/DXF → FreeCAD (importDXF, ezdxf bilan tekislangan) → Blender. Qaytaradi: obyekt soni.
-    unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar ro'yxati (CAD-04)."""
-    FreeCAD = fc_engine.load()
+    """DWG/DXF → Blender. Qaytaradi: obyekt soni. engine — "AUTO" (FreeCAD bo'lsa FreeCAD, aks holda ezdxf),
+    "EZDXF" (FreeCAD siz), "FREECAD". unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar."""
+    use_fc = engine == "FREECAD" or (engine == "AUTO" and fc_engine.available())
     work = Path(tempfile.mkdtemp(prefix="sath-dxf-"))  # har import o'z papkasida (CAD-06), oxirida o'chiriladi
     try:
-        return _import_dxf_fc(FreeCAD, Path(path), work, prepare, unit, report)
+        if use_fc:
+            return _import_dxf_fc(fc_engine.load(), Path(path), work, prepare, unit, report)
+        return _import_dxf_ezdxf(Path(path), work, prepare, unit, report)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def _import_dxf_ezdxf(path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
+    """FreeCAD siz: ezdxf → 3D yuzalar (qatlam bo'yicha mesh) va chiziqlar (qatlam bo'yicha egri chiziq)."""
+    from .shared import dxf_prepare
+
+    if not dxf_prepare.ensure_ezdxf():
+        raise RuntimeError("ezdxf topilmadi (extension wheel)")
+    if path.suffix.lower() == ".dwg":
+        path = converters.dwg_to_dxf(path, work)
+    scene = cad_read.read_dxf(path, unit, prepare, work=work)
+    if report is not None:
+        report.extend(scene.warnings)
+    root = _collection(f"DXF {path.stem}")
+    n = 0
+    for layer in sorted({*scene.faces, *scene.lines}):
+        coll = _collection(f"{root.name} / {layer}", root)
+        rgba = (*scene.colors.get(layer, (0.55, 0.55, 0.55)), 1.0)
+        tris = scene.faces.get(layer)
+        if tris:
+            index: dict[tuple, int] = {}
+            verts: list[tuple] = []
+            faces = []
+            for tri in tris:
+                f = []
+                for q in tri:
+                    key = tuple(round(c, 9) for c in q)
+                    if key not in index:
+                        index[key] = len(verts)
+                        verts.append(key)
+                    f.append(index[key])
+                if len(set(f)) == 3:
+                    faces.append(tuple(f))
+            me = bpy.data.meshes.new(f"DXF_{layer}")
+            me.from_pydata(verts, [], faces)
+            me.update()
+            ob = bpy.data.objects.new(f"DXF_{layer}", me)
+            ob.color = rgba
+            coll.objects.link(ob)
+            n += 1
+        ob = _polylines_to_curve(f"DXF_{layer}_chiziq", scene.lines.get(layer, []), coll)
+        if ob is not None:
+            ob.color = rgba
+            n += 1
+    return n
 
 
 def _import_dxf_fc(FreeCAD, path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
@@ -147,7 +206,7 @@ def import_mesh(
 
 
 class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
-    """DWG/DXF chizmani ochish (FreeCAD importeri, qatlamlar collection sifatida)"""
+    """DWG/DXF chizmani ochish (ezdxf yoki FreeCAD importeri, qatlamlar collection sifatida)"""
 
     bl_idname = "sath.import_dxf"
     bl_label = "DWG/DXF import"
@@ -155,15 +214,15 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.dxf;*.dwg", options={"HIDDEN"})
     prepare: bpy.props.BoolProperty(name="Tekislash (bloklar, o'lchamlar, shtrix)", default=True)
     unit: bpy.props.EnumProperty(name="Birlik", items=cad_read.UNIT_ITEMS, default="AUTO")
-
-    @classmethod
-    def poll(cls, context):
-        return fc_engine.available()
+    engine: bpy.props.EnumProperty(name="Importer", items=ENGINE_ITEMS, default="AUTO")
 
     def execute(self, context):
         warnings: list[str] = []
+        if self.engine == "FREECAD" and not fc_engine.available():
+            self.report({"ERROR"}, "FreeCAD topilmadi — «ezdxf (FreeCAD siz)» importerini tanlang")
+            return {"CANCELLED"}
         try:
-            n = import_dxf(context, Path(self.filepath), self.prepare, self.unit, warnings)
+            n = import_dxf(context, Path(self.filepath), self.prepare, self.unit, warnings, self.engine)
         except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Import xatosi: {e}")
             return {"CANCELLED"}
