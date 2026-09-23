@@ -1258,7 +1258,7 @@ Fayllar: `server/ges_server/monitoring/twin.py`, yangi `monitoring/calibration.p
 Qabul mezoni: sintetik ma'lumotda kalibrovka ma'lum parametrni tiklaydi (test).
 Bog'liqlik: A1, D2.
 
-### I2 — Holat baholash va ortiqcha o'lchovlarni solishtirish ✅
+### I2 — Holat baholash va ortiqcha o'lchovlarni solishtirish ✅ (`09151ac`)
 
 Muammo: o'lchovlar orasidagi fizik bog'liqlik ishlatilmaydi. Sarfni sath + zatvor holatidan
 baholab, sarf o'lchagichi bilan solishtirish mumkin — bu ham yomon ma'lumotni aniqlaydi, ham
@@ -1275,7 +1275,7 @@ Fayllar: yangi `server/ges_server/monitoring/estimator.py`, `monitoring/twin.py`
 Qabul mezoni: bitta sensor "qotganda" holat baholovchi uni aniqlaydi va o'rnini bosadi (test).
 Bog'liqlik: A1, I1.
 
-### I3 — Model validatsiya yozuvlari
+### I3 — Model validatsiya yozuvlari ✅
 
 Muammo: saqlangan validatsiya hisoboti yo'q (model va o'lchov, qabul mezonlari, amal qilish
 muddati, imzo). Bunday yozuvsiz gidrotexnik xavfsizlik muhandisi egizak natijasiga tayanmaydi.

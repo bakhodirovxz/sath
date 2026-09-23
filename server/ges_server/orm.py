@@ -980,6 +980,36 @@ class CalibrationRun(Base):
     author: Mapped[User | None] = relationship()
 
 
+class ValidationRecord(Base):
+    """Egizak modelining validatsiya yozuvi (I3): qaysi model versiyasi va kalibrovka, qaysi davr,
+    qanday qabul mezoni, o'lchangan ko'rsatkichlar, verdikt, imzo va amal qilish muddati."""
+
+    __tablename__ = "validation_records"
+    __table_args__ = (Index("ix_validation_project", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("versions.id", ondelete="SET NULL"), nullable=True
+    )
+    calibration_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("calibration_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    validated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    window_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_to: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    checks: Mapped[list] = mapped_column(JSON, default=list)
+    verdict: Mapped[str] = mapped_column(String(8), default="fail")  # pass | fail
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiry_notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    author: Mapped[User] = relationship()
+
+
 class Spectrum(Base):
     """Holat monitoringi signali (H3, ISO 13374 DA bloki natijasi): spektr, envelope-spektr, orbita yoki
     to'lqin shakli. Vaqt qatori emas — alohida jadval: bitta o'lchov = chastota/amplituda massivi

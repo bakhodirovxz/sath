@@ -287,7 +287,7 @@ export default function DashboardPage() {
           )}
         </div>
         </>)}
-        {section === "twin" && <ErrorBoundary name="Raqamli egizak"><TwinPanel projectId={pid} canRun={canEdit} /></ErrorBoundary>}
+        {section === "twin" && <ErrorBoundary name="Raqamli egizak"><TwinPanel projectId={pid} canRun={canEdit} canApprove={project?.my_role === "approver"} /></ErrorBoundary>}
         {section === "health" && <ErrorBoundary name="Sog'liq"><HealthPanel projectId={pid} sensors={sensors} canEdit={canEdit} canOperate={canOperate} /></ErrorBoundary>}
         {section === "whatif" && <ErrorBoundary name="Optimal rejim"><WhatIfPanel projectId={pid} /></ErrorBoundary>}
         {section === "forecast" && <ErrorBoundary name="Toshqin prognozi"><ForecastPanel projectId={pid} /></ErrorBoundary>}

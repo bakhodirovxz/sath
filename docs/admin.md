@@ -167,6 +167,27 @@ yangilanadi, ota kod bo'yicha bog'lanadi (bo'sh bo'lsa koddan: komponent → usk
 `GET /api/kks/systems` — GES uchun KKS tizim kalitlari (MAA turbina, MKA generator, BAT transformator, LAB
 bosimli quvur, HAD suv olish, …).
 
+## Model validatsiyasi (I3)
+
+Kalibrovka modelni ma'lumotga moslashtiradi, validatsiya esa **qaror**: model qaysi davr ma'lumotida,
+qanday qabul mezoni bilan, kim tomonidan va qachongacha ishonchli deb tan olindi. Egizak javobida
+`validation.status` bo'ladi: `validated` / `expired` / `failed` / `unvalidated`, va interfeysda
+egizak sarlavhasida belgisi ko'rinadi.
+
+**Qabul mezonlari** (standart, loyihada o'zgartiriladi va yozuvda saqlanadi): qoldiq RMSE ≤
+o'lchanayotgan agregatlar nominal quvvatining 2 % i, |siljish| ≤ 1 %, kamida 72 ta ishlagan soat;
+amal qilish muddati 180 kun. Mezon o'lchanayotgan agregatlarga nisbatan olinadi — modelda uch agregat
+bo'lib bittasi o'lchanayotgan bo'lsa, mezon yumshab ketmasligi uchun.
+
+**Imzolash** — `POST /api/projects/{id}/validation` (faqat **tasdiqlovchi**, approver): bu muhandislik
+qarori. Mezon bajarilmasa yozuv `fail` verdikti bilan saqlanadi (yashirilmaydi). Holat va tarix —
+`GET /api/projects/{id}/validation`.
+
+**Qachon amal qilmay qoladi:** muddat tugaganda; oxirgi yozuv `fail` bo'lsa; model versiyasi
+o'zgarganda (yozuvdagi versiya bilan joriy versiya farq qilsa) — bu holda «qayta validatsiya kerak»
+deb ko'rsatiladi. Muddat tugaganda soatlik fon vazifasi muhandis va yuqori rollarga bir marta
+bildirishnoma yuboradi.
+
 ## Holat baholash va ortiqchalik (I2)
 
 **Ortiqchalik.** Bitta kattalikning bir nechta manbasi solishtiriladi: umumiy quvvat sensori ↔

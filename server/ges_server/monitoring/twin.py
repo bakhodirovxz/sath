@@ -184,6 +184,13 @@ def _live(s: Sensor | None) -> float | None:
     return float(s.last_value)
 
 
+def _validation_status(db: Session, project: Project) -> dict:
+    """Validatsiya holati (I3) — aylanma importdan qochish uchun funksiya ichida import qilinadi."""
+    from . import validation
+
+    return validation.status(db, project)
+
+
 def compute(db: Session, project: Project, overrides: dict | None = None) -> dict:
     """Joriy egizak holati (saqlamaydi). units: [{name, measured_mw, expected_mw, deviation_pct,
     efficiency, flow_m3s}], head_gross_m, head_net_m, status.
@@ -291,6 +298,7 @@ def compute(db: Session, project: Project, overrides: dict | None = None) -> dic
         }
         if cal
         else None,
+        "validation": _validation_status(db, project),
         "model_note": (
             "Model kalibrovkalanmagan — «og'ish %» degradatsiya bilan model xatosini qo'shib ko'rsatadi"
             if not cal

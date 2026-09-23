@@ -10,12 +10,13 @@ import { dialogs } from "../../ui/dialogs";
 import { AssetHistoryDialog } from "./CmmsPanels";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { EstimatorPanel } from "./EstimatorPanel";
+import { VAL_CLS, VAL_TXT, ValidationPanel } from "./ValidationPanel";
 
 /* Dispetcher paneli bo'limlari: raqamli egizak, boshqaruv buyruqlari, smena jurnali, aktivlar. */
 
 
 /** Raqamli egizak: jonli o'lchov ↔ model bo'yicha kutilgan quvvat, og'ish, FIK. */
-export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: boolean }) {
+export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId: number; canRun: boolean; canApprove?: boolean }) {
   const [t, setT] = useState<TwinState | null>(null);
   const [err, setErr] = useState("");
   const load = useCallback(() => api.twin(projectId).then(setT).catch((e) => setErr(e.message)), [projectId]);
@@ -25,6 +26,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
     <>
     <div className="dash-block">
       <div className="row"><b>Raqamli egizak</b><span className="muted small">jonli o'lchov ↔ BIM model (Pset_GES, turbina FIK egri chizig'i)</span><span className="grow" />
+        {t.validation && <span className={`badge ${VAL_CLS[t.validation.status]}`} title={t.validation.note || "Model validatsiyasi"} data-testid="twin-validation">{VAL_TXT[t.validation.status]}</span>}
         {canRun && <button className="btn sm" onClick={() => api.twinRun(projectId).then(setT).catch((e) => setErr(e.message))}>Hozir hisoblash</button>}
       </div>
       {t.status !== "ok" ? (
@@ -78,6 +80,7 @@ export function TwinPanel({ projectId, canRun }: { projectId: number; canRun: bo
       {(!t.safety || t.safety.length === 0) && <p className="dim small" style={{ marginTop: 6 }}>Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
     </div>
       <EstimatorPanel projectId={projectId} canEdit={canRun} />
+      <ValidationPanel projectId={projectId} canApprove={canApprove} />
       <CalibrationPanel projectId={projectId} canEdit={canRun} />
     </>
   );

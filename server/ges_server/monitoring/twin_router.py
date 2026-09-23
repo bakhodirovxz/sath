@@ -10,8 +10,17 @@ from pydantic import BaseModel, Field
 
 from .. import audit
 from ..auth.deps import DB, CurrentUser, require_project_role
-from ..orm import Asset, AssetDocument, CalibrationRun, Project, Role, Sensor, utcnow
-from . import calibration, estimator, health, kks, live, twin
+from ..orm import (
+    Asset,
+    AssetDocument,
+    CalibrationRun,
+    Project,
+    Role,
+    Sensor,
+    ValidationRecord,
+    utcnow,
+)
+from . import calibration, estimator, health, kks, live, twin, validation
 
 router = APIRouter(prefix="/api", tags=["twin"])
 
@@ -161,6 +170,75 @@ def estimator_state(project: ViewerProject, db: DB):
 def estimator_run(project: EngineerProject, db: DB):
     """Bahoni hisoblab virtual sensorlarga yozish (TWIN.EST.LEVEL, TWIN.CHK.*)."""
     return estimator.run(db, project)
+
+
+# --------------------------------------------------------------- I3: validatsiya yozuvlari
+
+
+class ValidationIn(BaseModel):
+    days: int = Field(default=30, ge=1, le=365, description="baholash oynasi, kun")
+    criteria: dict = Field(default_factory=dict, description="qabul mezonlari (bo'sh — standart)")
+    note: str = Field(default="", max_length=1000)
+
+
+def _val_out(r: ValidationRecord) -> dict:
+    return {
+        "id": r.id,
+        "project_id": r.project_id,
+        "version_id": r.version_id,
+        "calibration_run_id": r.calibration_run_id,
+        "validated_by": r.author.username if r.author else None,
+        "created_at": live._aware(r.created_at),
+        "window_from": live._aware(r.window_from),
+        "window_to": live._aware(r.window_to),
+        "criteria": r.criteria or {},
+        "metrics": r.metrics or {},
+        "checks": list(r.checks or []),
+        "verdict": r.verdict,
+        "valid_until": live._aware(r.valid_until) if r.valid_until else None,
+        "note": r.note,
+    }
+
+
+@router.get("/projects/{project_id}/validation")
+def validation_state(project: ViewerProject, db: DB, limit: int = 20):
+    """Validatsiya holati, hozirgi baho (mezonlarga moslik) va yozuvlar tarixi."""
+    rows = (
+        db.query(ValidationRecord)
+        .filter_by(project_id=project.id)
+        .order_by(ValidationRecord.id.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    return {
+        "status": validation.status(db, project),
+        "evaluation": validation.evaluate(db, project),
+        "records": [_val_out(r) for r in rows],
+    }
+
+
+@router.post("/projects/{project_id}/validation", status_code=201)
+def validation_create(
+    project: Annotated[Project, Depends(require_project_role(Role.approver))],
+    body: ValidationIn,
+    user: CurrentUser,
+    db: DB,
+):
+    """Validatsiya yozuvini imzolash — faqat tasdiqlovchi (approver): bu muhandislik qarori,
+    oddiy sozlama emas. Mezon bajarilmasa yozuv `fail` verdikti bilan saqlanadi."""
+    rec = validation.create(db, project, user.id, days=body.days, criteria=body.criteria, note=body.note)
+    audit.log(
+        db,
+        user_id=user.id,
+        action="twin.validation",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        detail={"verdict": rec.verdict, "metrics": rec.metrics, "days": body.days},
+    )
+    db.commit()
+    db.refresh(rec)
+    return _val_out(rec)
 
 
 # --------------------------------------------------------------- I1: model kalibrovkasi
