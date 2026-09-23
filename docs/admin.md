@@ -345,7 +345,8 @@ va **Uniclass 2015** (Ss_/Pr_/En_ kodlari). Webdan yaratilgan/import qilingan ha
 klassifikatsiyalaydi (`POST /api/versions/{id}/classify`). Versiya tafsilotida kodlar bo'yicha soni.
 Federatsiya (loyiha sahifasi): bir necha model bitta koordinata fazosida — a'zo bo'yicha siljish (m) va
 burilish; «3D + to'qnashuvlar» birlashtirilgan IFC ni ko'rsatadi va faqat modellar orasidagi to'qnashuvlarni
-ro'yxatlaydi (`GET /api/federations/{id}/clashes`, kesh). To'qnashuv tekshiruvi endi keng bosqich panjara
+ro'yxatlaydi (`GET /api/federations/{id}/clashes`, kesh; keshda bo'lmasa navbatga — 202 `{job_id, status}`
++ `Retry-After`, tayyor bo'lgach 200; `tolerance` 0–1 m). To'qnashuv tekshiruvi endi keng bosqich panjara
 indeksi bilan — element soni cheklanmaydi (ilgari 1500 dan keyin faqat bbox).
 
 ## Georeferensiya (CRS)

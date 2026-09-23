@@ -6,7 +6,7 @@ from pathlib import Path
 
 import ifcopenshell
 import numpy as np
-from conftest import upload
+from conftest import get_ready, upload
 from ges_server.models import classification, geometry
 
 SAMPLE = Path(__file__).resolve().parents[2] / "docs" / "samples" / "namuna_ges_v2.ifc"
@@ -100,7 +100,7 @@ def test_federation_two_models_clash(client, users):
     assert r.status_code == 201, r.text
     fed = r.json()
     assert [m["version_id"] for m in fed["members"]] == [va["id"], vb["id"]] and fed["members"][1]["dx"] == 5.0
-    rep = client.get(f"/api/federations/{fed['id']}/clashes", headers=users["viewer"]).json()
+    rep = get_ready(client, f"/api/federations/{fed['id']}/clashes", users["viewer"]).json()  # OPS-03: 202 → 200
     assert rep["hard"] > 0 and rep["cross_only"] is True and rep["exact"] is True
     c = rep["clashes"][0]
     assert {c["a"]["model"], c["b"]["model"]} == {"Togon v1", "Zal v1"}
@@ -110,7 +110,7 @@ def test_federation_two_models_clash(client, users):
     body2 = {**body, "members": [{"model_id": ma}, {"model_id": mb, "dx": 1000.0}]}
     r = client.put(f"/api/federations/{fed['id']}", json=body2, headers=users["engineer"])
     assert r.status_code == 200
-    rep2 = client.get(f"/api/federations/{fed['id']}/clashes", headers=users["viewer"]).json()
+    rep2 = get_ready(client, f"/api/federations/{fed['id']}/clashes", users["viewer"]).json()
     assert rep2["hard"] == 0 and rep2["possible"] == 0
     # birlashtirilgan IFC: ikki model elementlari, siljitilgan
     r = client.get(f"/api/federations/{fed['id']}/ifc", headers=users["viewer"])

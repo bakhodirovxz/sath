@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -990,14 +990,34 @@ def get_federation(fed_id: int, user: CurrentUser, db: DB):
 
 
 @router.get("/federations/{fed_id}/clashes")
-def federation_clashes(fed_id: int, user: CurrentUser, db: DB, tolerance: float = 0.0, cross_only: bool = True):
-    """Federatsiya ustida to'qnashuvlar (G5): a'zolar siljitilgan holda, default faqat modellar orasida; kesh."""
+def federation_clashes(
+    fed_id: int,
+    user: CurrentUser,
+    db: DB,
+    tolerance: float = Query(0.0, ge=0.0, le=1.0, description="AABB zaxirasi, m (katta qiymat juftlar sonini portlatadi)"),
+    cross_only: bool = True,
+):
+    """Federatsiya ustida to'qnashuvlar (G5): a'zolar siljitilgan holda, default faqat modellar orasida; kesh.
+    OPS-03: keshda bo'lmasa so'rov ichida hisoblanmaydi — navbatga (`fedclash`), 202 `{job_id, status}` +
+    `Retry-After`; tayyor bo'lgach shu URL 200. Yangi hisob — foydalanuvchi bo'yicha `rate_derived_per_min`
+    (429). A'zo/fayl topilmasa yoki hisob yiqilgan bo'lsa — 409."""
     fed = _get_fed(db, fed_id, user, Role.viewer)
     try:
         resolved = federation.resolve_members(db, fed.members)
-        return federation.cached_clashes(resolved, tolerance, cross_only)
+        for m in resolved:
+            storage.resolve(m["sha"])
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    data = federation.peek_clashes(resolved, tolerance, cross_only)
+    if data is None:
+        key = federation.clash_cache_key(resolved, tolerance, cross_only)
+        return _accepted(
+            _derived_job(
+                db, user, kind="fedclash", payload={"members": resolved, "tolerance": tolerance, "cross_only": cross_only},
+                key=f"fedclash:{key}", project_id=fed.project_id, failed_status=status.HTTP_409_CONFLICT,
+            )
+        )
+    return data
 
 
 @router.get("/federations/{fed_id}/ifc")
