@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DICTS, MESSAGE_KEYS, hasKey, setLocale, t, tEnum } from "./index";
-import { alarmLabel, commandStatusLabel, priorityLabel, roleLabel, sensorKindLabel, stateLabel } from "./labels";
+import { alarmLabel, alarmModeLabel, commandStatusLabel, priorityLabel, roleLabel, sensorKindLabel, stateLabel } from "./labels";
 import { latnToCyrl } from "./translit";
 
 afterEach(() => setLocale("uz-Latn"));
@@ -50,6 +50,7 @@ describe("enum yorliqlari: xom inglizcha qiymat chiqmaydi", () => {
     expect(alarmLabel("stale")).toBe("aloqa yo'q"); // yagona nom ("uzilgan" emas)
     expect(commandStatusLabel("pending")).toBe("navbatda");
     expect(roleLabel("shift_supervisor")).toBe("Smena boshlig'i");
+    expect(alarmModeLabel("normal")).toBe("me'yorida"); // L1/L3 da inglizcha "normal" sizmaydi
     expect(sensorKindLabel("power")).toBe("Quvvat");
     expect(stateLabel("changes_requested")).toBe("O'zgartirish so'ralgan");
     expect(tEnum("priority", undefined)).toBe("—");

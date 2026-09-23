@@ -12,7 +12,7 @@ import ControlBlock from "./ControlBlock";
 import { AREAS, ageSeconds, areaOf, fmtAge, sortByAlarm, unitOf } from "./model";
 import { can } from "../../api/permissions";
 import AlarmMark from "../../ui/AlarmMark";
-import { priorityLabel } from "../../i18n/labels";
+import { alarmModeLabel, priorityLabel } from "../../i18n/labels";
 import { unackedSensorIds } from "../../store/live";
 
 /** Level 3 — faceplate: bitta sensor (yoki agregat) uchun joriy qiymat, chegaralar (LL/L/H/HH), sifat, yosh,
@@ -96,7 +96,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
               {limits.map((l) => <tr key={l.label}><td>{l.label}</td><td className="mono">{l.v == null ? "—" : `${l.v} ${s.unit}`}</td></tr>)}
               <tr><td>O'lik zona / kechikish</td><td className="mono">{s.deadband ?? 0} · {s.on_delay_s ?? 0}s / {s.off_delay_s ?? 0}s</td></tr>
               {s.roc_limit_per_min != null && <tr><td>ROC chegarasi</td><td className="mono">{s.roc_limit_per_min} /daq</td></tr>}
-              <tr><td>Alarm rejimi</td><td>{s.alarm_mode ?? "normal"}{s.alarm_mode_reason ? ` — ${s.alarm_mode_reason}` : ""}{s.alarm_mode_until ? ` (${fmtDate(s.alarm_mode_until)} gacha)` : ""}{s.suppressed ? " · shart bo'yicha bostirilgan" : ""}</td></tr>
+              <tr><td>Alarm rejimi</td><td>{alarmModeLabel(s.alarm_mode ?? "normal")}{s.alarm_mode_reason ? ` — ${s.alarm_mode_reason}` : ""}{s.alarm_mode_until ? ` (${fmtDate(s.alarm_mode_until)} gacha)` : ""}{s.suppressed ? " · shart bo'yicha bostirilgan" : ""}</td></tr>
             </tbody>
           </table>
           <div className="row wrap mt-8 gap-6">

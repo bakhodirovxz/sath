@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import ErrorBoundary from "../../ui/ErrorBoundary";
 import { Link, useNavigate } from "react-router-dom";
 import type { Sensor } from "../../api/client";
+import { alarmModeLabel } from "../../i18n/labels";
 import { fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
 import AlarmMark from "../../ui/AlarmMark";
@@ -92,7 +93,7 @@ function Body() {
               const st = sm.worst ? alarmStyle(sm.worst.alarm, sm.worst.priority) : null;
               return (
                 <Link key={a.id} to={opsPath(pid, "area", a.id)} className={`area-card ${st?.priority ? `alarm prio-${st.priority}` : ""}`} data-testid="area-card">
-                  <div className="row"><b>{a.title}</b><span className="grow" />{sm.worst ? <span className="row gap-4"><AlarmMark state={sm.worst.alarm} priority={sm.worst.priority} showCode={false} unacked={a.sensors.some((x) => unacked.has(x.id) && x.alarm !== "ok")} /><b className="mono">{sm.total}</b></span> : <span className="state-tag">normal</span>}</div>
+                  <div className="row"><b>{a.title}</b><span className="grow" />{sm.worst ? <span className="row gap-4"><AlarmMark state={sm.worst.alarm} priority={sm.worst.priority} showCode={false} unacked={a.sensors.some((x) => unacked.has(x.id) && x.alarm !== "ok")} /><b className="mono">{sm.total}</b></span> : <span className="state-tag">{alarmModeLabel("normal")}</span>}</div>
                   <div className="dim small">{a.sensors.length} sensor{sm.stale ? ` · ${sm.stale} aloqasiz` : ""}</div>
                 </Link>
               );

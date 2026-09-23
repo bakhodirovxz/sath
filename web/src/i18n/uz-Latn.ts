@@ -116,7 +116,7 @@ export const uzLatn = {
   "enum.isa.out_of_service": "xizmatdan tashqari",
   "enum.isa.suppressed": "bostirilgan",
   // --- Enum: alarm rejimi ---
-  "enum.alarmMode.normal": "normal",
+  "enum.alarmMode.normal": "me'yorida",
   "enum.alarmMode.shelved": "vaqtincha o'chirilgan (shelved)",
   "enum.alarmMode.out_of_service": "xizmatdan tashqari (OOS)",
   // --- Enum: o'lchov sifati ---
