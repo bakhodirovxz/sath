@@ -121,11 +121,12 @@ def run(ctx):
     _wait(ops_sim._poll_factory(ops_twin.SEIS_META, job["id"], lambda r: sim_anim.animate_seismic(bpy.context, r, scale=20.0)), s)
     assert bpy.context.scene.frame_end == 16 * 24
     lfc = [f for f in _fcurves(dam) if f.data_path == "location"]
-    assert lfc and len(lfc[0].keyframe_points) == 384
+    assert lfc and len(lfc[0].keyframe_points) == 384, len(lfc[0].keyframe_points) if lfc else "to'g'on siljish keyframelari yo'q"
     xs = [k.co[1] for k in lfc[0].keyframe_points]
     assert max(abs(x - x0) for x in xs) > 0.05, max(abs(x - x0) for x in xs)  # ×20 da ≥ 5 sm
     assert dam.get("sath_base_loc") is not None
     assert [f for f in _fcurves(ges_objects.by_role("gen:2")) if f.data_path == "location"], "zal ichidagilar ham tebranadi"
+    assert [f for f in _fcurves(ges_objects.by_role("penstock:1")) if f.data_path == "location"], "bosh quvur ham tebranadi"
     bpy.ops.sath.sim_clear_anim()
     assert abs(dam.location.x - x0) < 1e-9 and dam.get("sath_base_loc") is None
     print("TWIN:", len(out), "obyekt; 5 simulyatsiya animatsiyasi OK; natija:", [(r.name, r.col2) for r in s.sim_results][:3])

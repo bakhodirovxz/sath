@@ -326,13 +326,6 @@ def animate_transformer(context, result: dict, fps: int = 24, limit: int = 720) 
 # --- seismic --------------------------------------------------------------------------------------------------------
 
 
-_STRUCT_ROLES = {
-    "To'g'on": ("dam", "intake", "spillway"),
-    "Mashina zali": ("powerhouse", "controlroom", "unit:", "gen:", "draft:", "transformer:", "tailrace"),
-    "Bosh quvur (tayanch)": ("penstock:",),
-}
-
-
 def _objects_for(prefixes) -> list:
     out = []
     for o in bpy.data.objects:
@@ -346,7 +339,7 @@ def animate_seismic(context, result: dict, scale: float = 20.0, fps: int = 24, d
     n = int(duration_s * fps)
     _frames(context, n, fps)
     for st in result.get("structures", []):
-        roles = _STRUCT_ROLES.get(st["name"])
+        roles = physics.seismic_struct_roles(st.get("name", ""))
         if not roles:
             continue
         sa, T = float(st.get("sa_g", 0.0)), float(st.get("period_s", 0.3))

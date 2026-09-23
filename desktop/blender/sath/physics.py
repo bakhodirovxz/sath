@@ -157,6 +157,28 @@ def envelope(t: float, rise: float = 2.0, plateau: float = 8.0, decay: float = 6
     return math.exp(-3.0 * (t - rise - plateau) / decay) if t < rise + plateau + decay else 0.0
 
 
+# ges_sim.seismic natijasidagi inshoot nomi (boshlanishi) → egizak rollari. Nomlar sim tomonda o'zgarsa (J3 da
+# "To'g'on" ikki qatorga bo'lindi) aniq moslik jim ishlamay qolardi — shuning uchun prefiks bo'yicha.
+SEISMIC_STRUCT_ROLES = (
+    ("To'g'on", ("dam", "intake", "spillway")),
+    ("Mashina zali", ("powerhouse", "controlroom", "unit:", "gen:", "draft:", "transformer:", "tailrace")),
+    ("Bosimli quvur", ("penstock:",)),
+    ("Bosh quvur", ("penstock:",)),
+)
+# k_h·W — barqarorlik uchun pseudo-statik koeffitsient, dinamik javob emas: siljish elastik S_e(T) qatoridan olinadi
+SEISMIC_SKIP = ("pseudo-statik",)
+
+
+def seismic_struct_roles(name: str) -> tuple[str, ...] | None:
+    """Seysmik natija qatori nomi → animatsiya qilinadigan rollar (None — animatsiya qilinmaydi)."""
+    if any(k in name for k in SEISMIC_SKIP):
+        return None
+    for prefix, roles in SEISMIC_STRUCT_ROLES:
+        if name.startswith(prefix):
+            return roles
+    return None
+
+
 def ground_motion(sa_g: float, period_s: float, t: float, scale: float = 1.0) -> float:
     """u(t) siljish (m) — vizual ko'paytirgich scale bilan."""
     if period_s <= 0:
