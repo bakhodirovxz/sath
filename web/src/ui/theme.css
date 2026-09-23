@@ -596,7 +596,7 @@ tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); 
 .alarm-strip { display: inline-flex; gap: var(--sp-2-5); align-items: center; padding: var(--sp-0-5) var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); text-decoration: none; }
 .alarm-strip:hover { text-decoration: none; background: var(--surface-hover); }
 .alarm-strip .zero { color: var(--text-dim); font-family: var(--mono); font-weight: 700; }
-.live-dot { font-size: var(--fs-sm); color: var(--text-muted); }
+.live-dot { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--text-muted); }
 .live-dot.stale { color: var(--attention); font-weight: 600; }
 .live-dot.offline { color: var(--danger); font-weight: 700; }
 .mimic-editor { margin-top: var(--sp-2); }
@@ -678,7 +678,6 @@ tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); 
 .conn-banner.offline { padding: var(--sp-2-5) var(--sp-4); background: var(--danger-strong); color: var(--on-danger); font-size: var(--fs-body); }
 .conn-banner.offline .conn-title { display: block; font-size: var(--fs-lg); letter-spacing: var(--tracking-caps); }
 .conn-banner.stale { background: var(--attention-bg); color: var(--text); border-bottom: 1px solid var(--attention); font-size: var(--fs-sm); }
-.live-dot { display: inline-flex; align-items: center; gap: var(--sp-1); }
 
 /* Doimiy alarm banneri (UX-03): neytral panel, chap chiziq — eng yuqori ustuvorlik rangi; rang/shakl belgida */
 .alarm-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); padding: var(--sp-1-5) var(--sp-4); background: var(--panel); border-bottom: 1px solid var(--line-strong); border-left: 6px solid var(--alarm-low); font-size: var(--fs-body); color: var(--text); }
