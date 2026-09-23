@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -328,9 +329,34 @@ def _read_dxf(path: Path):
         return doc
 
 
+@dataclass
+class DxfInfo:
+    """_load_dxf natijasi haqida (CAD-05: global o'rniga natija bilan qaytadi — parallel importlar xavfsiz).
+    offset — 2D chizma (0,0) ga ko'chirilgan siljish (chizma birligida), extent — chizma o'lchami."""
+
+    offset: tuple[float, float] | None = None
+    extent: float | None = None
+    linework: bool = False
+
+
+@dataclass
+class ImportInfo:
+    """load_objects_ex natijasi: birlik, o'q, DXF ma'lumoti, ogohlantirishlar (import javobida qaytadi)."""
+
+    unit: str = "m"
+    scale: float = 1.0
+    unit_note: str = ""
+    y_up: bool = False
+    dxf: DxfInfo | None = None
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 def _load_dxf(
     path: Path, extrude_m: float = 0.0
-) -> list[tuple[str, np.ndarray, np.ndarray, tuple | None]]:
+) -> tuple[list[tuple[str, np.ndarray, np.ndarray, tuple | None]], DxfInfo]:
     """DXF (AutoCAD): 3DFACE, POLYLINE (polyface/polymesh), MESH, SOLID → uchburchaklar; yopiq 2D konturlar
     (LWPOLYLINE/POLYLINE/CIRCLE) extrude_m > 0 bo'lsa balandlikka ko'tariladi. Qatlam (layer) = obyekt nomi;
     3DSOLID/REGION (ACIS) o'qilmaydi — AutoCAD da 3DSOLID ni MESH ga aylantiring (MESHSMOOTH / EXPORT → FBX/OBJ)."""
@@ -417,12 +443,10 @@ def _load_dxf(
         except Exception:  # noqa: BLE001
             col = None
         out.append((name, v, f, col))
+    info = DxfInfo()
     if offset is not None:
-        _LAST_DXF_INFO.update(offset=offset[:2], extent=offset[2], linework=True)
-    return out
-
-
-_LAST_DXF_INFO: dict = {}  # oxirgi _load_dxf: {"offset": (x, y), "extent": float, "linework": bool}
+        info.offset, info.extent, info.linework = (offset[0], offset[1]), offset[2], True
+    return out, info
 
 
 _ACI_NAMES = {
@@ -574,7 +598,23 @@ def load_objects(
     extrude_m: float = 0.0,
 ) -> list[dict]:
     """Fayl → [{name, kind, ifc_class, psets, color, mesh:{vertices, faces}, transform}] (drafts.build formati)."""
+    return load_objects_ex(path, unit, y_up, merge, auto_unit, classify_names, extrude_m)[0]
+
+
+def load_objects_ex(
+    path: Path,
+    unit: str = "m",
+    y_up: bool = False,
+    merge: bool = False,
+    auto_unit: bool = True,
+    classify_names: bool = True,
+    extrude_m: float = 0.0,
+) -> tuple[list[dict], ImportInfo]:
+    """load_objects + import haqida ma'lumot (ImportInfo) — holat global o'zgaruvchida emas, natija bilan."""
     import trimesh
+
+    info = ImportInfo()
+    dxf_info: DxfInfo | None = None
 
     with tempfile.TemporaryDirectory(prefix="ges-conv-") as tmp:
         if path.suffix.lower() == ".zip":
@@ -625,17 +665,15 @@ def load_objects(
                     )
                 )
         elif src.suffix.lower() == ".dxf":
-            _LAST_DXF_INFO.clear()
-            for name, v, f, col in _load_dxf(
-                src, extrude_m / scale
-            ):  # ko'tarish metrda → chizma birligi
+            loaded_dxf, dxf_info = _load_dxf(src, extrude_m / scale)  # ko'tarish metrda → chizma birligi
+            for name, v, f, col in loaded_dxf:
                 meshes.append((name, trimesh.Trimesh(vertices=v, faces=f, process=False), col))
-            if _LAST_DXF_INFO.get("linework") and auto_unit and unit == "mm":
+            if dxf_info.linework and auto_unit and unit == "mm":
                 # AutoCAD odatiy $INSUNITS=mm, lekin ko'p chizmalar metrda chiziladi: varaq (ramka) 200 mm dan
                 # kichik bo'lishi mumkin emas → bu metr
-                if _LAST_DXF_INFO.get("extent", 1e9) < 200:
+                if (dxf_info.extent or 1e9) < 200:
                     unit, scale = "m", 1.0
-                    _LAST_DXF_INFO["unit_guess"] = "m (chizma 200 mm dan kichik — metr deb olindi)"
+                    info.unit_note = "m (chizma 200 mm dan kichik — metr deb olindi)"
         else:
             loaded = trimesh.load(str(src), force="scene" if not merge else "mesh", process=False)
         if isinstance(loaded, trimesh.Scene):
@@ -681,17 +719,13 @@ def load_objects(
                 "Birlik": unit,
                 **(
                     {
-                        "Asl_siljish_X": round(float(_LAST_DXF_INFO["offset"][0]), 3),
-                        "Asl_siljish_Y": round(float(_LAST_DXF_INFO["offset"][1]), 3),
+                        "Asl_siljish_X": round(float(dxf_info.offset[0]), 3),
+                        "Asl_siljish_Y": round(float(dxf_info.offset[1]), 3),
                     }
-                    if src.suffix.lower() == ".dxf" and _LAST_DXF_INFO.get("offset")
+                    if dxf_info is not None and dxf_info.offset
                     else {}
                 ),
-                **(
-                    {"Birlik_izoh": _LAST_DXF_INFO["unit_guess"]}
-                    if src.suffix.lower() == ".dxf" and _LAST_DXF_INFO.get("unit_guess")
-                    else {}
-                ),
+                **({"Birlik_izoh": info.unit_note} if info.unit_note else {}),
             }
         }
         if pset == "Pset_GES_Dam":
@@ -718,7 +752,8 @@ def load_objects(
                 "mesh": {"vertices": v.round(5).tolist(), "faces": f.tolist()},
             }
         )
-    return out
+    info.unit, info.scale, info.y_up, info.dxf = unit, scale, bool(y_up), dxf_info
+    return out, info
 
 
 # --- IFC → glTF / OBJ / STL (Blender, 3ds Max uchun) ---
