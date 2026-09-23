@@ -1,6 +1,7 @@
 """Sath server bilan ishlash — faqat standart kutubxona (FreeCAD ichidagi Python da qo'shimcha paket yo'q).
 
 FreeCAD dan mustaqil: pytest bilan alohida test qilinadi.
+Kanonik manba: common/sath_common/server_client.py; nusxalar desktop/build/sync_blender.py bilan yangilanadi (qo'lda tahrirlamang).
 """
 
 from __future__ import annotations

@@ -56,8 +56,8 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 - `sath/` — extension (`blender_manifest.toml`, `wheels/`)
   - `fc_engine.py` FreeCAD yuklash + `ges_build` · `ifc.py` Bonsai ko'prigi · `flows.py` bpy siz server oqimlari
   - `ops_*.py` operatorlar · `ui.py` panellar/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
-  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`) va `wb/ges_objects.py` — **workbench nusxasi**
-    (`python desktop/build/sync_blender.py`, CI `--check`)
+  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`) — **`common/sath_common`
+    nusxasi**, `wb/ges_objects.py` — workbench nusxasi (`python desktop/build/sync_blender.py`, CI `--check`)
 - Testlar: `pytest desktop/tests/test_sath_pure.py desktop/tests/test_sath_flows.py` (Blender siz, real server);
   `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 9 ta sinov, Bonsai + FreeCAD kerak).
 

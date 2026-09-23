@@ -15,6 +15,8 @@ oddiy chiziqlarga aylantiramiz:
 
 Natija — vaqtinchalik DXF; FreeCAD uni «birlashtirilgan shakllar» rejimida (qatlam+rang bo'yicha bitta
 obyekt) ochadi — tez va ranglar saqlanadi.  ezdxf topilmasa (vendor papkasi yo'q) asl fayl qaytariladi.
+
+Kanonik manba: common/sath_common/dxf_prepare.py; nusxalar desktop/build/sync_blender.py bilan yangilanadi (qo'lda tahrirlamang).
 """
 
 from __future__ import annotations

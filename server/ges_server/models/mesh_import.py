@@ -423,7 +423,7 @@ def _load_dxf(
         # 3D yuza yo'q — oddiy 2D chizma (plan/kesim): chiziqlarni yupqa lentalar sifatida qatlam bo'yicha
         # elementlarga aylantiramiz, shunda chizma 3D ko'rgichda tekis varaq bo'lib ko'rinadi
         try:  # bloklar, o'lchamlar, matn (harf konturlari), shtrix, chiqish → oddiy chiziqlar (AutoCAD ko'rinishi)
-            from .dxf_flatten import flatten
+            from .dxf_prepare import flatten
 
             flatten(doc)
         except Exception:  # noqa: BLE001 — tekislash o'tmasa xom chiziqlar bilan davom

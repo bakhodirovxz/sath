@@ -13,6 +13,20 @@ import sync_blender  # noqa: E402
 def test_shared_is_synced():
     assert sync_blender.check() == [], "python desktop/build/sync_blender.py ni ishga tushiring"
 
+
+def test_common_copies_byte_identical_to_canonical():
+    """CODE-01: har umumiy modulning yagona manbasi common/sath_common; nusxalar (addon, workbench, server)
+    bayt-bayt bir xil — farq bo'lsa CI yiqiladi."""
+    pairs = sync_blender.copies()
+    dsts = {d.relative_to(ROOT).as_posix() for _, d in pairs}
+    for f in ("assimp_load.py", "dxf_prepare.py"):
+        assert f"server/ges_server/models/{f}" in dsts
+        assert f"desktop/GesWorkbench/ges_workbench/{f}" in dsts
+        assert f"desktop/blender/sath/shared/{f}" in dsts
+    for src, dst in pairs:
+        if src.parent == sync_blender.SRC:
+            assert src.read_bytes() == dst.read_bytes(), dst
+
 from sath import fc_engine  # noqa: E402
 
 

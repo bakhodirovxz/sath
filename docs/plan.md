@@ -118,12 +118,27 @@ BIM/
 │   ├── preset/         (user.cfg: dark theme, keymap, toolbars)
 │   ├── build/          (portable zip yig'ish, Inno Setup skripti)
 │   └── tests/          (freecadcmd headless)
+├── common/sath_common/ # umumiy sof Python modullar — yagona manba (CODE-01), nusxalari sync_blender.py bilan
 ├── sim/               # ges_sim paketi (umumiy)
 │   ├── ges_sim/ reservoir.py, turbine.py, penstock.py, cfd/, monitoring/
 │   └── tests/
 ├── deploy/            # docker-compose.yml, .env.example, backup.sh
 └── docs/              # o'rnatish, foydalanuvchi qo'llanmasi, API
 ```
+
+### Umumiy modullar (CODE-01) va `sath-common` wheel rejasi
+
+Hozir: `common/sath_common/` — `assimp_load`, `dxf_prepare`, `server_client`, `ifc_classes`, `cad_common` ning
+**yagona manbasi**. `python desktop/build/sync_blender.py` ularni Blender addoni (`sath/shared/`), FreeCAD
+workbench (`GesWorkbench/ges_workbench/`, legacy) va server (`server/ges_server/models/`) ga nusxalaydi; CI
+`--check` va `desktop/tests/test_sath_pure.py`, `server/tests/test_drafts.py` nusxa farq qilsa yiqiladi.
+Nusxani qo'lda tahrirlamang — faqat `common/sath_common` ni. `ges_objects.py` FreeCAD ga bog'liq, manbasi
+GesWorkbench (→ `sath/wb/`).
+
+Keyingi qadam (roadmap K1, alohida qaror — foydalanuvchi bilan kelishiladi): `common/` ga `pyproject.toml`,
+`sath-common` sof Python wheel (`py3-none-any`); server `pip install ./common`, Blender addoni wheel ni
+`blender_manifest.toml` `wheels` ga qo'shadi, `sync_blender.py` nusxalari va server dagi nusxalar olib tashlanadi.
+FreeCAD fork i arxivlanmaguncha workbench nusxasi qoladi.
 
 ### Ma'lumotlar modeli (asosiy jadvallar)
 

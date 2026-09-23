@@ -435,23 +435,21 @@ def test_import_dxf_3dface_and_extrude_and_dwg(client, users, model_id, tmp_path
     assert objs[0]["psets"]["Pset_GES_Import"]["Manba"] == "dwg"
 
 
-def test_dxf_flatten_copy_in_sync():
-    """server/…/dxf_flatten.py — desktop dxf_prepare.py ning nusxasi (sarlavhadan tashqari bir xil bo'lsin)."""
+def test_common_copies_identical_to_canonical():
+    """CODE-01: server dagi umumiy modullar — common/sath_common kanonik manbasining bayt-bayt nusxasi."""
     from pathlib import Path
 
-    here = Path(__file__).resolve()
-    desk = here.parents[2] / "desktop" / "GesWorkbench" / "ges_workbench" / "dxf_prepare.py"
-    srv = here.parents[1] / "ges_server" / "models" / "dxf_flatten.py"
-    if not desk.exists():
-        pytest.skip("desktop papkasi yo'q")
-
-    def body(p: Path) -> str:
-        s = p.read_text(encoding="utf-8")
-        return s[s.index("from __future__") :]
-
-    assert body(desk) == body(srv), (
-        "desktop/dxf_prepare.py va server/dxf_flatten.py farq qiladi — nusxalang"
-    )
+    root = Path(__file__).resolve().parents[2]
+    canon = root / "common" / "sath_common"
+    if not canon.is_dir():
+        pytest.skip("common/sath_common yo'q (faqat server obrazi)")
+    srv = root / "server" / "ges_server" / "models"
+    names = sorted(p.name for p in canon.glob("*.py") if (srv / p.name).exists())
+    assert {"assimp_load.py", "dxf_prepare.py"} <= set(names)
+    for n in names:
+        assert (srv / n).read_bytes() == (canon / n).read_bytes(), (
+            f"server/ges_server/models/{n} eskirgan — python desktop/build/sync_blender.py"
+        )
 
 
 def test_import_fbx_3ds_via_assimp(client, users, model_id):
