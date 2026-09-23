@@ -98,13 +98,13 @@ def test_ingest_with_key_and_alarms(client, users, sensor):
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"accepted": 2, "unknown": ["NOMALUM"], "bad": 0, "rejected": []}
-    # matnli/yaroqsiz qiymat butun paketni 422 qiladi (gateway o'zi tozalashi kerak)
+    # SCADA-06: matnli/yaroqsiz qiymat — faqat o'sha yozuv rad etiladi (paket emas)
     r = client.post(
         f"/api/projects/{pid}/readings",
         json=[{"key": "AGG1.P", "value": "xato"}],
         headers={"X-Ingest-Key": key},
     )
-    assert r.status_code == 422
+    assert r.status_code == 200 and r.json()["rejected"] == [{"key": "AGG1.P", "reason": "value_invalid"}]
     s = client.get(f"/api/projects/{pid}/sensors", headers=users["viewer"]).json()[0]
     assert s["last_value"] == 20 and s["alarm"] == "ok" and s["last_ts"]
 

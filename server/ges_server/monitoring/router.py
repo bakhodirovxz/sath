@@ -240,20 +240,14 @@ class SensorOut(BaseModel):
 
 
 class ReadingIn(BaseModel):
-    """Gateway ma'lumotlari. `value` chekli son bo'lishi shart (NaN/inf/matn → 422 — gateway o'zi
-    tozalashi kerak); `ts` tekshiruvi ingest da (yaroqsiz/kelajak/eski → `rejected`)."""
+    """Gateway ma'lumotlari. Qiymat va vaqt tamg'asi tekshiruvi har yozuv uchun alohida `live.ingest` da
+    (SCADA-06): NaN/inf → `value_not_finite`, son emas → `value_invalid`, yaroqsiz/kelajak/eski ts →
+    `rejected` ro'yxatida sabab bilan; qolgan yozuvlar qabul qilinadi (bitta yomon yozuv paketni yiqitmaydi)."""
 
     key: str | None = None
     sensor_id: int | None = None
-    value: float
+    value: float | str | None
     ts: datetime | float | str | None = None
-
-    @field_validator("value")
-    @classmethod
-    def _finite(cls, v: float) -> float:
-        if not math.isfinite(v):
-            raise ValueError("qiymat chekli son bo'lishi kerak (NaN/inf emas)")
-        return v
     # QUALITIES (good|uncertain|bad|substituted|manual); yo'q bo'lsa good
     quality: str | None = None
     # manbadagi vaqt tamg'asi (OPC UA SourceTimestamp, gateway o'qish vaqti)

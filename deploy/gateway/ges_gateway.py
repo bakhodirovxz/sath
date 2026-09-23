@@ -795,8 +795,8 @@ class Pusher:
         for it in items:
             it.setdefault("ts", now)
             it.setdefault("src_ts", it["ts"])
-            # Server chekli bo'lmagan qiymatga butun paketni 422 bilan rad etadi — o'qish xatosi
-            # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3)
+            # Server chekli bo'lmagan qiymatni (yozuv bo'yicha) rad etadi — o'qish xatosi
+            # (NaN/inf registr) sifat bayrog'i bilan yuboriladi, qiymat 0 (A3), tarixda "bad" qoladi
             try:
                 v = float(it.get("value"))
             except (TypeError, ValueError):

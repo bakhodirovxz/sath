@@ -19,9 +19,13 @@ def power(client, users):
     return r.json()
 
 
+def _hdr(client, users):
+    return users["engineer"]
+
+
 def _post(client, users, items):
     return client.post(
-        f"/api/projects/{users['project_id']}/readings", json=items, headers=users["engineer"]
+        f"/api/projects/{users['project_id']}/readings", json=items, headers=_hdr(client, users)
     )
 
 
@@ -30,19 +34,43 @@ def _sensor(client, users, key):
     return next(s for s in rows if s["key"] == key)
 
 
-@pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "1e400", "xato", None, [1]])
-def test_non_finite_or_non_numeric_value_is_422(client, users, power, bad):
+@pytest.mark.parametrize(
+    "bad,reason",
+    [("nan", "value_not_finite"), ("inf", "value_not_finite"), ("-inf", "value_not_finite"),
+     ("1e400", "value_not_finite"), ("xato", "value_invalid"), (None, "value_invalid")],
+)
+def test_non_finite_or_non_numeric_value_rejected_per_item(client, users, power, bad, reason):
+    """SCADA-06: yaroqsiz qiymat — yozuv bo'yicha rad (sabab bilan), paket 200."""
     r = _post(client, users, [{"key": "AGG1.P", "value": bad}])
-    assert r.status_code == 422, r.text
+    assert r.status_code == 200, r.text
+    assert r.json()["accepted"] == 0 and r.json()["rejected"] == [{"key": "AGG1.P", "reason": reason}]
     with SessionLocal() as db:
         assert db.query(Reading).count() == 0
 
 
-def test_nan_does_not_poison_alarm_evaluation(client, users, power):
-    # nan o'tib ketganda evaluate_alarm doim False bo'lardi — endi kirmaydi, keyingi qiymat alarm beradi
-    assert _post(client, users, [{"key": "AGG1.P", "value": "nan"}]).status_code == 422
-    assert _post(client, users, [{"key": "AGG1.P", "value": 40}]).status_code == 200
-    assert _sensor(client, users, "AGG1.P")["alarm"] == "high"
+def test_structurally_invalid_body_is_422(client, users, power):
+    assert _post(client, users, [{"key": "AGG1.P", "value": [1]}]).status_code == 422
+
+
+def test_mixed_batch_accepts_good_items(client, users, power):
+    """SCADA-06 qabul: aralash paket — NaN/inf/kelajak ts/matn rad etiladi, qolganlari qabul qilinadi."""
+    now = datetime.now(timezone.utc)
+    raw = (
+        '[{"key": "AGG1.P", "value": 10}, {"key": "AGG1.P", "value": NaN}, {"key": "AGG1.P", "value": Infinity},'
+        ' {"key": "AGG1.P", "value": "abc"}, {"key": "AGG1.P", "value": 11, "ts": "2099-01-01T00:00:00Z"},'
+        ' {"key": "YOQ", "value": 1}, {"key": "AGG1.P", "value": 12, "ts": "' + now.isoformat() + '"}]'
+    )
+    r = client.post(
+        f"/api/projects/{users['project_id']}/readings", content=raw,
+        headers={**_hdr(client, users), "Content-Type": "application/json"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["accepted"] == 2 and body["unknown"] == ["YOQ"]
+    assert [x["reason"] for x in body["rejected"]] == ["value_not_finite", "value_not_finite", "value_invalid", "ts_future"]
+    assert _sensor(client, users, "AGG1.P")["last_value"] == 12
+    with SessionLocal() as db:
+        assert sorted(x.value for x in db.query(Reading).all()) == [10, 12]
 
 
 @pytest.mark.parametrize(
