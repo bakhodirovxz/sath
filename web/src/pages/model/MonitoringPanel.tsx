@@ -3,35 +3,42 @@ import { useLatest } from "../../hooks/useLatest";
 import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, canCommandRole, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, canCommandRole, type AlarmState, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
-import { fmtDate, isAlarm } from "../../ui/format";
-import { useLive } from "../../hooks/useLive";
+import { fmtDate, fmtShort, isAlarm } from "../../ui/format";
+import { alarmLabel, commandStatusLabel, sensorKindLabel } from "../../i18n/labels";
+import { putSensors, useLiveMessages, useProjectLive, useSensorsByIds } from "../../store/live";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
+import { ApiError, type UnlinkedReport } from "../../api/client";
+import { can } from "../../api/permissions";
+import GatewayKeys from "../../ui/GatewayKeys";
+import { notify } from "../../ui/notice";
+import AlarmMark from "../../ui/AlarmMark";
 
 interface Props {
   projectId: number;
   modelId: number;
+  /** Ochiq versiya — bog'lanmagan sensorlar (SCADA-13) shu versiya bo'yicha */
+  versionId?: number | null | undefined;
   role: Role | null;
   viewer: Viewer | null;
   selection: SelectedItem[];
 }
 
-const KINDS: { id: SensorKind; title: string; unit: string }[] = [
-  { id: "level", title: "Suv sathi", unit: "m" },
-  { id: "flow", title: "Sarf", unit: "m³/s" },
-  { id: "power", title: "Quvvat", unit: "MW" },
-  { id: "pressure", title: "Bosim", unit: "bar" },
-  { id: "temperature", title: "Harorat", unit: "°C" },
-  { id: "vibration", title: "Tebranish", unit: "mm/s" },
-  { id: "status", title: "Holat (0/1)", unit: "" },
-  { id: "position", title: "Ochilish (darvoza, zatvor)", unit: "%" },
-  { id: "value", title: "Boshqa", unit: "" },
+const KINDS: { id: SensorKind; unit: string }[] = [
+  { id: "level", unit: "m" },
+  { id: "flow", unit: "m³/s" },
+  { id: "power", unit: "MW" },
+  { id: "pressure", unit: "bar" },
+  { id: "temperature", unit: "°C" },
+  { id: "vibration", unit: "mm/s" },
+  { id: "status", unit: "" },
+  { id: "position", unit: "%" },
+  { id: "value", unit: "" },
 ];
-const ALARM_LABEL: Record<AlarmState, string> = { ok: "normal", low: "past", high: "yuqori", stale: "uzilgan", lowlow: "juda past", highhigh: "juda yuqori", roc: "tez o'zgarish", deviation: "og'ish" };
 /** 3D bo'yash uchun haqiqiy hex (viewer CSS o'zgaruvchini o'qimaydi) — tokenlardan, joriy tema bo'yicha (F1) */
 function hexOf(token: string): string {
   return THEMES[currentTheme()][token] ?? THEMES.engineer[token];
@@ -39,21 +46,22 @@ function hexOf(token: string): string {
 function alarmHex(s: Sensor): string {
   const st = alarmStyle(s.alarm, s.priority);
   const m = /var\(--([\w-]+)\)/.exec(st.color);
-  return hexOf(m ? m[1] : "ok");
+  return hexOf(m ? m[1] : "text-muted"); // normal — kulrang (UX-01: rang faqat anomaliya uchun)
 }
 const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: "http", address: {}, low_alarm: null, high_alarm: null, stale_after_s: 600, enabled: true };
 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
-export default function MonitoringPanel({ projectId, modelId, role, viewer, selection }: Props) {
-  const [sensors, setSensors] = useState<Sensor[]>([]);
+export default function MonitoringPanel({ projectId, modelId, versionId, role, viewer, selection }: Props) {
+  // UX-11: sensorlar umumiy jonli store da (bitta soket loyiha uchun); panel faqat o'z modeli sensorlariga obuna
+  const [ids, setIds] = useState<number[]>([]);
+  const sensors = useSensorsByIds(projectId, ids);
   const [selected, setSelected] = useState<number | null>(null);
   const [hours, setHours] = useState(24);
   const [history, setHistory] = useState<ReadingPoint[]>([]);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<SensorIn | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  const [gwKeys, setGwKeys] = useState<GatewayKey[] | null>(null);
-  const loadKeys = () => Promise.all([api.projectKey(projectId, "ingest"), api.projectKey(projectId, "command")]).then(setGwKeys).catch((e) => setError(e.message));
+  const [showKeys, setShowKeys] = useState(false);
   const [manual, setManual] = useState("");
   const [cmdTarget, setCmdTarget] = useState<Sensor | null>(null); // boshqaruv buyrug'i (F8: ControlBlock dialogda)
   // 3D da element tanlansa — unga bog'langan sensor ochiladi (BIM → SCADA)
@@ -66,16 +74,17 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   const [topic, setTopic] = useState("");
   const canEdit = role === "engineer" || role === "approver";
 
-  const load = useCallback(() => api.sensors(projectId, modelId).then(setSensors).catch((e) => setError(e.message)), [projectId, modelId]);
+  const load = useCallback(() => api.sensors(projectId, modelId).then((ss) => { putSensors(projectId, ss); setIds(ss.map((s) => s.id)); }).catch((e) => setError(e.message)), [projectId, modelId]);
   useEffect(() => { void load(); }, [load]);
 
-  // Jonli oqim — umumiy hook (F4: heartbeat, LIVE/STALE/OFFLINE, eksponensial qayta ulanish)
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
-  const onLive = useCallback((m: LiveMessage) => {
-    if (m.type === "reading" && m.sensor_id === selectedRef.current && m.ts && m.value != null) setHistory((h) => [...h, { ts: m.ts!, v: m.value!, min: m.value!, max: m.value! }].slice(-2000));
-  }, []);
-  const live = useLive(projectId, setSensors, onLive);
+  // Jonli oqim — umumiy store (F4: heartbeat, LIVE/STALE/OFFLINE, eksponensial qayta ulanish; UX-11: bitta soket)
+  const live = useProjectLive(projectId);
+  useLiveMessages(projectId, (m) => {
+    if (m.type === "reading" && m.sensor_id === selected && m.ts && m.value != null) {
+      const pt = { ts: m.ts, v: m.value, min: m.value, max: m.value };
+      setHistory((h) => [...h, pt].slice(-2000));
+    }
+  });
 
   // Tarix
   useEffect(() => {
@@ -156,13 +165,23 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   }, [view, viewer, animOn]);
   useEffect(() => () => { void viewer?.colorByGuids({}); void viewer?.setValueLabels(null); void viewer?.setLiveBindings(null); }, [viewer]);
 
+  /** Yoziladigan nuqta chegaralari: chekli min ≤ max (SCADA-02) — aks holda saqlanmaydi (server ham 422). */
+  const spError = editing?.writable ? setpointRangeError(editing.min_setpoint, editing.max_setpoint) : null;
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
     try {
       const body = { ...editing, model_id: modelId, address: editing.protocol === "mqtt" ? { ...editing.address, topic } : editing.address };
-      if (editId == null) await api.createSensor(projectId, body);
-      else await api.updateSensor(editId, body);
+      const put = (force: boolean) => (editId == null ? api.createSensor(projectId, body, force) : api.updateSensor(editId, body, force));
+      try {
+        await put(false);
+      } catch (err) {
+        // SCADA-13: GUID joriy versiyada yo'q — qurilishdan oldingi element bo'lishi mumkin: ongli tasdiq bilan saqlash
+        if (!(err instanceof ApiError && err.status === 422 && /element_guid/.test(err.message))) throw err;
+        if (!(await dialogs.confirm("Element joriy versiyada topilmadi", { text: `${err.message}\n\nHali modelda yo'q (qurilishi rejalashtirilgan) element bo'lsa — baribir saqlang; aks holda GUID ni tekshiring.`, ok: "Baribir saqlash" }))) return;
+        await put(true);
+      }
       setEditing(null);
       setEditId(null);
       await load();
@@ -196,19 +215,19 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
         <BRow label="Vaqt mashinasi"><input type="checkbox" checked={replay.on} onChange={(e) => setReplay((r) => ({ ...r, on: e.target.checked, t: 1 }))} title="Tarixdagi istalgan vaqtdagi holatni 3D da ko'rish (hodisa tahlili)" /></BRow>
         <BOps>
           {canEdit && <button className="btn sm primary" onClick={() => { setEditing({ ...EMPTY, element_guid: selection[0]?.guid ?? null }); setEditId(null); setTopic(""); }}><Icon name="plus" size={12} /> Sensor</button>}
-          {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi"><Icon name="upload" size={12} /> CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { setError(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
-          {role === "approver" && <button className="btn sm" onClick={() => void loadKeys()}><Icon name="lock" size={12} /> Ulanish kalitlari</button>}
+          {canEdit && <label className="btn sm" title="SCADA teglar ro'yxati (CSV: key;name;kind;unit;protocol;address;element;low;high) — element nomi bo'yicha 3D ga avtomatik bog'lanadi"><Icon name="upload" size={12} /> CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; f.text().then((t) => api.importSensors(projectId, t, modelId)).then(async (r) => { notify(`Import: ${r.created} yangi, ${r.updated} yangilandi, ${r.bound} ta 3D ga bog'landi${r.errors.length ? `; xatolar: ${r.errors.slice(0, 3).join(" | ")}` : ""}`, r.errors.length ? "warning" : "success"); await load(); }).catch((err) => setError(err instanceof Error ? err.message : "Import xatosi")); }} /></label>}
+          {can(role, "gateway.keys") && <button className="btn sm" onClick={() => setShowKeys(true)}><Icon name="lock" size={12} /> Ulanish kalitlari</button>}
         </BOps>
       </BPanel>
       {replay.on && (
-        <div className="section-box small" style={{ marginBottom: 8 }}>
-          <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="section-box small mb-8">
+          <div className="row items-center gap-8 flex-wrap">
             <b>Vaqt mashinasi</b>
             <select className="select sm" value={replay.hours} onChange={(e) => setReplay((r) => ({ ...r, hours: Number(e.target.value) }))}>{[6, 24, 72, 168, 720].map((h) => <option key={h} value={h}>{h < 24 ? `${h} soat` : `${h / 24} kun`}</option>)}</select>
             <span className="mono small">{replayTime != null ? fmtDate(new Date(replayTime).toISOString()) : ""}</span>
             {replay.loading && <span className="dim small">yuklanmoqda…</span>}
           </div>
-          <div className="row" style={{ alignItems: "center", gap: 6 }}>
+          <div className="row items-center gap-6">
             <button className="btn sm" title="1 qadam orqaga" onClick={() => setReplay((r) => ({ ...r, t: Math.max(0, r.t - 0.01) }))}>◀</button>
             <input type="range" className="grow" min={0} max={1000} value={Math.round(replay.t * 1000)} onChange={(e) => setReplay((r) => ({ ...r, t: Number(e.target.value) / 1000 }))} aria-label="Vaqt" />
             <button className="btn sm" title="1 qadam oldinga" onClick={() => setReplay((r) => ({ ...r, t: Math.min(1, r.t + 0.01) }))}>▶</button>
@@ -216,70 +235,59 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
           <div className="dim small">Slayder — tanlangan vaqtdagi o'qishlar 3D ga (yorliqlar, ranglar, suv sathi, darvozalar, agregatlar); jonli oqim vaqtincha ko'rsatilmaydi.</div>
         </div>
       )}
-      {error && <p className="error small">{error} <a onClick={() => setError("")}>yopish</a></p>}
-      {gwKeys && (
+      {error && <p className="error small">{error} <button type="button" className="link-btn" onClick={() => setError("")}>yopish</button></p>}
+      {showKeys && (
         <div className="section-box small">
-          <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (muhit o'zgaruvchilari: <code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
-          {gwKeys.map((k) => (
-            <div key={k.kind} style={{ marginTop: 6 }}>
-              <div className="row wrap" style={{ gap: 6, alignItems: "center" }}>
-                <b>{k.kind}</b>
-                <span className={k.days_left != null && k.days_left <= 14 ? "error" : "dim"}>{k.expires_at ? `muddat: ${new Date(k.expires_at).toLocaleDateString("uz")} (${k.days_left} kun)` : "muddatsiz"}</span>
-                <span className="dim">· oxirgi ishlatilgan: {k.last_used_at ? new Date(k.last_used_at).toLocaleString("uz") : "hali yo'q"}</span>
-                <button className="btn sm danger" onClick={() => api.rotateProjectKey(projectId, k.kind).then((nk) => setGwKeys((p) => (p ?? []).map((x) => (x.kind === nk.kind ? nk : x))))}>Almashtirish (365 kun)</button>
-              </div>
-              {k.key ? <div className="error small">Kalit faqat hozir ko'rsatiladi — nusxalab gateway ga saqlang (serverda faqat xeshi turadi).</div> : <div className="dim small">Kalit yashirin (prefiks {k.key_prefix ?? "—"}…); yo'qolgan bo'lsa almashtiring.</div>}
-              <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{k.kind === "ingest"
-                ? `curl -X POST ${location.origin}${k.url} \
-  -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}" -H "Content-Type: application/json" \
-  -d '[{"key":"AGG1.P","value":24.3},{"key":"RES.LEVEL","value":903.2}]'`
-                : `curl -X POST ${location.origin}${k.url} -H "${k.header}: ${k.key ?? `${k.key_prefix ?? ""}…`}"`}</pre>
-            </div>
-          ))}
-          <div className="row"><button className="btn sm" onClick={() => setGwKeys(null)}>Yopish</button></div>
+          <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (<code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
+          <GatewayKeys projectId={projectId} canManage={can(role, "gateway.keys")} />
+          <div className="row"><button className="btn sm" onClick={() => setShowKeys(false)}>Yopish</button></div>
         </div>
       )}
 
+      <UnlinkedSensors projectId={projectId} versionId={versionId ?? null} refresh={ids.length} canEdit={canEdit} selectionGuid={selection[0]?.guid ?? null}
+        onBind={async (id, guid) => { try { await api.updateSensor(id, { element_guid: guid }); await load(); } catch (err) { setError(err instanceof Error ? err.message : "Xatolik"); } }} />
       {sensors.length === 0 && <p className="muted">Sensor yo'q. {canEdit ? "«Sensor qo'shish» — SCADA tegi nomi (kalit), turi, alarm chegaralari." : ""}</p>}
       {view.map((s) => (
-        <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`} onClick={() => setSelected(selected === s.id ? null : s.id)}>
-          <div className="title">
-            <i className="dot" style={{ background: alarmStyle(s.alarm, s.priority).color }} title={alarmStyle(s.alarm, s.priority).label} />{alarmStyle(s.alarm, s.priority).code && <span className="alarm-mark" style={{ color: alarmStyle(s.alarm, s.priority).color }}>{alarmStyle(s.alarm, s.priority).glyph}{alarmStyle(s.alarm, s.priority).code}</span>}
+        <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`}>
+          <button type="button" className="list-item-head" aria-expanded={selected === s.id} onClick={() => setSelected(selected === s.id ? null : s.id)}>
+          <span className="title">
+            {alarmStyle(s.alarm, s.priority).rank > 0 || s.alarm === "stale" ? <AlarmMark state={s.alarm} priority={s.priority} /> : <i className="dot" title={alarmStyle(s.alarm, s.priority).label} />}
             <b>{s.name}</b>
             <span className="grow" />
             <span className="mono">{s.last_value != null ? `${fmtVal(s.last_value)} ${s.unit}` : "—"}</span>
-            <span className={`badge ${s.stale ? "archived" : s.alarm === "ok" ? "published" : "rejected"}`}>{ALARM_LABEL[s.alarm]}</span>
-          </div>
-          <div className="meta">
-            <span className="mono">{s.key}</span> · {KINDS.find((k) => k.id === s.kind)?.title}
+            <span className={`badge ${s.stale ? "stale" : ""}`}>{alarmLabel(s.alarm)}</span>
+          </span>
+          <span className="meta">
+            <span className="mono">{s.key}</span> · {sensorKindLabel(s.kind)}
             {s.last_ts && <> · {fmtDate(s.last_ts)}</>}
             {s.element_guid ? " · elementga bog'langan" : " · element bog'lanmagan"}
             {s.protocol === "mqtt" && <> · mqtt:{String(s.address.topic ?? "")}</>}
-          </div>
+          </span>
+          </button>
           {selected === s.id && (
-            <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
-              <div className="row wrap" style={{ marginBottom: 6 }}>
+            <div className="list-item-body">
+              <div className="row wrap mb-6">
                 {[1, 24, 168, 720].map((h) => <button key={h} className={`btn sm${hours === h ? " active" : ""}`} onClick={() => setHours(h)}>{h === 1 ? "1 soat" : h === 24 ? "1 kun" : h === 168 ? "1 hafta" : "1 oy"}</button>)}
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}
-                {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${ALARM_LABEL[s.alarm]}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${ALARM_LABEL[s.alarm]} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => setError(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
+                {s.alarm !== "ok" && canEdit && <button className="btn sm" title="Alarm bo'yicha ish buyrug'i (CMMS): sensor, qiymat, element" onClick={() => api.createWorkOrder(projectId, { title: `${s.name}: ${alarmLabel(s.alarm)}${s.last_value != null ? ` (${fmtVal(s.last_value)} ${s.unit})` : ""}`, description: `Alarm ${alarmLabel(s.alarm)} — sensor ${s.key}${s.element_guid ? `, element GUID ${s.element_guid}` : ""}. 3D: /models/${modelId}?sel=${s.element_guid ?? ""}&tab=mon`, priority: s.alarm === "stale" ? "medium" : "high", source: "alarm" }).then((w) => notify(`Ish buyrug'i #${w.id} yaratildi (Dispetcher paneli → Ish buyruqlari)`)).catch((err) => setError(err instanceof Error ? err.message : "Xatolik"))}>Ish buyrug'i</button>}
                 {canEdit && <button className="btn sm" onClick={() => bindToSelection(s)} title="Tanlangan elementga bog'lash">Tanlanganga bog'lash</button>}
-                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
+                {canEdit && <button className="btn sm" onClick={() => { setEditing({ key: s.key, name: s.name, kind: s.kind, unit: s.unit, protocol: s.protocol, address: s.address, low_alarm: s.low_alarm, high_alarm: s.high_alarm, ll_alarm: s.ll_alarm ?? null, hh_alarm: s.hh_alarm ?? null, deadband: s.deadband ?? 0, on_delay_s: s.on_delay_s ?? 0, off_delay_s: s.off_delay_s ?? 0, roc_limit_per_min: s.roc_limit_per_min ?? null, stale_after_s: s.stale_after_s, enabled: s.enabled, element_guid: s.element_guid, priority: s.priority, writable: s.writable, min_setpoint: s.min_setpoint ?? null, max_setpoint: s.max_setpoint ?? null, max_rate_per_min: s.max_rate_per_min ?? null }); setEditId(s.id); setTopic(String(s.address.topic ?? "")); }}>Tahrirlash</button>}
                 {role === "approver" && <button className="btn sm danger" onClick={() => void dialogs.confirm("Sensorni o'chirish", { text: `${s.name} (${s.key}) — tarix ham o'chadi.`, danger: true, ok: "O'chirish" }).then((ok) => { if (ok) void api.deleteSensor(s.id).then(load); })}>O'chirish</button>}
               </div>
               {history.length > 1 ? (
-                <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
+                <LineChart title={s.name} unit={s.unit} x={history.map((p) => fmtShort(p.ts))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
               {s.writable && canCommandRole(role) && (
-                <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
+                <div className="row mt-6 items-center gap-6 flex-wrap" title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
                   <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
                   <button className="btn sm primary" onClick={() => setCmdTarget(s)}>Buyruq (select → execute)…</button>
                 </div>
               )}
-              {role === "shift_supervisor" && (
-                <div className="row" style={{ marginTop: 4, flexWrap: "wrap", gap: 4 }} title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
-                  <input className="input" style={{ width: 120 }} placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
+              {can(role, "scada.manual_entry") && (
+                <div className="row mt-4 flex-wrap gap-4" title="SCADA-07: qo'lda kiritish — sifat 'manual', auditda">
+                  <input className="input w-120" placeholder="Qiymat" value={manual} onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pushManual(s)} />
                   <button className="btn sm" onClick={() => pushManual(s)}>Qo'lda yuborish</button>
                   <label className="btn sm">CSV import<input type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.importReadings(s.id, f).then((r) => { setError(""); setHours((h) => h); void dialogs.alert("CSV import", `${r.accepted} o'lchov yuklandi`); }).catch((err) => setError(err.message)); }} /></label>
                 </div>
@@ -299,10 +307,10 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
             <div className="row">
               <label className="field grow"><span>Turi</span>
                 <select className="select" value={editing.kind} onChange={(e) => { const k = KINDS.find((x) => x.id === e.target.value)!; setEditing({ ...editing, kind: k.id, unit: editing.unit || k.unit }); }}>
-                  {KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}
+                  {KINDS.map((k) => <option key={k.id} value={k.id}>{sensorKindLabel(k.id)}</option>)}
                 </select>
               </label>
-              <label className="field" style={{ width: 90 }}><span>Birlik</span><input className="input" value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} /></label>
+              <label className="field w-90"><span>Birlik</span><input className="input" value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} /></label>
             </div>
             <div className="row">
               <label className="field grow"><span>Past alarm</span><input className="input" type="number" step="any" value={editing.low_alarm ?? ""} onChange={(e) => setEditing({ ...editing, low_alarm: e.target.value === "" ? null : Number(e.target.value) })} /></label>
@@ -329,6 +337,14 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 </select>
               </label>
             </div>
+            {editing.writable && (
+              <div className="row" title="SCADA-02: boshqaruv chegaralari majburiy — server min ≤ max bo'lmasa rad etadi (422)">
+                <label className="field grow"><span>Min topshiriq, {editing.unit || "birlik"}</span><input className="input" type="number" step="any" required value={editing.min_setpoint ?? ""} onChange={(e) => setEditing({ ...editing, min_setpoint: e.target.value === "" ? null : Number(e.target.value) })} data-testid="sp-min" /></label>
+                <label className="field grow"><span>Maks topshiriq, {editing.unit || "birlik"}</span><input className="input" type="number" step="any" required value={editing.max_setpoint ?? ""} onChange={(e) => setEditing({ ...editing, max_setpoint: e.target.value === "" ? null : Number(e.target.value) })} data-testid="sp-max" /></label>
+                <label className="field grow"><span>Tezlik ≤, /daq (ixtiyoriy)</span><input className="input" type="number" step="any" min={0} value={editing.max_rate_per_min ?? ""} onChange={(e) => setEditing({ ...editing, max_rate_per_min: e.target.value === "" ? null : Math.abs(Number(e.target.value)) || null })} /></label>
+              </div>
+            )}
+            {spError && <p className="error small" role="alert" data-testid="sp-error">{spError}</p>}
             <div className="row">
               <label className="field grow"><span>Manba</span>
                 <select className="select" value={editing.protocol} onChange={(e) => setEditing({ ...editing, protocol: e.target.value as SensorIn["protocol"] })}>
@@ -346,18 +362,50 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
             {editId == null && selection[0]?.guid && <label className="row small"><input type="checkbox" defaultChecked onChange={(e) => setEditing({ ...editing, element_guid: e.target.checked ? selection[0].guid : null })} /> tanlangan elementga bog'lash</label>}
             <div className="actions">
               <button type="button" className="btn" onClick={() => setEditing(null)}>Bekor qilish</button>
-              <button type="submit" className="btn primary">Saqlash</button>
+              <button type="submit" className="btn primary" disabled={!!spError}>Saqlash</button>
             </div>
           </form>
         </Dialog>
       )}
       {cmdTarget && (
         <Dialog title={`Buyruq: ${cmdTarget.name}`} onClose={() => setCmdTarget(null)}>
-          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={canCommandRole(role)} canOverride={role === "shift_supervisor"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
+          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={canCommandRole(role)} canOverride={can(role, "scada.interlock.override")} onCommand={(c) => { notify(`Buyruq #${c.id}: ${commandStatusLabel(c.status)}`, c.status === "failed" || c.status === "mismatch" || c.status === "unknown" ? "warning" : "success"); setCmdTarget(null); }} />
         </Dialog>
       )}
     </div>
   );
+}
+
+/** SCADA-13: element GUID i ochiq versiyada yo'q sensorlar — qayta bog'lash (tanlangan elementga). */
+function UnlinkedSensors({ projectId, versionId, refresh, canEdit, selectionGuid, onBind }: { projectId: number; versionId: number | null; refresh: number; canEdit: boolean; selectionGuid: string | null; onBind: (sensorId: number, guid: string) => Promise<void> }) {
+  const [rep, setRep] = useState<UnlinkedReport | null>(null);
+  useEffect(() => {
+    let dead = false;
+    api.unlinkedSensors(projectId, versionId).then((r) => { if (!dead) setRep(r); }).catch(() => { if (!dead) setRep(null); }); // eski server — endpoint yo'q
+    return () => { dead = true; };
+  }, [projectId, versionId, refresh]);
+  if (!rep || rep.count === 0) return null;
+  return (
+    <div className="verdict warn attention" data-testid="unlinked-sensors">
+      <Icon name="alert-triangle" size={16} />
+      <div className="grow">
+        <b>Bog'lanmagan sensorlar: {rep.count} ta</b> <span className="dim small">— element GUID i {rep.version_id ? "ochiq versiyada" : "joriy versiyada"} topilmadi</span>
+        <ul className="warnings">
+          {rep.sensors.slice(0, 20).map((s) => (
+            <li key={s.id}><span className="mono">{s.key}</span> {s.name} <span className="dim mono small">{s.element_guid}</span>
+              {canEdit && <button className="btn sm" disabled={!selectionGuid} title={selectionGuid ? "3D da tanlangan elementga bog'lash" : "Avval 3D da elementni tanlang"} onClick={() => selectionGuid && void onBind(s.id, selectionGuid)}>Tanlanganga bog'lash</button>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export function setpointRangeError(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null || max == null || !Number.isFinite(min) || !Number.isFinite(max)) return "Yoziladigan nuqta uchun min va maks topshiriq chegaralari majburiy";
+  if (min > max) return "Min topshiriq maksimaldan katta bo'lmasligi kerak";
+  return null;
 }
 
 function fmtVal(v: number) {

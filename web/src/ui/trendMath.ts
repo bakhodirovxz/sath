@@ -1,3 +1,4 @@
+import { fmtShort, fmtTime } from "./format";
 /** Trend server mantig'i (F7): shkala, o'q belgilari, uzilishlar (sifat/bo'shliq), normallashtirish, kursor. */
 
 export interface TrendPoint { t: number; v: number | null; min?: number | undefined; max?: number | undefined }
@@ -108,14 +109,37 @@ export function panDomain(d: [number, number], dt: number, bounds: [number, numb
   return [t0, t0 + span];
 }
 
+/** Vaqt o'qi belgisi — stansiya vaqti (Asia/Tashkent), 24 soat (UX-09). */
 export function fmtTick(t: number, spanMs: number): string {
-  const d = new Date(t);
-  if (spanMs > 3 * 86400_000) return d.toLocaleDateString("uz-UZ", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  if (spanMs > 2 * 3600_000) return d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (spanMs > 3 * 86400_000) return fmtShort(t);
+  if (spanMs > 2 * 3600_000) return fmtTime(t);
+  return fmtTime(t, true);
 }
 
 export function fmtNum(v: number): string {
   const a = Math.abs(v);
   return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3);
+}
+
+/** Birinchi indeks: `sorted[i] >= t` (o'sish tartibidagi massiv). */
+export function lowerBound(sorted: readonly number[], t: number): number {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Asosiy vaqt o'qiga har bir qatorning eng yaqin nuqtasi (FE-04): binar qidiruv, O(n log m) — avvalgi
+ * O(n·m) to'liq qidiruv katta davrlarda (30 kun × bir necha qator) sahifani qotirardi. `times` — o'sish tartibida. */
+export function alignNearest(base: readonly number[], times: readonly number[], values: readonly number[]): number[] {
+  if (!times.length) return base.map(() => NaN);
+  return base.map((t) => {
+    const i = lowerBound(times, t);
+    if (i <= 0) return values[0];
+    if (i >= times.length) return values[times.length - 1];
+    return t - times[i - 1] <= times[i] - t ? values[i - 1] : values[i];
+  });
 }

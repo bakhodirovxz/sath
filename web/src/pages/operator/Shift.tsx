@@ -4,8 +4,10 @@ import { Link, useParams } from "react-router-dom";
 import { api, type ShiftHandover, type ShiftSnapshot, type SoeEvent } from "../../api/client";
 import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtValue } from "../../ui/format";
-import { alarmStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
+import { alarmModeLabel, commandStatusLabel } from "../../i18n/labels";
+import { can } from "../../api/permissions";
+import AlarmMark from "../../ui/AlarmMark";
 
 /** Smena jurnali va navbat topshirish (F9): tuzilgan varaqa (faol alarmlar, ochiq ish buyruqlari, blokirovka
  * chetlab o'tishlari, shelved/OOS/o'chirilgan nuqtalar, kutilayotgan buyruqlar, aloqasiz sensorlar — avtomatik),
@@ -30,7 +32,7 @@ function Body() {
   const [dlg, setDlg] = useState<null | "hand" | "receive">(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const canOperate = ["operator", "shift_supervisor", "engineer", "approver"].includes(project?.my_role ?? "");
+  const canOperate = can(project?.my_role, "scada.ack"); // smena topshirish/qabul (server: operator+)
   const load = useCallback(async () => {
     try {
       const [s, h, f] = await Promise.all([api.shiftSnapshot(pid), api.shiftHandovers(pid), api.shiftFeed(pid, 12)]);
@@ -51,27 +53,27 @@ function Body() {
           <div className="row"><b>Topshirish varaqasi</b><span className="dim small">{snap ? `smena boshi ${fmtDate(snap.since)}` : ""}</span></div>
           {snap ? (
             <>
-              {snap.warnings.length > 0 ? <ul className="small error" style={{ paddingLeft: 16 }} data-testid="shift-warnings">{snap.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className="small" style={{ color: "var(--ok)" }}>Yakunlanmagan ishlar yo'q</p>}
+              {snap.warnings.length > 0 ? <ul className="small error pl-16" data-testid="shift-warnings">{snap.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className="small c-ok">Yakunlanmagan ishlar yo'q</p>}
               <Section title={`Faol alarmlar (${snap.alarms.length}, ${snap.unacked} kvitlanmagan)`}>
-                {snap.alarms.map((a) => { const st = alarmStyle(a.state, a.priority); return <li key={a.event_id}><span className="alarm-mark" style={{ color: st.color }}>{st.glyph}{st.code}</span> <Link to={opsPath(pid, "sensor", a.sensor_id)}>{a.name}</Link> {a.value != null ? `${fmtValue(a.value)}` : ""} · {fmtDate(a.started_at)} {a.acked ? <span className="dim">kvitlangan</span> : <span className="badge rejected">UNACK</span>}</li>; })}
+                {snap.alarms.map((a) => { return <li key={a.event_id}><AlarmMark state={a.state} priority={a.priority} unacked={!a.acked} /> <Link to={opsPath(pid, "sensor", a.sensor_id)}>{a.name}</Link> {a.value != null ? `${fmtValue(a.value)}` : ""} · {fmtDate(a.started_at)} {a.acked ? <span className="dim">kvitlangan</span> : <span className="badge rejected">UNACK</span>}</li>; })}
               </Section>
               <Section title={`Ochiq ish buyruqlari (${snap.work_orders.length})`}>
-                {snap.work_orders.map((w) => <li key={w.id}>#{w.id} {w.title} <span className="dim">({w.status}, {w.priority})</span>{w.overdue && <span className="badge rejected" style={{ marginLeft: 4 }}>muddati o'tgan</span>}</li>)}
+                {snap.work_orders.map((w) => <li key={w.id}>#{w.id} {w.title} <span className="dim">({w.status}, {w.priority})</span>{w.overdue && <span className="badge rejected ml-4">muddati o'tgan</span>}</li>)}
               </Section>
               <Section title={`Blokirovka chetlab o'tishlari (${snap.interlock_overrides.length})`}>
-                {snap.interlock_overrides.map((o, i) => <li key={i}>{fmtDate(o.at)} · {JSON.stringify(o.detail)}</li>)}
+                {snap.interlock_overrides.map((o, i) => <li key={i}>{fmtDate(o.at)} · {detailText(o.detail)}</li>)}
               </Section>
               <Section title={`Shelved / OOS / o'chirilgan nuqtalar (${snap.alarm_modes.length})`}>
-                {snap.alarm_modes.map((m) => <li key={`${m.sensor_id}-${m.mode}`}><Link to={opsPath(pid, "sensor", m.sensor_id)}>{m.name}</Link> — {m.mode}{m.reason ? ` (${m.reason})` : ""}{m.until ? ` ${fmtDate(m.until)} gacha` : ""}</li>)}
+                {snap.alarm_modes.map((m) => <li key={`${m.sensor_id}-${m.mode}`}><Link to={opsPath(pid, "sensor", m.sensor_id)}>{m.name}</Link> — {alarmModeLabel(m.mode)}{m.reason ? ` (${m.reason})` : ""}{m.until ? ` ${fmtDate(m.until)} gacha` : ""}</li>)}
               </Section>
               <Section title={`Kutilayotgan buyruqlar (${snap.pending_commands.length})`}>
-                {snap.pending_commands.map((c) => <li key={c.id}>#{c.id} {c.sensor_key} → {fmtValue(c.value)} <span className="badge open">{c.status}</span> {fmtDate(c.created_at)}</li>)}
+                {snap.pending_commands.map((c) => <li key={c.id}>#{c.id} {c.sensor_key} → {fmtValue(c.value)} <span className="badge open">{commandStatusLabel(c.status)}</span> {fmtDate(c.created_at)}</li>)}
               </Section>
               <Section title={`Aloqasiz sensorlar (${snap.stale_sensors.length})`}>
                 {snap.stale_sensors.map((s) => <li key={s.sensor_id}><Link to={opsPath(pid, "sensor", s.sensor_id)}>{s.name}</Link> <span className="dim mono">{s.key}</span></li>)}
               </Section>
-              {canOperate && !open && <button className="btn primary" style={{ marginTop: 8 }} onClick={() => setDlg("hand")} data-testid="handover-btn">Smenani topshirish (imzo)</button>}
-              {canOperate && open && <button className="btn primary" style={{ marginTop: 8 }} onClick={() => setDlg("receive")} data-testid="receive-btn">Smenani qabul qilish (imzo)</button>}
+              {canOperate && !open && <button className="btn primary mt-8" onClick={() => setDlg("hand")} data-testid="handover-btn">Smenani topshirish (imzo)</button>}
+              {canOperate && open && <button className="btn primary mt-8" onClick={() => setDlg("receive")} data-testid="receive-btn">Smenani qabul qilish (imzo)</button>}
             </>
           ) : <p className="muted">Yuklanmoqda…</p>}
           {err && <p className="error">{err}</p>}
@@ -95,12 +97,12 @@ function Body() {
       {dlg && snap && (
         <Dialog title={dlg === "hand" ? "Smenani topshirish" : `Smenani qabul qilish (#${open?.id})`} onClose={() => setDlg(null)}>
           {dlg === "hand" && snap.warnings.length > 0 && (
-            <div className="verdict warn"><b>Yakunlanmagan ishlar:</b><ul style={{ margin: "4px 0", paddingLeft: 16 }}>{snap.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
-              <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} data-testid="ack-warn" /> Ko'rib chiqdim, qabul qiluvchiga yetkazaman</label>
+            <div className="verdict warn"><b>Yakunlanmagan ishlar:</b><ul className="my-4 mx-0 pl-16">{snap.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+              <label className="row gap-6"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} data-testid="ack-warn" /> Ko'rib chiqdim, qabul qiluvchiga yetkazaman</label>
             </div>
           )}
           {dlg === "receive" && open && <p className="small">Topshiruvchi: <b>{open.handed_by_username}</b>, {fmtDate(open.handed_at!)}. Izoh: {open.notes || "—"}{open.warnings.length ? <><br />Ogohlantirishlar: {open.warnings.join("; ")}</> : null}</p>}
-          <label className="field"><span>Izoh</span><textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} autoFocus data-testid="handover-notes" /></label>
+          <label className="field"><span>Izoh</span><textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} data-autofocus data-testid="handover-notes" /></label>
           {err && <p className="error">{err}</p>}
           <div className="actions">
             <button className="btn" onClick={() => setDlg(null)}>Bekor</button>
@@ -112,12 +114,17 @@ function Body() {
   );
 }
 
+/** Audit tafsiloti (blokirovka chetlab o'tish) — xom JSON o'rniga «kalit: qiymat» ro'yxati. */
+function detailText(d: Record<string, unknown>): string {
+  return Object.entries(d).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ") || "—";
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const arr = Array.isArray(children) ? children : [children];
   return (
-    <details open={arr.filter(Boolean).length > 0} style={{ marginTop: 6 }}>
+    <details open={arr.filter(Boolean).length > 0} className="mt-6">
       <summary className="small"><b>{title}</b></summary>
-      <ul className="small" style={{ paddingLeft: 16, margin: "4px 0" }}>{arr.filter(Boolean).length ? children : <li className="dim">yo'q</li>}</ul>
+      <ul className="small pl-16 my-4 mx-0">{arr.filter(Boolean).length ? children : <li className="dim">yo'q</li>}</ul>
     </details>
   );
 }

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 
 /** Grafik palitrasi — qora fonda tekshirilgan (CVD ajralish, kontrast). Tartib qat'iy. */
-export const CHART_COLORS = ["#3d8ee6", "#b98626", "#3aa864", "#b46dcc", "#e0656a"];
+/** Qalam ranglari — tema tokenlari (--pen-*, har temada fonga ≥ 3:1); SVG stroke CSS o'zgaruvchini qabul qiladi. */
+export const CHART_COLORS = ["var(--pen-1)", "var(--pen-2)", "var(--pen-3)", "var(--pen-4)", "var(--pen-5)"];
 
 export interface Series {
   name: string;

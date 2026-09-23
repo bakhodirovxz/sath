@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 /** Bitta rangli ketma-ket shkala (ko'k, och → to'q emas: qora fonda to'qdan ochga). */
 export function seqColor(t: number): [number, number, number] {
-  const a: [number, number, number] = [0.07, 0.22, 0.37]; // #12395f
-  const b: [number, number, number] = [0.62, 0.82, 1.0]; // #9ed0ff
+  const a: [number, number, number] = [0.07, 0.22, 0.37]; // --heat-lo
+  const b: [number, number, number] = [0.62, 0.82, 1.0]; // --heat-hi
   const k = Math.max(0, Math.min(1, t));
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 }
@@ -99,9 +99,9 @@ export default function Heatmap({ grid, title, unit, height = 160 }: Props) {
         aria-label={title}
       />
       <div className="chart-tip">
-        <span><i className="hm-swatch" style={{ background: "#12395f" }} />{fmt(grid.min)}</span>
-        <span><i className="hm-swatch" style={{ background: "#9ed0ff" }} />{fmt(grid.max)} {unit}</span>
-        {hover && <span className="grow" style={{ textAlign: "right" }}>x={hover.x.toFixed(2)} y={hover.y.toFixed(2)} → <b>{fmt(hover.v)}</b> {unit}</span>}
+        <span><i className="hm-swatch heat-lo" />{fmt(grid.min)}</span>
+        <span><i className="hm-swatch heat-hi" />{fmt(grid.max)} {unit}</span>
+        {hover && <span className="grow text-right">x={hover.x.toFixed(2)} y={hover.y.toFixed(2)} → <b>{fmt(hover.v)}</b> {unit}</span>}
       </div>
     </div>
   );

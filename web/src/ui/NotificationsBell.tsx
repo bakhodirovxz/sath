@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type Notification } from "../api/client";
 import { fmtDate } from "./format";
 
-const KIND: Record<Notification["kind"], string> = { review: "tasdiqlash", issue: "issue", alarm: "alarm", system: "tizim" };
+const KIND: Record<Notification["kind"], string> = { review: "tasdiqlash", issue: "muammo", alarm: "alarm", system: "tizim" };
 
 /** Qo'ng'iroq: o'qilmaganlar soni (30 s da yangilanadi), ro'yxat, bosganda havolaga o'tish. */
 export default function NotificationsBell() {
@@ -50,8 +50,8 @@ export default function NotificationsBell() {
       </button>
       {open && (
         <div className="bell-menu">
-          <div className="row" style={{ padding: "6px 10px" }}><b>Bildirishnomalar</b><span className="grow" />{count > 0 && <button className="btn sm" onClick={readAll}>Hammasi o'qildi</button>}</div>
-          {items.length === 0 && <p className="muted" style={{ padding: 10 }}>Hozircha yo'q</p>}
+          <div className="row py-6 px-8"><b>Bildirishnomalar</b><span className="grow" />{count > 0 && <button className="btn sm" onClick={readAll}>Hammasi o'qildi</button>}</div>
+          {items.length === 0 && <p className="muted p-8">Hozircha yo'q</p>}
           {items.map((n) => (
             <button key={n.id} className={`bell-item ${n.read_at ? "" : "unread"}`} onClick={() => pick(n)}>
               <div className={`k ${n.kind}`}>{KIND[n.kind]} · {fmtDate(n.created_at)}</div>

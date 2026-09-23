@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { dialogs } from "../../ui/dialogs";
 import Icon from "../../ui/Icon";
-import { api, type Issue, type IssueStatus, type Member, type Role, type Version, type Viewpoint } from "../../api/client";
+import { api, saveBlob, type Issue, type IssueStatus, type Member, type Role, type Version, type Viewpoint } from "../../api/client";
 import { useAuth } from "../../store/auth";
 import { fmtDate, label } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
@@ -93,9 +93,9 @@ export default function IssuesPanel(p: Props) {
   return (
     <div>
       {error && <p className="error small">{error}</p>}
-      <BPanel id="issues" title="Issue lar" count={list.length} right={
+      <BPanel id="issues" title="Muammolar" count={list.length} right={
         <>
-          <select className="select" style={{ width: "auto", padding: "1px 4px", fontSize: 11 }} value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
+          <select className="select w-auto py-0 px-4 fs-xs" value={filter} onChange={(e) => setFilter(e.target.value as "active" | "all")}>
             <option value="active">Faol</option>
             <option value="all">Hammasi</option>
           </select>
@@ -105,7 +105,7 @@ export default function IssuesPanel(p: Props) {
         <BList
           items={list} keyOf={(i) => i.id} activeKey={detail?.id ?? p.openIssueId} rows={6}
           onSelect={(i) => p.onOpenIssue(i.id)} onActivate={(i) => { if (detail?.id === i.id) void p.applyViewpoint(detail.viewpoint); }}
-          empty={filter === "active" ? "Faol issue yo'q — elementni tanlab «Issue» bosing" : "Issue yo'q"}
+          empty={filter === "active" ? "Faol muammo yo'q — elementni tanlab «Muammo» bosing" : "Muammo yo'q"}
           render={(i) => (
             <>
               <span className="dim mono">#{i.id}</span>
@@ -118,7 +118,7 @@ export default function IssuesPanel(p: Props) {
           )}
         />
         <BOps>
-          <button className="btn sm" title="BCF 2.1 — Revit/ArchiCAD/BIMcollab/Solibri uchun" onClick={async () => { try { const b = await api.bcfExport(p.modelId); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "issues.bcfzip"; a.click(); URL.revokeObjectURL(u); } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } }}><Icon name="download" size={12} /> BCF eksport</button>
+          <button className="btn sm" title="BCF 2.1 — Revit/ArchiCAD/BIMcollab/Solibri uchun" onClick={async () => { try { saveBlob(await api.bcfExport(p.modelId), "issues.bcfzip"); } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); } }}><Icon name="download" size={12} /> BCF eksport</button>
           {(p.role === "engineer" || p.role === "approver") && <label className="btn sm"><Icon name="upload" size={12} /> BCF import<input type="file" accept=".bcfzip,.bcf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) api.bcfImport(p.modelId, f).then((r) => { void dialogs.alert("BCF import", `${r.created} yangi, ${r.updated} yangilandi`); p.onChanged(); }).catch((err) => setError(err.message)); e.target.value = ""; }} /></label>}
         </BOps>
       </BPanel>
@@ -150,13 +150,13 @@ export default function IssuesPanel(p: Props) {
           {detail.comments.map((c) => (
             <div key={c.id} className="comment">
               <span className="who">{c.author_username} · {fmtDate(c.created_at)}</span>
-              {c.viewpoint && <> · <a onClick={() => p.applyViewpoint(c.viewpoint!)}>ko'rinish</a></>}
+              {c.viewpoint && <> · <button type="button" className="link-btn" onClick={() => p.applyViewpoint(c.viewpoint!)}>ko'rinish</button></>}
               <div>{c.body}</div>
             </div>
           ))}
-          <form onSubmit={addComment} style={{ marginTop: 8 }}>
-            <textarea className="textarea" style={{ minHeight: 44 }} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Izoh…" />
-            <div className="row" style={{ marginTop: 6 }}>
+          <form onSubmit={addComment} className="mt-8">
+            <textarea className="textarea minh-44" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Izoh…" />
+            <div className="row mt-6">
               <label className="row small"><input type="checkbox" checked={withView} onChange={(e) => setWithView(e.target.checked)} /> joriy ko'rinish bilan</label>
               <span className="grow" />
               <button className="btn sm primary" type="submit" disabled={!comment.trim()}>Yuborish</button>
@@ -165,9 +165,9 @@ export default function IssuesPanel(p: Props) {
         </BPanel>
       )}
       {creating && (
-        <Dialog title="Yangi issue" onClose={() => setCreating(false)}>
+        <Dialog title="Yangi muammo" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Sarlavha</span><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus required /></label>
+            <label className="field"><span>Sarlavha</span><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} data-autofocus required /></label>
             <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
             <div className="row">
               <label className="field grow"><span>Ijrochi</span>
@@ -182,7 +182,7 @@ export default function IssuesPanel(p: Props) {
                 </select>
               </label>
             </div>
-            <p className="dim small">Joriy kamera, tanlangan elementlar va kesimlar issue bilan saqlanadi.</p>
+            <p className="dim small">Joriy kamera, tanlangan elementlar va kesimlar muammo bilan saqlanadi.</p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setCreating(false)}>Bekor qilish</button>
               <button type="submit" className="btn primary">Yaratish</button>

@@ -4,6 +4,10 @@ import { fmtDate } from "../ui/format";
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
+import { priorityLabel } from "../i18n/labels";
+import { DeletedModelsSection, StorageSection } from "./admin/SystemSections";
+import { PriorityMark } from "../ui/AlarmMark";
+import { t } from "../i18n";
 
 export default function Admin() {
   const me = useAuth((s) => s.user);
@@ -54,7 +58,7 @@ export default function Admin() {
 
   return (
     <div className="page">
-      <TopBar crumbs={[{ label: "Boshqaruv" }]}>
+      <TopBar crumbs={[{ label: t("nav.admin") }]}>
         <button className="btn sm primary" onClick={() => setCreating(true)}>Yangi foydalanuvchi</button>
       </TopBar>
       <div className="page-body page-narrow">
@@ -67,13 +71,13 @@ export default function Admin() {
               <tr key={u.id}>
                 <td className="mono">{u.username}</td>
                 <td>{u.full_name}</td>
-                <td><input className="input" style={{ width: 180 }} defaultValue={u.email ?? ""} placeholder="—" onBlur={(e) => e.target.value !== (u.email ?? "") && api.updateUser(u.id, { email: e.target.value }).then(load).catch((err) => setError(err.message))} /></td>
+                <td><input className="input w-180" defaultValue={u.email ?? ""} placeholder="—" onBlur={(e) => e.target.value !== (u.email ?? "") && api.updateUser(u.id, { email: e.target.value }).then(load).catch((err) => setError(err.message))} /></td>
                 <td><input type="checkbox" checked={u.is_admin} disabled={u.id === me.id} onChange={() => toggle(u, "is_admin")} /></td>
                 <td><input type="checkbox" checked={u.is_active} disabled={u.id === me.id} onChange={() => toggle(u, "is_active")} /></td>
                 <td>{u.mfa_enabled ? <button className="btn sm" title="MFA ni bekor qilish (telefon yo'qolganda)" onClick={() => api.updateUser(u.id, { mfa_reset: true }).then(load).catch((err) => setError(err.message))}>yoqilgan · bekor</button> : <span className="dim small">—</span>}</td>
-                <td className="row" style={{ gap: 6 }}>
+                <td className="row gap-6">
                   <button className="btn sm" onClick={() => setResetFor(u)}>Parolni almashtirish</button>
-                  {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${new Date(u.locked_until).toLocaleTimeString()} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
+                  {u.locked_until && Date.parse(u.locked_until) > Date.now() && <button className="btn sm warn" title={`Bloklangan: ${fmtDate(u.locked_until)} gacha`} onClick={() => api.updateUser(u.id, { unlock: true }).then(load).catch((err) => setError(err.message))}>Blokni ochish</button>}
                 </td>
               </tr>
             ))}
@@ -81,12 +85,14 @@ export default function Admin() {
         </table>
         <p className="dim small">Loyihaga a'zo qo'shish va rol berish — loyiha sahifasida.</p>
         <RationalizationSection />
+        <DeletedModelsSection />
+        <StorageSection />
         <AuditSection users={users} />
       </div>
       {creating && (
         <Dialog title="Yangi foydalanuvchi" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Login (lotin harflar, raqam, . _ -)</span><input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} autoFocus required pattern="[a-zA-Z0-9_.-]{3,64}" /></label>
+            <label className="field"><span>Login (lotin harflar, raqam, . _ -)</span><input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} data-autofocus required pattern="[a-zA-Z0-9_.-]{3,64}" /></label>
             <label className="field"><span>Ism familiya</span><input className="input" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></label>
             <label className="field"><span>Email (bildirishnomalar uchun, ixtiyoriy)</span><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
             <label className="field"><span>Parol (kamida 4 belgi)</span><input className="input" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={4} /></label>
@@ -102,7 +108,7 @@ export default function Admin() {
       {resetFor && (
         <Dialog title={`Parol: ${resetFor.username}`} onClose={() => setResetFor(null)}>
           <form onSubmit={resetPassword}>
-            <label className="field"><span>Yangi parol</span><input className="input" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={4} /></label>
+            <label className="field"><span>Yangi parol</span><input className="input" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} data-autofocus required minLength={4} /></label>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setResetFor(null)}>Bekor qilish</button>
               <button type="submit" className="btn primary">Saqlash</button>
@@ -122,7 +128,7 @@ function RationalizationSection() {
   useEffect(() => { api.adminRationalization().then(setRep).catch((e) => setError(e.message)); }, []);
   return (
     <>
-      <h1 style={{ marginTop: 28 }}>Alarm ratsionalizatsiyasi</h1>
+      <h1 className="mt-24">Alarm ratsionalizatsiyasi</h1>
       {error && <p className="error">{error}</p>}
       {rep && (
         <>
@@ -135,7 +141,7 @@ function RationalizationSection() {
                   <tr key={r.id}>
                     <td>{r.project_id}</td>
                     <td>{r.name}<div className="dim mono">{r.key}</div></td>
-                    <td><span className={`badge ${r.priority === "critical" ? "rejected" : r.priority === "high" ? "high" : "open"}`}>{r.priority}</span></td>
+                    <td><span className="row gap-4"><PriorityMark priority={r.priority} title="" />{priorityLabel(r.priority)}</span></td>
                     <td className="mono dim">{r.missing.join(", ")}</td>
                   </tr>
                 ))}
@@ -164,12 +170,12 @@ function AuditSection({ users }: { users: User[] }) {
   useEffect(() => { void load(); }, [load]);
   return (
     <>
-      <h1 style={{ marginTop: 28 }}>Audit jurnali</h1>
+      <h1 className="mt-24">Audit jurnali</h1>
       <div className="row wrap">
-        <select className="select" style={{ width: 160 }} value={action} onChange={(e) => setAction(e.target.value)}>
+        <select className="select w-160" value={action} onChange={(e) => setAction(e.target.value)}>
           {ACTIONS.map((a) => <option key={a} value={a}>{a || "barcha amallar"}</option>)}
         </select>
-        <select className="select" style={{ width: 200 }} value={userId} onChange={(e) => setUserId(e.target.value)}>
+        <select className="select w-200" value={userId} onChange={(e) => setUserId(e.target.value)}>
           <option value="">barcha foydalanuvchilar</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
         </select>
@@ -192,7 +198,7 @@ function AuditSection({ users }: { users: User[] }) {
           ))}
         </tbody>
       </table>
-      {rows.length >= 100 && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => load(rows[rows.length - 1].id)}>Yana</button>}
+      {rows.length >= 100 && <button className="btn sm mt-8" onClick={() => load(rows[rows.length - 1].id)}>Yana</button>}
     </>
   );
 }

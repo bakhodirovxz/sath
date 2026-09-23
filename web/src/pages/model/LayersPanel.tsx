@@ -29,7 +29,7 @@ export default function LayersPanel({ viewer, modelKey }: { viewer: Viewer | nul
   if (!modelKey) return <p className="muted">Model yuklanmagan.</p>;
   return (
     <div className="layers">
-      <div className="row" style={{ marginBottom: 6 }}>
+      <div className="row mb-6">
         <button className="btn sm" onClick={() => all(true)}>Hammasi</button>
         <button className="btn sm" onClick={() => all(false)}>Hech biri</button>
       </div>

@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createHmac } from "node:crypto";
+import { ADMIN, API, SAMPLE_IFC } from "./env";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,9 +8,8 @@ import { fileURLToPath } from "node:url";
 /** To'liq oqim (reja «Tekshirish»): login → loyiha → model (viewer yuklanadi) → tasdiqlash so'rovi →
  * ma'qullash/merge (webdan) → dispetcher paneli → bildirishnoma. Ma'lumotlar API orqali tayyorlanadi. */
 
-const API = process.env.E2E_API_URL ?? "http://localhost:8000";
-const ADMIN = { username: process.env.E2E_USER ?? "admin", password: process.env.E2E_PASS ?? "admin123" };
-const SAMPLE = resolve(dirname(fileURLToPath(import.meta.url)), "../../docs/samples/namuna_ges_v2.ifc");
+// Server manzili va admin hisobi — env.ts (CI da E2E_PASS majburiy)
+const SAMPLE = SAMPLE_IFC;
 const stamp = Date.now().toString(36);
 
 async function token(req: APIRequestContext): Promise<string> {
@@ -23,6 +23,19 @@ test.describe.serial("Sath web oqimi", () => {
   let modelId = 0;
   let versionId = 0;
   const engineerCreds = { username: `e2e_eng_${stamp}`, password: "pass1234" };
+  const operatorCreds = { username: `e2e_op_${stamp}`, password: "pass1234" };
+  let ingestHeaders: Record<string, string> | null = null;
+  /** SCADA-07: jonli o'lchov faqat gateway ingest kaliti bilan (foydalanuvchi tokeni — 403). Kalit bir marta
+   * ko'rsatiladi — almashtirib olinadi (tasdiqlovchi/admin) va keshlanadi. */
+  async function ingest(request: APIRequestContext): Promise<Record<string, string>> {
+    if (!ingestHeaders) {
+      const r = await request.post(`${API}/api/projects/${projectId}/keys/ingest`, { headers: { Authorization: `Bearer ${await token(request)}` } });
+      expect(r.ok()).toBeTruthy();
+      const k = await r.json();
+      ingestHeaders = { [k.header ?? "X-Ingest-Key"]: k.key };
+    }
+    return ingestHeaders;
+  }
 
   test.beforeAll(async ({ request }) => {
     const tok = await token(request);
@@ -31,6 +44,8 @@ test.describe.serial("Sath web oqimi", () => {
     projectId = p.id;
     const eng = await (await request.post(`${API}/api/users`, { headers: h, data: { ...engineerCreds, full_name: "E2E muhandis", must_change_password: false } })).json();
     await request.put(`${API}/api/projects/${projectId}/members`, { headers: h, data: { user_id: eng.id, role: "engineer" } });
+    const op = await (await request.post(`${API}/api/users`, { headers: h, data: { ...operatorCreds, full_name: "E2E dispetcher", must_change_password: false } })).json();
+    await request.put(`${API}/api/projects/${projectId}/members`, { headers: h, data: { user_id: op.id, role: "operator" } });
     const m = await (await request.post(`${API}/api/projects/${projectId}/models`, { headers: h, data: { name: "Namuna" } })).json();
     modelId = m.id;
     const up = await request.post(`${API}/api/models/${modelId}/versions`, {
@@ -78,6 +93,10 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator(".vp-group button[title^='X-ray']").click();
     await expect(page.locator(".vp-info")).toContainText("X-ray");
     await page.mouse.move(600, 450);
+    // UX-10: bitta harfli tezkor tugmalar faqat 3D ko'rinish fokusda — avval viewport ga fokus
+    await page.locator(".ws-canvas").focus();
+    await page.keyboard.press("h"); // panel/tugma fokusda emas — ko'rinish tugmasi (yashirish) ishlaydi, buyruqlar qatoriga yozilmaydi
+    await expect(page.locator("#ws-cmd-input")).toHaveValue("");
     await page.keyboard.press("z");
     await expect(page.locator(".pie-item")).toHaveCount(4);
     await page.keyboard.press("3"); // Rendered
@@ -85,6 +104,7 @@ test.describe.serial("Sath web oqimi", () => {
     // N-panel (viewport yon paneli) va F3 qidiruv
     await page.keyboard.press("n");
     await expect(page.locator(".vp-sidebar")).toBeVisible();
+    await page.locator(".ws-canvas").focus(); // N-panel tugmalari fokusni olgan bo'lishi mumkin
     await page.keyboard.press("n");
     await page.keyboard.press("F3");
     await page.locator(".search-input").fill("grid");
@@ -118,7 +138,7 @@ test.describe.serial("Sath web oqimi", () => {
     const tok = await token(request);
     const h = { Authorization: `Bearer ${tok}` };
     await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "AGG1.P", name: "Agregat 1", kind: "power", unit: "MW", high_alarm: 30 } });
-    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "AGG1.P", value: 35 }] });
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: await ingest(request), data: [{ key: "AGG1.P", value: 35 }] });
     await login(page);
     await page.goto(`/projects/${projectId}/dashboard`);
     await expect(page.locator(".dash-kpi")).toContainText("Faol alarmlar");
@@ -137,7 +157,7 @@ test.describe.serial("Sath web oqimi", () => {
     const h = { Authorization: `Bearer ${tok}` };
     await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "RES.H", name: "Yuqori byef", kind: "level", unit: "m", high_alarm: 905 } });
     await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "AGG1.P", name: "Agregat 1", kind: "power", unit: "MW", high_alarm: 30 } }); // 409 bo'lsa ham mayli
-    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "RES.H", value: 903.2 }, { key: "AGG1.P", value: 35 }] });
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: await ingest(request), data: [{ key: "RES.H", value: 903.2 }, { key: "AGG1.P", value: 35 }] });
     await login(page);
     await page.goto(`/projects/${projectId}/ops`);
     // L1: KPI, agregat kartasi, uchastkalar, faol alarm (AGG1.P > 30)
@@ -166,7 +186,8 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".ops-nav .ops-level")).toHaveText("L1");
     // F8: faceplate boshqaruv bloki — diapazondan tashqari qiymat klientda rad, select → execute
     await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key: "GATE1.SP", name: "Zatvor 1 SP", kind: "position", unit: "%", writable: true, min_setpoint: 0, max_setpoint: 100 } });
-    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "GATE1.SP", value: 40 }] });
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: await ingest(request), data: [{ key: "GATE1.SP", value: 40 }] });
+    await login(page, operatorCreds); // SCADA-01: loyihalash rollari (admin/tasdiqlovchi) buyruq bermaydi
     await page.goto(`/projects/${projectId}/ops`);
     await page.locator("[data-testid=area-card]", { hasText: "Gidrotexnik" }).click();
     await page.locator("[data-testid=vcard][data-key='GATE1.SP']").click();
@@ -184,7 +205,7 @@ test.describe.serial("Sath web oqimi", () => {
     await page.getByTestId("nav-alarms").click();
     await expect(page).toHaveURL(/\/ops\/alarms$/);
     // Alarm sahifasi (F5): filtr, hammasini kvitlash — tasdiqlash dialogi, faqat filtrlangan to'plam
-    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [{ key: "RES.H", value: 906 }] }); // yangi kvitlanmagan alarm (H > 905)
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: await ingest(request), data: [{ key: "RES.H", value: 906 }] }); // yangi kvitlanmagan alarm (H > 905)
     await expect(page.getByTestId("alarm-table")).toBeVisible();
     await page.getByTestId("alarm-search").fill("RES.H");
     await expect(page.locator("[data-testid=alarm-row]")).toHaveCount(1);
@@ -249,8 +270,12 @@ test.describe.serial("Sath web oqimi", () => {
     await expect(page.locator(".draft-list:not(.underlay-list)")).toContainText("E2E transformator");
     // Commit → yangi versiya
     await page.locator(".draft-list:not(.underlay-list) button", { hasText: "IFC ga qo'shish" }).click();
-    await page.getByTestId("dlg-prompt").fill("e2e: web 3D element"); // Dialog (F8: prompt() emas)
-    await page.getByTestId("dlg-confirm").click();
+    // UX-12: commit oynasi — o'zgarishlar soni (1 ta qo'shildi) va izoh
+    await expect(page.getByTestId("commit-added")).toHaveText("1");
+    await expect(page.getByTestId("commit-deleted")).toHaveText("0");
+    await expect(page.getByTestId("commit-message")).toHaveValue(/1 ta qo'shildi/);
+    await page.getByTestId("commit-message").fill("e2e: web 3D element");
+    await page.getByTestId("commit-ok").click();
     await expect(page.locator(".ws-status .msg")).toContainText("Namuna v2", { timeout: 90_000 });
     await expect(page.locator(".ws-status")).toContainText("Elementlar: 21");
     await expect(page.locator(".draft-list:not(.underlay-list)")).toHaveCount(0);
@@ -406,7 +431,8 @@ test.describe.serial("Sath web oqimi", () => {
     const writable = sensors.find((x: { writable: boolean }) => x.writable);
     if (writable) {
       await request.patch(`${API}/api/assets/${asset.id}`, { headers: h, data: { power_sensor_id: writable.id } });
-      const sel = await request.post(`${API}/api/projects/${projectId}/commands/select`, { headers: h, data: { sensor_id: writable.id, value: 5 } });
+      const opTok = (await (await request.post(`${API}/api/auth/login`, { form: operatorCreds })).json()).access_token;
+      const sel = await request.post(`${API}/api/projects/${projectId}/commands/select`, { headers: { Authorization: `Bearer ${opTok}` }, data: { sensor_id: writable.id, value: 5 } });
       expect(sel.status()).toBe(409);
       expect(JSON.stringify(await sel.json())).toContain("LOTO faol");
     }
@@ -422,7 +448,7 @@ test.describe.serial("Sath web oqimi", () => {
       (await request.post(`${API}/api/projects/${projectId}/sensors`, { headers: h, data: { key, name, kind, unit, high_alarm: 500 } })).json();
     await mk(`EST.LEVEL.${stamp}`, "Yuqori byef sathi (I2)", "level", "m");
     await mk(`EST.QIN.${stamp}`, "Kiruvchi sarf (I2)", "flow", "m3/s");
-    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: h, data: [
+    await request.post(`${API}/api/projects/${projectId}/readings`, { headers: await ingest(request), data: [
       { key: `EST.LEVEL.${stamp}`, value: 900 },
       { key: `EST.QIN.${stamp}`, value: 120 },
     ] });
@@ -443,10 +469,12 @@ test.describe.serial("Sath web oqimi", () => {
     const asset = await (await request.post(`${API}/api/projects/${projectId}/assets`, { headers: h, data: { name: `H3 agregat ${stamp}`, config: { rated_speed_rpm: 600, bearing: { n: 8, d_mm: 20, D_mm: 100 } } } })).json();
     // envelope-spektr: 32 Gs da cho'qqi = BPFO (tashqi halqa nuqsoni)
     const vals = Array.from({ length: 101 }, (_, i) => (i === 32 ? 0.9 : 0.02));
-    const sp = await request.post(`${API}/api/projects/${projectId}/cm/spectra`, { headers: h, data: { asset_id: asset.id, kind: "envelope", unit: "g", rpm: 600, f_min: 0, f_max: 100, values: vals, source: "e2e gateway" } });
+    // SCADA-07: CM yozuvlari gateway ingest kaliti bilan (foydalanuvchi tokeni ham — eski serverlar uchun)
+    const gw = { ...h, ...(await ingest(request)) };
+    const sp = await request.post(`${API}/api/projects/${projectId}/cm/spectra`, { headers: gw, data: { asset_id: asset.id, kind: "envelope", unit: "g", rpm: 600, f_min: 0, f_max: 100, values: vals, source: "e2e gateway" } });
     expect(sp.status()).toBe(201);
     // tashqi CM tizimi natijasi (HA bloki)
-    const ext = await request.post(`${API}/api/projects/${projectId}/cm/results`, { headers: h, data: { asset_id: asset.id, source: "Bently Nevada", block: "HA", state: "alert", health_score: 62, rul_days: 90, diagnosis: "Podshipnik nuqsoni rivojlanmoqda", confidence: 0.75 } });
+    const ext = await request.post(`${API}/api/projects/${projectId}/cm/results`, { headers: gw, data: { asset_id: asset.id, source: "Bently Nevada", block: "HA", state: "alert", health_score: 62, rul_days: 90, diagnosis: "Podshipnik nuqsoni rivojlanmoqda", confidence: 0.75 } });
     expect(ext.status()).toBe(201);
     await login(page);
     await page.goto(`/projects/${projectId}/dashboard`);
@@ -536,10 +564,10 @@ test.describe.serial("Sath web oqimi", () => {
     return code.toString().padStart(6, "0");
   }
 
-  async function login(page: import("@playwright/test").Page) {
+  async function login(page: import("@playwright/test").Page, creds: { username: string; password: string } = ADMIN) {
     await page.goto("/login");
-    await page.getByLabel(/login/i).fill(ADMIN.username);
-    await page.getByLabel(/parol/i).fill(ADMIN.password);
+    await page.getByLabel(/login/i).fill(creds.username);
+    await page.getByLabel(/parol/i).fill(creds.password);
     await page.getByRole("button", { name: /kirish/i }).click();
     await expect(page.getByRole("heading", { name: "Loyihalar" })).toBeVisible();
     // Loyiha kartochkasi va tezkor amallar

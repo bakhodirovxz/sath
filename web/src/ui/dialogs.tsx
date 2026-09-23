@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Dialog from "./Dialog";
+import { t } from "../i18n";
 
 /** Promise asosidagi tasdiqlash/kiritish dialoglari (F8): `confirm()`/`prompt()`/`alert()` o'rniga — asosiy
  * oqimni bloklamaydi, tema/klaviatura bilan ishlaydi. `<DialogHost />` ilovada bir marta o'rnatiladi. */
@@ -49,15 +50,15 @@ export function DialogHost() {
   };
   return (
     <Dialog title={cur.title} onClose={() => done(cur.kind === "confirm" ? false : null)}>
-      {cur.text && <p className="small" style={{ whiteSpace: "pre-wrap" }}>{cur.text}</p>}
+      {cur.text && <p className="small pre-wrap">{cur.text}</p>}
       {cur.kind === "prompt" && (
         <form onSubmit={(e) => { e.preventDefault(); done(value); }}>
-          {cur.multiline ? <textarea className="textarea" value={value} onChange={(e) => setValue(e.target.value)} autoFocus data-testid="dlg-prompt" /> : <input className="input" value={value} onChange={(e) => setValue(e.target.value)} autoFocus data-testid="dlg-prompt" />}
+          {cur.multiline ? <textarea className="textarea" value={value} onChange={(e) => setValue(e.target.value)} data-autofocus data-testid="dlg-prompt" /> : <input className="input" value={value} onChange={(e) => setValue(e.target.value)} data-autofocus data-testid="dlg-prompt" />}
         </form>
       )}
       <div className="actions">
-        {cur.kind !== "alert" && <button className="btn" onClick={() => done(cur.kind === "confirm" ? false : null)}>Bekor</button>}
-        <button className={`btn primary ${cur.kind === "confirm" && cur.danger ? "danger" : ""}`} data-testid="dlg-confirm" onClick={() => done(cur.kind === "prompt" ? value : true)} autoFocus={cur.kind !== "prompt"}>{cur.kind === "alert" ? "OK" : (cur.ok ?? (cur.kind === "confirm" ? "Ha" : "OK"))}</button>
+        {cur.kind !== "alert" && <button className="btn" onClick={() => done(cur.kind === "confirm" ? false : null)}>{t("common.cancel")}</button>}
+        <button className={`btn primary ${cur.kind === "confirm" && cur.danger ? "danger" : ""}`} data-testid="dlg-confirm" onClick={() => done(cur.kind === "prompt" ? value : true)} data-autofocus={cur.kind !== "prompt" ? "" : undefined}>{cur.kind === "alert" ? t("common.ok") : (cur.ok ?? (cur.kind === "confirm" ? t("common.yes") : t("common.ok")))}</button>
       </div>
     </Dialog>
   );

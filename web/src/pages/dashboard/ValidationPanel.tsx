@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type ValidationState, type ValidationStatusKind } from "../../api/client";
 import { dialogs } from "../../ui/dialogs";
-import { fmtDate } from "../../ui/format";
+import { fmtDate, fmtDay } from "../../ui/format";
 
 /* I3 — model validatsiya yozuvlari: qaysi model, qaysi davr, qanday qabul mezoni, kim imzoladi va
    qachongacha amal qiladi. Validatsiyasiz natija muhandislik qarori uchun asos emas. */
@@ -38,7 +38,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
   const cur = st?.status;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Model validatsiyasi</b>
         <span className="muted small">qabul mezonlari, imzo va amal qilish muddati — egizak natijasiga tayanish uchun asos</span>
         {cur && <span className={`badge ${VAL_CLS[cur.status]}`} data-testid="val-status">{VAL_TXT[cur.status]}</span>}
@@ -49,7 +49,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
       {cur?.note && <p className={`small ${cur.status === "validated" ? "dim" : "error"}`}>{cur.note}</p>}
       {cur?.status === "validated" && (
         <p className="small dim">Imzoladi: <b>{cur.validated_by}</b> · {cur.validated_at ? fmtDate(cur.validated_at) : ""}
-          {cur.valid_until && <> · amal qiladi: <b>{new Date(cur.valid_until).toLocaleDateString()}</b></>}
+          {cur.valid_until && <> · amal qiladi: <b>{fmtDay(cur.valid_until)}</b></>}
           {cur.version_id != null && <> · model v{cur.version_id}</>}</p>
       )}
       {ev && (
@@ -57,7 +57,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
           <thead><tr><th>Mezon</th><th>Qiymat</th><th>Chegara</th><th>Holat</th></tr></thead>
           <tbody>
             {(ev.checks ?? []).map((c) => (
-              <tr key={c.name} className={c.ok ? undefined : "alarm-active"}>
+              <tr key={c.name} className={c.ok ? undefined : "row-attention"}>
                 <td>{c.label}</td>
                 <td className="mono">{c.value}</td>
                 <td className="mono dim">{c.limit}</td>
@@ -78,7 +78,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
               <td className="dim">{Number(r.metrics.days ?? 0)} kun · {Number(r.metrics.n_points ?? 0)} nuqta</td>
               <td className="mono">{Number(r.metrics.rmse_pct ?? 0)} % / {Number(r.metrics.bias_pct ?? 0)} %</td>
               <td><span className={`badge ${r.verdict === "pass" ? "published" : "rejected"}`}>{r.verdict === "pass" ? "mos" : "mos emas"}</span></td>
-              <td className="dim">{r.valid_until ? new Date(r.valid_until).toLocaleDateString() : "—"}</td>
+              <td className="dim">{r.valid_until ? fmtDay(r.valid_until) : "—"}</td>
               <td className="dim">{r.note}</td>
             </tr>
           ))}</tbody>

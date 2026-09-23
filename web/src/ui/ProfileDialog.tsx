@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type UserSession } from "../api/client";
 import { useAuth } from "../store/auth";
 import Dialog from "./Dialog";
+import { focusOnMount } from "./focus";
+import { fmtDate } from "./format";
+import { LOCALES, setLocale, useLocale, type Locale } from "../i18n";
 
 /** Profil (L1): parolni o'zgartirish va TOTP MFA (RFC 6238) sozlash/o'chirish. */
 export default function ProfileDialog({ onClose }: { onClose: () => void }) {
@@ -16,6 +19,7 @@ export default function ProfileDialog({ onClose }: { onClose: () => void }) {
   const [sessions, setSessions] = useState<UserSession[] | null>(null);
   const loadSessions = () => api.sessions().then(setSessions).catch(() => setSessions(null));
   useEffect(() => { void loadSessions(); }, []);
+  const locale = useLocale();
 
   async function run(fn: () => Promise<void>, okText: string) {
     setBusy(true); setMsg(null);
@@ -33,23 +37,29 @@ export default function ProfileDialog({ onClose }: { onClose: () => void }) {
         <label className="field"><span>Yangi parol (kamida 8 belgi, harf va raqam aralash, keng tarqalgan emas)</span><input className="input" type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} data-testid="new-password" /></label>
         <div className="actions"><button className="btn" type="submit" disabled={busy || !oldPw || !newPw}>O'zgartirish</button></div>
       </form>
+      <h3>Interfeys tili</h3>
+      <label className="field"><span>Til (atamalar: docs/glossary.md)</span>
+        <select className="select" value={locale} onChange={(e) => setLocale(e.target.value as Locale)} data-testid="locale">
+          {LOCALES.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+        </select>
+      </label>
       <h3>Ikki bosqichli kirish (MFA)</h3>
       {user.mfa_enabled ? (
         <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.mfaDisable(pw, code); setPw(""); setCode(""); await refresh(); }, "MFA o'chirildi"); }}>
           <p className="small">Yoqilgan. O'chirish uchun parol va ilovadagi joriy kod:</p>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row gap-8">
             <input className="input" type="password" placeholder="Parol" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
-            <input className="input" placeholder="Kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} style={{ width: 100 }} />
+            <input className="input w-100" placeholder="Kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
             <button className="btn danger" type="submit" disabled={busy || !pw || code.length < 6}>O'chirish</button>
           </div>
         </form>
       ) : setup ? (
         <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await api.mfaEnable(code); setSetup(null); setCode(""); await refresh(); }, "MFA yoqildi"); }}>
           <p className="small">Google Authenticator / Aegis / FreeOTP ilovasiga kalitni kiriting (yoki havolani oching), so'ng ilovadagi 6 raqamli kodni tasdiqlang:</p>
-          <p className="mono" style={{ wordBreak: "break-all", userSelect: "all" }} data-testid="mfa-secret">{setup.secret}</p>
+          <p className="mono break-all select-all" data-testid="mfa-secret">{setup.secret}</p>
           <p className="small"><a href={setup.otpauth_url}>otpauth havolasi</a></p>
-          <div className="row" style={{ gap: 8 }}>
-            <input className="input" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} autoFocus style={{ width: 140 }} data-testid="mfa-code" />
+          <div className="row gap-8">
+            <input className="input w-140" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} ref={focusOnMount} data-testid="mfa-code" />
             <button className="btn primary" type="submit" disabled={busy || code.length < 6}>Tasdiqlash va yoqish</button>
             <button className="btn" type="button" onClick={() => { setSetup(null); setCode(""); }}>Bekor</button>
           </div>
@@ -68,7 +78,7 @@ export default function ProfileDialog({ onClose }: { onClose: () => void }) {
                 <tr key={s.id}>
                   <td title={s.user_agent}>{s.client}{s.current ? " (joriy)" : ""}</td>
                   <td className="mono">{s.ip}</td>
-                  <td>{new Date(s.last_used_at).toLocaleString()}</td>
+                  <td>{fmtDate(s.last_used_at)}</td>
                   <td>{!s.current && <button className="btn sm" onClick={() => void api.revokeSession(s.id).then(loadSessions)}>Yakunlash</button>}</td>
                 </tr>
               ))}

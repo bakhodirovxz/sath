@@ -21,7 +21,7 @@ export default function SimCatalog({ catalog, jobs, onPick, siteFilled, onSite }
   return (
     <div className="sim-catalog">
       {siteFilled === false && (
-        <div className="section-box small row" style={{ alignItems: "center" }}>
+        <div className="section-box small row items-center">
           <Icon name="alert-circle" size={14} />
           <span className="grow small">Maydon pasporti to'ldirilmagan — tuproq, seysmiklik, sathlar, inshoot belgilari bir marta kiritilsa, barcha simulyatsiyalar aniqroq bo'ladi.</span>
           {onSite && <button className="btn sm" onClick={onSite}>To'ldirish</button>}
@@ -39,10 +39,10 @@ export default function SimCatalog({ catalog, jobs, onPick, siteFilled, onSite }
                 const n = jobs.filter((x) => x.kind === k.id).length;
                 return (
                   <>
-                    <span className="dim" style={{ display: "inline-flex" }}><Icon name={k.icon} size={14} /></span>
+                    <span className="dim inline-flex"><Icon name={k.icon} size={14} /></span>
                     <span className="grow" title={k.description}>{k.title}</span>
                     {n > 0 && <span className="dim">{n} hisob{j ? ` · ${fmtDate(j.created_at).slice(0, 10)}` : ""}</span>}
-                    {j?.status === "done" && j.summary.ok !== undefined && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={12} style={{ color: j.summary.ok === false ? "var(--danger)" : "var(--ok)" }} />}
+                    {j?.status === "done" && j.summary.ok !== undefined && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={12} className={j.summary.ok === false ? "c-danger" : "c-ok"} />}
                     {j && (j.status === "queued" || j.status === "running") && <span className="dim">hisoblanmoqda…</span>}
                   </>
                 );

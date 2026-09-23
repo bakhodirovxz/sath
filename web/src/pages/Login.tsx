@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useAuth } from "../store/auth";
+import { focusOnMount } from "../ui/focus";
 
 export default function Login() {
   const login = useAuth((s) => s.login);
@@ -33,10 +34,10 @@ export default function Login() {
     <div className="login">
       <form onSubmit={submit}>
         <h1>Sath</h1>
-        <p className="muted" style={{ marginTop: -8 }}>Modellar, versiyalar va tasdiqlash</p>
+        <p className="muted mt-0">Modellar, versiyalar va tasdiqlash</p>
         <label className="field">
           <span>Login</span>
-          <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
+          <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} ref={focusOnMount} autoComplete="username" />
         </label>
         <label className="field">
           <span>Parol</span>
@@ -45,11 +46,11 @@ export default function Login() {
         {needOtp && (
           <label className="field">
             <span>MFA kodi (ilovadan)</span>
-            <input className="input" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(e) => setOtp(e.target.value)} autoFocus data-testid="login-otp" />
+            <input className="input" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(e) => setOtp(e.target.value)} ref={focusOnMount} data-testid="login-otp" />
           </label>
         )}
         {error && <p className="error small">{error}</p>}
-        <button className="btn primary" type="submit" disabled={busy || !username || !password || (needOtp && otp.length < 6)} style={{ width: "100%" }}>
+        <button className="btn primary w-full" type="submit" disabled={busy || !username || !password || (needOtp && otp.length < 6)}>
           {busy ? "Tekshirilmoqda…" : "Kirish"}
         </button>
       </form>

@@ -41,7 +41,7 @@ export default function PieMenu({ x, y, title, items, releaseKey, onClose }: {
   }, [x, y, items.length, cbs]);
 
   return (
-    <div className="pie-backdrop" onMouseDown={(e) => { e.preventDefault(); pick(hotRef.current, true); }} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>
+    <div className="pie-backdrop" role="presentation" onMouseDown={(e) => { e.preventDefault(); pick(hotRef.current, true); }} onContextMenu={(e) => { e.preventDefault(); onClose(); }}>
       <div className="pie" style={{ left: x, top: y }}>
         <div className="pie-title">{title}</div>
         <div className="pie-center" />

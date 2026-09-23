@@ -11,6 +11,7 @@ import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import CfdPanel from "./CfdPanel";
 import LineChart, { CHART_COLORS } from "../../ui/LineChart";
 import { fmtDate } from "../../ui/format";
+import { DateField } from "../../ui/DateField";
 
 interface Props {
   modelId: number;
@@ -226,16 +227,16 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     if (!catalog) return <p className="muted">{error || "Katalog yuklanmoqda…"}</p>;
     return (
       <div className="sim">
-        {siteFilled && <SafetyCheck modelId={modelId} current={current} viewer={viewer} onOpenJob={(k, id) => { setOpenJobId(id); setKind(k); }} onDone={() => void loadJobs()} />}
+        {siteFilled && <SafetyCheck modelId={modelId} current={current} viewer={viewer} canRun={canEdit} onOpenJob={(k, id) => { setOpenJobId(id); setKind(k); }} onDone={() => void loadJobs()} />}
         <SimCatalog catalog={catalog} jobs={jobs} onPick={(k: SimKind) => setKind(k.id)} siteFilled={siteFilled} onSite={projectId ? () => nav(`/projects/${projectId}/site`) : undefined} />
       </div>
     );
   }
-  if (kind === "cfd") return <div className="sim">{modeBar}<CfdPanel modelId={modelId} current={current} viewer={viewer} selection={selection} jobs={jobs} onJobsChanged={() => void loadJobs()} /></div>;
+  if (kind === "cfd") return <div className="sim">{modeBar}<CfdPanel modelId={modelId} current={current} viewer={viewer} selection={selection} canRun={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} /></div>;
   if (kind === "custom") return <CustomSim modelId={modelId} projectId={projectId} current={current} canEdit={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => setKind(null)} />;
   if (kind !== "hydro") {
     if (!kindMeta) return <p className="muted">Noma'lum simulyatsiya turi: {kind}</p>;
-    return <GenericSim key={kind} kind={kindMeta} modelId={modelId} projectId={projectId} current={current} viewer={viewer} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => { setOpenJobId(null); setKind(null); }} initialJobId={openJobId} />;
+    return <GenericSim key={kind} kind={kindMeta} modelId={modelId} projectId={projectId} current={current} viewer={viewer} canRun={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => { setOpenJobId(null); setKind(null); }} initialJobId={openJobId} />;
   }
 
   if (!params) return <p className="muted">Yuklanmoqda…</p>;
@@ -247,7 +248,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     return (
       <div className="sim">
         {modeBar}
-        <div className="row" style={{ marginBottom: 8 }}>
+        <div className="row mb-8">
           <button className="btn sm" onClick={() => setView("form")}><Icon name="arrow-left" size={13} /> Parametrlar</button>
           <b className="grow">{active.name || `#${active.id}`}</b>
           <span className="dim small">{fmtDate(active.created_at)}</span>
@@ -263,7 +264,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         <div className="sim-player">
           <button className="btn sm" onClick={() => setPlaying(!playing)} aria-label={playing ? "Pauza" : "Ijro"}><Icon name={playing ? "pause" : "play"} size={13} /></button>
           <input type="range" min={0} max={s.level.length - 1} value={i} onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }} className="grow" aria-label="Vaqt" />
-          <span className="mono small" style={{ minWidth: 150 }}>{String(s.t[i]).slice(0, 10)} · {s.level[i].toFixed(2)} m · {s.power_mw[i].toFixed(1)} MW</span>
+          <span className="mono small minw-150">{String(s.t[i]).slice(0, 10)} · {s.level[i].toFixed(2)} m · {s.power_mw[i].toFixed(1)} MW</span>
         </div>
         <LineChart title="Suv sathi" unit="m" x={x} series={[{ name: "Sath", values: s.level }]} cursor={cursor} onCursor={setCursor}
           refLines={[{ value: active.params!.reservoir.normal_level_m, label: "NPU" }, { value: active.params!.reservoir.dead_level_m, label: "O'lik sath" }]} />
@@ -272,9 +273,9 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         <LineChart title="Quvvat" unit="MW" x={x} cursor={cursor} onCursor={setCursor}
           series={[{ name: "Jami", values: s.power_mw, color: CHART_COLORS[0] }, ...result.units.slice(0, 4).map((u, k) => ({ name: u.name, values: u.power_mw, color: CHART_COLORS[(k + 1) % CHART_COLORS.length], dashed: true }))]} />
         <LineChart title="Sof napor" unit="m" x={x} series={[{ name: "Napor", values: s.head_net }]} cursor={cursor} onCursor={setCursor} />
-        <details style={{ marginTop: 8 }}>
+        <details className="mt-8">
           <summary className="muted small">Jadval ko'rinishi</summary>
-          <div style={{ maxHeight: 220, overflow: "auto" }}>
+          <div className="scroll-220">
             <table className="grid small"><thead><tr><th>t</th><th>Sath</th><th>Kir.</th><th>Turb.</th><th>Tash.</th><th>MW</th></tr></thead>
               <tbody>{s.t.map((t, k) => <tr key={k}><td>{String(t).slice(0, 10)}</td><td>{s.level[k]}</td><td>{s.inflow[k]}</td><td>{s.turbine_flow[k]}</td><td>{s.spill[k]}</td><td>{s.power_mw[k]}</td></tr>)}</tbody>
             </table>
@@ -292,33 +293,33 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         <details open={hydroJobs.length <= 3} className="section-box">
           <summary>Oldingi hisoblar ({hydroJobs.length})</summary>
           {hydroJobs.map((j) => (
-            <div key={j.id} className="list-item" onClick={() => j.status === "done" && openResult(j)}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && <> · {j.summary.energy_mwh} MWh · CF {(j.summary.capacity_factor * 100).toFixed(0)}%</>}{j.error && <span className="error"> · {j.error}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={() => openResult(j)}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && <> · {j.summary.energy_mwh} MWh · CF {(j.summary.capacity_factor * 100).toFixed(0)}%</>}{j.error && <span className="error"> · {j.error}</span>}</span>
+            </button>
           ))}
         </details>
       )}
       <form onSubmit={run}>
-        <div className="row" style={{ marginBottom: 8 }}>
+        <div className="row mb-8">
           <input className="input grow" placeholder="Hisob nomi (masalan: 2026 o'rtacha suvli yil)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || (active?.status === "running")}>{busy ? "…" : "Hisoblash"}</button>
+          <button className="btn primary" type="submit" disabled={!canEdit || busy || (active?.status === "running")} title={canEdit ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"}>{busy ? "…" : "Hisoblash"}</button>
         </div>
         {active && (active.status === "queued" || active.status === "running") && <p className="muted small">Hisoblanmoqda…</p>}
 
         <h3>Kiruvchi suv (gidrograf)</h3>
         <div className="row">
           <label className="field grow"><span>Doimiy sarf, m³/s</span><input className="input" type="number" value={Array.isArray(params.inflow_m3s) ? "" : params.inflow_m3s.constant} onChange={(e) => upd({ inflow_m3s: { constant: num(e.target.value), steps: Array.isArray(params.inflow_m3s) ? 365 : params.inflow_m3s.steps } })} disabled={!!inflowText.trim()} /></label>
-          <label className="field"><span>Qadamlar</span><input className="input" type="number" style={{ width: 80 }} value={Array.isArray(params.inflow_m3s) ? params.inflow_m3s.length : params.inflow_m3s.steps} onChange={(e) => upd({ inflow_m3s: { constant: Array.isArray(params.inflow_m3s) ? 100 : params.inflow_m3s.constant, steps: num(e.target.value, 365) } })} disabled={!!inflowText.trim()} /></label>
-          <label className="field"><span>Qadam, soat</span><input className="input" type="number" style={{ width: 80 }} value={params.dt_hours} onChange={(e) => upd({ dt_hours: num(e.target.value, 24) })} /></label>
+          <label className="field"><span>Qadamlar</span><input className="input w-80" type="number" value={Array.isArray(params.inflow_m3s) ? params.inflow_m3s.length : params.inflow_m3s.steps} onChange={(e) => upd({ inflow_m3s: { constant: Array.isArray(params.inflow_m3s) ? 100 : params.inflow_m3s.constant, steps: num(e.target.value, 365) } })} disabled={!!inflowText.trim()} /></label>
+          <label className="field"><span>Qadam, soat</span><input className="input w-80" type="number" value={params.dt_hours} onChange={(e) => upd({ dt_hours: num(e.target.value, 24) })} /></label>
         </div>
-        <label className="field"><span>yoki qadamma-qadam qiymatlar (CSV/bo'shliq bilan; bo'sh — doimiy)</span><textarea className="textarea" style={{ minHeight: 44 }} value={inflowText} onChange={(e) => setInflowText(e.target.value)} placeholder="120 130 150 210 300 280 …" /></label>
+        <label className="field"><span>yoki qadamma-qadam qiymatlar (CSV/bo'shliq bilan; bo'sh — doimiy)</span><textarea className="textarea minh-44" value={inflowText} onChange={(e) => setInflowText(e.target.value)} placeholder="120 130 150 210 300 280 …" /></label>
         <div className="row">
-          <label className="field grow"><span>Boshlanish sanasi</span><input className="input" type="date" value={params.start_date ?? ""} onChange={(e) => upd({ start_date: e.target.value || undefined })} /></label>
+          <label className="field grow"><span>Boshlanish sanasi</span><DateField aria-label="Boshlanish sanasi" value={params.start_date ?? ""} onChange={(d) => upd({ start_date: d || undefined })} /></label>
         </div>
 
         <h3>Suv ombori</h3>
-        <label className="field"><span>Sath–hajm jadvali (m, mln m³ — har qatorda)</span><textarea className="textarea mono" style={{ minHeight: 70 }} value={curveText} onChange={(e) => setCurveText(e.target.value)} /></label>
+        <label className="field"><span>Sath–hajm jadvali (m, mln m³ — har qatorda)</span><textarea className="textarea mono minh-70" value={curveText} onChange={(e) => setCurveText(e.target.value)} /></label>
         <div className="row wrap">
           <Num label="O'lik sath, m" v={params.reservoir.dead_level_m} set={(v) => updRes({ dead_level_m: v })} />
           <Num label="NPU, m" v={params.reservoir.normal_level_m} set={(v) => updRes({ normal_level_m: v })} />
@@ -331,7 +332,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         </div>
 
         <h3>Suv tashlagich</h3>
-        <label className="row small" style={{ marginBottom: 6 }}><input type="checkbox" checked={!!params.reservoir.spillway} onChange={(e) => updRes({ spillway: e.target.checked ? { crest_m: params.reservoir.normal_level_m, width_m: 20, coefficient: 0.49, gate_opening: 1 } : null })} /> bor</label>
+        <label className="row small mb-6"><input type="checkbox" checked={!!params.reservoir.spillway} onChange={(e) => updRes({ spillway: e.target.checked ? { crest_m: params.reservoir.normal_level_m, width_m: 20, coefficient: 0.49, gate_opening: 1 } : null })} /> bor</label>
         {params.reservoir.spillway && (
           <div className="row wrap">
             <Num label="Ostona, m" v={params.reservoir.spillway.crest_m} set={(v) => updRes({ spillway: { ...params.reservoir.spillway!, crest_m: v } })} />
@@ -342,7 +343,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         )}
 
         <h3>Bosimli quvur</h3>
-        <label className="row small" style={{ marginBottom: 6 }}><input type="checkbox" checked={!!params.penstock} onChange={(e) => upd({ penstock: e.target.checked ? { length_m: 150, diameter_m: 3.5, roughness_mm: 0.1, minor_loss_k: 0.5, per_unit: true } : null })} /> yo'qotishlarni hisobga olish</label>
+        <label className="row small mb-6"><input type="checkbox" checked={!!params.penstock} onChange={(e) => upd({ penstock: e.target.checked ? { length_m: 150, diameter_m: 3.5, roughness_mm: 0.1, minor_loss_k: 0.5, per_unit: true } : null })} /> yo'qotishlarni hisobga olish</label>
         {params.penstock && (
           <div className="row wrap">
             <Num label="Uzunlik, m" v={params.penstock.length_m} set={(v) => upd({ penstock: { ...params.penstock!, length_m: v } })} />
@@ -375,7 +376,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         <select className="select" value={params.operation.mode} onChange={(e) => upd({ operation: { ...params.operation, mode: e.target.value as SimParams["operation"]["mode"] } })}>
           {MODES.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
         </select>
-        <p className="dim small" style={{ margin: "4px 0 6px" }}>{MODES.find((m) => m.id === params.operation.mode)?.hint}</p>
+        <p className="dim small mt-4 mr-0 mb-6 ml-0">{MODES.find((m) => m.id === params.operation.mode)?.hint}</p>
         <div className="row wrap">
           {params.operation.mode === "target_level" && <Num label="Maqsadli sath, m" v={params.operation.target_level_m ?? params.reservoir.normal_level_m} set={(v) => upd({ operation: { ...params.operation, target_level_m: v } })} />}
           {params.operation.mode === "constant_flow" && <Num label="Sarf, m³/s" v={params.operation.flow_m3s ?? 100} set={(v) => upd({ operation: { ...params.operation, flow_m3s: v } })} />}
@@ -389,7 +390,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
 
 function Num({ label, v, set, step }: { label: string; v: number | string; set: (v: number) => void; step?: number }) {
   return (
-    <label className="field" style={{ width: 150 }}>
+    <label className="field w-150">
       <span>{label}</span>
       <input className="input" type="number" step={step ?? "any"} value={v} onChange={(e) => set(num(e.target.value))} />
     </label>

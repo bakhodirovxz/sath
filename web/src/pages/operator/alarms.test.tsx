@@ -58,7 +58,8 @@ describe("alarm sahifasi mantig'i (F5)", () => {
     const html = renderToStaticMarkup(<MemoryRouter><AlarmTable rows={rows} pid={1} canOperate canEngineer onChanged={() => undefined} /></MemoryRouter>);
     expect(html.match(/data-testid="alarm-row"/g)).toHaveLength(200);
     expect(html.indexOf('data-priority="critical"')).toBeLessThan(html.indexOf('data-priority="high"'));
-    expect(html).toContain("◆"); // kritik romb
+    expect(html).toMatch(/data-prio="critical" data-shape="diamond"/); // kritik romb (shakl + raqam)
+    expect(html).not.toMatch(/style="color/); // rang faqat CSS tokenlaridan
     expect(html).toContain("Kvitlash");
     expect(html).not.toMatch(/#[0-9a-f]{6}/i);
   });

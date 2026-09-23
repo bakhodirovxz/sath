@@ -11,11 +11,17 @@ export default function SearchMenu({ items, onClose }: { items: SearchItem[]; on
   useEffect(() => { setIdx(0); }, [q]);
   const run = (it?: SearchItem) => { const t = it ?? list[idx]; if (t) { onClose(); t.run(); } };
   return (
-    <div className="search-backdrop" onMouseDown={onClose}>
-      <div className="search-menu" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="search-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="search-menu" role="dialog" aria-modal="true" aria-label="Operator qidiruvi (F3)">
         <input
           ref={inp}
           className="search-input"
+          role="combobox"
+          aria-expanded={list.length > 0}
+          aria-controls="search-list"
+          aria-autocomplete="list"
+          aria-activedescendant={list.length ? `search-item-${idx}` : undefined}
+          aria-label="Buyruq qidirish"
           placeholder="Buyruq qidirish… (F3)"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -27,9 +33,9 @@ export default function SearchMenu({ items, onClose }: { items: SearchItem[]; on
             e.stopPropagation();
           }}
         />
-        <div className="search-list">
+        <div className="search-list" id="search-list" role="listbox" aria-label="Topilgan buyruqlar">
           {list.map((it, i) => (
-            <div key={`${it.group}/${it.label}`} className={`search-item${i === idx ? " active" : ""}`} onMouseEnter={() => setIdx(i)} onClick={() => run(it)}>
+            <div key={`${it.group}/${it.label}`} id={`search-item-${i}`} role="option" aria-selected={i === idx} tabIndex={-1} className={`search-item${i === idx ? " active" : ""}`} onMouseEnter={() => setIdx(i)} onMouseDown={(e) => { e.preventDefault(); run(it); }}>
               <span className="grp">{it.group}</span>
               <span className="lbl">{it.label}</span>
               {it.hint && <span className="hint">{it.hint}</span>}

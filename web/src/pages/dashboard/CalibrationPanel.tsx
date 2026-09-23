@@ -39,12 +39,12 @@ export function CalibrationPanel({ projectId, canEdit }: { projectId: number; ca
   const res = st?.residuals;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Model kalibrovkasi</b>
         <span className="muted small">tarixiy o'lchovdan parametrlarni moslashtirish (eng kichik kvadratlar) — kalibrovkasiz «og'ish %» model xatosini ham o'z ichiga oladi</span>
         {res && <span className={`badge ${RES_CLS[res.status]}`} data-testid="calib-status">{RES_TXT[res.status]}</span>}
         <span className="grow" />
-        {canEdit && <label className="field"><span>Oyna, kun</span><input className="input" style={{ width: 70 }} type="number" min="1" value={days} data-testid="calib-days" onChange={(e) => setDays(e.target.value)} /></label>}
+        {canEdit && <label className="field"><span>Oyna, kun</span><input className="input w-70" type="number" min="1" value={days} data-testid="calib-days" onChange={(e) => setDays(e.target.value)} /></label>}
         {canEdit && <button className="btn sm" disabled={busy} data-testid="calib-run" onClick={() => run(false)}>Hisoblash</button>}
         {canEdit && <button className="btn sm primary" disabled={busy} data-testid="calib-apply" onClick={() => run(true)}>Hisoblash va qo'llash</button>}
       </div>
@@ -62,7 +62,7 @@ export function CalibrationPanel({ projectId, canEdit }: { projectId: number; ca
         <table className="grid small" data-testid="calib-runs">
           <thead><tr><th>Vaqt</th><th>Oyna</th><th>Nuqta</th><th>Parametrlar (oldin → keyin)</th><th>RMSE</th><th>Holat</th><th /></tr></thead>
           <tbody>{st.runs.map((r) => (
-            <tr key={r.id} className={r.applied ? "alarm-active" : undefined}>
+            <tr key={r.id} className={r.applied ? "row-attention" : undefined}>
               <td className="dim">{fmtDate(r.created_at)}{r.author && <div className="dim">{r.author}</div>}</td>
               <td className="dim">{r.targets.map((t) => (t === "penstock_roughness_mm" ? "quvur" : "FIK")).join(", ")}</td>
               <td className="mono">{r.n_points}</td>

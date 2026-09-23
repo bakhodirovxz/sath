@@ -31,7 +31,18 @@ describe("ValueCard sifat ko'rsatilishi", () => {
   });
   it("alarm: shakl + kod (rangdan mustaqil), shelved rejimi belgisi", () => {
     r(mk({ alarm: "highhigh" }));
-    expect(screen.getByTitle(/juda yuqori/)).toHaveTextContent("◆HH");
+    const mark = screen.getByRole("img", { name: /1-ustuvorlik: juda yuqori/ });
+    expect(mark).toHaveTextContent("HH"); // kod matn sifatida
+    expect(mark.dataset.prio).toBe("critical");
+    expect(mark.dataset.shape).toBe("diamond"); // shakl — rangdan mustaqil kanal
+    expect(mark.className).not.toContain("unacked");
+    expect(screen.getByTestId("vcard").className).toContain("prio-critical");
+    expect(screen.getByTestId("vcard").getAttribute("style")).toBeNull(); // inline rang yo'q
+    cleanup();
+    render(<MemoryRouter><ValueCard s={mk({ alarm: "high", priority: "low" })} pid={1} unacked /></MemoryRouter>);
+    const m2 = screen.getByRole("img", { name: /kvitlanmagan/ });
+    expect(m2.className).toContain("unacked");
+    expect(m2.dataset.shape).toBe("circle");
     cleanup();
     r(mk({ alarm: "high", alarm_mode: "shelved" }));
     expect(screen.getByTestId("vcard")).toHaveTextContent("shelved");

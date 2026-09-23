@@ -1,6 +1,7 @@
 /* Qoralama obyekt turlari (Blender "Add" menyusi kabi): primitivlar va GES inshootlari.
    Har tur: parametrlar (forma), geometriya quruvchi (three, Y yuqoriga, metr), IFC klassi, Pset_GES_*. */
 import * as THREE from "three";
+import { PAL } from "./palette";
 
 export interface DraftParam { key: string; label: string; unit?: string; default: number | string; min?: number; step?: number; options?: [string, string][] }
 export interface PsetField { key: string; label: string; unit?: string; type?: "number" | "text" | "int" | "select"; default?: number | string; from?: string; options?: [string, string][] }
@@ -59,56 +60,56 @@ function box(w: number, d: number, h: number): THREE.BufferGeometry {
 
 export const DRAFT_KINDS: DraftKind[] = [
   // --- Primitivlar ---
-  { id: "cube", title: "Kub / quti", icon: "box", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: "#9aa3ad",
+  { id: "cube", title: "Kub / quti", icon: "box", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.primitive,
     params: [{ key: "w", label: "Kenglik (X)", unit: "m", default: 4, min: 0.01 }, { key: "d", label: "Chuqurlik (Y)", unit: "m", default: 4, min: 0.01 }, { key: "h", label: "Balandlik (Z)", unit: "m", default: 3, min: 0.01 }],
     build: (p) => box(n(p.w, 4), n(p.d, 4), n(p.h, 3)) },
-  { id: "cylinder", title: "Silindr", icon: "cylinder", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: "#9aa3ad",
+  { id: "cylinder", title: "Silindr", icon: "cylinder", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.primitive,
     params: [{ key: "r", label: "Radius", unit: "m", default: 1.5, min: 0.01 }, { key: "h", label: "Balandlik", unit: "m", default: 4, min: 0.01 }, { key: "axis", label: "O'q", default: "z", options: [["z", "Vertikal (Z)"], ["x", "Gorizontal (X)"]] }],
     build: (p) => { const g = new THREE.CylinderGeometry(n(p.r, 1.5), n(p.r, 1.5), n(p.h, 4), 32); if (p.axis === "x") { g.rotateZ(-Math.PI / 2); g.translate(n(p.h, 4) / 2, n(p.r, 1.5), 0); } else g.translate(0, n(p.h, 4) / 2, 0); return g; } },
-  { id: "sphere", title: "Sfera", icon: "sphere", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: "#9aa3ad",
+  { id: "sphere", title: "Sfera", icon: "sphere", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.primitive,
     params: [{ key: "r", label: "Radius", unit: "m", default: 1.5, min: 0.01 }],
     build: (p) => { const g = new THREE.SphereGeometry(n(p.r, 1.5), 32, 20); g.translate(0, n(p.r, 1.5), 0); return g; } },
-  { id: "cone", title: "Konus", icon: "cone", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: "#9aa3ad",
+  { id: "cone", title: "Konus", icon: "cone", group: "Primitivlar", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.primitive,
     params: [{ key: "r", label: "Radius", unit: "m", default: 1.5, min: 0.01 }, { key: "h", label: "Balandlik", unit: "m", default: 3, min: 0.01 }],
     build: (p) => { const g = new THREE.ConeGeometry(n(p.r, 1.5), n(p.h, 3), 32); g.translate(0, n(p.h, 3) / 2, 0); return g; } },
-  { id: "plane", title: "Tekislik / plita", icon: "plane", group: "Primitivlar", ifcClass: "IfcSlab", color: "#9aa3ad",
+  { id: "plane", title: "Tekislik / plita", icon: "plane", group: "Primitivlar", ifcClass: "IfcSlab", color: PAL.draft.primitive,
     params: [{ key: "w", label: "Kenglik (X)", unit: "m", default: 10, min: 0.01 }, { key: "d", label: "Chuqurlik (Y)", unit: "m", default: 10, min: 0.01 }, { key: "t", label: "Qalinlik", unit: "m", default: 0.3, min: 0.001 }],
     build: (p) => box(n(p.w, 10), n(p.d, 10), n(p.t, 0.3)) },
   // --- GES inshootlari ---
-  { id: "dam", title: "To'g'on (beton og'irlik)", icon: "dam", group: "GES inshootlari", ifcClass: "IfcWall", color: "#8d8f93",
+  { id: "dam", title: "To'g'on (beton og'irlik)", icon: "dam", group: "GES inshootlari", ifcClass: "IfcWall", color: PAL.draft.concrete,
     params: [{ key: "length", label: "Uzunlik (gerb)", unit: "m", default: 60, min: 1 }, { key: "height", label: "Balandlik", unit: "m", default: 25, min: 0.5 }, { key: "crest", label: "Gerb kengligi", unit: "m", default: 6, min: 0.2 }, { key: "mu", label: "Yuqori yuza qiyaligi", default: 0.05, min: 0, step: 0.05 }, { key: "md", label: "Quyi yuza qiyaligi", default: 0.75, min: 0, step: 0.05 }],
     pset: { name: "Pset_GES_Dam", fields: [{ key: "Turi", label: "Turi", type: "text", default: "beton og'irlik" }, { key: "Balandlik_m", label: "Balandlik", unit: "m", from: "height" }, { key: "Uzunlik_m", label: "Uzunlik", unit: "m", from: "length" }, { key: "GerbBelgisi_m", label: "Gerb belgisi", unit: "m", default: 0 }, { key: "GerbKengligi_m", label: "Gerb kengligi", unit: "m", from: "crest" }, { key: "TagKengligi_m", label: "Tag kengligi", unit: "m", from: "=base" }, { key: "TagBelgisi_m", label: "Tag belgisi", unit: "m", default: 0 }, { key: "BetonKlassi", label: "Beton klassi", type: "select", default: "B20", options: CONCRETE_CLASSES }] },
     build: (p) => { const H = n(p.height, 40), bc = n(p.crest, 6), mu = n(p.mu, 0.05), md = n(p.md, 0.75); return prism([[0, 0], [mu * H + bc + md * H, 0], [mu * H + bc, H], [mu * H, H]], n(p.length, 60)); } },
-  { id: "penstock", title: "Bosimli quvur", icon: "pipe", group: "GES inshootlari", ifcClass: "IfcPipeSegment", color: "#6f8fb5",
+  { id: "penstock", title: "Bosimli quvur", icon: "pipe", group: "GES inshootlari", ifcClass: "IfcPipeSegment", color: PAL.draft.penstock,
     params: [{ key: "length", label: "Uzunlik", unit: "m", default: 30, min: 0.5 }, { key: "d", label: "Diametr", unit: "m", default: 2.5, min: 0.05, step: 0.1 }, { key: "slope", label: "Qiyalik (pastga)", unit: "°", default: 0, min: -89, step: 1 }],
     pset: { name: "Pset_GES_Penstock", fields: [{ key: "Diametr_m", label: "Diametr", unit: "m", from: "d" }, { key: "Uzunlik_m", label: "Uzunlik", unit: "m", from: "length" }, { key: "Gadirbudirlik_mm", label: "G'adir-budirlik", unit: "mm", default: 0.1 }, { key: "Material", label: "Po'lat markasi", type: "select", default: "S355 / 09G2S", options: STEEL_GRADES }, { key: "DevorQalinligi_mm", label: "Devor qalinligi", unit: "mm", default: 20 }] },
     build: (p) => { const L = n(p.length, 60), r = n(p.d, 3) / 2; const g = new THREE.CylinderGeometry(r, r, L, 28); g.rotateZ(-Math.PI / 2); g.translate(L / 2, r, 0); g.rotateZ(-THREE.MathUtils.degToRad(n(p.slope, 0))); return g; } },
-  { id: "turbine", title: "Turbina agregati", icon: "turbine", group: "GES inshootlari", ifcClass: "IfcFlowMovingDevice", color: "#3aa6a0",
+  { id: "turbine", title: "Turbina agregati", icon: "turbine", group: "GES inshootlari", ifcClass: "IfcFlowMovingDevice", color: PAL.draft.turbine,
     params: [{ key: "r", label: "Radius (spiral kamera)", unit: "m", default: 3, min: 0.2 }, { key: "h", label: "Balandlik", unit: "m", default: 6, min: 0.2 }],
     pset: { name: "Pset_GES_Turbine", fields: [{ key: "Turi", label: "Turi", type: "text", default: "Francis" }, { key: "Quvvat_MW", label: "Quvvat", unit: "MW", default: 25 }, { key: "Napor_m", label: "Napor", unit: "m", default: 45 }, { key: "Sarf_m3s", label: "Sarf", unit: "m³/s", default: 62 }, { key: "FIK", label: "FIK", default: 0.92 }] },
     build: (p) => { const r = n(p.r, 3), h = n(p.h, 6); const a = new THREE.CylinderGeometry(r, r, h * 0.55, 32); a.translate(0, h * 0.275, 0); const b = new THREE.CylinderGeometry(r * 0.45, r * 0.45, h * 0.45, 24); b.translate(0, h * 0.55 + h * 0.225, 0); return mergeGeometries([a, b]); } },
-  { id: "spillway", title: "Suv tashlagich", icon: "waves", group: "GES inshootlari", ifcClass: "IfcSlab", color: "#8d8f93",
+  { id: "spillway", title: "Suv tashlagich", icon: "waves", group: "GES inshootlari", ifcClass: "IfcSlab", color: PAL.draft.concrete,
     params: [{ key: "width", label: "Kenglik (oqim bo'ylab emas)", unit: "m", default: 20, min: 1 }, { key: "height", label: "Ostona balandligi", unit: "m", default: 12, min: 0.5 }, { key: "crest", label: "Ostona kengligi", unit: "m", default: 4, min: 0.2 }, { key: "md", label: "Chute qiyaligi", default: 0.8, min: 0.1, step: 0.05 }],
     pset: { name: "Pset_GES_Spillway", fields: [{ key: "Kenglik_m", label: "Kenglik", unit: "m", from: "width" }, { key: "OstonaBelgisi_m", label: "Ostona belgisi", unit: "m", default: 0 }, { key: "SarfKoeff", label: "Sarf koeff.", default: 0.49 }, { key: "Darvozalar", label: "Darvozalar", type: "int", default: 2 }, { key: "BetonKlassi", label: "Beton klassi", type: "select", default: "B30", options: CONCRETE_CLASSES }] },
     build: (p) => { const H = n(p.height, 20), bc = n(p.crest, 4), md = n(p.md, 0.8); return prism([[0, 0], [bc + md * H, 0], [bc, H], [0, H]], n(p.width, 40)); } },
-  { id: "powerhouse", title: "Mashina zali", icon: "house", group: "GES inshootlari", ifcClass: "IfcBuildingElementProxy", color: "#b0a088",
+  { id: "powerhouse", title: "Mashina zali", icon: "house", group: "GES inshootlari", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.building,
     params: [{ key: "w", label: "Uzunlik (X)", unit: "m", default: 40, min: 1 }, { key: "d", label: "Kenglik (Y)", unit: "m", default: 20, min: 1 }, { key: "h", label: "Balandlik", unit: "m", default: 18, min: 1 }],
     pset: { name: "Pset_GES_Powerhouse", fields: [{ key: "BetonKlassi", label: "Beton klassi (karkas)", type: "select", default: "B25", options: CONCRETE_CLASSES }, { key: "Agregatlar", label: "Agregatlar soni", type: "int", default: 2 }, { key: "PolBelgisi_m", label: "Pol belgisi", unit: "m", default: 0 }] },
     build: (p) => box(n(p.w, 60), n(p.d, 25), n(p.h, 30)) },
-  { id: "transformer", title: "Transformator", icon: "zap", group: "GES inshootlari", ifcClass: "IfcTransformer", color: "#b98626",
+  { id: "transformer", title: "Transformator", icon: "zap", group: "GES inshootlari", ifcClass: "IfcTransformer", color: PAL.draft.transformer,
     params: [{ key: "w", label: "Uzunlik", unit: "m", default: 6, min: 0.2 }, { key: "d", label: "Kenglik", unit: "m", default: 4, min: 0.2 }, { key: "h", label: "Balandlik", unit: "m", default: 5, min: 0.2 }],
     pset: { name: "Pset_GES_Transformer", fields: [{ key: "Quvvat_MVA", label: "Quvvat", unit: "MVA", default: 40 }, { key: "KuchlanishYuqori_kV", label: "Yuqori kuchlanish", unit: "kV", default: 110 }, { key: "KuchlanishPast_kV", label: "Past kuchlanish", unit: "kV", default: 10.5 }, { key: "Sovitish", label: "Sovitish (IEC 60076)", type: "select", default: "ONAF", options: [["ONAN", "ONAN"], ["ONAF", "ONAF"], ["OFAF", "OFAF"], ["ODAF", "ODAF"]] }] },
     build: (p) => box(n(p.w, 6), n(p.d, 4), n(p.h, 5)) },
-  { id: "intake", title: "Suv qabul qilgich", icon: "droplet", group: "GES inshootlari", ifcClass: "IfcBuildingElementProxy", color: "#7d9bb5",
+  { id: "intake", title: "Suv qabul qilgich", icon: "droplet", group: "GES inshootlari", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.intake,
     params: [{ key: "w", label: "Kenglik", unit: "m", default: 8, min: 0.5 }, { key: "d", label: "Chuqurlik (Y)", unit: "m", default: 8, min: 0.5 }, { key: "h", label: "Balandlik", unit: "m", default: 15, min: 0.5 }],
     pset: { name: "Pset_GES_Intake", fields: [{ key: "OstonaBelgisi_m", label: "Ostona belgisi", unit: "m", default: 0 }, { key: "HisobiySarf_m3s", label: "Hisobiy sarf", unit: "m³/s", default: 120 }, { key: "Teshiklar", label: "Teshiklar soni", type: "int", default: 2 }, { key: "PanjaraOraligi_mm", label: "Panjara oralig'i", unit: "mm", default: 100 }, { key: "Balandlik_m", label: "Balandlik", unit: "m", from: "h" }] },
     build: (p) => box(n(p.w, 12), n(p.d, 10), n(p.h, 25)) },
 ];
 
 /** Mavjud IFC elementni tahrirlash: geometriya modeldan olinadi (Draft.mesh), parametrlar yo'q; GUID saqlanadi. */
-export const MESH_KIND: DraftKind = { id: "mesh", title: "Element (tahrir)", icon: "box", group: "Mavjud", ifcClass: "IfcBuildingElementProxy", color: "#c9a86a", params: [], build: () => new THREE.BufferGeometry() };
+export const MESH_KIND: DraftKind = { id: "mesh", title: "Element (tahrir)", icon: "box", group: "Mavjud", ifcClass: "IfcBuildingElementProxy", color: PAL.draft.edited, params: [], build: () => new THREE.BufferGeometry() };
 /** Mavjud elementni o'chirish belgisi (commitda olib tashlanadi; geometriyasi yo'q). */
-export const DELETED_KIND: DraftKind = { id: "deleted", title: "O'chirilgan element", icon: "trash", group: "Mavjud", ifcClass: "", color: "#aa4444", params: [], build: () => new THREE.BufferGeometry() };
+export const DELETED_KIND: DraftKind = { id: "deleted", title: "O'chirilgan element", icon: "trash", group: "Mavjud", ifcClass: "", color: PAL.draft.deleted, params: [], build: () => new THREE.BufferGeometry() };
 
 export const DRAFT_KIND_BY_ID: Record<string, DraftKind> = Object.fromEntries([...DRAFT_KINDS, MESH_KIND, DELETED_KIND].map((k) => [k.id, k]));
 

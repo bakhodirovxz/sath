@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import Icon from "../ui/Icon";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type DesktopPackage, type Project } from "../api/client";
 import { useAuth } from "../store/auth";
-import { applyTheme, savedTheme } from "../ui/tokens";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { label } from "../ui/format";
 
 export default function Projects() {
-  useEffect(() => { applyTheme(savedTheme("engineer"), false); }, []);
   const user = useAuth((s) => s.user);
   const nav = useNavigate();
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -59,14 +57,14 @@ export default function Projects() {
         ) : (
           <div className="cards">
             {projects.map((p) => (
-              <div key={p.id} className="card" onClick={() => nav(`/projects/${p.id}`)}>
+              <div key={p.id} className="card">
                 <div className="card-head">
-                  <b>{p.name}</b>
+                  <Link to={`/projects/${p.id}`} className="card-link"><b>{p.name}</b></Link>
                   {p.my_role ? <span className="badge open">{label(p.my_role)}</span> : <span className="badge archived">admin</span>}
                 </div>
                 <div className="muted small">{p.location || "—"}{p.description && ` · ${p.description}`}</div>
                 <div className="card-stats"><span>{p.model_count} model</span></div>
-                <div className="row card-actions" onClick={(e) => e.stopPropagation()}>
+                <div className="row card-actions">
                   <button className="btn sm" onClick={() => nav(`/projects/${p.id}`)}>Modellar</button>
                   <button className="btn sm" onClick={() => nav(`/projects/${p.id}/dashboard`)}>Dispetcher paneli</button>
                   <button className="btn sm" onClick={() => nav(`/projects/${p.id}/ops`)} title="ISA-101 operator ekranlari: L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika">Operator (L1)</button>
@@ -79,7 +77,7 @@ export default function Projects() {
       {creating && (
         <Dialog title="Yangi loyiha" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Nomi (GES)</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required /></label>
+            <label className="field"><span>Nomi (GES)</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-autofocus required /></label>
             <label className="field"><span>Joylashuv</span><input className="input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></label>
             <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
             <div className="actions">

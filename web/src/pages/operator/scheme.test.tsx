@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Sensor } from "../../api/client";
 import Mimic from "./Mimic";
-import { VIEW, bindFromSlots, defaultScheme, loadScheme, moveElement, overlappingUnits, setUnits, validateScheme } from "./scheme";
+import { VIEW, viewOf, bindFromSlots, defaultScheme, loadScheme, moveElement, overlappingUnits, setUnits, validateScheme } from "./scheme";
 
 const mk = (o: Partial<Sensor>): Sensor => ({
   id: 1, project_id: 1, model_id: null, key: "X", name: "x", kind: "value", unit: "", element_guid: null, protocol: "http", address: {},
@@ -21,7 +21,10 @@ describe("mimika sxemasi (F3)", () => {
       expect(overlappingUnits(s)).toBe(0);
       const hall = s.elements.find((e) => e.id === "hall")!;
       for (const u of s.elements.filter((e) => e.type === "unit")) expect(u.x).toBeGreaterThan(hall.x);
-      expect(s.elements.every((e) => e.x <= VIEW.w && e.y <= VIEW.h)).toBe(true);
+      expect(s.elements.every((e) => e.x <= VIEW.w && e.y <= viewOf(s).h)).toBe(true);
+      // qiymat katagi (180) va agregat qiymati (w) viewBox dan chiqmaydi
+      for (const e of s.elements.filter((x) => x.type === "value")) expect(e.x + 90).toBeLessThanOrEqual(VIEW.w);
+      for (const u of s.elements.filter((x) => x.type === "unit")) expect(u.w).toBeGreaterThanOrEqual(70);
       expect(new Set(s.elements.map((e) => e.id)).size).toBe(s.elements.length);
     });
   }
@@ -65,12 +68,32 @@ describe("mimika sxemasi (F3)", () => {
       expect(html.match(/data-testid="mimic-unit"/g)).toHaveLength(n);
       expect(html.match(/data-testid="mimic-breaker"/g)).toHaveLength(n);
       expect(html).toContain('data-state="open"'); // Q1 ochiq
-      expect(html.match(/data-state="unknown"/g)).toHaveLength(n - 1); // bog'lanmagan uzgichlar ko'rinadi, "?"
+      expect(html.match(/data-testid="mimic-breaker" data-state="unknown"/g)).toHaveLength(n - 1); // bog'lanmagan uzgichlar ko'rinadi, "?"
+      expect(html.match(/data-testid="mimic-unit" data-state="unknown"/g)).toHaveLength(n - 1); // ma'lumotsiz agregat — shtrix, rangsiz
+      expect(html).toContain('data-testid="mimic-unit" data-state="running"');
       expect(html).toContain("ma&#x27;lumot yo&#x27;q"); // bog'lanmagan qiymat katakchasi yashirilmaydi
-      expect(html).toContain("◆H"); // kritik alarm: romb + kod
+      // kritik alarm: romb shakli + ustuvorlik raqami + kod (rang — uchinchi kanal)
+      expect(html).toMatch(/data-prio="critical" data-testid="mimic-alarm"/);
+      expect(html).toMatch(/am-shape prio-critical/);
+      expect(html).toMatch(/class="mimic-code"[^>]*>H</);
+      expect(html).not.toMatch(/alarm-mark-svg unacked/); // kvitlangan — miltillamaydi
+      expect(html).not.toMatch(/animate|m-flow|spin/); // normal holatda hech narsa harakatlanmaydi (UX-01)
       expect(html).toContain("40 %"); // zatvor ochilishi
       expect(html).toContain("903.0 m ✕"); // bad sifat kodi
       expect(html).not.toMatch(/#[0-9a-f]{6}/i); // rang faqat tokenlardan
+      expect(html).not.toMatch(/fill="(?!url)[a-z]/i); // rang atributi yo'q — faqat CSS sinflari
     }
+  });
+
+  it("kvitlanmagan alarm miltillaydi; aloqa yo'q — qiymatlar eskirgan (shtrix, '?')", () => {
+    const sensors = [mk({ id: 1, key: "RES.H", kind: "level", unit: "m", last_value: 905, alarm: "highhigh", priority: "high" })];
+    const s = { ...defaultScheme(2), elements: defaultScheme(2).elements.map((e) => (e.id === "upstream_level" ? { ...e, sensor_id: 1 } : e)) };
+    const html = renderToStaticMarkup(<Mimic scheme={s} sensors={sensors} unacked={new Set([1])} />);
+    expect(html).toMatch(/alarm-mark-svg unacked/);
+    expect(html).toMatch(/data-prio="high"/);
+    expect(html).toMatch(/class="mimic-code"[^>]*>HH</);
+    const off = renderToStaticMarkup(<Mimic scheme={s} sensors={sensors} offline />);
+    expect(off).toMatch(/data-stale="1"/);
+    expect(off).toContain("905.0 m ?");
   });
 });

@@ -3,8 +3,9 @@ import { usePolling } from "../../hooks/usePolling";
 import { Link } from "react-router-dom";
 import Icon from "../../ui/Icon";
 import { api, type AssetDocKind, type AssetDocument, type AssetState, type AssetTree, type AssetTreeNode, type Command, type JournalEntry, type Sensor, type SoeEvent, type TwinState, type Version } from "../../api/client";
-import ControlBlock, { CMD_CLASS, CMD_LABEL } from "../operator/ControlBlock";
-import { fmtDate, fmtValue } from "../../ui/format";
+import ControlBlock, { CMD_CLASS } from "../operator/ControlBlock";
+import { commandStatusLabel } from "../../i18n/labels";
+import { fmtDate, fmtDateMs, fmtValue } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { dialogs } from "../../ui/dialogs";
 import { AssetHistoryDialog } from "./CmmsPanels";
@@ -52,7 +53,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
                 const bad = dev != null && Math.abs(dev) > 10;
                 const src = (u as typeof u & { flow_source?: FlowSource }).flow_source ?? null;
                 return (
-                  <tr key={u.sensor_id} className={bad ? "alarm-active" : undefined}>
+                  <tr key={u.sensor_id} className={bad ? "row-attention" : undefined}>
                     <td>{u.name} <span className="dim">{u.model_unit}</span></td>
                     <td>{u.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                     <td className="mono">{u.measured_mw == null ? "—" : fmtValue(u.measured_mw)}</td>
@@ -70,13 +71,13 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
         </>
       )}
       {t.safety && t.safety.length > 0 && (
-        <div style={{ marginTop: 8 }}>
+        <div className="mt-8">
           <div className="row"><b>Xavfsizlik ko'rsatkichlari</b><span className="muted small">maydon pasporti + jonli sath (gerb zaxirasi, suv tashlagich, to'g'on barqarorligi, inshoot balandligi)</span><span className="grow" /><Link to={`/projects/${projectId}/site`} className="small">Maydon pasporti</Link></div>
           <table className="grid small">
             <tbody>
               {t.safety.map((r) => (
-                <tr key={r.name} className={r.ok ? undefined : "alarm-active"}>
-                  <td style={{ width: 22 }}><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td>
+                <tr key={r.name} className={r.ok ? undefined : "row-attention"}>
+                  <td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} className={r.ok ? "c-ok" : "c-danger"} /></td>
                   <td>{r.name}</td>
                   <td className="mono">{r.value} {r.unit}</td>
                   <td className="dim">{r.note}</td>
@@ -86,7 +87,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
           </table>
         </div>
       )}
-      {(!t.safety || t.safety.length === 0) && <p className="dim small" style={{ marginTop: 6 }}>Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
+      {(!t.safety || t.safety.length === 0) && <p className="dim small mt-6">Xavfsizlik ko'rsatkichlari uchun <Link to={`/projects/${projectId}/site`}>maydon pasportini</Link> to'ldiring (gerb, sathlar, to'g'on, inshoot belgilari).</p>}
     </div>
       <EstimatorPanel projectId={projectId} canEdit={canRun} />
       <ValidationPanel projectId={projectId} canApprove={canApprove} />
@@ -114,17 +115,22 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
         {canCommand && writable.length === 0 && <span className="dim small">Boshqaruv nuqtasi yo'q — sensor sozlamasida «Yozish mumkin»</span>}
       </div>
       {err && <p className="error small">{err}</p>}
+      {cmds.some((c) => c.status === "unknown") && (
+        <div className="verdict bad" role="alert" data-testid="cmd-unknown-banner">
+          <b>{cmds.filter((c) => c.status === "unknown").length} ta buyruq natijasi noma'lum</b> — gateway tasdiq bermadi; jihoz holatini tekshiring (smena jurnaliga yozing).
+        </div>
+      )}
       {cmds.length === 0 ? <p className="muted">Buyruqlar yo'q</p> : (
         <table className="grid small">
           <thead><tr><th>Vaqt</th><th>Nuqta</th><th>Qiymat</th><th>Kim</th><th>Holat</th><th>Natija</th><th /></tr></thead>
           <tbody>
             {cmds.slice(0, 30).map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} className={c.status === "unknown" ? "row-unknown" : undefined}>
                 <td className="mono">{fmtDate(c.created_at)}</td>
                 <td>{c.sensor_name} <span className="dim">{c.sensor_key}</span></td>
                 <td className="mono">{fmtValue(c.value)} {c.unit}</td>
                 <td>{c.author_username}{c.note && <div className="dim">{c.note}</div>}</td>
-                <td><span className={`badge ${CMD_CLASS[c.status]}`}>{CMD_LABEL[c.status]}</span></td>
+                <td><span className={`badge ${CMD_CLASS[c.status]}`}>{commandStatusLabel(c.status)}</span></td>
                 <td className="dim small">{c.result}{c.readback_value != null && <div>readback: <span className="mono">{fmtValue(c.readback_value)} {c.unit}</span></div>}{c.approved_by_username && <div>tasdiq: {c.approved_by_username}</div>}</td>
                 <td>
                   {(c.status === "pending" || c.status === "pending_approval") && canCommand && <button className="btn sm" onClick={() => api.cancelCommand(c.id).then((u) => setCmds((p) => p.map((x) => (x.id === u.id ? u : x))))}>Bekor</button>}
@@ -165,8 +171,8 @@ export function JournalPanel({ projectId, canWrite, live }: { projectId: number;
         {canWrite && <><button className="btn sm" onClick={() => add("shift_start", "Smenani qabul qildim")}>Smena qabul</button><button className="btn sm" onClick={() => add("shift_end", "Smenani topshirdim")}>Smena topshirish</button></>}
       </div>
       {canWrite && (
-        <form className="row" style={{ margin: "6px 0" }} onSubmit={(e) => { e.preventDefault(); void add(); }}>
-          <select className="select" style={{ width: 130 }} value={kind} onChange={(e) => setKind(e.target.value as JournalEntry["kind"])}><option value="note">Yozuv</option><option value="event">Hodisa</option></select>
+        <form className="row my-6 mx-0" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <select className="select w-130" value={kind} onChange={(e) => setKind(e.target.value as JournalEntry["kind"])}><option value="note">Yozuv</option><option value="event">Hodisa</option></select>
           <input className="input grow" placeholder="Jurnalga yozuv… (Enter)" value={text} onChange={(e) => setText(e.target.value)} />
           <button className="btn" type="submit" disabled={!text.trim()}>Yozish</button>
         </form>
@@ -211,7 +217,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
     <div className="dash-block">
       <div className="row"><b>Aktivlar (agregatlar)</b><span className="muted small">ish soatlari, ishga tushishlar, texnik xizmat</span><span className="grow" />
         {canEdit && models.some((m) => m.versions.length) && (
-          <select className="select" style={{ width: "auto" }} value="" data-testid="assets-from-ifc" title="IFC dan aktiv registri (COBie): turbina, generator, transformator — pasport ma'lumotlari bilan" onChange={(e) => { const vid = Number(e.target.value); if (!vid) return; setSyncMsg(""); api.assetsFromIfc(projectId, vid).then((r) => { setSyncMsg(`IFC dan: ${r.created} yangi, ${r.updated} yangilandi (${r.components} komponent)`); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }}>
+          <select className="select w-auto" value="" data-testid="assets-from-ifc" title="IFC dan aktiv registri (COBie): turbina, generator, transformator — pasport ma'lumotlari bilan" onChange={(e) => { const vid = Number(e.target.value); if (!vid) return; setSyncMsg(""); api.assetsFromIfc(projectId, vid).then((r) => { setSyncMsg(`IFC dan: ${r.created} yangi, ${r.updated} yangilandi (${r.components} komponent)`); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }}>
             <option value="">IFC dan aktivlar…</option>
             {models.filter((m) => m.versions.length).map((m) => <option key={m.id} value={m.versions[0]?.id}>{m.name} v{m.versions[0]?.number}</option>)}
           </select>
@@ -220,10 +226,10 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
         {canEdit && <button className="btn sm" onClick={() => setAdding(true)}>+ Aktiv</button>}</div>
       {syncMsg && <p className="small verdict ok" data-testid="assets-sync-msg">{syncMsg}</p>}
       {err && <p className="error small">{err}</p>}
-      <div className="row" style={{ gap: 6, margin: "4px 0" }}>
+      <div className="row gap-6 my-4 mx-0">
         <button className={`btn sm ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>Ro'yxat</button>
         <button className={`btn sm ${view === "tree" ? "active" : ""}`} onClick={() => setView("tree")} data-testid="assets-tree-btn">Ierarxiya (KKS)</button>
-        {canEdit && <label className="btn sm" title="CSV: kks_code, name, parent_kks, taxonomy_level, element_guid, sensor_key, function_location">KKS CSV import<input type="file" accept=".csv" style={{ display: "none" }} data-testid="kks-csv" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.importKks(projectId, f).then((r) => { setSyncMsg(`KKS: ${r.created} yangi, ${r.updated} yangilandi${r.errors.length ? `, ${r.errors.length} xato: ${r.errors[0]}` : ""}`); void load(); void loadTree(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>}
+        {canEdit && <label className="btn sm" title="CSV: kks_code, name, parent_kks, taxonomy_level, element_guid, sensor_key, function_location">KKS CSV import<input type="file" accept=".csv" className="is-hidden" data-testid="kks-csv" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.importKks(projectId, f).then((r) => { setSyncMsg(`KKS: ${r.created} yangi, ${r.updated} yangilandi${r.errors.length ? `, ${r.errors.length} xato: ${r.errors[0]}` : ""}`); void load(); void loadTree(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>}
       </div>
       {view === "tree" && tree && (
         <div data-testid="assets-tree">
@@ -241,7 +247,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
           <tbody>
             {items.map((a) => (
               <tr key={a.id}>
-                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}{a.kks_code && <span className="mono dim small"> {a.kks_code}</span>}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
+                <td>{a.element_guid && onSelectGuid ? <button type="button" className="link-btn" onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</button> : a.name}{a.kks_code && <span className="mono dim small"> {a.kks_code}</span>}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
                 <td>{a.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                 <td className="mono">{a.run_hours_total.toFixed(0)} s</td>
                 <td className="mono">{a.starts_total}</td>
@@ -260,7 +266,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
       {histFor != null && <AssetHistoryDialog assetId={histFor} onClose={() => setHistFor(null)} />}
       {adding && (
         <Dialog title="Yangi aktiv" onClose={() => setAdding(false)}>
-          <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></label>
+          <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-autofocus /></label>
           <label className="field"><span>Quvvat sensori (ish soatlari shundan)</span>
             <select className="select" value={form.power_sensor_id} onChange={(e) => setForm({ ...form, power_sensor_id: e.target.value })}><option value="">—</option>{powerSensors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
           </label>
@@ -286,14 +292,14 @@ export function SoePanel({ projectId }: { projectId: number }) {
   const [err, setErr] = useState("");
   const load = useCallback(() => (onlySoe ? api.soe(projectId, hours, filter || undefined) : api.timeline(projectId, hours)).then(setRows).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [projectId, hours, onlySoe, filter]);
   usePolling(load, 15000, `${projectId}:${hours}:${onlySoe}:${filter}`);
-  const fmtMs = (ts: string) => { const d = new Date(ts); return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
+  const fmtMs = fmtDateMs;
   return (
     <div className="panel">
-      <div className="row wrap" style={{ gap: 6 }}>
+      <div className="row wrap gap-6">
         <b>Hodisalar ketma-ketligi (SOE)</b>
         <select className="select" value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[1, 6, 24, 168, 720].map((h) => <option key={h} value={h}>{h} soat</option>)}</select>
-        <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={onlySoe} onChange={(e) => setOnlySoe(e.target.checked)} /> faqat SOE</label>
-        {onlySoe && <input className="input" style={{ width: 160 }} placeholder="nuqta, masalan AGG1.*" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        <label className="row gap-4"><input type="checkbox" checked={onlySoe} onChange={(e) => setOnlySoe(e.target.checked)} /> faqat SOE</label>
+        {onlySoe && <input className="input w-160" placeholder="nuqta, masalan AGG1.*" value={filter} onChange={(e) => setFilter(e.target.value)} />}
         <span className="grow" />
         <span className="muted small">{rows.length} ta · ms aniqlik · 15 s da yangilanadi</span>
       </div>
@@ -353,10 +359,10 @@ function AssetDocsDialog({ asset, canEdit, canDelete, onClose }: { asset: AssetS
         </table>
       )}
       {canEdit && (
-        <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          <select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as AssetDocKind)}>{ASSET_DOC_KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}</select>
-          <input className="input" placeholder="Sarlavha" value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: 200 }} />
-          <label className="btn sm">Fayl tanlash<input type="file" style={{ display: "none" }} accept=".pdf,.docx,.xlsx,.doc,.xls,.txt,.md,.csv,.zip,.png,.jpg,.jpeg" data-testid="asset-doc-file" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.uploadAssetDocument(asset.id, f, kind, title).then(() => { setTitle(""); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>
+        <div className="row gap-6 mt-8 flex-wrap">
+          <select className="select w-auto" value={kind} onChange={(e) => setKind(e.target.value as AssetDocKind)}>{ASSET_DOC_KINDS.map((k) => <option key={k.id} value={k.id}>{k.title}</option>)}</select>
+          <input className="input w-200" placeholder="Sarlavha" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <label className="btn sm">Fayl tanlash<input type="file" className="is-hidden" accept=".pdf,.docx,.xlsx,.doc,.xls,.txt,.md,.csv,.zip,.png,.jpg,.jpeg" data-testid="asset-doc-file" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; api.uploadAssetDocument(asset.id, f, kind, title).then(() => { setTitle(""); void load(); }).catch((er) => setErr(er.message)); e.target.value = ""; }} /></label>
         </div>
       )}
       <div className="actions"><button className="btn" onClick={onClose}>Yopish</button></div>
@@ -371,7 +377,7 @@ function TreeRows({ n, depth, labels, canEdit, onEdit, onSelectGuid }: { n: Asse
     <>
       <tr>
         <td style={{ paddingLeft: 8 + depth * 18 }}>
-          {n.kks_code && <span className="mono">{n.kks_code}</span>} {n.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(n.element_guid!)}>{n.name}</a> : n.name}
+          {n.kks_code && <span className="mono">{n.kks_code}</span>} {n.element_guid && onSelectGuid ? <button type="button" className="link-btn" onClick={() => onSelectGuid(n.element_guid!)}>{n.name}</button> : n.name}
           {n.kks?.system_name && <span className="dim small"> · {n.kks.system_name}</span>}
         </td>
         <td className="dim small">{n.taxonomy_level ? labels[n.taxonomy_level] ?? n.taxonomy_level : "—"}</td>

@@ -32,12 +32,12 @@ export default function AnnunciatorControl({ projectId, canOperate }: { projectI
   };
   const cls = health === "ok" ? "published" : health === "blocked" ? "rejected" : "archived";
   return (
-    <span className="row" style={{ gap: 4, position: "relative" }} data-testid="annunciator" data-health={health}>
+    <span className="row gap-4 rel" data-testid="annunciator" data-health={health}>
       <button className={`btn sm ${health === "blocked" ? "danger" : ""}`} title={LABEL[health]} onClick={() => (health === "blocked" ? void annunciator.unlock().then(setHealth) : setOpen((v) => !v))}>
         <Icon name={health === "ok" ? "volume" : "volume-x"} size={12} /> <span className={`badge ${cls}`}>{health}</span>
       </button>
       {open && (
-        <div className="menu" style={{ position: "absolute", top: "100%", right: 0, zIndex: 20 }}>
+        <div className="menu-list menu-right" role="menu">
           <button className="menu-item" onClick={() => { annunciator.setMuted(!annunciator.muted); setOpen(false); }}>{annunciator.muted ? "Ovozni yoqish" : "Ovozni o'chirish (doimiy)"}</button>
           {canOperate && [5, 15, 30, 60].map((m) => <button key={m} className="menu-item" onClick={() => silence(m)}>Silence {m} daqiqa (auditga yoziladi)</button>)}
           {annunciator.silencedUntil && <button className="menu-item" onClick={() => silence(0)}>Silence ni bekor qilish</button>}

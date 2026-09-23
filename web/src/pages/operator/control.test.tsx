@@ -27,7 +27,7 @@ describe("boshqaruv validatsiyasi (F8, klient)", () => {
     expect(html).toContain("0 … 100 %");
     expect(html).toContain("1. Tanlash");
     expect(renderToStaticMarkup(<ControlBlock projectId={1} sensor={mk({ writable: false })} canCommand />)).toBe("");
-    expect(renderToStaticMarkup(<ControlBlock projectId={1} sensor={mk()} canCommand={false} />)).toContain("operator huquqi kerak");
+    expect(renderToStaticMarkup(<ControlBlock projectId={1} sensor={mk()} canCommand={false} />)).toContain("faqat dispetcher va smena boshlig");
     vi.unstubAllGlobals();
   });
 });

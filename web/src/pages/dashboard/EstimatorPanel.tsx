@@ -18,7 +18,7 @@ export function EstimatorPanel({ projectId, canEdit }: { projectId: number; canE
   const bal = est?.balance;
   return (
     <div className="dash-block">
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="row items-center">
         <b>Holat baholash va ortiqchalik</b>
         <span className="muted small">suv balansi bo'yicha sath bahosi (Kalman) va bir kattalikning bir nechta manbasini solishtirish</span>
         {est?.frozen && <span className="badge rejected" data-testid="est-frozen">sensor qotgan</span>}
@@ -50,7 +50,7 @@ export function EstimatorPanel({ projectId, canEdit }: { projectId: number; canE
         <table className="grid small" data-testid="est-checks">
           <thead><tr><th>Tekshiruv</th><th>Manbalar</th><th>Farq</th><th>Chidamlilik</th><th>Holat</th></tr></thead>
           <tbody>{st.checks.map((c) => (
-            <tr key={c.name} className={c.status === "alarm" ? "alarm-active" : undefined}>
+            <tr key={c.name} className={c.status === "alarm" ? "row-attention" : undefined}>
               <td>{c.label}{c.note && <div className="dim">{c.note}</div>}</td>
               <td className="small">{c.sources.map((s) => `${s.label}: ${s.value} ${c.unit}`).join(" · ")}</td>
               <td className="mono">{c.diff > 0 ? "+" : ""}{c.diff} {c.unit}</td>

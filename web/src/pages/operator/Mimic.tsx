@@ -1,13 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Sensor } from "../../api/client";
 import { fmtValue } from "../../ui/format";
+import { AlarmMarkSvg } from "../../ui/AlarmMark";
 import { alarmStyle, qualityStyle } from "../../ui/tokens";
-import { ageSeconds } from "./model";
-import { VIEW, moveElement, type Scheme, type SchemeElement } from "./scheme";
+import { ageSeconds, fmtAge } from "./model";
+import { moveElement, viewOf, type Scheme, type SchemeElement } from "./scheme";
 
-/** Konfiguratsiyalanadigan mimika (F3): sxema JSON dan chiziladi (agregatlar soni ixtiyoriy), elementlar
- * surish bilan tahrirlanadi, sensor bog'lanadi. Bog'lanmagan element "ma'lumot yo'q" holatida ko'rinadi.
- * Ranglar faqat tokenlardan; alarm — shakl + kod (F1). */
+/** Konfiguratsiyalanadigan mimika (F3) — ISA-101 / High Performance HMI uslubida (UX-01):
+ *  - fon kulrang, jihozlar KONTUR; holat kulrang to'ldirish bilan (ishlayapti / yopiq — to'q, to'xtagan / ochiq —
+ *    bo'sh); suv, shina, transformator — neytral, RANG FAQAT ALARM uchun (shakl + raqam + kod, AlarmMarkSvg);
+ *  - normal holatda HECH QANDAY animatsiya yo'q (oqim chizig'i, aylanish olib tashlandi); faqat kvitlanmagan
+ *    alarm belgisi miltillaydi, reduced-motion da — statik;
+ *  - qiymat 18 px, yorliq 14 px (viewBox birligi; konteyner min-width bilan birlik ≥ 1 px), har qiymat yonida
+ *    yoshi; eskirgan / aloqa yo'q — shtrix fon + "?" (UX-04). Bog'lanmagan element "ma'lumot yo'q". */
 
 interface Props {
   scheme: Scheme;
@@ -18,9 +23,13 @@ interface Props {
   onChange?: (s: Scheme) => void;
   onOpen?: (sensorId: number) => void;
   now?: number | undefined;
+  /** Kvitlanmagan alarmi bor sensorlar (belgi miltillaydi) */
+  unacked?: ReadonlySet<number> | undefined;
+  /** Jonli ulanish yo'q — barcha qiymatlar eskirgan deb ko'rsatiladi (UX-04) */
+  offline?: boolean | undefined;
 }
 
-export default function Mimic({ scheme, sensors, editing = false, selected, onSelect, onChange, onOpen, now }: Props) {
+export default function Mimic({ scheme, sensors, editing = false, selected, onSelect, onChange, onOpen, now, unacked, offline = false }: Props) {
   const byId = useMemo(() => new Map(sensors.map((s) => [s.id, s])), [sensors]);
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
@@ -56,13 +65,15 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
     const id = key ? e.extra?.[key] : e.sensor_id;
     return id ? byId.get(id) : undefined;
   };
-  const anyAlarm = sensors.some((s) => s.enabled && alarmStyle(s.alarm, s.priority).rank > 0);
-  const hall = cur.elements.find((e) => e.id === "hall");
+  const vp = { now, onOpen, editing, unacked, offline };
   return (
-    <svg ref={svgRef} className={`mimic ${editing ? "editing" : ""}`} viewBox={`0 0 ${VIEW.w} ${VIEW.h}`} role="img" aria-label="GES sxemasi" onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} data-units={cur.units}>
+    <svg ref={svgRef} className={`mimic ${editing ? "editing" : ""} ${offline ? "offline" : ""}`} viewBox={`0 0 ${viewOf(cur).w} ${viewOf(cur).h}`} role="group" aria-label="GES sxemasi (ISA-101)"
+      onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} data-units={cur.units}>
       <defs>
-        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="var(--accent-2)" /></marker>
-        <pattern id="nodata" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--mimic-unbound)" strokeWidth="2" /></pattern>
+        <marker id="mimic-arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" className="m-arrow" /></marker>
+        {/* Bog'lanmagan / ma'lumot yo'q — kulrang shtrix; eskirgan qiymat — siyrakroq shtrix (rangsiz) */}
+        <pattern id="nodata" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" className="m-hatch" /></pattern>
+        <pattern id="stale-hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="10" className="m-hatch light" /></pattern>
       </defs>
       {cur.elements.map((e) => {
         const sel = selected === e.id;
@@ -71,25 +82,26 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
           case "reservoir":
           case "tailwater": {
             const w = e.w ?? 200, h = e.h ?? 120;
+            const surf = `M${e.x} ${e.y + 12} L${e.x + w} ${e.y + 12}`;
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x} ${e.y + 10} Q${e.x + w * 0.25} ${e.y - 2} ${e.x + w * 0.5} ${e.y + 10} T${e.x + w} ${e.y + 10} L${e.x + w} ${e.y + h} L${e.x} ${e.y + h} Z`} fill="var(--mimic-water)" opacity="0.9" />
-                <path d={`M${e.x} ${e.y + 10} Q${e.x + w * 0.25} ${e.y - 2} ${e.x + w * 0.5} ${e.y + 10} T${e.x + w} ${e.y + 10}`} fill="none" stroke="var(--accent-2)" strokeWidth="2" />
-                <text x={e.x + 12} y={e.y + h - 10} className="mimic-cap">{e.label}</text>
+                <rect x={e.x} y={e.y + 12} width={w} height={h - 12} className="m-liquid" />
+                <path d={surf} className="m-surface" />
+                <text x={e.x + 12} y={e.y + h - 12} className="mimic-cap">{e.label}</text>
               </g>
             );
           }
           case "dam":
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x} ${e.y} L${e.x + (e.w ?? 90) * 0.55} ${e.y} L${e.x + (e.w ?? 90)} ${e.y + (e.h ?? 210)} L${e.x} ${e.y + (e.h ?? 210)} Z`} fill="var(--mimic-concrete)" stroke="var(--mimic-outline)" strokeWidth="1.5" />
-                <text x={e.x + 4} y={e.y + (e.h ?? 210) + 16} className="mimic-cap">{e.label}</text>
+                <path d={`M${e.x} ${e.y} L${e.x + (e.w ?? 90) * 0.55} ${e.y} L${e.x + (e.w ?? 90)} ${e.y + (e.h ?? 210)} L${e.x} ${e.y + (e.h ?? 210)} Z`} className="m-concrete" />
+                <text x={e.x + 4} y={e.y + (e.h ?? 210) + 20} className="mimic-cap">{e.label}</text>
               </g>
             );
           case "spillway":
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x + 5} ${e.y + 28} Q${e.x + (e.w ?? 110) / 2} ${e.y - 5} ${e.x + (e.w ?? 110)} ${e.y + 40}`} fill="none" stroke="var(--accent-2)" strokeWidth="2" strokeDasharray="5 4" markerEnd="url(#arr)" />
+                <path d={`M${e.x + 5} ${e.y + 28} Q${e.x + (e.w ?? 110) / 2} ${e.y - 5} ${e.x + (e.w ?? 110)} ${e.y + 40}`} className="m-line dashed" markerEnd="url(#mimic-arr)" />
               </g>
             );
           case "penstock": {
@@ -97,57 +109,58 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const d = `M${e.x} ${e.y} L${e.x + w} ${e.y} L${e.x + w + 50} ${e.y + h}`;
             return (
               <g key={e.id} {...common}>
-                <path d={d} fill="none" stroke="var(--mimic-pipe)" strokeWidth="10" strokeLinejoin="round" />
-                <path d={d} fill="none" stroke="var(--accent-2)" strokeWidth="4" strokeLinejoin="round" strokeDasharray="14 10" className="mimic-flow" />
-                <text x={e.x + 40} y={e.y + 22} className="mimic-cap">{e.label}</text>
+                <path d={d} className="m-pipe" />
+                <path d={d} className="m-pipe-core" />
+                <text x={e.x + 34} y={e.y + 30} className="mimic-cap">{e.label}</text>
               </g>
             );
           }
           case "line":
             if (e.id === "hall") {
+              const anyAlarm = sensors.some((s) => s.enabled && alarmStyle(s.alarm, s.priority).rank > 0);
               return (
                 <g key={e.id} {...common}>
-                  <rect x={e.x} y={e.y} width={e.w ?? 250} height={e.h ?? 150} fill="var(--mimic-hall)" stroke={anyAlarm ? "var(--danger)" : "var(--mimic-outline)"} strokeWidth="1.5" />
-                  <text x={e.x + 10} y={e.y + 16} className="mimic-cap">{e.label}</text>
+                  <rect x={e.x} y={e.y} width={e.w ?? 250} height={e.h ?? 150} className={`m-hall ${anyAlarm ? "has-alarm" : ""}`} />
+                  <text x={e.x + 10} y={e.y + (e.h ?? 150) - 10} className="mimic-cap">{e.label}</text>
                 </g>
               );
             }
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x} ${e.y + 120} V${e.y} H${e.x + (e.w ?? 60)}`} fill="none" stroke="var(--warn)" strokeWidth="2" />
+                <path d={`M${e.x} ${e.y + 120} V${e.y} H${e.x + (e.w ?? 60)}`} className="m-line" />
                 <text x={e.x + 8} y={e.y - 8} className="mimic-cap">{e.label}</text>
               </g>
             );
           case "bus":
             return (
               <g key={e.id} {...common}>
-                <line x1={e.x} y1={e.y} x2={e.x + (e.w ?? 200)} y2={e.y} stroke="var(--warn)" strokeWidth="4" />
-                <text x={e.x} y={e.y - 6} className="mimic-cap">{e.label}</text>
+                <line x1={e.x} y1={e.y} x2={e.x + (e.w ?? 200)} y2={e.y} className="m-bus" />
+                <text x={e.x + (e.w ?? 200)} y={e.y - 8} textAnchor="end" className="mimic-lbl">{e.label}</text>
               </g>
             );
           case "transformer": {
             const s = sensorOf(e);
             return (
               <g key={e.id} {...common}>
-                <path d={`M${e.x} ${e.y - 50} V${e.y - 9}`} stroke="var(--warn)" strokeWidth="2" />
-                <circle cx={e.x} cy={e.y} r={9} fill="none" stroke="var(--warn)" strokeWidth="2" />
-                <circle cx={e.x + 10} cy={e.y} r={9} fill="none" stroke="var(--warn)" strokeWidth="2" />
-                <text x={e.x - 30} y={e.y + 26} className="mimic-cap">{e.label}</text>
-                {s && <ValueBox x={e.x + 5} y={e.y + 48} w={90} s={s} label={s.unit} now={now} onOpen={onOpen} editing={editing} />}
+                <path d={`M${e.x} ${e.y - 50} V${e.y - 11}`} className="m-line" />
+                <circle cx={e.x} cy={e.y} r={11} className="m-outline" />
+                <circle cx={e.x + 12} cy={e.y} r={11} className="m-outline" />
+                <text x={e.x - 32} y={e.y + 30} className="mimic-lbl">{e.label}</text>
+                {s && <ValueBox x={e.x + 6} y={e.y + 70} w={180} s={s} label={s.name} {...vp} />}
               </g>
             );
           }
           case "unit": {
             const p = sensorOf(e);
             const run = sensorOf(e, "run");
-            const st = p ? alarmStyle(p.alarm, p.priority) : null;
             const on = run ? (run.last_value ?? 0) >= 0.5 : !!p && p.last_value != null && p.last_value > 0.05 && !p.stale;
+            const known = !!p || !!run;
             return (
-              <g key={e.id} {...common} data-testid="mimic-unit">
-                <circle cx={e.x} cy={e.y} r={24} fill={p ? (on ? "var(--mimic-unit-on)" : "var(--mimic-unit-off)") : "url(#nodata)"} stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth="2" strokeDasharray={p ? undefined : "3 3"} />
-                <path d={`M${e.x - 12} ${e.y} h24 M${e.x} ${e.y - 12} v24 M${e.x - 8} ${e.y - 8} l16 16 M${e.x + 8} ${e.y - 8} l-16 16`} stroke={on ? "var(--ok)" : "var(--mimic-idle)"} strokeWidth="2" className={on ? "mimic-spin" : undefined} style={{ transformOrigin: `${e.x}px ${e.y}px` }} />
-                {st && st.code && <text x={e.x + 26} y={e.y - 18} className="mimic-code" fill={st.color}>{st.glyph}{st.code}</text>}
-                <ValueBox x={e.x} y={e.y + 50} w={e.w ?? 64} s={p} label={e.label ?? ""} now={now} onOpen={onOpen} editing={editing} />
+              <g key={e.id} {...common} data-testid="mimic-unit" data-state={!known ? "unknown" : on ? "running" : "stopped"}>
+                {/* HP-HMI: ishlayapti — to'q kulrang to'ldirilgan, to'xtagan — bo'sh kontur; ma'lumot yo'q — shtrix */}
+                <circle cx={e.x} cy={e.y} r={24} className={`m-unit ${!known ? "nodata" : on ? "on" : "off"}`} />
+                <text x={e.x} y={e.y + 6} textAnchor="middle" className={`m-unit-glyph ${on ? "on" : ""}`}>G</text>
+                <UnitValue x={e.x} y={e.y + 58} w={Math.max(60, e.w ?? 64)} s={p} label={e.label ?? ""} {...vp} />
               </g>
             );
           }
@@ -156,11 +169,11 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const closed = s ? (s.last_value ?? 0) >= 0.5 : null;
             return (
               <g key={e.id} {...common} data-testid="mimic-breaker" data-state={closed == null ? "unknown" : closed ? "closed" : "open"}>
-                <line x1={e.x} y1={e.y - 25} x2={e.x} y2={e.y - 10} stroke="var(--warn)" strokeWidth="2" />
-                <line x1={e.x} y1={e.y + 10} x2={e.x} y2={e.y + 30} stroke="var(--warn)" strokeWidth="2" />
-                <rect x={e.x - 8} y={e.y - 10} width={16} height={20} fill={closed == null ? "url(#nodata)" : closed ? "var(--ok)" : "var(--mimic-unit-off)"} stroke={closed == null ? "var(--mimic-unbound)" : "var(--mimic-outline)"} strokeWidth="1.5" strokeDasharray={closed == null ? "3 3" : undefined} />
-                {closed === false && <line x1={e.x - 6} y1={e.y + 8} x2={e.x + 6} y2={e.y - 8} stroke="var(--text)" strokeWidth="2" />}
-                <text x={e.x + 11} y={e.y + 4} className="mimic-lbl">{e.label}{closed == null ? " ?" : closed ? "" : " OCHIQ"}</text>
+                <line x1={e.x} y1={e.y - 25} x2={e.x} y2={e.y - 11} className="m-line" />
+                <line x1={e.x} y1={e.y + 11} x2={e.x} y2={e.y + 30} className="m-line" />
+                <rect x={e.x - 9} y={e.y - 11} width={18} height={22} className={`m-switch ${closed == null ? "nodata" : closed ? "on" : "off"}`} />
+                {closed === false && <line x1={e.x - 6} y1={e.y + 8} x2={e.x + 6} y2={e.y - 8} className="m-line strong" />}
+                <text x={e.x + 13} y={e.y + 5} className="mimic-lbl">{e.label}{closed == null ? " ?" : closed ? "" : " OCHIQ"}</text>
               </g>
             );
           }
@@ -171,9 +184,9 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const gateH = open == null ? h : (h * (100 - open)) / 100;
             return (
               <g key={e.id} {...common} data-testid="mimic-gate">
-                <rect x={e.x} y={e.y} width={w} height={h} fill="none" stroke="var(--mimic-outline)" strokeWidth="1" strokeDasharray="2 2" />
-                <rect x={e.x} y={e.y} width={w} height={gateH} fill={open == null ? "url(#nodata)" : "var(--mimic-concrete)"} stroke="var(--mimic-outline)" strokeWidth="1.5" />
-                <text x={e.x + w / 2} y={e.y + h + 12} textAnchor="middle" className="mimic-lbl">{e.label} {open == null ? "?" : `${Math.round(open)} %`}</text>
+                <rect x={e.x} y={e.y} width={w} height={h} className="m-outline dashed" />
+                <rect x={e.x} y={e.y} width={w} height={gateH} className={`m-gate ${open == null ? "nodata" : ""}`} />
+                <text x={e.x + w / 2} y={e.y + h + 18} textAnchor="middle" className="mimic-lbl">{e.label} {open == null ? "?" : `${Math.round(open)} %`}</text>
               </g>
             );
           }
@@ -181,9 +194,9 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const s = sensorOf(e);
             const open = s ? (s.last_value ?? 0) >= 0.5 : null;
             return (
-              <g key={e.id} {...common} data-testid="mimic-valve">
-                <path d={`M${e.x - 10} ${e.y - 8} L${e.x + 10} ${e.y + 8} L${e.x + 10} ${e.y - 8} L${e.x - 10} ${e.y + 8} Z`} fill={open == null ? "url(#nodata)" : open ? "var(--ok)" : "var(--mimic-unit-off)"} stroke="var(--mimic-outline)" strokeWidth="1.5" />
-                <text x={e.x} y={e.y - 12} textAnchor="middle" className="mimic-lbl">{e.label}{open == null ? " ?" : open ? "" : " YOPIQ"}</text>
+              <g key={e.id} {...common} data-testid="mimic-valve" data-state={open == null ? "unknown" : open ? "open" : "closed"}>
+                <path d={`M${e.x - 11} ${e.y - 9} L${e.x + 11} ${e.y + 9} L${e.x + 11} ${e.y - 9} L${e.x - 11} ${e.y + 9} Z`} className={`m-switch ${open == null ? "nodata" : open ? "on" : "off"}`} />
+                <text x={e.x} y={e.y - 15} textAnchor="middle" className="mimic-lbl">{e.label}{open == null ? " ?" : open ? "" : " YOPIQ"}</text>
               </g>
             );
           }
@@ -191,7 +204,7 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             const s = sensorOf(e);
             return (
               <g key={e.id} {...common}>
-                <ValueBox x={e.x} y={e.y} w={e.w ?? 96} s={s} label={e.label ?? e.id} now={now} onOpen={onOpen} editing={editing} />
+                <ValueBox x={e.x} y={e.y} w={Math.max(e.w ?? 180, 140)} s={s} label={e.label ?? e.id} {...vp} />
               </g>
             );
           }
@@ -199,26 +212,67 @@ export default function Mimic({ scheme, sensors, editing = false, selected, onSe
             return null;
         }
       })}
-      {editing && hall && <text x={hall.x + (hall.w ?? 250) - 4} y={hall.y + (hall.h ?? 150) - 6} textAnchor="end" className="mimic-lbl">{cur.units} agregat</text>}
+      {editing && (() => { const hall = cur.elements.find((e) => e.id === "hall"); return hall ? <text x={hall.x + (hall.w ?? 250) - 6} y={hall.y + (hall.h ?? 150) - 8} textAnchor="end" className="mimic-lbl">{cur.units} agregat</text> : null; })()}
     </svg>
   );
 }
 
-/** Qiymat katakchasi: qiymat + birlik, alarm kodi, sifat kodi; bog'lanmagan — shtrix "ma'lumot yo'q"; eskirgan — `?`. */
-function ValueBox({ x, y, w, s, label, now, onOpen, editing }: { x: number; y: number; w: number; s?: Sensor | undefined; label: string; now?: number | undefined; onOpen?: ((id: number) => void) | undefined; editing: boolean }) {
+interface ValueProps {
+  x: number; y: number; w: number; s?: Sensor | undefined; label: string;
+  now?: number | undefined; onOpen?: ((id: number) => void) | undefined; editing: boolean; unacked?: ReadonlySet<number> | undefined; offline: boolean;
+}
+
+function valueState(s: Sensor | undefined, now: number | undefined, offline: boolean) {
   const st = s ? alarmStyle(s.alarm, s.priority) : null;
   const q = s ? qualityStyle(s.last_quality) : null;
   const age = s ? ageSeconds(s.last_ts, now) : null;
-  const stale = !!s && (!!s.stale || (age != null && age > s.stale_after_s));
+  const stale = !!s && (offline || !!s.stale || (age != null && age > s.stale_after_s));
+  return { st, q, age, stale };
+}
+
+/** Qiymat katakchasi: ustida yorliq (14, chapda) va alarm belgisi + kodi (o'ngda); katak ichida qiymat + birlik +
+ * sifat kodi (18, chapda) va yoshi (14, o'ngda). Bosiladigan (faceplate) — klaviatura bilan ham (Enter/Space). */
+function ValueBox({ x, y, w, s, label, now, onOpen, editing, unacked, offline }: ValueProps) {
+  const { st, q, age, stale } = valueState(s, now, offline);
+  const h = 32;
+  const left = x - w / 2, right = x + w / 2, top = y - h / 2;
+  const clickable = !!s && !!onOpen && !editing;
+  const open = () => { if (s && clickable) onOpen?.(s.id); };
+  const text = s ? `${s.last_value == null ? "—" : fmtValue(s.last_value)}${s.unit ? ` ${s.unit}` : ""}${q?.code ? ` ${q.code}` : ""}${stale ? " ?" : ""}` : "ma'lumot yo'q";
+  const alarm = !!st && st.rank > 0;
   return (
-    <g className={`mimic-slot ${s && onOpen && !editing ? "clickable" : ""}`} onClick={() => s && !editing && onOpen?.(s.id)} data-testid="mimic-value" data-bound={s ? "1" : "0"}>
-      <rect x={x - w / 2} y={y - 16} width={w} height={32} rx="2" fill="var(--panel)" stroke={st ? st.color : "var(--mimic-unbound)"} strokeWidth={st && st.rank ? 2 : 1} strokeDasharray={s ? undefined : "3 3"} />
-      {!s && <rect x={x - w / 2 + 2} y={y - 14} width={8} height={28} fill="url(#nodata)" />}
-      <text x={x} y={y - 4} textAnchor="middle" className="mimic-lbl">{s ? (label || s.name) : label}</text>
-      <text x={x} y={y + 11} textAnchor="middle" className="mimic-val" fill={stale ? "var(--alarm-stale)" : "var(--text)"}>
-        {s ? `${s.last_value == null ? "—" : fmtValue(s.last_value)} ${s.unit}${stale ? " ?" : ""}${q?.code ? ` ${q.code}` : ""}` : w < 90 ? "yo'q" : "ma'lumot yo'q"}
-      </text>
-      {st && st.code && <text x={x + w / 2 - 3} y={y - 6} textAnchor="end" className="mimic-code" fill={st.color}>{st.glyph}{st.code}</text>}
+    <g className={`mimic-slot ${clickable ? "clickable" : ""} ${stale ? "stale" : ""} ${alarm ? "in-alarm" : ""}`} data-testid="mimic-value" data-bound={s ? "1" : "0"} data-stale={stale ? "1" : "0"}
+      {...(clickable ? { role: "button", tabIndex: 0, "aria-label": `${label || s!.name}: ${text}${stale ? ", eskirgan" : ""}${alarm ? `, ${st!.label}` : ""} — faceplate`, onClick: open, onKeyDown: (ev: React.KeyboardEvent) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } } } : {})}>
+      <text x={left} y={top - 7} className="mimic-lbl">{s ? (label || s.name) : label}</text>
+      {alarm && <AlarmMarkSvg x={right - 9} y={top - 12} state={s!.alarm} priority={s!.priority} unacked={!!unacked?.has(s!.id)} size={18} />}
+      {alarm && st!.code && <text x={right - 22} y={top - 7} textAnchor="end" className="mimic-code">{st!.code}</text>}
+      <rect x={left} y={top} width={w} height={h} className={`m-box ${s ? "" : "unbound"}`} />
+      {(stale || !s) && <rect x={left + 1} y={top + 1} width={w - 2} height={h - 2} fill={s ? "url(#stale-hatch)" : "url(#nodata)"} className="m-box-hatch" />}
+      <text x={left + 8} y={y + 6.5} className={`mimic-val ${stale ? "stale" : ""} ${s ? "" : "none"}`}>{text}</text>
+      {s && age != null && <text x={right - 6} y={y + 5} textAnchor="end" className="mimic-age">{fmtAge(age)}</text>}
+    </g>
+  );
+}
+
+/** Agregat ostidagi qiymat: tor joy — yorliq + birlik ustida (14), qiymat katakda (18), ostida alarm kodi + yoshi (14);
+ * alarm shakli katak burchagida. */
+function UnitValue({ x, y, w, s, label, now, onOpen, editing, unacked, offline }: ValueProps) {
+  const { st, age, stale } = valueState(s, now, offline);
+  const h = 30;
+  const clickable = !!s && !!onOpen && !editing;
+  const open = () => { if (s && clickable) onOpen?.(s.id); };
+  const text = s ? (s.last_value == null ? "—" : fmtValue(s.last_value)) : "yo'q";
+  const alarm = !!st && st.rank > 0;
+  const sub = [alarm ? st!.code : "", s && age != null ? fmtAge(age) : ""].filter(Boolean);
+  return (
+    <g className={`mimic-slot unit-slot ${clickable ? "clickable" : ""} ${stale ? "stale" : ""} ${alarm ? "in-alarm" : ""}`} data-testid="mimic-value" data-bound={s ? "1" : "0"} data-stale={stale ? "1" : "0"}
+      {...(clickable ? { role: "button", tabIndex: 0, "aria-label": `${label}: ${text} ${s?.unit ?? ""}${stale ? ", eskirgan" : ""}${alarm ? `, ${st!.label}` : ""} — faceplate`, onClick: open, onKeyDown: (ev: React.KeyboardEvent) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } } } : {})}>
+      <text x={x} y={y - h / 2 - 7} textAnchor="middle" className="mimic-lbl">{label}{s?.unit ? ` · ${s.unit}` : ""}</text>
+      <rect x={x - w / 2} y={y - h / 2} width={w} height={h} className={`m-box ${s ? "" : "unbound"}`} />
+      {(stale || !s) && <rect x={x - w / 2 + 1} y={y - h / 2 + 1} width={w - 2} height={h - 2} fill={s ? "url(#stale-hatch)" : "url(#nodata)"} className="m-box-hatch" />}
+      <text x={x} y={y + 6.5} textAnchor="middle" className={`mimic-val ${stale ? "stale" : ""} ${s ? "" : "none"}`}>{text}</text>
+      {alarm && <AlarmMarkSvg x={x + w / 2 - 1} y={y - h / 2 - 1} state={s!.alarm} priority={s!.priority} unacked={!!unacked?.has(s!.id)} size={18} />}
+      {sub.length > 0 && <text x={x} y={y + h / 2 + 17} textAnchor="middle">{alarm && <tspan className="mimic-code">{st!.code}</tspan>}{alarm && sub.length > 1 ? " " : ""}{s && age != null && <tspan className="mimic-age">{fmtAge(age)}</tspan>}</text>}
     </g>
   );
 }

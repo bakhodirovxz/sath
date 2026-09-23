@@ -3,6 +3,7 @@ import Icon from "../../ui/Icon";
 import { api, ApiError, type Clash, type ClashReport, type IdsResult, type Qto, type Version } from "../../api/client";
 import type { Viewer } from "../../viewer/Viewer";
 import { fmtValue, ifcLabel } from "../../ui/format";
+import { PAL } from "../../viewer/palette";
 
 interface Props {
   current: Version | null;
@@ -23,6 +24,8 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
   const [idsPending, setIdsPending] = useState(false);
   const [kind, setKind] = useState<Clash["kind"] | "">("hard");
   const [busy, setBusy] = useState(false);
+  /** OPS-03: server og'ir hisobni navbatga qo'ygan (202) — kutish vaqti, ms (xato emas) */
+  const [queued, setQueued] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
   const [qFilter, setQFilter] = useState("");
@@ -32,16 +35,17 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
 
   const run = useCallback(async () => {
     if (!currentId) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setQueued(null);
+    const onProgress = (p: { waitingMs: number }) => setQueued(p.waitingMs);
     try {
-      if (mode === "qto") setQto(await api.qto(currentId));
+      if (mode === "qto") setQto(await api.qto(currentId, onProgress));
       else if (mode === "ids") {
         try { setIds(await api.ids(currentId)); setIdsPending(false); }
         catch (e) { if (e instanceof ApiError && e.status === 404) setIdsPending(true); else throw e; } // navbatda — hali yo'q
       }
-      else setClash(await api.clashes(currentId));
+      else setClash(await api.clashes(currentId, undefined, onProgress));
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setQueued(null); }
   }, [currentId, mode]);
   useEffect(() => {
     if (currentId && ((mode === "qto" && !qto) || (mode === "clash" && !clash) || (mode === "ids" && !ids && !idsPending))) void run();
@@ -56,7 +60,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
     setPicked(i);
     if (!viewer) return;
     await viewer.colorByGuids({});
-    await viewer.colorByGuids({ [c.a.guid]: "#d95c5c", [c.b.guid]: "#e0a93a" });
+    await viewer.colorByGuids({ [c.a.guid]: PAL.fail, [c.b.guid]: PAL.warn });
     await viewer.selectByGuids([c.a.guid, c.b.guid], true);
   }
   useEffect(() => () => { void viewer?.colorByGuids({}); }, [viewer]);
@@ -72,13 +76,13 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
         <button className={`btn sm ${mode === "qto" ? "active" : ""}`} onClick={() => setMode("qto")}>Hajm-miqdor</button>
         <button className={`btn sm ${mode === "ids" ? "active" : ""}`} onClick={() => setMode("ids")} data-testid="checks-ids">IDS</button>
         <span className="grow" />
-        {busy && <span className="muted small">hisoblanmoqda…</span>}
+        {busy && <span className="muted small" role="status" data-testid="checks-progress">{queued != null ? `server hisoblamoqda (navbatda, ${Math.round(queued / 1000)} s)…` : "hisoblanmoqda…"}</span>}
       </div>
       {error && <p className="error">{error}</p>}
 
       {mode === "clash" && clash && (
         <>
-          <div className="tiles" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <div className="tiles cols-3">
             <button className={`tile ${kind === "hard" ? "tile-alarm" : ""}`} onClick={() => setKind("hard")}><div className="tile-t">To'qnashuv</div><div className="tile-v">{clash.hard}</div></button>
             <button className={`tile ${kind === "possible" ? "tile-alarm" : ""}`} onClick={() => setKind("possible")}><div className="tile-t">Ehtimoliy</div><div className="tile-v">{clash.possible}</div></button>
             <button className={`tile ${kind === "touch" ? "tile-alarm" : ""}`} onClick={() => setKind("touch")}><div className="tile-t">Tegib turadi</div><div className="tile-v">{clash.touch}</div></button>
@@ -87,15 +91,17 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
           {rows.length === 0 ? <p className="muted">Bu turda yo'q</p> : (
             <div className="list">
               {rows.map((c, i) => (
-                <div key={i} className={`list-item ${picked === i ? "selected" : ""}`} onClick={() => show(c, i)}>
-                  <div className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></div>
-                  <div><Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)}</span></div>
-                  <div><Icon name="square" size={11} style={{ color: "#e0a93a" }} /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)}</span></div>
+                <div key={i} className={`list-item ${picked === i ? "selected" : ""}`}>
+                  <button type="button" className="list-item-head" aria-expanded={picked === i} onClick={() => show(c, i)}>
+                    <span className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></span>
+                    <span className="li-line"><Icon name="square" size={11} className="clash-a" /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)}</span></span>
+                    <span className="li-line"><Icon name="square" size={11} className="clash-b" /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)}</span></span>
+                  </button>
                   {picked === i && c.kind !== "touch" && (
-                    <div className="row" style={{ marginTop: 4 }}>
+                    <div className="row mt-4">
                       <span className="dim small mono">{c.point.map((v) => v.toFixed(2)).join(", ")} m · kesishuv {c.overlap_m.map((v) => v.toFixed(2)).join("×")} m</span>
                       <span className="grow" />
-                      <button className="btn sm" onClick={(e) => { e.stopPropagation(); onCreateIssue(); }}>Issue ochish</button>
+                      <button className="btn sm" onClick={() => onCreateIssue()}>Muammo ochish</button>
                     </div>
                   )}
                 </div>
@@ -109,7 +115,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
         <div className="ids" data-testid="ids-panel">
           <p className="muted small">
             Axborot talablari (IDS, buildingSMART) — <code>docs/ids/sath-ges.ids</code>: nomlash, georeferensiya, Pset_GES_* pasportlari. Har yuklashda avtomatik.
-            <button className="btn sm" style={{ marginLeft: 8 }} onClick={() => void runIds()} disabled={busy}>Qayta tekshirish</button>
+            <button className="btn sm ml-8" onClick={() => void runIds()} disabled={busy}>Qayta tekshirish</button>
           </p>
           {idsPending && !ids && <p className="muted">Tekshiruv navbatda… (bir necha soniya) yoki «Qayta tekshirish»</p>}
           {ids && (
@@ -130,12 +136,12 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
                     </div>
                     {sp.description && <div className="dim small">{sp.description}</div>}
                     {sp.requirements.filter((r) => !r.status).map((r, i) => (
-                      <div key={i} style={{ marginTop: 4 }}>
+                      <div key={i} className="mt-4">
                         <div className="small">{r.description}</div>
                         {r.failed.slice(0, 50).map((f, j) => (
-                          <div key={j} className="small clickable" onClick={() => f.guid && viewer?.selectByGuids([f.guid], true)} title={f.reason ?? ""}>
-                            <Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {f.name || f.guid} <span className="dim">{f.class ? ifcLabel(f.class) : ""} — {f.reason}</span>
-                          </div>
+                          <button type="button" key={j} className="row-btn small" disabled={!f.guid} onClick={() => f.guid && viewer?.selectByGuids([f.guid], true)} title={f.reason ?? ""}>
+                            <Icon name="square" size={11} className="clash-a" /> {f.name || f.guid} <span className="dim">{f.class ? ifcLabel(f.class) : ""} — {f.reason}</span>
+                          </button>
                         ))}
                         {r.failed_total > 50 && <div className="dim small">…yana {r.failed_total - 50} ta</div>}
                       </div>
@@ -159,7 +165,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
               ))}
             </tbody>
           </table>
-          <div className="row" style={{ margin: "8px 0 4px" }}>
+          <div className="row mt-8 mr-0 mb-4 ml-0">
             <input className="input" placeholder="Element/tur/qavat bo'yicha filtr" value={qFilter} onChange={(e) => setQFilter(e.target.value)} />
             <button className="btn sm" onClick={() => api.downloadCsv(`/api/versions/${current.id}/qto?format=csv`, `qto_v${current.number}.csv`).catch((e) => setError(e.message))}>CSV</button>
           </div>
@@ -168,7 +174,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
             <tbody>
               {qRows.slice(0, 300).map((e) => (
                 <tr key={e.guid} className="clickable" onClick={() => viewer?.selectByGuids([e.guid], true)}>
-                  <td>{e.name || e.guid}<div className="dim">{ifcLabel(e.type)}{e.storey && ` · ${e.storey}`}{e.material && ` · ${e.material}`}</div></td>
+                  <td><button type="button" className="link-btn" onClick={(ev) => { ev.stopPropagation(); void viewer?.selectByGuids([e.guid], true); }}>{e.name || e.guid}</button><div className="dim">{ifcLabel(e.type)}{e.storey && ` · ${e.storey}`}{e.material && ` · ${e.material}`}</div></td>
                   <td className="mono">{fmtValue(e.volume_m3)}</td>
                   <td className="mono">{e.length_m.toFixed(1)}×{e.width_m.toFixed(1)}×{e.height_m.toFixed(1)}</td>
                 </tr>

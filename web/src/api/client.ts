@@ -1,4 +1,6 @@
-// Server API bilan ishlash. Token localStorage da saqlanadi.
+// Server API bilan ishlash. Access token faqat xotirada (L2, pastda `accessToken`); sahifa qayta yuklanganda
+// HttpOnly refresh cookie orqali tiklanadi. So'rovlar: vaqt chegarasi (FE-05), 401 da bir marta refresh,
+// xatolar foydalanuvchiga tushunarli o'zbekcha matnda (`apiErrorMessage`).
 
 export type Role = "viewer" | "operator" | "shift_supervisor" | "engineer" | "approver";
 /** SCADA-01: buyruq faqat dispetcher va smena boshlig'ida (loyihalash rollari buyruq bermaydi). */
@@ -355,17 +357,61 @@ export interface SensorIn {
   enabled: boolean;
   priority?: "low" | "medium" | "high" | "critical" | undefined;
   writable?: boolean;
+  /** Boshqaruv chegaralari: writable=true bo'lsa min ≤ max (chekli) majburiy — aks holda server 422 */
+  min_setpoint?: number | null;
+  max_setpoint?: number | null;
+  max_rate_per_min?: number | null;
 }
 export type CommandStatus = "pending" | "sent" | "acked" | "failed" | "cancelled" | "expired" | "pending_approval" | "mismatch" | "unknown";
 export interface Command { id: number; sensor_id: number; sensor_key: string; sensor_name: string; unit: string; value: number; note: string; status: CommandStatus; result: string; author_username: string; created_at: string; updated_at: string; expires_at?: string | null; sent_at?: string | null; approved_by_username?: string | null; approved_at?: string | null; readback_value?: number | null; readback_at?: string | null }
 export type GatewayKeyKind = "ingest" | "command";
 /** SCADA-04: `key` faqat yaratilganda/almashtirilganda (bir marta), aks holda null — `key_prefix` ko'rsatiladi. */
+/** UX-12: "Mening vazifalarim" (`GET /api/me/tasks`) */
+export interface TaskCR { id: number; title: string; status: string; project_id: number; project_name: string; model_id: number; model_name: string; version_id: number; version_number: number; author: string; created_at: string }
+export interface TaskIssue { id: number; title: string; status: string; priority: string; project_id: number; project_name: string; model_id: number; model_name: string; updated_at: string }
+export interface TaskWorkOrder { id: number; title: string; status: string; priority: string; project_id: number; project_name: string; due_at: string | null; loto_active: boolean }
+export interface TaskCommand { id: number; project_id: number; project_name: string; sensor_id: number; sensor_name: string; sensor_key: string; unit: string; value: number; author: string; created_at: string }
+export interface MyTasks { reviews: TaskCR[]; my_change_requests: TaskCR[]; issues: TaskIssue[]; work_orders: TaskWorkOrder[]; command_approvals: TaskCommand[]; total: number }
+/** UX-12: loyiha vaqt chizig'i (`GET /api/projects/{id}/history`) */
+export type HistoryKind = "version" | "cr" | "publish" | "cr_rejected" | "issue" | "work_order" | "alarm";
+export interface HistoryItem { ts: string; kind: HistoryKind; title: string; detail: string; actor: string; severity: string | null; model_id: number | null; version_id: number | null; change_request_id: number | null; issue_id: number | null; work_order_id: number | null; sensor_id: number | null }
+export interface ProjectHistory { project_id: number; since: string; items: HistoryItem[]; truncated: boolean }
+
+export interface MeshImportOptions {
+  message?: string;
+  unit?: string;
+  /** null/undefined — fayldan avto aniqlash */
+  y_up?: boolean | null;
+  merge?: boolean;
+  onto_current?: boolean;
+  extrude_m?: number;
+  unit_override?: boolean;
+}
+
+export interface MeshImportInfo {
+  unit: string;
+  scale: number;
+  unit_source: string;
+  units_uncertain: boolean;
+  unit_note: string;
+  up_axis: string | null;
+  axis_uncertain: boolean;
+  y_up: boolean;
+  dxf?: { skipped_2d?: number; skipped_types?: Record<string, number>; inserts?: number; linework?: boolean } | null;
+  warnings: string[];
+}
+
+export type MeshImportResult = Version & { imported: number; names: string[]; import_info?: MeshImportInfo; warnings?: string[]; units_uncertain?: boolean };
+
 export interface GatewayKey { kind: GatewayKeyKind; key: string | null; key_prefix: string | null; shown_once: boolean; exists: boolean; header: string; url: string; expires_at: string | null; days_left: number | null; last_used_at: string | null }
 export interface InterlockResult { interlock_id: number; name: string; ok: boolean; message: string }
 export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean; interlocks?: InterlockResult[]; override?: boolean }
 export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
-export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
+/** SCADA-14: `unit` — barqaror agregat raqami (1–12); `flow_source` — sarf manbasi (measured — sensor, split — quvur
+ * sarfidan taqsimlangan, estimated — quvvatdan hisoblangan: og'ish/FIK null). */
+export type FlowSource = "measured" | "split" | "estimated";
+export interface TwinUnit { unit?: number; flow_source?: FlowSource | null; sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
 export type ValidationStatusKind = "validated" | "expired" | "failed" | "unvalidated";
 export interface ValidationStatus { status: ValidationStatusKind; note: string; record_id?: number; verdict?: string; validated_at?: string; validated_by?: string | null; valid_until?: string | null; version_id?: number | null; metrics?: Record<string, number | boolean> }
 export interface ValidationCheck { name: string; label: string; value: number; limit: number; ok: boolean }
@@ -379,6 +425,7 @@ export interface CalibrationInfo { penstock_roughness_mm: number; eff: Record<st
 export interface CalibrationRun { id: number; project_id: number; created_at: string; author: string | null; window_from: string; window_to: string; n_points: number; targets: string[]; status: string; params_before: { penstock_roughness_mm?: number; eff?: Record<string, number> }; params_after: { penstock_roughness_mm?: number; eff?: Record<string, number> }; rmse_before: number | null; rmse_after: number | null; bias_after: number | null; improvement_pct: number | null; diagnostics: Record<string, { gain: number; identifiable: boolean; note: string }>; applied: boolean; note: string }
 export interface CalibrationResiduals { status: "ok" | "drifted" | "uncalibrated" | "insufficient"; calibrated?: boolean; n_points?: number; days?: number; rmse_mw?: number; bias_mw?: number; calibration_rmse_mw?: number | null; run_id?: number | null; applied_at?: string | null; advice?: string; reason?: string }
 export interface CalibrationState { current: Record<string, unknown>; residuals: CalibrationResiduals; runs: CalibrationRun[] }
+export interface UnlinkedReport { version_id: number | null; checked: number; count: number; sensors: { id: number; key: string; name: string; element_guid: string; model_id: number | null }[] }
 export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean; calibrated?: boolean; calibration?: CalibrationInfo | null; model_note?: string; validation?: ValidationStatus }
 export interface HealthSensorBlock { sensor_id: number; name: string; unit: string; value: number | null; stale: boolean; slope_per_day: number | null; baseline_mean: number | null; baseline_std: number | null; z: number | null; anomaly: boolean; points: number; zone?: string; zone_note?: string; days_to_c?: number | null; days_to_d?: number | null; warn?: number; alarm?: number; days_to_alarm?: number | null }
 export type CmState = "normal" | "alert" | "alarm" | "unknown";
@@ -479,6 +526,9 @@ export interface AlarmKpi {
 export interface ReportRow { sensor_id: number; key: string; name: string; kind: SensorKind; unit: string; n: number; avg: number | null; min: number | null; max: number | null; energy_mwh: number | null }
 export interface Report { project: string; period: "day" | "week" | "month"; start: string; end: string; energy_mwh: number; alarms: { count: number; by_state: Record<string, number>; unacked: number }; sensors: ReportRow[] }
 export interface Notification { id: number; kind: "review" | "issue" | "alarm" | "system"; title: string; body: string; link: string; created_at: string; read_at: string | null }
+export interface DeletedModel extends Model { deleted_at: string; deleted_by: number | null }
+export interface StorageGcReport { dry_run: boolean; grace_s: number; blobs: number; derived: number; temp: number; bytes: number; kept_recent: number; errors: number; paths: string[] }
+export interface AuditStatus { write_failures: number; lost_entries: number; last_failure_at: string | null; last_error: string; hash_alg?: string }
 export interface AuditRow { id: number; user_id: number | null; username: string | null; action: string; target_type: string; target_id: number | null; project_id: number | null; detail: Record<string, unknown>; created_at: string }
 export interface QtoElement { guid: string; type: string; name: string; storey: string; material: string; volume_m3: number; area_m2: number; footprint_m2: number; length_m: number; width_m: number; height_m: number; bbox: [number[], number[]]; ifc_quantities: Record<string, number> }
 export interface Qto { element_count: number; total_volume_m3: number; by_type: Record<string, { count: number; volume_m3: number; area_m2: number }>; by_storey: Record<string, { count: number; volume_m3: number; area_m2: number }>; elements: QtoElement[] }
@@ -546,12 +596,17 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
+export type ApiErrorCode = "http" | "timeout" | "network";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
     /** 401 + `X-MFA-Required` — parol to'g'ri, TOTP kodi kerak (L1) */
     public mfaRequired = false,
+    /** Serverning xom `detail` qiymati (strukturali 409/422 ni chaqiruvchi o'zi tahlil qilishi uchun) */
+    public detail: unknown = undefined,
+    public code: ApiErrorCode = "http",
     /** 409 `{detail, head_id}` — model boshqa versiya bilan yangilangan (VCS-01): avval yangilash kerak */
     public headId: number | null = null,
   ) {
@@ -565,59 +620,195 @@ export function isHeadMoved(e: unknown): e is ApiError {
 }
 export const HEAD_MOVED_TEXT = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oching), keyin qayta urinib ko'ring";
 
+/** OPS-03: og'ir hisob navbatda — server 202 `{job_id, status}` qaytaradi */
+export interface JobPending { job_id: number; status: string }
+const PENDING = Symbol("pending");
+
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-/** OPS-03: og'ir hisob navbatda — server 202 `{job_id, status}` qaytaradi */
-export interface JobPending { job_id: number; status: string }
-const PENDING = Symbol("pending");
-type RequestOpts = RequestInit & { acceptPending?: boolean };
+/** So'rov vaqt chegarasi (FE-05): server/tarmoq osilib qolsa UI cheksiz "Yuklanmoqda…" da qolmasin. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
+/** Fayl yuklash (IFC, rasm, CSV) — katta fayllar sekin tarmoqda ham o'tsin. */
+export const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
-async function request<T>(path: string, opts: RequestOpts = {}, retried = false): Promise<T> {
-  const { acceptPending, ...init } = opts;
-  const headers = new Headers(init.headers);
+export interface RequestOptions extends RequestInit {
+  /** ms; 0 — chegarasiz. Default: FormData — UPLOAD_TIMEOUT_MS, boshqalar — DEFAULT_TIMEOUT_MS */
+  timeoutMs?: number;
+  /** OPS-03: 202 (navbatda) javobini xato emas, `{[PENDING], job_id}` sifatida qaytarish */
+  acceptPending?: boolean;
+}
+
+// --- Xato matnlari (FE-05): FastAPI 422 massivlari va HTTP holatlari → o'zbekcha ---------------------------
+
+type ValidationItem = { loc?: (string | number)[]; msg?: string; type?: string; ctx?: Record<string, unknown> };
+
+const STATUS_TEXT: Record<number, string> = {
+  400: "So'rov noto'g'ri",
+  401: "Sessiya tugagan — qayta kiring",
+  403: "Bu amal uchun ruxsat yo'q",
+  404: "Topilmadi",
+  409: "Ziddiyat: ma'lumot boshqa amal bilan o'zgargan — sahifani yangilab qayta urinib ko'ring",
+  413: "Fayl juda katta",
+  422: "Ma'lumot noto'g'ri",
+  423: "Hisob vaqtincha bloklangan",
+  429: "Juda ko'p so'rov — biroz kutib qayta urinib ko'ring",
+  500: "Server xatosi",
+  502: "Server vaqtincha ishlamayapti",
+  503: "Server vaqtincha ishlamayapti",
+  504: "Server javob bermadi",
+};
+
+function validationText(it: ValidationItem): string {
+  const c = it.ctx ?? {};
+  switch (it.type) {
+    case "missing": return "to'ldirilishi shart";
+    case "string_too_short": return `kamida ${String(c.min_length)} belgi bo'lishi kerak`;
+    case "string_too_long": return `ko'pi bilan ${String(c.max_length)} belgi bo'lishi kerak`;
+    case "too_short": return `kamida ${String(c.min_length)} ta element bo'lishi kerak`;
+    case "too_long": return `ko'pi bilan ${String(c.max_length)} ta element bo'lishi kerak`;
+    case "greater_than_equal": return `${String(c.ge)} yoki undan katta bo'lishi kerak`;
+    case "greater_than": return `${String(c.gt)} dan katta bo'lishi kerak`;
+    case "less_than_equal": return `${String(c.le)} yoki undan kichik bo'lishi kerak`;
+    case "less_than": return `${String(c.lt)} dan kichik bo'lishi kerak`;
+    case "int_parsing": case "int_type": case "int_from_float": return "butun son bo'lishi kerak";
+    case "float_parsing": case "float_type": return "son bo'lishi kerak";
+    case "bool_parsing": case "bool_type": return "ha/yo'q qiymati bo'lishi kerak";
+    case "string_type": return "matn bo'lishi kerak";
+    case "enum": case "literal_error": return `ruxsat etilgan qiymatlardan biri bo'lishi kerak: ${String(c.expected ?? "")}`.trim();
+    case "string_pattern_mismatch": return "format noto'g'ri";
+    case "datetime_parsing": case "datetime_from_date_parsing": case "date_parsing": return "sana/vaqt formati noto'g'ri";
+    case "json_invalid": return "so'rov JSON formatida emas";
+    case "value_error": return (it.msg ?? "qiymat noto'g'ri").replace(/^Value error,\s*/i, "");
+    default: return "qiymat noto'g'ri";
+  }
+}
+
+/** Maydon nomi: `loc` ning oxirgi matnli qismi ("body"/"query" dan tashqari); indekslar `[n]` (1 dan). */
+function fieldName(loc: (string | number)[] | undefined): string {
+  const parts = (loc ?? []).filter((p) => p !== "body" && p !== "query" && p !== "path" && p !== "form");
+  if (!parts.length) return "";
+  return parts.map((p) => (typeof p === "number" ? `[${p + 1}]` : p)).join(".").replace(/\.\[/g, "[");
+}
+
+/** Server javobidagi `detail` → foydalanuvchi o'qiy oladigan matn. Xom JSON hech qachon ko'rsatilmaydi. */
+export function apiErrorMessage(status: number, detail: unknown, statusText = ""): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    const items = (detail as ValidationItem[]).slice(0, 5).map((it) => {
+      const f = fieldName(it.loc);
+      return f ? `«${f}» — ${validationText(it)}` : validationText(it);
+    });
+    const more = detail.length > 5 ? ` (yana ${detail.length - 5} ta)` : "";
+    return `Ma'lumot noto'g'ri: ${items.join("; ")}${more}`;
+  }
+  if (detail && typeof detail === "object") {
+    const o = detail as Record<string, unknown>;
+    for (const k of ["message", "detail", "error", "reason"]) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+  }
+  return STATUS_TEXT[status] ?? (status >= 500 ? "Server xatosi" : statusText || `Xato (${status})`);
+}
+
+/** Tarmoq so'rovi: token, vaqt chegarasi, chaqiruvchi signali, 401 da bir marta refresh. Javob `ok` bo'lmasa —
+ * ApiError (o'zbekcha matn). Muvaffaqiyatda xom Response (json/blob/arrayBuffer — chaqiruvchida). */
+async function send(path: string, init: RequestOptions = {}, retried = false): Promise<Response> {
+  const { timeoutMs: tm, acceptPending: _pending, ...rest } = init;
+  const headers = new Headers(rest.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+  if (rest.body && !(rest.body instanceof FormData) && !(rest.body instanceof URLSearchParams) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(path, { ...init, headers });
+  const timeoutMs = tm ?? (rest.body instanceof FormData ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = timeoutMs > 0 ? setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs) : undefined;
+  const outer = rest.signal;
+  const onOuterAbort = () => ctrl.abort();
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  let res: Response;
+  try {
+    res = await fetch(path, { ...rest, headers, signal: ctrl.signal });
+  } catch (e) {
+    if (timedOut) throw new ApiError(0, `Server ${Math.round(timeoutMs / 1000)} s ichida javob bermadi — tarmoqni tekshirib, qayta urinib ko'ring`, false, undefined, "timeout");
+    if (outer?.aborted) throw e; // chaqiruvchi o'zi bekor qildi — AbortError o'zgarishsiz
+    throw new ApiError(0, "Server bilan aloqa yo'q — tarmoq yoki server ishlamayapti", false, undefined, "network");
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onOuterAbort);
+  }
   if (res.status === 401 && !res.headers.get("X-MFA-Required") && !path.startsWith("/api/auth/login")) {
     // Access token muddati tugadi (15 daqiqa) — cookie bilan yangilab, so'rovni bir marta takrorlaymiz
-    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return request<T>(path, opts, true);
+    if (!retried && !path.startsWith("/api/auth/refresh") && (await refreshSession())) return send(path, init, true);
     setToken(null);
     onUnauthorized?.();
   }
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail: unknown;
     let headId: number | null = null;
     try {
-      const j = await res.json();
-      detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      const j = (await res.json()) as { detail?: unknown; head_id?: unknown };
+      detail = j.detail;
       if (res.status === 409 && typeof j.head_id === "number") headId = j.head_id;
     } catch {
-      /* matn emas */
+      /* matn/HTML javob — detail yo'q */
     }
-    throw new ApiError(res.status, detail, res.status === 401 && !!res.headers.get("X-MFA-Required"), headId);
+    throw new ApiError(res.status, apiErrorMessage(res.status, detail, res.statusText), res.status === 401 && !!res.headers.get("X-MFA-Required"), detail, "http", headId);
   }
+  return res;
+}
+
+async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+  const res = await send(path, init);
   if (res.status === 204) return undefined as T;
-  if (res.status === 202 && acceptPending) return { [PENDING]: true, ...((await res.json()) as JobPending) } as T;
+  if (res.status === 202 && init.acceptPending) return { [PENDING]: true, ...((await res.json()) as JobPending) } as T;
   return (await res.json()) as T;
 }
 
-/** OPS-03: GET natija navbatda hisoblanayotgan bo'lsa (202) — tayyor bo'lguncha qayta so'raydi (1 → 5 s). */
-async function requestReady<T>(path: string, timeoutMs = 20 * 60_000): Promise<T> {
+/** Navbatdagi og'ir hisob holati (UI: «hisoblanmoqda…», xato emas). */
+export type ReadyProgress = (p: { waitingMs: number; jobId: number | null }) => void;
+
+/** OPS-03: GET natija navbatda hisoblanayotgan bo'lsa (202) — tayyor bo'lguncha qayta so'raydi (1 → 5 s),
+ * 429 (tezlik chegarasi) — kutib qayta; `onProgress` — kutish holati. */
+async function requestReady<T>(path: string, onProgress?: ReadyProgress, timeoutMs = 20 * 60_000): Promise<T> {
   const t0 = Date.now();
   let wait = 1000;
   for (;;) {
-    const r = await request<T>(path, { acceptPending: true });
-    if (!(r && typeof r === "object" && PENDING in r)) return r;
+    let r: T | (JobPending & { [PENDING]: true }) | null = null;
+    try {
+      r = await request<T>(path, { acceptPending: true });
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 429)) throw e;
+    }
+    if (r !== null && !(typeof r === "object" && PENDING in (r as object))) return r as T;
     if (Date.now() - t0 > timeoutMs) throw new ApiError(504, "Hisoblash juda uzoq davom etmoqda — keyinroq qayta oching");
+    const job = r as unknown as Partial<JobPending> | null;
+    onProgress?.({ waitingMs: Date.now() - t0, jobId: job?.job_id ?? null });
     await new Promise((ok) => setTimeout(ok, wait));
     wait = Math.min(wait * 1.5, 5000);
   }
+}
+
+/** Blob ni fayl sifatida saqlash. URL darhol emas, brauzer yuklashni boshlab olgach (60 s) bo'shatiladi —
+ * darhol `revokeObjectURL` ba'zi brauzerlarda (Firefox/Safari) yuklashni bekor qiladi (FE-05). */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -680,7 +871,8 @@ export const api = {
   createFederation: (projectId: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/projects/${projectId}/federations`, { method: "POST", body: json(body) }),
   updateFederation: (id: number, body: { name: string; description: string; members: FedMember[] }) => request<Federation>(`/api/federations/${id}`, { method: "PUT", body: json(body) }),
   deleteFederation: (id: number) => request<void>(`/api/federations/${id}`, { method: "DELETE" }),
-  federationClashes: (id: number, tolerance = 0, crossOnly = true) => request<ClashReport>(`/api/federations/${id}/clashes?tolerance=${tolerance}&cross_only=${crossOnly}`),
+  /** 202 {job_id} + Retry-After — navbatda hisoblanmoqda (kutish holati, xato emas); 409 — a'zo fayl yo'q / hisob xatosi */
+  federationClashes: (id: number, tolerance = 0, crossOnly = true, onProgress?: ReadyProgress) => requestReady<ClashReport>(`/api/federations/${id}/clashes?tolerance=${tolerance}&cross_only=${crossOnly}`, onProgress),
   async federationIfc(id: number): Promise<Uint8Array> {
     const res = await fetch(`/api/federations/${id}/ifc`, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
     if (!res.ok) throw new ApiError(res.status, "Federatsiya IFC yuklab bo'lmadi");
@@ -717,16 +909,19 @@ export const api = {
     if (parentId != null) fd.append("parent_id", String(parentId));
     return request<Version>(`/api/models/${modelId}/versions`, { method: "POST", body: fd });
   },
-  importMeshVersion: (modelId: number, file: File, opts: { message?: string; unit?: string; y_up?: boolean; merge?: boolean; onto_current?: boolean; extrude_m?: number }) => {
+  /** Mesh/CAD import (CAD-03/04). `y_up` berilmasa — server fayldan aniqlaydi (glTF avto-o'girish); `unit_override` —
+   * foydalanuvchi birligi fayldagidan ustun. Javobda `units_uncertain` bo'lsa — foydalanuvchidan so'raladi. */
+  importMeshVersion: (modelId: number, file: File, opts: MeshImportOptions) => {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("message", opts.message ?? "");
     fd.append("unit", opts.unit ?? "m");
-    fd.append("y_up", String(!!opts.y_up));
+    if (typeof opts.y_up === "boolean") fd.append("y_up", String(opts.y_up));
     fd.append("merge", String(!!opts.merge));
     fd.append("onto_current", String(opts.onto_current ?? true));
     fd.append("extrude_m", String(opts.extrude_m ?? 0));
-    return request<Version & { imported: number; names: string[] }>(`/api/models/${modelId}/versions/import-mesh`, { method: "POST", body: fd });
+    if (opts.unit_override) fd.append("unit_override", "true");
+    return request<MeshImportResult>(`/api/models/${modelId}/versions/import-mesh`, { method: "POST", body: fd });
   },
   importImageVersion: (modelId: number, file: File, opts: { mode: "drawing" | "heightmap" | "photo"; message?: string; width_m?: number; extrude_m?: number; z_min?: number; z_max?: number; grid?: number; min_area_px?: number; invert?: boolean; onto_current?: boolean }) => {
     const fd = new FormData();
@@ -831,6 +1026,8 @@ export const api = {
   createDraft: (modelId: number, body: DraftBody) => request<DraftRow>(`/api/models/${modelId}/drafts`, { method: "POST", body: json(body) }),
   updateDraft: (id: number, body: Partial<DraftBody>) => request<DraftRow>(`/api/drafts/${id}`, { method: "PATCH", body: json(body) }),
   deleteDraft: (id: number) => request<void>(`/api/drafts/${id}`, { method: "DELETE" }),
+  myTasks: () => request<MyTasks>("/api/me/tasks"),
+  projectHistory: (projectId: number, days = 90, alarms: "all" | "high" | "none" = "high") => request<ProjectHistory>(`/api/projects/${projectId}/history?days=${days}&alarms=${alarms}`),
   commitDrafts: (modelId: number, body: { message?: string; base_version_id?: number | null; draft_ids?: number[]; keep_drafts?: boolean }) => request<Version & { guids: string[] }>(`/api/models/${modelId}/drafts/commit`, { method: "POST", body: json(body) }),
   simCatalog: () => request<SimCatalog>("/api/sim/catalog"),
   materials: () => request<MaterialsCatalog>("/api/sim/materials"),
@@ -851,17 +1048,20 @@ export const api = {
   deleteSim: (id: number) => request<void>(`/api/sim/${id}`, { method: "DELETE" }),
   // monitoring
   sensors: (projectId: number, modelId?: number) => request<Sensor[]>(`/api/projects/${projectId}/sensors${modelId ? `?model_id=${modelId}` : ""}`),
-  createSensor: (projectId: number, body: SensorIn) => request<Sensor>(`/api/projects/${projectId}/sensors`, { method: "POST", body: json(body) }),
-  updateSensor: (id: number, body: Partial<SensorIn> & { clear_alarms?: boolean }) => request<Sensor>(`/api/sensors/${id}`, { method: "PATCH", body: json(body) }),
+  /** SCADA-13: element_guid joriy versiyada bo'lmasa server 422; `force` — hali modelda yo'q element uchun ataylab */
+  createSensor: (projectId: number, body: SensorIn, force = false) => request<Sensor>(`/api/projects/${projectId}/sensors${force ? "?force=true" : ""}`, { method: "POST", body: json(body) }),
+  updateSensor: (id: number, body: Partial<SensorIn> & { clear_alarms?: boolean }, force = false) => request<Sensor>(`/api/sensors/${id}${force ? "?force=true" : ""}`, { method: "PATCH", body: json(body) }),
+  /** SCADA-13: element GUID i versiyada topilmagan sensorlar */
+  unlinkedSensors: (projectId: number, versionId?: number | null) => request<UnlinkedReport>(`/api/projects/${projectId}/sensors/unlinked${versionId ? `?version_id=${versionId}` : ""}`),
   deleteSensor: (id: number) => request<void>(`/api/sensors/${id}`, { method: "DELETE" }),
   importSensors: (projectId: number, csv: string, modelId: number | null) => request<{ created: number; updated: number; bound: number; errors: string[] }>(`/api/projects/${projectId}/sensors/import`, { method: "POST", body: json({ csv, model_id: modelId }) }),
   readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean; tier?: "raw" | "1m" | "10m" | "1h" }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),
   alarms: (projectId: number) => request<Sensor[]>(`/api/projects/${projectId}/alarms`),
   // BIM tekshiruvlar
-  qto: (versionId: number) => requestReady<Qto>(`/api/versions/${versionId}/qto`),
+  qto: (versionId: number, onProgress?: ReadyProgress) => requestReady<Qto>(`/api/versions/${versionId}/qto`, onProgress),
   ids: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`),
   runIds: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`, { method: "POST" }),
-  clashes: (versionId: number, kind?: string) => requestReady<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
+  clashes: (versionId: number, kind?: string, onProgress?: ReadyProgress) => requestReady<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`, onProgress),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
   alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number, includeSuppressed = false) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}${includeSuppressed ? "&include_suppressed=true" : ""}`),
   annunciatorSilence: (projectId: number, minutes: number, reason = "") => request<{ ok: boolean; minutes: number }>(`/api/projects/${projectId}/annunciator/silence`, { method: "POST", body: json({ minutes, reason }) }),
@@ -887,13 +1087,11 @@ export const api = {
   saveDashboard: (projectId: number, body: { mimic: Record<string, number | null>; tiles: number[]; scheme?: Scheme | null; pen_groups?: PenGroup[] }) => request<Dashboard["mimic"]>(`/api/projects/${projectId}/dashboard`, { method: "PUT", body: json(body) }),
   report: (projectId: number, period: Report["period"], date?: string) => request<Report>(`/api/projects/${projectId}/report?period=${period}${date ? `&date=${date}` : ""}`),
   async downloadCsv(path: string, filename: string) {
-    // Bearer bilan yuklab olish (URL da token yo'q): blob → <a download>
-    const r = await fetch(path, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
-    if (r.status === 202) throw new Error("Hisob tayyorlanmoqda — birozdan so'ng qayta urinib ko'ring");
-    if (!r.ok) throw new Error(`Yuklab bo'lmadi (${r.status})`);
-    const url = URL.createObjectURL(await r.blob());
-    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+    // Bearer bilan yuklab olish (URL da token yo'q): umumiy so'rov yo'li — 401 da refresh, vaqt chegarasi,
+    // o'zbekcha xato; fayl katta bo'lishi mumkin — chegara yuklash kabi
+    const r = await send(path, { timeoutMs: UPLOAD_TIMEOUT_MS });
+    if (r.status === 202) throw new ApiError(202, "Hisob tayyorlanmoqda — birozdan so'ng qayta urinib ko'ring");
+    saveBlob(await r.blob(), filename);
   },
   // Raqamli egizak, boshqaruv, jurnal, aktivlar, vaqt mashinasi
   twin: (projectId: number) => request<TwinState>(`/api/projects/${projectId}/twin`),
@@ -976,6 +1174,11 @@ export const api = {
   notifications: (unread = false, limit = 50) => request<Notification[]>(`/api/notifications?unread=${unread}&limit=${limit}`),
   notificationCount: () => request<{ unread: number }>("/api/notifications/count"),
   markRead: (ids: number[] | null) => request<{ read: number }>("/api/notifications/read", { method: "POST", body: json({ ids }) }),
+  deletedModels: (projectId?: number) => request<DeletedModel[]>(`/api/admin/models/deleted${projectId ? `?project_id=${projectId}` : ""}`),
+  restoreDeletedModel: (id: number) => request<Model>(`/api/admin/models/${id}/restore`, { method: "POST" }),
+  purgeDeletedModel: (id: number) => request<void>(`/api/admin/models/${id}/purge`, { method: "DELETE" }),
+  storageGc: (dryRun: boolean, graceHours = 24) => request<StorageGcReport>("/api/admin/storage/gc", { method: "POST", body: json({ dry_run: dryRun, grace_hours: graceHours }), timeoutMs: UPLOAD_TIMEOUT_MS }),
+  auditStatus: () => request<AuditStatus>("/api/audit/status"),
   audit: (q: { project_id?: number | undefined; action?: string | undefined; user_id?: number | undefined; limit?: number; before_id?: number | undefined }) => {
     const qs = Object.entries(q).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<AuditRow[]>(`/api/audit${qs ? `?${qs}` : ""}`);

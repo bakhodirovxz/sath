@@ -21,6 +21,7 @@ from .auth.security import hash_password, password_problems, verify_password
 from .config import SERVER_ENV_FILE, get_settings, legacy_cwd_env, write_private
 from .db import SessionLocal, assert_at_head, migrate
 from .http_security import SecurityHeadersMiddleware
+from .me.router import router as me_router
 from .models.drafts_router import router as drafts_router
 from .models.router import router as models_router
 from .models.twin_router import router as twin_preset_router
@@ -251,6 +252,7 @@ def create_app() -> FastAPI:
     app.include_router(system_router)
     app.include_router(notifications_router)
     app.include_router(audit_router)
+    app.include_router(me_router)  # UX-12: vazifalarim, loyiha vaqt chizig'i
 
     # Web build mavjud bo'lsa shu serverdan tarqatiladi (SPA fallback bilan)
     web_dist = settings.web_dist

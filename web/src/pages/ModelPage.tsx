@@ -5,10 +5,9 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api, getToken, HEAD_MOVED_TEXT, isHeadMoved, type ChangeRequest, type Diff, type Issue, type Member, type Model, type Project, type Underlay, type Version } from "../api/client";
 import { useViewer } from "../viewer/useViewer";
 import { COMMANDS, type ParsedCommand } from "../viewer/commands";
-import type { Hover, NavMode, Shading, ViewName } from "../viewer/Viewer";
+import type { Hover, ViewName } from "../viewer/Viewer";
 import { useAuth } from "../store/auth";
 import { useLatest } from "../hooks/useLatest";
-import { applyTheme, savedTheme } from "../ui/tokens";
 import NotificationsBell from "../ui/NotificationsBell";
 import CommandLine from "../ui/CommandLine";
 import { ifcLabel, label } from "../ui/format";
@@ -29,7 +28,17 @@ import { DRAFT_KINDS, type DraftKind } from "../viewer/draftKinds";
 import ViewportSidebar from "./model/ViewportSidebar";
 import PieMenu from "./model/PieMenu";
 import SearchMenu from "./model/SearchMenu";
+import HelpPanel from "./model/HelpPanel";
+import { isModalOpen } from "../ui/Dialog";
+import { focusCommandLine } from "../ui/CommandLine";
 import type { SearchItem } from "../ui/blender";
+import { notify } from "../ui/notice";
+import AlarmBanner from "./operator/AlarmBanner";
+import { t } from "../i18n";
+import CommitDialog from "./model/CommitDialog";
+import { commitSummary } from "./model/commitSummary";
+import { useViewportDisplay } from "./model/useViewportDisplay";
+import { useWorkspaceLayout } from "./model/useWorkspaceLayout";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -38,7 +47,7 @@ const TABS: { id: Tab; icon: string; title: string }[] = [
   { id: "layers", icon: "layers", title: "Qatlamlar va ko'rinishlar" },
   { id: "versions", icon: "git-branch", title: "Versiyalar" },
   { id: "review", icon: "check-square", title: "Tasdiqlash" },
-  { id: "issues", icon: "flag", title: "Issue lar" },
+  { id: "issues", icon: "flag", title: "Muammolar" },
   { id: "sim", icon: "waves", title: "Simulyatsiya / CFD" },
   { id: "mon", icon: "activity", title: "Monitoring (SCADA)" },
   { id: "checks", icon: "shield", title: "Tekshiruv (to'qnashuv, hajm)" },
@@ -53,7 +62,6 @@ const WORKSPACES: { id: string; title: string; tab: Tab }[] = [
 ];
 
 export default function ModelPage() {
-  useEffect(() => { applyTheme(savedTheme("engineer"), false); }, []);
   const { modelId } = useParams();
   const mid = Number(modelId);
   const [params, setParams] = useSearchParams();
@@ -69,22 +77,11 @@ export default function ModelPage() {
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [diff, setDiff] = useState<Diff | null>(null);
-  const [tab, setTab] = useState<Tab>("versions");
-  const [dockOpen, setDockOpen] = useState(true);
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const [outlinerOpen, setOutlinerOpen] = useState(true);
+  // FE-06: joylashuv va ko'rinish sozlamalari alohida hook larda
+  const { tab, setTab, dockOpen, setDockOpen, toolsOpen, setToolsOpen, outlinerOpen, setOutlinerOpen, sideOpen, setSideOpen, help, setHelp, closeHelp } = useWorkspaceLayout<Tab>("versions");
   const [workspace, setWorkspace] = useState("view");
-  const [shading, setShadingState] = useState<Shading>("solid");
-  const [gridOn, setGridOn] = useState(true);
-  const [labelsOn, setLabelsOn] = useState(false); // element nomlari 3D da
-  const toggleLabels = async () => { const vw = viewer.current; if (!vw) return; await vw.setLabels(!labelsOn); setLabelsOn(!labelsOn); };
-  const [projection, setProjection] = useState<"Perspective" | "Orthographic">("Perspective");
-  const [navMode, setNavMode] = useState<NavMode>("Orbit");
-  const [colorScheme, setColorScheme] = useState<"none" | "type" | "storey">("none");
-  const [legend, setLegend] = useState<{ name: string; color: string }[] | null>(null);
+  const { shading, setShading, gridOn, setGrid, labelsOn, toggleLabels, projection, toggleProjection, navMode, pickNavMode, colorScheme, pickColorScheme, legend } = useViewportDisplay(viewer);
   const [hover, setHover] = useState<(Hover & { name?: string | undefined; category?: string | undefined }) | null>(null);
-  const [help, setHelp] = useState<boolean>(() => { try { return localStorage.getItem("ges_help_seen") !== "1"; } catch { return false; } });
-  const closeHelp = () => { setHelp(false); try { localStorage.setItem("ges_help_seen", "1"); } catch { /* */ } };
   const nav = useNavigate();
   const { user, logout } = useAuth();
   const [log, setLog] = useState("");
@@ -129,14 +126,16 @@ export default function ModelPage() {
     const t = p.get("tab") as Tab | null;
     if (t && TABS.some((x) => x.id === t)) { setTab(t); setDockOpen(true); }
     if (sel) void viewer.current?.selectByGuids([sel], true);
-  }, [loadedKey, latestParams, viewer]);
+  }, [loadedKey, latestParams, viewer, setTab, setDockOpen]);
+  useEffect(() => {
+    if (loadedKey && (document.activeElement === document.body || document.activeElement == null)) viewportRef.current?.focus({ preventScroll: true });
+  }, [loadedKey]);
   // Versiya almashganda tahrirlanayotgan/o'chirilgan asl elementlar yana yashiriladi (yorliqlar holati o'qiladi, qayta ishga tushirmaydi)
   const latestLabelsOn = useLatest(labelsOn);
   useEffect(() => { if (loadedKey) { void viewer.current?.drafts?.syncHidden(); if (latestLabelsOn.current) void viewer.current?.setLabels(true); } }, [loadedKey, latestLabelsOn, viewer]);
   const [draftSel, setDraftSel] = useState<Draft | null>(null);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   // Blender: N — viewport yon paneli, Z — shading pie, F3 — operator qidiruvi, Ctrl+Space — maksimal viewport
-  const [sideOpen, setSideOpen] = useState(false);
   const [pie, setPie] = useState<{ x: number; y: number } | null>(null);
   const [search, setSearch] = useState(false);
   const maximized = useRef<{ dock: boolean; tools: boolean; outliner: boolean } | null>(null);
@@ -145,6 +144,8 @@ export default function ModelPage() {
   const [error, setError] = useState("");
   const loadingRef = useRef<number | null>(null);
   const lastMouse = useRef<[number, number]>([300, 200]);
+  /** 3D ko'rinish konteyneri: bitta harfli tezkor tugmalar faqat u fokusda bo'lganda ishlaydi (UX-10). */
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const role = project?.my_role ?? null;
   const canEdit = role === "engineer" || role === "approver";
@@ -288,7 +289,7 @@ export default function ModelPage() {
         default: say(`Noma'lum buyruq: ${cmd.args[0]}. HELP — ro'yxat`);
       }
     },
-    [viewer, current, model, latestShowDiff],
+    [viewer, current, model, latestShowDiff, setTab, setDockOpen, setOutlinerOpen],
   );
 
   // Canvas ustida bosish: o'lchash asbobi
@@ -302,9 +303,6 @@ export default function ModelPage() {
 
   const activeCount = { review: crs.filter((c) => c.status === "open" || c.status === "changes_requested").length, issues: issues.filter((i) => i.status === "open" || i.status === "in_progress").length };
 
-  const setShading = (m: Shading) => { setShadingState(m); viewer.current?.setShading(m); };
-  const pickNavMode = (m: NavMode) => { setNavMode(m); viewer.current?.setNavMode(m); };
-  const pickColorScheme = async (m: "none" | "type" | "storey") => { setColorScheme(m); const lg = await viewer.current?.colorScheme(m); setLegend(m === "none" ? null : (lg ?? null)); };
   const render = () => {
     const url = viewer.current?.screenshot(2);
     if (!url) return;
@@ -322,7 +320,6 @@ export default function ModelPage() {
       setHover({ ...h, name: p?.name, category: p?.category });
     });
   }, [ready, viewer]);
-  const toggleProjection = async () => { await viewer.current?.toggleProjection(); setProjection(viewer.current?.world.camera.projection.current ?? "Perspective"); };
 
   // --- Qoralamalar: serverdan yuklash, o'zgarishlarni saqlash (debounce), tanlash ---
   const draftsModelId = model?.id;
@@ -364,7 +361,7 @@ export default function ModelPage() {
       void dm.syncHidden();
     }).catch(() => undefined);
     return () => { offs.forEach((f) => f()); };
-  }, [ready, viewer, draftsModelId, canEdit]);
+  }, [ready, viewer, draftsModelId, canEdit, setTab, setDockOpen]);
 
   const startAdd = (k: DraftKind) => { setAddMenu(null); if (!canEdit) { setLog("Element qo'shish — muhandis/tasdiqlovchi uchun"); return; } viewer.current?.drafts.startPlacing(k.id); setLog(`${k.title}: joylashtirish — model/yer ustiga bosing (Esc — bekor)`); };
   const deleteDraft = async (uid: string) => {
@@ -400,10 +397,11 @@ export default function ModelPage() {
     setLog(`«${p.name || p.category}» o'chirishga belgilandi — «IFC ga qo'shish» bilan yangi versiya`);
   };
   const duplicateDraft = (uid: string) => viewer.current?.drafts.duplicate(uid);
-  const commitDrafts = async () => {
+  // UX-12: commit oynasi — qo'shilgan/o'zgargan/o'chirilgan soni, IFC ga kirmaydiganlar ogohlantirishi
+  const [commitOpen, setCommitOpen] = useState(false);
+  const commitDrafts = async () => { if (model && viewer.current && drafts.length) setCommitOpen(true); };
+  const doCommit = async (msg: string) => {
     if (!model || !viewer.current) return;
-    const msg = await dialogs.prompt("Versiya izohi (commit)", `Web 3D: ${drafts.length} ta element qo'shildi`);
-    if (msg === null) return;
     setDraftBusy(true);
     try {
       // saqlanmagan o'zgarishlarni avval yuborish
@@ -414,10 +412,11 @@ export default function ModelPage() {
       const vs = await reload();
       const nv = vs.find((x) => x.id === v.id);
       if (nv) await openVersion(nv);
-      setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga qo'shildi`);
+      setCommitOpen(false);
+      setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga yozildi`);
     } catch (e) {
       // VCS-01: model boshqa versiya bilan yangilangan — ro'yxatni yangilaymiz, qoralamalar saqlanadi
-      if (isHeadMoved(e)) { setError(HEAD_MOVED_TEXT); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
+      if (isHeadMoved(e)) { notify(HEAD_MOVED_TEXT, "warning"); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
     } finally { setDraftBusy(false); }
   };
   const pickWorkspace = (id: string) => { setWorkspace(id); const w = WORKSPACES.find((x) => x.id === id); if (w) { setTab(w.tab); setDockOpen(true); } };
@@ -453,15 +452,24 @@ export default function ModelPage() {
   ];
 
   // Tezkor tugmalar (Blender): H yashirish, Alt+H hammasi, / ajratish, Home moslash, . tanlanganga,
-  // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor
+  // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor.
+  // UX-10: bitta harfli/raqamli tugmalar faqat 3D ko'rinish fokusda bo'lganda (panel/forma ichida yozish,
+  // ekran o'quvchi tugmalari bilan to'qnashmaydi); F2/F3/F12, Ctrl+Space, Ctrl+K, Esc — istalgan joyda
+  // (matn maydoni va modal dialogdan tashqari).
   const keys = useLatest({ deleteDraft, duplicateDraft, editElement, deleteElement, render, selectAll, toggleLabels, toggleMaximize, toggleProjection, cmd });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (isModalOpen()) return;
       const vw = viewer.current;
       if (!vw) return;
       const k = e.key;
+      const inViewport = !!viewportRef.current && viewportRef.current.contains(document.activeElement);
+      const global = k === "F2" || k === "F3" || k === "F12" || k === "Escape" || (e.ctrlKey && (k === " " || k === "k" || k === "K"));
+      if (!inViewport && !global) return;
+      if (e.ctrlKey && (k === "k" || k === "K")) { e.preventDefault(); focusCommandLine(); return; }
+      if (k === ":") { e.preventDefault(); focusCommandLine(); return; }
       // Qoralamalar (Blender): Shift+A qo'shish, G/R/S, X, Shift+D, Esc
       if ((k === "A" || k === "a") && e.shiftKey) { e.preventDefault(); setAddMenu({ x: lastMouse.current[0], y: lastMouse.current[1] }); return; }
       const dr = vw.drafts.handleKey(e);
@@ -506,7 +514,7 @@ export default function ModelPage() {
     window.addEventListener("keydown", onKey, true); // capture: buyruqlar qatori fokusidan oldin
     window.addEventListener("mousemove", onMove);
     return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("mousemove", onMove); };
-  }, [shading, viewer, canEdit, labelsOn, keys]);
+  }, [shading, viewer, canEdit, labelsOn, keys, setHelp, setSideOpen, setToolsOpen]);
 
   const menus: Menu[] = [
     { title: "Fayl", items: [
@@ -560,7 +568,7 @@ export default function ModelPage() {
       { label: "Kamera: aylantirish / yurish / plan", onClick: () => pickNavMode(navMode === "Orbit" ? "FirstPerson" : navMode === "FirstPerson" ? "Plan" : "Orbit") },
       { label: "Kesim qutisi (tanlangan atrofida)", hint: "B", onClick: () => void viewer.current?.sectionBox() },
       { label: "Render (rasm)", hint: "F12", onClick: render },
-      { label: gridOn ? "Gridni yashirish" : "Gridni ko'rsatish", onClick: () => { setGridOn(!gridOn); viewer.current?.setGridVisible(!gridOn); } },
+      { label: gridOn ? "Gridni yashirish" : "Gridni ko'rsatish", onClick: () => setGrid(!gridOn) },
       { label: labelsOn ? "Element nomlarini yashirish" : "Element nomlari (yorliqlar)", hint: "L", onClick: () => void toggleLabels() },
       { sep: true, label: "" },
       { label: dockOpen ? "Yon panelni yashirish" : "Yon panel", hint: "N", onClick: () => setDockOpen(!dockOpen) },
@@ -577,7 +585,7 @@ export default function ModelPage() {
       { label: "To'qnashuvlar (clash)", hint: "CLASH", onClick: () => cmd("CLASH") },
       { label: "Hajm-miqdor (QTO)", hint: "QTO", onClick: () => cmd("QTO") },
       { label: "Oldingi versiya bilan farq", hint: "DIFF", onClick: () => cmd("DIFF") },
-      { label: "Issue ochish (joriy ko'rinish)", hint: "ISSUE", onClick: () => cmd("ISSUE") },
+      { label: "Muammo ochish (joriy ko'rinish)", hint: "ISSUE", onClick: () => cmd("ISSUE") },
     ] },
     { title: "Simulyatsiya", items: [
       { label: "Katalog (barcha simulyatsiyalar)", hint: "SIM", onClick: () => cmd("SIM") },
@@ -629,12 +637,14 @@ export default function ModelPage() {
         {project && model && <span className="crumb-lite"><Link to={`/projects/${project.id}`}>{project.name}</Link> › {model.name}</span>}
         {current && <span className="small muted">v{current.number} <span className={`badge ${current.state}`}>{label(current.state)}</span></span>}
         <NotificationsBell />
-        {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
+        {user?.is_admin && <Link to="/admin" className="small" title={t("nav.adminTitle")}>{t("nav.admin")}</Link>}
         <span className="muted small">{user?.full_name || user?.username}</span>
       </div>
+      {project && <AlarmBanner pid={project.id} role={role} />}
+      {commitOpen && <CommitDialog summary={commitSummary(drafts, underlays.length)} baseLabel={current ? `v${current.number}` : "yangi model"} busy={draftBusy} onCommit={(m) => void doCommit(m)} onClose={() => setCommitOpen(false)} />}
 
       <ViewportHeader viewer={ready ? viewer.current : null} shading={shading} onShading={setShading} grid={gridOn}
-        onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }} projection={projection} onProjection={() => void toggleProjection()}
+        onGrid={setGrid} projection={projection} onProjection={() => void toggleProjection()}
         navMode={navMode} onNavMode={pickNavMode} colorScheme={colorScheme} onColorScheme={(m) => void pickColorScheme(m)} onSectionBox={() => void viewer.current?.sectionBox()} onRender={render} water={{ on: waterOn, level: npu?.level ?? null, onToggle: () => setWaterOn(!waterOn) }}
         right={<span className="dim small">{model?.name}{current ? ` · v${current.number}` : ""}{current?.meta?.element_count ? ` · ${current.meta.element_count} element` : ""}</span>} />
 
@@ -655,16 +665,18 @@ export default function ModelPage() {
           <ToolBtn title="Masshtab (S)" active={viewer.current?.drafts.mode === "scale"} onClick={() => viewer.current?.drafts.setMode("scale")}><Icon name="scale" /></ToolBtn>
         </>}
         <div className="sep" />
-        <ToolBtn title="Issue (ISSUE)" onClick={() => cmd("ISSUE")}><Icon name="flag" /></ToolBtn>
+        <ToolBtn title="Muammo ochish (ISSUE)" onClick={() => cmd("ISSUE")}><Icon name="flag" /></ToolBtn>
         <ToolBtn title="Tozalash (CLEAR)" onClick={() => cmd("CLEAR")}><Icon name="trash" /></ToolBtn>
       </div>
 
-      <div className="ws-canvas">
-        <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      {/* role=application: 3D ko'rinish o'z klaviatura boshqaruviga ega (tezkor tugmalar faqat shu fokusda) */}
+      <div className="ws-canvas" ref={viewportRef} tabIndex={0} role="application" aria-label="3D ko'rinish — tezkor tugmalar faol (yordam: ?)"
+        onPointerDown={() => viewportRef.current?.focus({ preventScroll: true })}>
+        <div ref={containerRef} className="ws-canvas-host" />
         {progress !== null && (
           <div className="overlay">
-            <div style={{ width: 240 }}>
-              <div style={{ marginBottom: 6 }}>Model yuklanmoqda… {Math.round(progress * 100)}%</div>
+            <div className="w-240">
+              <div className="mb-6">Model yuklanmoqda… {Math.round(progress * 100)}%</div>
               <div className="progress"><i style={{ width: `${progress * 100}%` }} /></div>
             </div>
           </div>
@@ -672,7 +684,7 @@ export default function ModelPage() {
         {ready && versions.length === 0 && model && (
           <div className="overlay"><div>{canEdit ? "Bu modelda hali versiya yo'q — o'ngdagi «Versiyalar» dan IFC yuklang." : "Bu modelda hali versiya yo'q."}</div></div>
         )}
-        {error && <div className="overlay" style={{ pointerEvents: "auto", placeItems: "start center" }}><div className="section-box error" style={{ marginTop: 20 }}>{error} <button className="btn sm" onClick={() => setError("")}>Yopish</button></div></div>}
+        {error && <div className="overlay interactive"><div className="section-box error mt-16">{error} <button className="btn sm" onClick={() => setError("")}>Yopish</button></div></div>}
         <NavGizmo viewer={viewer.current} ready={ready} />
         {addMenu && <AddMenu x={addMenu.x} y={addMenu.y} onPick={startAdd} onClose={() => setAddMenu(null)} />}
         {hover && hover.name !== undefined && <div className="vp-tip" style={{ left: hover.x + 14, top: hover.y + 14 }}><b>{hover.name || "nomsiz"}</b><div className="dim">{ifcLabel(hover.category ?? "")}</div></div>}
@@ -681,11 +693,12 @@ export default function ModelPage() {
           <ViewportSidebar
             viewer={ready ? viewer.current : null} selection={selection}
             shading={shading} onShading={setShading} projection={projection} onProjection={() => void toggleProjection()}
-            gridOn={gridOn} onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }}
+            gridOn={gridOn} onGrid={setGrid}
             labelsOn={labelsOn} onLabels={() => void toggleLabels()}
             version={current} modelName={model?.name ?? ""} canEdit={canEdit} onAction={sideAction}
           />
         )}
+        {help && <HelpPanel onClose={closeHelp} />}
         <div className="vp-info">
           <div>{projection === "Perspective" ? "Perspektiva" : "Ortografik"} · {shading === "solid" ? "Solid" : shading === "wire" ? "Wireframe" : shading === "xray" ? "X-ray" : "Rendered"}{navMode !== "Orbit" && ` · ${navMode === "FirstPerson" ? "Yurish" : "Plan"}`}</div>
           {selection.length > 0 && <div>{selection.length === 1 ? (selection[0].name || selection[0].category) : `${selection.length} ta tanlangan`}</div>}
@@ -695,11 +708,11 @@ export default function ModelPage() {
       <div className="ws-dock">
         {/* Outliner (Blender): model daraxti */}
         <div className={`outliner${outlinerOpen ? "" : " collapsed"}`}>
-          <div className="dock-head" onClick={() => setOutlinerOpen(!outlinerOpen)}>
+          <button type="button" className="dock-head dock-toggle" onClick={() => setOutlinerOpen(!outlinerOpen)} aria-expanded={outlinerOpen}>
             <span className="tw"><Icon name={outlinerOpen ? "chevron-down" : "chevron-right"} size={12} /></span> Outliner
             <span className="grow" />
             {current?.meta?.element_count != null && <span className="dim small">{current.meta.element_count}</span>}
-          </div>
+          </button>
           {outlinerOpen && <div className="outliner-body">
             {viewer.current && <DraftList drafts={drafts} selected={draftSel} dm={viewer.current.drafts} canEdit={canEdit} onCommit={() => void commitDrafts()} onDelete={(uid) => void deleteDraft(uid)} busy={draftBusy} />}
             {model && (canEdit || underlays.length > 0) && <UnderlayPanel modelId={model.id} list={underlays} canEdit={canEdit} onChange={setUnderlays} centerIfc={() => { const vw = viewer.current; if (!vw) return null; const b = vw.boundsIfc; return b ? [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, b.min[2]] : [0, 0, 0]; }} />}
@@ -740,7 +753,7 @@ export default function ModelPage() {
                   onChanged={reload} onOpenIssue={setOpenIssue} />
               )}
               {model && tab === "sim" && <SimPanel modelId={model.id} projectId={project?.id} current={current} viewer={ready ? viewer.current : null} selection={selection} canEdit={canEdit} initialKind={simKind} />}
-              {model && project && tab === "mon" && <MonitoringPanel projectId={project.id} modelId={model.id} role={role} viewer={ready ? viewer.current : null} selection={selection} />}
+              {model && project && tab === "mon" && <MonitoringPanel projectId={project.id} modelId={model.id} versionId={current?.id ?? null} role={role} viewer={ready ? viewer.current : null} selection={selection} />}
               {model && tab === "checks" && <ChecksPanel current={current} viewer={ready ? viewer.current : null} onCreateIssue={() => { setTab("issues"); setIssueTrigger((n) => n + 1); }} />}
               {tab === "props" && draftSel && viewer.current && <DraftProps draft={draftSel} dm={viewer.current.drafts} canEdit={canEdit} onDelete={(uid) => void deleteDraft(uid)} onDuplicate={duplicateDraft} />}
               {tab === "props" && !draftSel && <PropertiesPanel viewer={viewer.current} selection={selection} canEdit={canEdit} onEdit={(id) => void editElement(id)} onDelete={(id) => void deleteElement(id)} project={project} />}
@@ -752,7 +765,7 @@ export default function ModelPage() {
 
       {pie && (
         <PieMenu
-          x={pie.x} y={pie.y} title="Viewport Shading" releaseKey="z" onClose={() => setPie(null)}
+          x={pie.x} y={pie.y} title="Ko'rinish uslubi (shading)" releaseKey="z" onClose={() => setPie(null)}
           items={[
             { label: "Wireframe", hint: "1", active: shading === "wire", run: () => setShading("wire") },
             { label: "Solid", hint: "2", active: shading === "solid", run: () => setShading("solid") },
@@ -769,21 +782,6 @@ export default function ModelPage() {
             ...menus.flatMap((m) => m.items.filter((i) => !i.sep && !i.disabled && i.onClick).map((i) => ({ label: i.label, hint: i.hint, group: m.title, run: () => i.onClick?.() }))),
           ]}
         />
-      )}
-      {help && (
-        <div className="help-overlay" onClick={closeHelp}>
-          <div className="help-card" onClick={(e) => e.stopPropagation()}>
-            <h2>Sath — qisqa yo'riqnoma</h2>
-            <div className="help-grid">
-              <div><b>1 · Ko'rish</b><p>Chap tugma — tanlash, o'rta — surish, g'ildirak — masshtab, Shift+o'rta — aylantirish. Yuqorida shading (Solid/Wire/X-ray/Rendered), o'ngda Outliner va xususiyatlar.</p></div>
-              <div><b>Element qo'shish / tahrirlash</b><p>Shift+A yoki «Qo'shish» menyusi: primitiv yoki GES inshooti (to'g'on, quvur, turbina…) — model/yer ustiga bosib joylashtiring, G/R/S bilan sozlang, o'ng panelda o'lchamlar va Pset_GES. Mavjud elementni tanlab <b>Tab</b> — tahrirlash (surish/burish/masshtab, nom, Pset), <b>X</b> — o'chirish. «IFC ga qo'shish» — yangi versiya (commit), GUID lar saqlanadi.</p></div>
-              <div><b>2 · Versiyalar va tasdiqlash</b><p>Har IFC yuklash — versiya. Muhandis «Tasdiqqa yuboradi», tasdiqlovchi farqni ko'rib ma'qullaydi/merge qiladi. Issue — 3D ko'rinish bilan.</p></div>
-              <div><b>3 · Tekshiruv va simulyatsiya</b><p>To'qnashuvlar, hajm-miqdor (Tekshiruv); suv ombori/turbina rejimi va CFD (Simulyatsiya); jonli SCADA va raqamli egizak (Monitoring, Dispetcher paneli).</p></div>
-              <div><b>Tezkor tugmalar</b><p>Shift+A qo'shish · G/R/S surish/burish/masshtab · X o'chirish · Shift+D nusxa · H yashir · Alt+H hammasi · / ajrat · Home moslash · . tanlanganga · 1/3/7 ko'rinish · 5 orto · Z shading pie · B kesim qutisi · N yon panel · T asboblar · F3 qidiruv · Ctrl+Space maksimal · A hammasi / Alt+A bekor · F12 render · ? yo'riqnoma</p></div>
-            </div>
-            <div className="actions"><button className="btn primary" onClick={closeHelp}>Tushunarli</button></div>
-          </div>
-        </div>
       )}
       <CommandLine onCommand={onCommand} log={log} />
 

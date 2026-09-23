@@ -1,14 +1,27 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+// WEB-01: ichki OT tarmoqda internet yo'q — CDN dan import qilinadigan modullar lokal paketga yo'naltiriladi
+// (three TTFLoader → @thatopen/components-front orqali). `scripts/check-bundle.mjs` dist da https:// import
+// qolmaganini tekshiradi.
+const CDN_ALIASES = [
+  { find: /^https:\/\/cdn\.jsdelivr\.net\/npm\/opentype\.js@[^/]+\/\+esm$/, replacement: "opentype.js" },
+];
+
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias: CDN_ALIASES },
+  // Bir nechta ishchi nusxa (worktree) umumiy node_modules dan foydalansa — kesh alohida bo'lsin
+  ...(process.env.VITE_CACHE_DIR ? { cacheDir: process.env.VITE_CACHE_DIR } : {}),
   server: {
-    port: 5173,
-    proxy: { "/api": { target: "http://localhost:8000", ws: true } },
+    port: Number(process.env.VITE_PORT ?? 5173),
+    // Parallel ishlash/e2e uchun server manzili env orqali (default — lokal 8000)
+    proxy: { "/api": { target: process.env.VITE_API_PROXY ?? "http://localhost:8000", ws: true } },
   },
   build: {
-    chunkSizeWarningLimit: 1500,
+    // FE-06: chunkSizeWarningLimit ko'tarilmaydi (standart 500 KB) — ogohlantirish faqat uchinchi tomon 3D
+    // bo'laklarida (three, @thatopen, web-ifc: faqat model sahifasi yuklaydi); ilova bo'laklari byudjeti —
+    // scripts/check-bundle.mjs (har biri ≤ 350 KB, login ≤ 500 KB).
     rollupOptions: {
       output: {
         // Katta kutubxonalar alohida bo'laklarda (F10): faqat model sahifasi yuklaydi

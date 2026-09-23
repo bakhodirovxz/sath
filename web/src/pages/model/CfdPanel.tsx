@@ -13,6 +13,8 @@ interface Props {
   selection: SelectedItem[];
   jobs: SimJob[];
   onJobsChanged: () => void;
+  /** Hisoblash — muhandis+ (server ko'ruvchiga 403) */
+  canRun?: boolean;
 }
 
 type Kind = "penstock" | "spillway" | "geometry";
@@ -25,7 +27,7 @@ const n1 = (v: unknown, d = 2) => (typeof v === "number" ? v.toFixed(d) : "—")
 const num = (v: string, d = 0) => (v === "" || Number.isNaN(Number(v)) ? d : Number(v));
 
 /** CFD (OpenFOAM): shablon → parametrlar → hisob (progress) → natija: grafiklar, 2D maydon, 3D tekislik. */
-export default function CfdPanel({ modelId, current, viewer, selection, jobs, onJobsChanged }: Props) {
+export default function CfdPanel({ modelId, current, viewer, selection, jobs, onJobsChanged, canRun = true }: Props) {
   const [status, setStatus] = useState<{ mode: string; available: boolean } | null>(null);
   const [params, setParams] = useState<CfdParams>(DEFAULTS.penstock);
   const [name, setName] = useState("");
@@ -105,16 +107,16 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
   return (
     <div className="cfd">
       {status && !status.available && <p className="error small">CFD bu serverda mavjud emas (rejim: {status.mode}). Administrator: docker yoki `--profile cfd`.</p>}
-      {error && <p className="error small">{error} <a onClick={() => setError("")}>yopish</a></p>}
+      {error && <p className="error small">{error} <button type="button" className="link-btn" onClick={() => setError("")}>yopish</button></p>}
 
       {cfdJobs.length > 0 && (
         <details open={cfdJobs.length <= 3} className="section-box">
           <summary>CFD hisoblari ({cfdJobs.length})</summary>
           {cfdJobs.map((j) => (
-            <div key={j.id} className={`list-item${active?.id === j.id ? " selected" : ""}`} onClick={() => (j.status === "done" ? openResult(j) : setActive(j))}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : `${Math.round(j.progress * 100)}%`}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "failed" && <span className="error"> · {j.error.slice(0, 120)}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className={`list-item${active?.id === j.id ? " selected" : ""}`} aria-pressed={active?.id === j.id} onClick={() => (j.status === "done" ? openResult(j) : setActive(j))}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : `${Math.round(j.progress * 100)}%`}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "failed" && <span className="error"> · {j.error.slice(0, 120)}</span>}</span>
+            </button>
           ))}
         </details>
       )}
@@ -122,7 +124,7 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
       {running && (
         <div className="section-box">
           <b>Hisoblanmoqda…</b> <span className="muted small">{active.error || (active.status === "queued" ? "navbatda (worker kutilmoqda)" : "")}</span>
-          <div className="progress" style={{ marginTop: 6 }}><i style={{ width: `${active.progress * 100}%` }} /></div>
+          <div className="progress mt-6"><i style={{ width: `${active.progress * 100}%` }} /></div>
         </div>
       )}
 
@@ -167,7 +169,7 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
               {result.profile && <LineChart title="Suv sirti profili" unit="m" x={result.profile.map((p) => p.x.toFixed(1))} series={[{ name: "Sath", values: result.profile.map((p) => p.y) }]} refLines={[{ value: result.inputs.crest_height_m as number, label: "ostona" }]} />}
             </>
           )}
-          <div className="row" style={{ margin: "6px 0" }}>
+          <div className="row my-6 mx-0">
             <span className="small muted">Maydon:</span>
             <button className={`btn sm${field === "u" ? " active" : ""}`} onClick={() => setField("u")}>Tezlik</button>
             {(result.kind === "penstock" || result.kind === "geometry") && <button className={`btn sm${field === "p" ? " active" : ""}`} onClick={() => setField("p")}>Bosim</button>}
@@ -175,29 +177,29 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
             {active.params?.element_guid ? <span className="dim small">· 3D da elementga qo'yilgan</span> : <span className="dim small">· 3D uchun elementni tanlab hisoblang</span>}
           </div>
           {grid ? <Heatmap grid={grid} title={field === "u" ? "Tezlik maydoni" : field === "p" ? "Bosim maydoni" : "Suv ulushi (alpha)"} unit={field === "u" ? "m/s" : field === "p" ? "Pa" : ""} /> : <p className="dim small">Maydon nuqtalari yo'q.</p>}
-          {logs && <pre className="mono small" style={{ maxHeight: 200, overflow: "auto", background: "var(--canvas)", padding: 6 }}>{Object.entries(logs).map(([k, v]) => `--- ${k}\n${v}`).join("\n\n")}</pre>}
+          {logs && <pre className="mono small code-sample scroll-200">{Object.entries(logs).map(([k, v]) => `--- ${k}\n${v}`).join("\n\n")}</pre>}
         </div>
       )}
 
       <form onSubmit={run}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <select className="select" style={{ width: 170 }} value={params.kind} onChange={(e) => setParams(DEFAULTS[e.target.value as Kind])}>
+        <div className="row mb-8">
+          <select className="select w-170" value={params.kind} onChange={(e) => setParams(DEFAULTS[e.target.value as Kind])}>
             <option value="penstock">Bosimli quvur (oqim)</option>
             <option value="spillway">Suv tashlagich (erkin sirt)</option>
             <option value="geometry">Model geometriyasi (3D)</option>
           </select>
           <input className="input grow" placeholder="Hisob nomi" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || !!running || (status ? !status.available : false)}>Hisoblash</button>
+          <button className="btn primary" type="submit" disabled={!canRun || busy || !!running || (status ? !status.available : false)} title={canRun ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"}>Hisoblash</button>
         </div>
-        <div className="row" style={{ marginBottom: 6 }}>
+        <div className="row mb-6">
           {current && <button type="button" className="btn sm" onClick={fromModel}>Modeldan olish{selection[0]?.name ? ` (${selection[0].name})` : ""}</button>}
           <span className="dim small">{selection[0]?.guid ? `3D: ${selection[0].name || selection[0].category}` : "3D da element tanlansa natija unga qo'yiladi"}</span>
         </div>
         {params.kind === "geometry" ? (
           <div className="row wrap">
-            <span className="small" style={{ width: "100%" }}>{selection.length ? `${selection.length} ta element tanlangan: ${selection.map((s) => s.name || s.category).join(", ")}` : "3D da element(lar)ni tanlang — ular atrofida suv oqimi hisoblanadi (snappyHexMesh + simpleFoam)"}</span>
+            <span className="small w-full">{selection.length ? `${selection.length} ta element tanlangan: ${selection.map((s) => s.name || s.category).join(", ")}` : "3D da element(lar)ni tanlang — ular atrofida suv oqimi hisoblanadi (snappyHexMesh + simpleFoam)"}</span>
             <Num label="Oqim tezligi, m/s" v={params.velocity_ms!} set={(v) => upd({ velocity_ms: v })} step={0.1} />
-            <label className="field" style={{ width: 120 }}><span>Oqim o'qi</span><select className="select" value={params.flow_axis} onChange={(e) => upd({ flow_axis: e.target.value as "x" | "y" })}><option value="x">X</option><option value="y">Y</option></select></label>
+            <label className="field w-120"><span>Oqim o'qi</span><select className="select" value={params.flow_axis} onChange={(e) => upd({ flow_axis: e.target.value as "x" | "y" })}><option value="x">X</option><option value="y">Y</option></select></label>
             <Num label="Sirt aniqligi (1–3)" v={params.refinement!} set={(v) => upd({ refinement: Math.round(v) })} />
             <Num label="Iteratsiyalar" v={params.max_iterations!} set={(v) => upd({ max_iterations: Math.round(v) })} />
             <Num label="Aniqlik (0.5–2)" v={params.resolution!} set={(v) => upd({ resolution: v })} step={0.1} />
@@ -231,7 +233,7 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
 
 function Num({ label, v, set, step }: { label: string; v: number | string; set: (v: number) => void; step?: number }) {
   return (
-    <label className="field" style={{ width: 150 }}>
+    <label className="field w-150">
       <span>{label}</span>
       <input className="input" type="number" step={step ?? "any"} value={v} onChange={(e) => set(num(e.target.value))} />
     </label>
