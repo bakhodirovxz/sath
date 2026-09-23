@@ -39,9 +39,10 @@ class _Base(BaseModel):
 class _StlElement(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # server o'zi yozadi (geometry.write_stl), solver fayllariga tushmaydi — nomsiz element (None) ham bo'lishi mumkin
     guid: str = Field(max_length=64)
-    name: str = Field(default="", max_length=512)
-    type: str = Field(default="", max_length=128)
+    name: str | None = Field(default="", max_length=2048)
+    type: str | None = Field(default="", max_length=128)
 
 
 class PenstockParams(_Base):

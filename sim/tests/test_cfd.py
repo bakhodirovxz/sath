@@ -282,3 +282,23 @@ def test_spillway_is_turbulent_komega_sst(tmp_path):
     assert "div(phi,k)" in fs and "div(phi,omega)" in fs and "wallDist { method meshWave; }" in fs
     sol = (tmp_path / "system/fvSolution").read_text()
     assert '"(U|k|omega)"' in sol and '"(U|k|omega)Final"' in sol
+
+
+def test_geometry_params_with_server_metadata(tmp_path):
+    """SEC-01: server qo'shgan metama'lumot (bbox, stl_elements — nomsiz element ham, element_guid) bilan
+    saqlangan ish parametrlari worker da build_case dan o'tadi."""
+    params = {
+        "kind": "geometry",
+        "velocity_ms": 2,
+        "flow_axis": "x",
+        "refinement": 2,
+        "resolution": 1,
+        "max_iterations": 300,
+        "element_guids": ["2O2Fr$t4X7Zf8NOew3FLOH"],
+        "element_guid": None,
+        "bbox": [[10.0, -17.0, 12.0], [22.0, -7.0, 13.0]],
+        "stl_elements": [{"guid": "2O2Fr$t4X7Zf8NOew3FLOH", "name": None, "type": "IfcWall"}],
+        "stl_triangles": 12,
+    }
+    case = build_case(params, tmp_path)
+    assert case.size == [12.0, 10.0, 1.0]
