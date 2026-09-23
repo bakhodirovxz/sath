@@ -37,7 +37,7 @@ from ..auth.deps import (
 from ..config import get_settings
 from ..db import SessionLocal
 from ..orm import AlarmEvent, AlarmState, Project, Reading, Role, Sensor, User, utcnow
-from . import alarm_kpi, historian, interlock, keys, kks, live, mqtt_bridge, soe
+from . import alarm_kpi, historian, interlock, keys, kks, linkage, live, mqtt_bridge, soe
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 WS_PING_S = 10.0  # WebSocket heartbeat davri (klient 3× davrda xabar kelmasa OFFLINE deb hisoblaydi)
@@ -276,9 +276,10 @@ def list_sensors(
 
 
 @router.post("/projects/{project_id}/sensors", response_model=SensorOut, status_code=201)
-def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, db: DB):
+def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, db: DB, force: bool = False):
     if db.query(Sensor).filter_by(project_id=project.id, key=body.key).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Bunday kalitli sensor mavjud")
+    linkage.check_sensor_guid(db, project.id, body.model_id, body.element_guid, force)  # SCADA-13
     data = body.model_dump()
     try:
         data["kks_code"] = kks.validate(data.get("kks_code"))
@@ -448,8 +449,10 @@ def _get_sensor(db, sensor_id: int, user: User, required: Role) -> Sensor:
 
 
 @router.patch("/sensors/{sensor_id}", response_model=SensorOut)
-def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
+def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB, force: bool = False):
     s = _get_sensor(db, sensor_id, user, Role.engineer)
+    if body.element_guid or body.model_id is not None:  # SCADA-13
+        linkage.check_sensor_guid(db, s.project_id, body.model_id if body.model_id is not None else s.model_id, body.element_guid or s.element_guid, force)
     changes = body.model_dump(
         exclude_none=True,
         exclude={"clear_alarms", "clear_roc", "clear_raw_range", "clear_setpoint_range", "clear_archive_deadband"},
