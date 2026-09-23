@@ -18,6 +18,8 @@ interface Props {
   onJobsChanged: () => void;
   onBack: () => void;
   initialJobId?: number | null; // ochilganda shu hisob natijasi (xavfsizlik tekshiruvidan)
+  /** Hisoblash — muhandis+ (server ko'ruvchiga 403) */
+  canRun?: boolean;
 }
 
 /** Vaqt qatorlari sarlavhalari (server kalitlari → o'zbekcha) */
@@ -60,7 +62,7 @@ function resample(xs: number[] | undefined, ys: number[], xt: number[]): number[
 }
 function hazardLabel(hv: number) { return hv < 0.3 ? "past" : hv < 0.6 ? "o'rtacha" : hv < 1.2 ? "yuqori" : "o'ta yuqori"; }
 
-export default function GenericSim({ kind, modelId, projectId, current, viewer, jobs, onJobsChanged, onBack, initialJobId = null }: Props) {
+export default function GenericSim({ kind, modelId, projectId, current, viewer, jobs, onJobsChanged, onBack, initialJobId = null, canRun = true }: Props) {
   const [values, setValues] = useState<GenericParams>(() => fieldDefaults(kind.fields));
   const [sources, setSources] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
@@ -501,6 +503,12 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
           </div>
         )}
         <div className={`verdict ${ok ? "ok" : "bad"}`}><Icon name={ok ? "check-circle" : "alert-triangle"} size={16} /> <span>{String(s.verdict ?? "")}</span></div>
+        {s.column_separation === true && (
+          <div className="verdict bad" data-testid="column-separation">
+            <Icon name="alert-triangle" size={16} />
+            <span><b>Suv ustuni uzilishi (kavitatsiya)</b>{typeof s.column_sep_t_s === "number" ? ` · t = ${fmtNum(s.column_sep_t_s)} s` : ""}{typeof s.column_sep_x_m === "number" ? ` · x = ${fmtNum(s.column_sep_x_m)} m` : ""}{typeof s.cavity_max_m3 === "number" ? ` · bo'shliq ≤ ${fmtNum(s.cavity_max_m3)} m³` : ""} — ustun qayta birikishida bosim sakrashi xavfi; zadvijka yopilish vaqti/profilini qayta ko'ring.</span>
+          </div>
+        )}
         {Array.isArray(s.warnings) && s.warnings.length > 0 && (
           <div className="verdict warn" title="Usul amal doirasi / ishonchlilik">
             <Icon name="alert-triangle" size={16} />
@@ -664,7 +672,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
       <form onSubmit={run}>
         <div className="row" style={{ marginBottom: 8 }}>
           <input className="input grow" placeholder="Hisob nomi (ixtiyoriy)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || prefilling || active?.status === "running" || active?.status === "queued"} title={prefilling ? "Maydon pasporti yuklanmoqda…" : undefined}>{busy ? "…" : prefilling ? "Pasport…" : "Hisoblash"}</button>
+          <button className="btn primary" type="submit" disabled={!canRun || busy || prefilling || active?.status === "running" || active?.status === "queued"} title={prefilling ? "Maydon pasporti yuklanmoqda…" : undefined}>{busy ? "…" : prefilling ? "Pasport…" : "Hisoblash"}</button>
         </div>
         <div className="row" style={{ marginBottom: 8 }}>
           {current && <button type="button" className="btn sm" title="IFC dagi Pset_GES_* va 3D da yaratilgan qoralama obyektlardan (to'g'on o'lchamlari, beton klassi…)" onClick={() => applyPrefill("model")}><Icon name="box" size={12} /> Modeldan (v{current.number} + qoralamalar)</button>}
@@ -675,13 +683,13 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         <SimForm fields={kind.fields} values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} sources={sources} />
         <p className="dim small">Natija versiyaga bog'lanadi: {current ? `v${current.number}` : "—"}.</p>
       </form>
-      <Sweep kind={kind} values={values} />
+      <Sweep kind={kind} values={values} canRun={canRun} />
     </div>
   );
 }
 
 /** Sezgirlik tahlili: bitta parametrni oraliqda o'zgartirib, xulosa ko'rsatkichlari grafigi (saqlanmaydi, sinxron). */
-function Sweep({ kind, values }: { kind: SimKind; values: GenericParams }) {
+function Sweep({ kind, values, canRun }: { kind: SimKind; values: GenericParams; canRun: boolean }) {
   const numeric = kind.fields.filter((f) => f.type === "number" || f.type === "int");
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState(numeric[0]?.key ?? "");
@@ -724,7 +732,7 @@ function Sweep({ kind, values }: { kind: SimKind; values: GenericParams }) {
         <label className="field" style={{ width: 90 }}><span>dan</span><input className="input" type="number" step="any" value={range.min} onChange={(e) => setRange({ ...range, min: e.target.value })} /></label>
         <label className="field" style={{ width: 90 }}><span>gacha</span><input className="input" type="number" step="any" value={range.max} onChange={(e) => setRange({ ...range, max: e.target.value })} /></label>
         <label className="field" style={{ width: 70 }}><span>nuqta</span><input className="input" type="number" min={2} max={60} value={range.n} onChange={(e) => setRange({ ...range, n: Number(e.target.value) || 9 })} /></label>
-        <button type="button" className="btn sm primary" disabled={busy} onClick={() => void run()}>{busy ? "…" : "Hisoblash"}</button>
+        <button type="button" className="btn sm primary" disabled={busy || !canRun} title={canRun ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"} onClick={() => void run()}>{busy ? "…" : "Hisoblash"}</button>
       </div>
       {err && <div className="error small">{err}</div>}
       {res && (

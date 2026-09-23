@@ -12,10 +12,13 @@ import { fmtDate, fmtDay, fmtShort, isAlarm } from "../../ui/format";
 import { alarmLabel, keyKindLabel, sensorKindLabel } from "../../i18n/labels";
 import { putSensors, useLiveMessages, useProjectLive, useSensorsByIds } from "../../store/live";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
+import { ApiError, type UnlinkedReport } from "../../api/client";
 
 interface Props {
   projectId: number;
   modelId: number;
+  /** Ochiq versiya — bog'lanmagan sensorlar (SCADA-13) shu versiya bo'yicha */
+  versionId?: number | null | undefined;
   role: Role | null;
   viewer: Viewer | null;
   selection: SelectedItem[];
@@ -44,7 +47,7 @@ function alarmHex(s: Sensor): string {
 const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: "http", address: {}, low_alarm: null, high_alarm: null, stale_after_s: 600, enabled: true };
 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
-export default function MonitoringPanel({ projectId, modelId, role, viewer, selection }: Props) {
+export default function MonitoringPanel({ projectId, modelId, versionId, role, viewer, selection }: Props) {
   // UX-11: sensorlar umumiy jonli store da (bitta soket loyiha uchun); panel faqat o'z modeli sensorlariga obuna
   const [ids, setIds] = useState<number[]>([]);
   const sensors = useSensorsByIds(projectId, ids);
@@ -164,8 +167,15 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
     if (!editing) return;
     try {
       const body = { ...editing, model_id: modelId, address: editing.protocol === "mqtt" ? { ...editing.address, topic } : editing.address };
-      if (editId == null) await api.createSensor(projectId, body);
-      else await api.updateSensor(editId, body);
+      const put = (force: boolean) => (editId == null ? api.createSensor(projectId, body, force) : api.updateSensor(editId, body, force));
+      try {
+        await put(false);
+      } catch (err) {
+        // SCADA-13: GUID joriy versiyada yo'q — qurilishdan oldingi element bo'lishi mumkin: ongli tasdiq bilan saqlash
+        if (!(err instanceof ApiError && err.status === 422 && /element_guid/.test(err.message))) throw err;
+        if (!(await dialogs.confirm("Element joriy versiyada topilmadi", { text: `${err.message}\n\nHali modelda yo'q (qurilishi rejalashtirilgan) element bo'lsa — baribir saqlang; aks holda GUID ni tekshiring.`, ok: "Baribir saqlash" }))) return;
+        await put(true);
+      }
       setEditing(null);
       setEditId(null);
       await load();
@@ -242,6 +252,8 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
         </div>
       )}
 
+      <UnlinkedSensors projectId={projectId} versionId={versionId ?? null} refresh={ids.length} canEdit={canEdit} selectionGuid={selection[0]?.guid ?? null}
+        onBind={async (id, guid) => { try { await api.updateSensor(id, { element_guid: guid }); await load(); } catch (err) { setError(err instanceof Error ? err.message : "Xatolik"); } }} />
       {sensors.length === 0 && <p className="muted">Sensor yo'q. {canEdit ? "«Sensor qo'shish» — SCADA tegi nomi (kalit), turi, alarm chegaralari." : ""}</p>}
       {view.map((s) => (
         <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`}>
@@ -360,6 +372,32 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
           <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={role === "operator" || canEdit} canOverride={role === "approver"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
         </Dialog>
       )}
+    </div>
+  );
+}
+
+/** SCADA-13: element GUID i ochiq versiyada yo'q sensorlar — qayta bog'lash (tanlangan elementga). */
+function UnlinkedSensors({ projectId, versionId, refresh, canEdit, selectionGuid, onBind }: { projectId: number; versionId: number | null; refresh: number; canEdit: boolean; selectionGuid: string | null; onBind: (sensorId: number, guid: string) => Promise<void> }) {
+  const [rep, setRep] = useState<UnlinkedReport | null>(null);
+  useEffect(() => {
+    let dead = false;
+    api.unlinkedSensors(projectId, versionId).then((r) => { if (!dead) setRep(r); }).catch(() => { if (!dead) setRep(null); }); // eski server — endpoint yo'q
+    return () => { dead = true; };
+  }, [projectId, versionId, refresh]);
+  if (!rep || rep.count === 0) return null;
+  return (
+    <div className="verdict warn attention" data-testid="unlinked-sensors">
+      <Icon name="alert-triangle" size={16} />
+      <div className="grow">
+        <b>Bog'lanmagan sensorlar: {rep.count} ta</b> <span className="dim small">— element GUID i {rep.version_id ? "ochiq versiyada" : "joriy versiyada"} topilmadi</span>
+        <ul className="warnings">
+          {rep.sensors.slice(0, 20).map((s) => (
+            <li key={s.id}><span className="mono">{s.key}</span> {s.name} <span className="dim mono small">{s.element_guid}</span>
+              {canEdit && <button className="btn sm" disabled={!selectionGuid} title={selectionGuid ? "3D da tanlangan elementga bog'lash" : "Avval 3D da elementni tanlang"} onClick={() => selectionGuid && void onBind(s.id, selectionGuid)}>Tanlanganga bog'lash</button>}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

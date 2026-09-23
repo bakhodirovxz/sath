@@ -757,7 +757,7 @@ export default function ModelPage() {
                   onChanged={reload} onOpenIssue={setOpenIssue} />
               )}
               {model && tab === "sim" && <SimPanel modelId={model.id} projectId={project?.id} current={current} viewer={ready ? viewer.current : null} selection={selection} canEdit={canEdit} initialKind={simKind} />}
-              {model && project && tab === "mon" && <MonitoringPanel projectId={project.id} modelId={model.id} role={role} viewer={ready ? viewer.current : null} selection={selection} />}
+              {model && project && tab === "mon" && <MonitoringPanel projectId={project.id} modelId={model.id} versionId={current?.id ?? null} role={role} viewer={ready ? viewer.current : null} selection={selection} />}
               {model && tab === "checks" && <ChecksPanel current={current} viewer={ready ? viewer.current : null} onCreateIssue={() => { setTab("issues"); setIssueTrigger((n) => n + 1); }} />}
               {tab === "props" && draftSel && viewer.current && <DraftProps draft={draftSel} dm={viewer.current.drafts} canEdit={canEdit} onDelete={(uid) => void deleteDraft(uid)} onDuplicate={duplicateDraft} />}
               {tab === "props" && !draftSel && <PropertiesPanel viewer={viewer.current} selection={selection} canEdit={canEdit} onEdit={(id) => void editElement(id)} onDelete={(id) => void deleteElement(id)} project={project} />}

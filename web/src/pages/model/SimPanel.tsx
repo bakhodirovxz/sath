@@ -227,16 +227,16 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
     if (!catalog) return <p className="muted">{error || "Katalog yuklanmoqda…"}</p>;
     return (
       <div className="sim">
-        {siteFilled && <SafetyCheck modelId={modelId} current={current} viewer={viewer} onOpenJob={(k, id) => { setOpenJobId(id); setKind(k); }} onDone={() => void loadJobs()} />}
+        {siteFilled && <SafetyCheck modelId={modelId} current={current} viewer={viewer} canRun={canEdit} onOpenJob={(k, id) => { setOpenJobId(id); setKind(k); }} onDone={() => void loadJobs()} />}
         <SimCatalog catalog={catalog} jobs={jobs} onPick={(k: SimKind) => setKind(k.id)} siteFilled={siteFilled} onSite={projectId ? () => nav(`/projects/${projectId}/site`) : undefined} />
       </div>
     );
   }
-  if (kind === "cfd") return <div className="sim">{modeBar}<CfdPanel modelId={modelId} current={current} viewer={viewer} selection={selection} jobs={jobs} onJobsChanged={() => void loadJobs()} /></div>;
+  if (kind === "cfd") return <div className="sim">{modeBar}<CfdPanel modelId={modelId} current={current} viewer={viewer} selection={selection} canRun={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} /></div>;
   if (kind === "custom") return <CustomSim modelId={modelId} projectId={projectId} current={current} canEdit={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => setKind(null)} />;
   if (kind !== "hydro") {
     if (!kindMeta) return <p className="muted">Noma'lum simulyatsiya turi: {kind}</p>;
-    return <GenericSim key={kind} kind={kindMeta} modelId={modelId} projectId={projectId} current={current} viewer={viewer} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => { setOpenJobId(null); setKind(null); }} initialJobId={openJobId} />;
+    return <GenericSim key={kind} kind={kindMeta} modelId={modelId} projectId={projectId} current={current} viewer={viewer} canRun={canEdit} jobs={jobs} onJobsChanged={() => void loadJobs()} onBack={() => { setOpenJobId(null); setKind(null); }} initialJobId={openJobId} />;
   }
 
   if (!params) return <p className="muted">Yuklanmoqda…</p>;
@@ -303,7 +303,7 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
       <form onSubmit={run}>
         <div className="row" style={{ marginBottom: 8 }}>
           <input className="input grow" placeholder="Hisob nomi (masalan: 2026 o'rtacha suvli yil)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || (active?.status === "running")}>{busy ? "…" : "Hisoblash"}</button>
+          <button className="btn primary" type="submit" disabled={!canEdit || busy || (active?.status === "running")} title={canEdit ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"}>{busy ? "…" : "Hisoblash"}</button>
         </div>
         {active && (active.status === "queued" || active.status === "running") && <p className="muted small">Hisoblanmoqda…</p>}
 

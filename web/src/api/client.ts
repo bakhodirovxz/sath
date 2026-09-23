@@ -364,7 +364,10 @@ export interface InterlockResult { interlock_id: number; name: string; ok: boole
 export interface SelectResult { select_token: string; sensor_id: number; value: number; expires_at: string; requires_approval: boolean; interlocks?: InterlockResult[]; override?: boolean }
 export interface Interlock { id: number; project_id: number; sensor_id: number; sensor_key: string; name: string; condition: string; message: string; enabled: boolean; current_ok: boolean | null; current_message: string }
 export interface JournalEntry { id: number; kind: "note" | "shift_start" | "shift_end" | "event"; text: string; author_username: string; created_at: string }
-export interface TwinUnit { sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
+/** SCADA-14: `unit` — barqaror agregat raqami (1–12); `flow_source` — sarf manbasi (measured — sensor, split — quvur
+ * sarfidan taqsimlangan, estimated — quvvatdan hisoblangan: og'ish/FIK null). */
+export type FlowSource = "measured" | "split" | "estimated";
+export interface TwinUnit { unit?: number; flow_source?: FlowSource | null; sensor_id: number; name: string; model_unit: string; running: boolean; measured_mw: number | null; expected_mw: number; deviation_pct: number | null; efficiency: number | null; expected_efficiency: number | null; flow_m3s: number | null; head_net_m: number }
 export type ValidationStatusKind = "validated" | "expired" | "failed" | "unvalidated";
 export interface ValidationStatus { status: ValidationStatusKind; note: string; record_id?: number; verdict?: string; validated_at?: string; validated_by?: string | null; valid_until?: string | null; version_id?: number | null; metrics?: Record<string, number | boolean> }
 export interface ValidationCheck { name: string; label: string; value: number; limit: number; ok: boolean }
@@ -378,6 +381,7 @@ export interface CalibrationInfo { penstock_roughness_mm: number; eff: Record<st
 export interface CalibrationRun { id: number; project_id: number; created_at: string; author: string | null; window_from: string; window_to: string; n_points: number; targets: string[]; status: string; params_before: { penstock_roughness_mm?: number; eff?: Record<string, number> }; params_after: { penstock_roughness_mm?: number; eff?: Record<string, number> }; rmse_before: number | null; rmse_after: number | null; bias_after: number | null; improvement_pct: number | null; diagnostics: Record<string, { gain: number; identifiable: boolean; note: string }>; applied: boolean; note: string }
 export interface CalibrationResiduals { status: "ok" | "drifted" | "uncalibrated" | "insufficient"; calibrated?: boolean; n_points?: number; days?: number; rmse_mw?: number; bias_mw?: number; calibration_rmse_mw?: number | null; run_id?: number | null; applied_at?: string | null; advice?: string; reason?: string }
 export interface CalibrationState { current: Record<string, unknown>; residuals: CalibrationResiduals; runs: CalibrationRun[] }
+export interface UnlinkedReport { version_id: number | null; checked: number; count: number; sensors: { id: number; key: string; name: string; element_guid: string; model_id: number | null }[] }
 export interface TwinState { status: "ok" | "insufficient"; reason?: string; has_model?: boolean; version_id?: number; head_gross_m: number | null; flow_total_m3s?: number | null; units: TwinUnit[]; expected_total_mw?: number; measured_total_mw?: number; safety?: SiteRisk[]; what_if?: boolean; calibrated?: boolean; calibration?: CalibrationInfo | null; model_note?: string; validation?: ValidationStatus }
 export interface HealthSensorBlock { sensor_id: number; name: string; unit: string; value: number | null; stale: boolean; slope_per_day: number | null; baseline_mean: number | null; baseline_std: number | null; z: number | null; anomaly: boolean; points: number; zone?: string; zone_note?: string; days_to_c?: number | null; days_to_d?: number | null; warn?: number; alarm?: number; days_to_alarm?: number | null }
 export type CmState = "normal" | "alert" | "alarm" | "unknown";
@@ -948,8 +952,11 @@ export const api = {
   deleteSim: (id: number) => request<void>(`/api/sim/${id}`, { method: "DELETE" }),
   // monitoring
   sensors: (projectId: number, modelId?: number) => request<Sensor[]>(`/api/projects/${projectId}/sensors${modelId ? `?model_id=${modelId}` : ""}`),
-  createSensor: (projectId: number, body: SensorIn) => request<Sensor>(`/api/projects/${projectId}/sensors`, { method: "POST", body: json(body) }),
-  updateSensor: (id: number, body: Partial<SensorIn> & { clear_alarms?: boolean }) => request<Sensor>(`/api/sensors/${id}`, { method: "PATCH", body: json(body) }),
+  /** SCADA-13: element_guid joriy versiyada bo'lmasa server 422; `force` — hali modelda yo'q element uchun ataylab */
+  createSensor: (projectId: number, body: SensorIn, force = false) => request<Sensor>(`/api/projects/${projectId}/sensors${force ? "?force=true" : ""}`, { method: "POST", body: json(body) }),
+  updateSensor: (id: number, body: Partial<SensorIn> & { clear_alarms?: boolean }, force = false) => request<Sensor>(`/api/sensors/${id}${force ? "?force=true" : ""}`, { method: "PATCH", body: json(body) }),
+  /** SCADA-13: element GUID i versiyada topilmagan sensorlar */
+  unlinkedSensors: (projectId: number, versionId?: number | null) => request<UnlinkedReport>(`/api/projects/${projectId}/sensors/unlinked${versionId ? `?version_id=${versionId}` : ""}`),
   deleteSensor: (id: number) => request<void>(`/api/sensors/${id}`, { method: "DELETE" }),
   importSensors: (projectId: number, csv: string, modelId: number | null) => request<{ created: number; updated: number; bound: number; errors: string[] }>(`/api/projects/${projectId}/sensors/import`, { method: "POST", body: json({ csv, model_id: modelId }) }),
   readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean; tier?: "raw" | "1m" | "10m" | "1h" }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),

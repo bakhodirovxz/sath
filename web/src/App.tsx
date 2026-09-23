@@ -14,6 +14,7 @@ const Admin = lazy(() => import("./pages/Admin"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const SitePage = lazy(() => import("./pages/SitePage"));
 const FederationPage = lazy(() => import("./pages/FederationPage"));
+const MonitoringRedirect = lazy(() => import("./pages/MonitoringRedirect"));
 const L1Overview = lazy(() => import("./pages/operator/L1Overview"));
 const L2Area = lazy(() => import("./pages/operator/L2Area"));
 const L3Faceplate = lazy(() => import("./pages/operator/L3Faceplate"));
@@ -48,6 +49,8 @@ export default function App() {
       <Route path="/projects/:projectId" element={<RequireAuth><ProjectPage /></RequireAuth>} />
       <Route path="/projects/:projectId/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
       <Route path="/projects/:projectId/site" element={<RequireAuth><SitePage /></RequireAuth>} />
+      {/* SCADA-13 bildirishnomasi: bog'lanmagan sensorlar → versiya modelida Monitoring */}
+      <Route path="/projects/:projectId/monitoring" element={<RequireAuth><MonitoringRedirect /></RequireAuth>} />
       {/* ISA-101 operator ekranlari (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika */}
       <Route path="/projects/:projectId/ops" element={<RequireAuth><L1Overview /></RequireAuth>} />
       <Route path="/projects/:projectId/ops/area/:area" element={<RequireAuth><L2Area /></RequireAuth>} />

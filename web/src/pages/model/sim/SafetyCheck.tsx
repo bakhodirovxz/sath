@@ -15,7 +15,7 @@ const STATUS: Record<string, { label: string; color: string; icon: string }> = {
 
 const fmt = (v: unknown) => (typeof v === "number" ? (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)) : String(v ?? "—"));
 
-export default function SafetyCheck({ modelId, current, viewer, onOpenJob, onDone }: { modelId: number; current: Version | null; viewer: Viewer | null; onOpenJob: (kind: string, jobId: number) => void; onDone: () => void }) {
+export default function SafetyCheck({ modelId, current, viewer, onOpenJob, onDone, canRun = true }: { modelId: number; current: Version | null; viewer: Viewer | null; onOpenJob: (kind: string, jobId: number) => void; onDone: () => void; canRun?: boolean }) {
   const [res, setRes] = useState<Safety | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -50,7 +50,7 @@ export default function SafetyCheck({ modelId, current, viewer, onOpenJob, onDon
         <Icon name="shield" size={16} />
         <b className="grow">Xavfsizlik tekshiruvi</b>
         {res && <span className="badge" title={res.overall === "incomplete" ? "Hisoblanmagan mezon bor — umumiy baho yo'q" : undefined} style={{ background: res.counts.fail ? "var(--danger)" : res.counts.skip ? "var(--text-dim, #777)" : res.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{res.score ?? "—"}/100</span>}
-        <button className="btn sm primary" disabled={busy} onClick={() => void run()} title="Barcha ssenariylarni hisoblash (har biri «Oldingi hisoblar» ga saqlanadi)">{busy ? "Hisoblanmoqda…" : res ? "Qayta tekshirish" : "Tekshirish"}</button>
+        <button className="btn sm primary" disabled={busy || !canRun} onClick={() => void run()} title={canRun ? "Barcha ssenariylarni hisoblash (har biri «Oldingi hisoblar» ga saqlanadi)" : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"}>{busy ? "Hisoblanmoqda…" : res ? "Qayta tekshirish" : "Tekshirish"}</button>
         {res && <button className="btn sm" onClick={() => setOpen(!open)}>{open ? "Yig'ish" : "Ko'rsatish"}</button>}
       </div>
       <div className="dim small">12 standart ssenariy (toshqinlar, N−1 darvoza, zilzila, barqarorlik, filtratsiya, yoriq, gidrozarba, ko'chki) — pasport + model bilan bir bosishda; har biri «Oldingi hisoblar» ga saqlanadi.</div>

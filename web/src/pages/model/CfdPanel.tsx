@@ -13,6 +13,8 @@ interface Props {
   selection: SelectedItem[];
   jobs: SimJob[];
   onJobsChanged: () => void;
+  /** Hisoblash — muhandis+ (server ko'ruvchiga 403) */
+  canRun?: boolean;
 }
 
 type Kind = "penstock" | "spillway" | "geometry";
@@ -25,7 +27,7 @@ const n1 = (v: unknown, d = 2) => (typeof v === "number" ? v.toFixed(d) : "—")
 const num = (v: string, d = 0) => (v === "" || Number.isNaN(Number(v)) ? d : Number(v));
 
 /** CFD (OpenFOAM): shablon → parametrlar → hisob (progress) → natija: grafiklar, 2D maydon, 3D tekislik. */
-export default function CfdPanel({ modelId, current, viewer, selection, jobs, onJobsChanged }: Props) {
+export default function CfdPanel({ modelId, current, viewer, selection, jobs, onJobsChanged, canRun = true }: Props) {
   const [status, setStatus] = useState<{ mode: string; available: boolean } | null>(null);
   const [params, setParams] = useState<CfdParams>(DEFAULTS.penstock);
   const [name, setName] = useState("");
@@ -187,7 +189,7 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
             <option value="geometry">Model geometriyasi (3D)</option>
           </select>
           <input className="input grow" placeholder="Hisob nomi" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn primary" type="submit" disabled={busy || !!running || (status ? !status.available : false)}>Hisoblash</button>
+          <button className="btn primary" type="submit" disabled={!canRun || busy || !!running || (status ? !status.available : false)} title={canRun ? undefined : "Hisoblash — muhandis va tasdiqlovchi uchun (ko'ruvchi faqat natijalarni ko'radi)"}>Hisoblash</button>
         </div>
         <div className="row" style={{ marginBottom: 6 }}>
           {current && <button type="button" className="btn sm" onClick={fromModel}>Modeldan olish{selection[0]?.name ? ` (${selection[0].name})` : ""}</button>}
