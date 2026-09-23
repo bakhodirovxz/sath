@@ -38,7 +38,7 @@ function Body({ sensorId }: { sensorId: number | null }) {
     <div className="l4">
       <div className="dash-kpi">
         <div className={`tile ${live !== "LIVE" ? "tile-alarm" : ""}`}><div className="tile-t">Jonli oqim (WebSocket)</div><div className="tile-v">{live}</div></div>
-        <div className="tile"><div className="tile-t">Server</div><div className="tile-v">{health ? String(health.status ?? "ok") : "—"} <span className="tile-u">{health && typeof health.version === "string" ? health.version : ""}</span></div></div>
+        <div className="tile"><div className="tile-t">Server</div><div className="tile-v">{health ? String(health.status ?? "ok") : "—"} <span className="tile-u">{health && typeof health.version === "string" ? health.version : ""}{health && typeof health.dwg === "boolean" ? ` · DWG ${health.dwg ? "bor" : "yo'q"}` : ""}</span></div></div>
         <div className={`tile ${stale.length ? "tile-alarm" : ""}`}><div className="tile-t">Aloqasiz sensorlar</div><div className="tile-v">{stale.length} <span className="tile-u">/ {sensors.filter((x) => x.enabled).length}</span></div></div>
         <div className={`tile ${bad.length ? "tile-alarm" : ""}`}><div className="tile-t">Sifati yaxshi emas</div><div className="tile-v">{bad.length}</div></div>
       </div>

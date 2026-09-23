@@ -489,6 +489,9 @@ export interface AlarmKpi {
 export interface ReportRow { sensor_id: number; key: string; name: string; kind: SensorKind; unit: string; n: number; avg: number | null; min: number | null; max: number | null; energy_mwh: number | null }
 export interface Report { project: string; period: "day" | "week" | "month"; start: string; end: string; energy_mwh: number; alarms: { count: number; by_state: Record<string, number>; unacked: number }; sensors: ReportRow[] }
 export interface Notification { id: number; kind: "review" | "issue" | "alarm" | "system"; title: string; body: string; link: string; created_at: string; read_at: string | null }
+export interface DeletedModel extends Model { deleted_at: string; deleted_by: number | null }
+export interface StorageGcReport { dry_run: boolean; grace_s: number; blobs: number; derived: number; temp: number; bytes: number; kept_recent: number; errors: number; paths: string[] }
+export interface AuditStatus { write_failures: number; lost_entries: number; last_failure_at: string | null; last_error: string; hash_alg?: string }
 export interface AuditRow { id: number; user_id: number | null; username: string | null; action: string; target_type: string; target_id: number | null; project_id: number | null; detail: Record<string, unknown>; created_at: string }
 export interface QtoElement { guid: string; type: string; name: string; storey: string; material: string; volume_m3: number; area_m2: number; footprint_m2: number; length_m: number; width_m: number; height_m: number; bbox: [number[], number[]]; ifc_quantities: Record<string, number> }
 export interface Qto { element_count: number; total_volume_m3: number; by_type: Record<string, { count: number; volume_m3: number; area_m2: number }>; by_storey: Record<string, { count: number; volume_m3: number; area_m2: number }>; elements: QtoElement[] }
@@ -567,10 +570,22 @@ export class ApiError extends Error {
     /** Serverning xom `detail` qiymati (strukturali 409/422 ni chaqiruvchi o'zi tahlil qilishi uchun) */
     public detail: unknown = undefined,
     public code: ApiErrorCode = "http",
+    /** 409 `{detail, head_id}` — model boshqa versiya bilan yangilangan (VCS-01): avval yangilash kerak */
+    public headId: number | null = null,
   ) {
     super(message);
   }
 }
+
+/** Optimistic concurrency (VCS-01): commit eski versiya ustiga — ro'yxatni yangilab, qayta urinish kerak */
+export function isHeadMoved(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.status === 409 && e.headId !== null;
+}
+export const HEAD_MOVED_TEXT = "Model yangilangan — boshqa foydalanuvchi yangi versiya yozdi. Avval yangilang (oxirgi versiyani oching), keyin qayta urinib ko'ring";
+
+/** OPS-03: og'ir hisob navbatda — server 202 `{job_id, status}` qaytaradi */
+export interface JobPending { job_id: number; status: string }
+const PENDING = Symbol("pending");
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) {
@@ -585,6 +600,8 @@ export const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 export interface RequestOptions extends RequestInit {
   /** ms; 0 — chegarasiz. Default: FormData — UPLOAD_TIMEOUT_MS, boshqalar — DEFAULT_TIMEOUT_MS */
   timeoutMs?: number;
+  /** OPS-03: 202 (navbatda) javobini xato emas, `{[PENDING], job_id}` sifatida qaytarish */
+  acceptPending?: boolean;
 }
 
 // --- Xato matnlari (FE-05): FastAPI 422 massivlari va HTTP holatlari → o'zbekcha ---------------------------
@@ -663,7 +680,7 @@ export function apiErrorMessage(status: number, detail: unknown, statusText = ""
 /** Tarmoq so'rovi: token, vaqt chegarasi, chaqiruvchi signali, 401 da bir marta refresh. Javob `ok` bo'lmasa —
  * ApiError (o'zbekcha matn). Muvaffaqiyatda xom Response (json/blob/arrayBuffer — chaqiruvchida). */
 async function send(path: string, init: RequestOptions = {}, retried = false): Promise<Response> {
-  const { timeoutMs: tm, ...rest } = init;
+  const { timeoutMs: tm, acceptPending: _pending, ...rest } = init;
   const headers = new Headers(rest.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -699,12 +716,15 @@ async function send(path: string, init: RequestOptions = {}, retried = false): P
   }
   if (!res.ok) {
     let detail: unknown;
+    let headId: number | null = null;
     try {
-      detail = ((await res.json()) as { detail?: unknown }).detail;
+      const j = (await res.json()) as { detail?: unknown; head_id?: unknown };
+      detail = j.detail;
+      if (res.status === 409 && typeof j.head_id === "number") headId = j.head_id;
     } catch {
       /* matn/HTML javob — detail yo'q */
     }
-    throw new ApiError(res.status, apiErrorMessage(res.status, detail, res.statusText), res.status === 401 && !!res.headers.get("X-MFA-Required"), detail);
+    throw new ApiError(res.status, apiErrorMessage(res.status, detail, res.statusText), res.status === 401 && !!res.headers.get("X-MFA-Required"), detail, "http", headId);
   }
   return res;
 }
@@ -712,7 +732,32 @@ async function send(path: string, init: RequestOptions = {}, retried = false): P
 async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const res = await send(path, init);
   if (res.status === 204) return undefined as T;
+  if (res.status === 202 && init.acceptPending) return { [PENDING]: true, ...((await res.json()) as JobPending) } as T;
   return (await res.json()) as T;
+}
+
+/** Navbatdagi og'ir hisob holati (UI: «hisoblanmoqda…», xato emas). */
+export type ReadyProgress = (p: { waitingMs: number; jobId: number | null }) => void;
+
+/** OPS-03: GET natija navbatda hisoblanayotgan bo'lsa (202) — tayyor bo'lguncha qayta so'raydi (1 → 5 s),
+ * 429 (tezlik chegarasi) — kutib qayta; `onProgress` — kutish holati. */
+async function requestReady<T>(path: string, onProgress?: ReadyProgress, timeoutMs = 20 * 60_000): Promise<T> {
+  const t0 = Date.now();
+  let wait = 1000;
+  for (;;) {
+    let r: T | (JobPending & { [PENDING]: true }) | null = null;
+    try {
+      r = await request<T>(path, { acceptPending: true });
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 429)) throw e;
+    }
+    if (r !== null && !(typeof r === "object" && PENDING in (r as object))) return r as T;
+    if (Date.now() - t0 > timeoutMs) throw new ApiError(504, "Hisoblash juda uzoq davom etmoqda — keyinroq qayta oching");
+    const job = r as unknown as Partial<JobPending> | null;
+    onProgress?.({ waitingMs: Date.now() - t0, jobId: job?.job_id ?? null });
+    await new Promise((ok) => setTimeout(ok, wait));
+    wait = Math.min(wait * 1.5, 5000);
+  }
 }
 
 /** Blob ni fayl sifatida saqlash. URL darhol emas, brauzer yuklashni boshlab olgach (60 s) bo'shatiladi —
@@ -872,12 +917,13 @@ export const api = {
   importDem: (modelId: number, body: { lat: number; lon: number; width_m: number; height_m: number; rotation_deg: number; zoom: number; nx: number; z_offset_m: number; message?: string; onto_current?: boolean }) => request<Version & { imported: number; dem: Record<string, unknown> }>(`/api/models/${modelId}/versions/import-dem`, { method: "POST", body: json(body) }),
   versionFileUrl: (id: number) => `/api/versions/${id}/file`,
   updateVersion: (id: number, body: { message?: string; tag?: string; suitability_code?: string; revision_code?: string }) => request<Version>(`/api/versions/${id}`, { method: "PATCH", body: json(body) }),
-  restoreVersion: (id: number) => request<Version>(`/api/versions/${id}/restore`, { method: "POST" }),
+  restoreVersion: (id: number, expectedHeadId?: number | null) => request<Version>(`/api/versions/${id}/restore${expectedHeadId ? `?expected_head_id=${expectedHeadId}` : ""}`, { method: "POST" }),
   /** Server tomonida tayyorlangan fragments (.frag); yo'q bo'lsa null — IFC yuklanadi */
   async versionFragments(id: number): Promise<Uint8Array | null> {
     // no-cache: ETag bilan qayta tekshiriladi (fayl yangilangan bo'lsa eskisi qolmasin)
     const res = await fetch(`/api/versions/${id}/fragments`, { cache: "no-cache", headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
-    if (res.status === 404) return null;
+    // 202 — konvertatsiya navbatda (OPS-03): kutmaymiz, hozir IFC ochiladi; keyingi ochishda .frag tayyor bo'ladi
+    if (res.status === 404 || res.status === 202 || res.status === 429) return null;
     if (!res.ok) throw new ApiError(res.status, "Fragments yuklab bo'lmadi");
     return new Uint8Array(await res.arrayBuffer());
   },
@@ -969,10 +1015,10 @@ export const api = {
   readings: (sensorId: number, hours: number, limit = 600) => request<{ sensor_id: number; unit: string; total: number; points: ReadingPoint[]; hourly: boolean; tier?: "raw" | "1m" | "10m" | "1h" }>(`/api/sensors/${sensorId}/readings?hours=${hours}&limit=${limit}`),
   alarms: (projectId: number) => request<Sensor[]>(`/api/projects/${projectId}/alarms`),
   // BIM tekshiruvlar
-  qto: (versionId: number) => request<Qto>(`/api/versions/${versionId}/qto`),
+  qto: (versionId: number, onProgress?: ReadyProgress) => requestReady<Qto>(`/api/versions/${versionId}/qto`, onProgress),
   ids: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`),
   runIds: (versionId: number) => request<IdsResult>(`/api/versions/${versionId}/ids`, { method: "POST" }),
-  clashes: (versionId: number, kind?: string) => request<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`),
+  clashes: (versionId: number, kind?: string, onProgress?: ReadyProgress) => requestReady<ClashReport>(`/api/versions/${versionId}/clashes${kind ? `?kind=${kind}` : ""}`, onProgress),
   // SCADA: alarm jurnali, dispetcher paneli, hisobot, bildirishnomalar, audit
   alarmEvents: (projectId: number, active: boolean, hours = 168, beforeId?: number, includeSuppressed = false) => request<AlarmEvent[]>(`/api/projects/${projectId}/alarm-events?active=${active}&hours=${hours}${beforeId ? `&before_id=${beforeId}` : ""}${includeSuppressed ? "&include_suppressed=true" : ""}`),
   annunciatorSilence: (projectId: number, minutes: number, reason = "") => request<{ ok: boolean; minutes: number }>(`/api/projects/${projectId}/annunciator/silence`, { method: "POST", body: json({ minutes, reason }) }),
@@ -1001,6 +1047,7 @@ export const api = {
     // Bearer bilan yuklab olish (URL da token yo'q): umumiy so'rov yo'li — 401 da refresh, vaqt chegarasi,
     // o'zbekcha xato; fayl katta bo'lishi mumkin — chegara yuklash kabi
     const r = await send(path, { timeoutMs: UPLOAD_TIMEOUT_MS });
+    if (r.status === 202) throw new ApiError(202, "Hisob tayyorlanmoqda — birozdan so'ng qayta urinib ko'ring");
     saveBlob(await r.blob(), filename);
   },
   // Raqamli egizak, boshqaruv, jurnal, aktivlar, vaqt mashinasi
@@ -1084,6 +1131,11 @@ export const api = {
   notifications: (unread = false, limit = 50) => request<Notification[]>(`/api/notifications?unread=${unread}&limit=${limit}`),
   notificationCount: () => request<{ unread: number }>("/api/notifications/count"),
   markRead: (ids: number[] | null) => request<{ read: number }>("/api/notifications/read", { method: "POST", body: json({ ids }) }),
+  deletedModels: (projectId?: number) => request<DeletedModel[]>(`/api/admin/models/deleted${projectId ? `?project_id=${projectId}` : ""}`),
+  restoreDeletedModel: (id: number) => request<Model>(`/api/admin/models/${id}/restore`, { method: "POST" }),
+  purgeDeletedModel: (id: number) => request<void>(`/api/admin/models/${id}/purge`, { method: "DELETE" }),
+  storageGc: (dryRun: boolean, graceHours = 24) => request<StorageGcReport>("/api/admin/storage/gc", { method: "POST", body: json({ dry_run: dryRun, grace_hours: graceHours }), timeoutMs: UPLOAD_TIMEOUT_MS }),
+  auditStatus: () => request<AuditStatus>("/api/audit/status"),
   audit: (q: { project_id?: number | undefined; action?: string | undefined; user_id?: number | undefined; limit?: number; before_id?: number | undefined }) => {
     const qs = Object.entries(q).filter(([, v]) => v != null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<AuditRow[]>(`/api/audit${qs ? `?${qs}` : ""}`);
@@ -1096,7 +1148,7 @@ export const api = {
   pushReadings: (projectId: number, items: { key?: string; sensor_id?: number; value: number; ts?: string }[]) =>
     request<{ accepted: number; unknown: unknown[] }>(`/api/projects/${projectId}/readings`, { method: "POST", body: json(items) }),
   importReadings: (sensorId: number, file: File) => { const fd = new FormData(); fd.append("file", file); return request<{ accepted: number }>(`/api/sensors/${sensorId}/import`, { method: "POST", body: fd }); },
-  /** Jonli oqim: avval 60 s li chipta (sessiya tokeni URL ga tushmaydi, L2), keyin soket. */
+  /** Jonli oqim: avval bir martalik 30 s li chipta (sessiya tokeni URL ga tushmaydi, L2/AUTH-02) — har ulanishga yangisi, keyin soket. */
   async liveSocket(projectId: number): Promise<WebSocket> {
     const { ticket } = await api.wsTicket();
     const proto = location.protocol === "https:" ? "wss" : "ws";

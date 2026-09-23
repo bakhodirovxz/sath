@@ -24,6 +24,8 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
   const [idsPending, setIdsPending] = useState(false);
   const [kind, setKind] = useState<Clash["kind"] | "">("hard");
   const [busy, setBusy] = useState(false);
+  /** OPS-03: server og'ir hisobni navbatga qo'ygan (202) — kutish vaqti, ms (xato emas) */
+  const [queued, setQueued] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
   const [qFilter, setQFilter] = useState("");
@@ -33,16 +35,17 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
 
   const run = useCallback(async () => {
     if (!currentId) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setQueued(null);
+    const onProgress = (p: { waitingMs: number }) => setQueued(p.waitingMs);
     try {
-      if (mode === "qto") setQto(await api.qto(currentId));
+      if (mode === "qto") setQto(await api.qto(currentId, onProgress));
       else if (mode === "ids") {
         try { setIds(await api.ids(currentId)); setIdsPending(false); }
         catch (e) { if (e instanceof ApiError && e.status === 404) setIdsPending(true); else throw e; } // navbatda — hali yo'q
       }
-      else setClash(await api.clashes(currentId));
+      else setClash(await api.clashes(currentId, undefined, onProgress));
     } catch (e) { setError(e instanceof Error ? e.message : "Xatolik"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setQueued(null); }
   }, [currentId, mode]);
   useEffect(() => {
     if (currentId && ((mode === "qto" && !qto) || (mode === "clash" && !clash) || (mode === "ids" && !ids && !idsPending))) void run();
@@ -73,7 +76,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
         <button className={`btn sm ${mode === "qto" ? "active" : ""}`} onClick={() => setMode("qto")}>Hajm-miqdor</button>
         <button className={`btn sm ${mode === "ids" ? "active" : ""}`} onClick={() => setMode("ids")} data-testid="checks-ids">IDS</button>
         <span className="grow" />
-        {busy && <span className="muted small">hisoblanmoqda…</span>}
+        {busy && <span className="muted small" role="status" data-testid="checks-progress">{queued != null ? `server hisoblamoqda (navbatda, ${Math.round(queued / 1000)} s)…` : "hisoblanmoqda…"}</span>}
       </div>
       {error && <p className="error">{error}</p>}
 

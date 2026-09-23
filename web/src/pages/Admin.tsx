@@ -5,6 +5,7 @@ import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { priorityLabel } from "../i18n/labels";
+import { DeletedModelsSection, StorageSection } from "./admin/SystemSections";
 
 export default function Admin() {
   const me = useAuth((s) => s.user);
@@ -82,6 +83,8 @@ export default function Admin() {
         </table>
         <p className="dim small">Loyihaga a'zo qo'shish va rol berish — loyiha sahifasida.</p>
         <RationalizationSection />
+        <DeletedModelsSection />
+        <StorageSection />
         <AuditSection users={users} />
       </div>
       {creating && (
