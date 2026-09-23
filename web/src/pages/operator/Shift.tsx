@@ -4,10 +4,10 @@ import { Link, useParams } from "react-router-dom";
 import { api, type ShiftHandover, type ShiftSnapshot, type SoeEvent } from "../../api/client";
 import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtValue } from "../../ui/format";
-import { alarmStyle } from "../../ui/tokens";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { alarmModeLabel, commandStatusLabel } from "../../i18n/labels";
 import { can } from "../../api/permissions";
+import AlarmMark from "../../ui/AlarmMark";
 
 /** Smena jurnali va navbat topshirish (F9): tuzilgan varaqa (faol alarmlar, ochiq ish buyruqlari, blokirovka
  * chetlab o'tishlari, shelved/OOS/o'chirilgan nuqtalar, kutilayotgan buyruqlar, aloqasiz sensorlar — avtomatik),
@@ -55,7 +55,7 @@ function Body() {
             <>
               {snap.warnings.length > 0 ? <ul className="small error pl-16" data-testid="shift-warnings">{snap.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className="small c-ok">Yakunlanmagan ishlar yo'q</p>}
               <Section title={`Faol alarmlar (${snap.alarms.length}, ${snap.unacked} kvitlanmagan)`}>
-                {snap.alarms.map((a) => { const st = alarmStyle(a.state, a.priority); return <li key={a.event_id}><span className="alarm-mark" style={{ color: st.color }}>{st.glyph}{st.code}</span> <Link to={opsPath(pid, "sensor", a.sensor_id)}>{a.name}</Link> {a.value != null ? `${fmtValue(a.value)}` : ""} · {fmtDate(a.started_at)} {a.acked ? <span className="dim">kvitlangan</span> : <span className="badge rejected">UNACK</span>}</li>; })}
+                {snap.alarms.map((a) => { return <li key={a.event_id}><AlarmMark state={a.state} priority={a.priority} unacked={!a.acked} /> <Link to={opsPath(pid, "sensor", a.sensor_id)}>{a.name}</Link> {a.value != null ? `${fmtValue(a.value)}` : ""} · {fmtDate(a.started_at)} {a.acked ? <span className="dim">kvitlangan</span> : <span className="badge rejected">UNACK</span>}</li>; })}
               </Section>
               <Section title={`Ochiq ish buyruqlari (${snap.work_orders.length})`}>
                 {snap.work_orders.map((w) => <li key={w.id}>#{w.id} {w.title} <span className="dim">({w.status}, {w.priority})</span>{w.overdue && <span className="badge rejected ml-4">muddati o'tgan</span>}</li>)}

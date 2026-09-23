@@ -6,11 +6,11 @@ import { api, type AlarmEvent, type Dashboard, type Project, type Sensor, type S
 import type { LiveState } from "../../hooks/liveConnection";
 import { loadEvents, putSensors, useAlarmEvents, useLiveSelector, useLiveState, useProjectLive, useSensors } from "../../store/live";
 import TopBar from "../../ui/TopBar";
-import { alarmStyle } from "../../ui/tokens";
 import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
 import { priorityLabel } from "../../i18n/labels";
 import { can } from "../../api/permissions";
+import { PriorityMark } from "../../ui/AlarmMark";
 
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
  * Umumiy qobiq: jonli sensorlar (WebSocket), alarm jamlanmasi, navigatsiya (pastga/yuqoriga, tezkor tugmalar). */
@@ -115,11 +115,10 @@ export function AlarmStrip({ summary, flood, pid }: { summary: AlarmSummary; flo
     <Link to={opsPath(pid, "alarms")} className="alarm-strip" title="Alarm sahifasi">
       {flood && <span className="badge rejected">TOSHQIN</span>}
       {items.map((p) => {
-        const st = alarmStyle("high", p);
         const n = summary.byPriority[p];
         return (
-          <span key={p} className="alarm-mark" style={{ color: n ? st.color : "var(--text-dim)" }} title={`${priorityLabel(p)}: ${n}`}>
-            {st.glyph}{n}
+          <span key={p} className={`row gap-2 ${n ? "" : "zero"}`} title={`${priorityLabel(p)}: ${n}`}>
+            <PriorityMark priority={p} muted={!n} title={`${priorityLabel(p)}: ${n}`} /><b className="mono">{n}</b>
           </span>
         );
       })}

@@ -6,6 +6,7 @@ import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { priorityLabel } from "../i18n/labels";
 import { DeletedModelsSection, StorageSection } from "./admin/SystemSections";
+import { PriorityMark } from "../ui/AlarmMark";
 
 export default function Admin() {
   const me = useAuth((s) => s.user);
@@ -139,7 +140,7 @@ function RationalizationSection() {
                   <tr key={r.id}>
                     <td>{r.project_id}</td>
                     <td>{r.name}<div className="dim mono">{r.key}</div></td>
-                    <td><span className={`badge ${r.priority === "critical" ? "rejected" : r.priority === "high" ? "high" : "open"}`}>{priorityLabel(r.priority)}</span></td>
+                    <td><span className="row gap-4"><PriorityMark priority={r.priority} title="" />{priorityLabel(r.priority)}</span></td>
                     <td className="mono dim">{r.missing.join(", ")}</td>
                   </tr>
                 ))}

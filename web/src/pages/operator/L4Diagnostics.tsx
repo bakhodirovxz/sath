@@ -60,7 +60,7 @@ function Body({ sensorId }: { sensorId: number | null }) {
           {bad.length > 0 && (
             <>
               <div className="row mt-8"><b>Sifat</b></div>
-              <table className="grid small"><tbody>{bad.map((x) => { const q = qualityStyle(x.last_quality); return <tr key={x.id}><td><Link to={opsPath(pid, "sensor", x.id)}>{x.name}</Link></td><td className="alarm-mark" style={{ color: q.color }}>{q.code} {q.label}</td></tr>; })}</tbody></table>
+              <table className="grid small"><tbody>{bad.map((x) => { const q = qualityStyle(x.last_quality); return <tr key={x.id}><td><Link to={opsPath(pid, "sensor", x.id)}>{x.name}</Link></td><td className={`quality-mark q-${x.last_quality ?? "good"}`}>{q.code} {q.label}</td></tr>; })}</tbody></table>
             </>
           )}
         </section>

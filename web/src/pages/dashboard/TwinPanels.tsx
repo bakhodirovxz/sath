@@ -44,7 +44,7 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
                 const dev = u.deviation_pct;
                 const bad = dev != null && Math.abs(dev) > 10;
                 return (
-                  <tr key={u.sensor_id} className={bad ? "alarm-active" : undefined}>
+                  <tr key={u.sensor_id} className={bad ? "row-attention" : undefined}>
                     <td>{u.name} <span className="dim">{u.model_unit}</span></td>
                     <td>{u.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                     <td className="mono">{u.measured_mw == null ? "—" : fmtValue(u.measured_mw)}</td>
@@ -67,8 +67,8 @@ export function TwinPanel({ projectId, canRun, canApprove = false }: { projectId
           <table className="grid small">
             <tbody>
               {t.safety.map((r) => (
-                <tr key={r.name} className={r.ok ? undefined : "alarm-active"}>
-                  <td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td>
+                <tr key={r.name} className={r.ok ? undefined : "row-attention"}>
+                  <td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} className={r.ok ? "c-ok" : "c-danger"} /></td>
                   <td>{r.name}</td>
                   <td className="mono">{r.value} {r.unit}</td>
                   <td className="dim">{r.note}</td>

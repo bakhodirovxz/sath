@@ -5,6 +5,7 @@ import { api, HEAD_MOVED_TEXT, isHeadMoved, type Diff, type Model, type Version 
 import { fmtDate, fmtSize, ifcLabel, label } from "../../ui/format";
 import Dialog from "../../ui/Dialog";
 import { BBadge, BList, BOps, BPanel, BRow } from "../../ui/BlenderUI";
+import { notify } from "../../ui/notice";
 
 interface Props {
   model: Model;
@@ -53,7 +54,7 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
       setMessage("");
       onUploaded(v);
     } catch (err) {
-      setError(isHeadMoved(err) ? HEAD_MOVED_TEXT : err instanceof Error ? err.message : "Yuklash amalga oshmadi");
+      if (isHeadMoved(err)) notify(HEAD_MOVED_TEXT, "warning"); else setError(err instanceof Error ? err.message : "Yuklash amalga oshmadi");
     } finally {
       setBusy(false);
     }

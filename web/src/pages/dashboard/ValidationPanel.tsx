@@ -57,7 +57,7 @@ export function ValidationPanel({ projectId, canApprove }: { projectId: number; 
           <thead><tr><th>Mezon</th><th>Qiymat</th><th>Chegara</th><th>Holat</th></tr></thead>
           <tbody>
             {(ev.checks ?? []).map((c) => (
-              <tr key={c.name} className={c.ok ? undefined : "alarm-active"}>
+              <tr key={c.name} className={c.ok ? undefined : "row-attention"}>
                 <td>{c.label}</td>
                 <td className="mono">{c.value}</td>
                 <td className="mono dim">{c.limit}</td>

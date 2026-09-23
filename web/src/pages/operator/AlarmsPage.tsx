@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type AlarmEvent } from "../../api/client";
 import Dialog from "../../ui/Dialog";
-import { alarmStyle } from "../../ui/tokens";
 import AlarmTable from "./AlarmTable";
 import OperatorShell, { opsPath, useOps } from "./OperatorShell";
 import { AREAS, type AreaId } from "./model";
@@ -10,6 +9,7 @@ import { EMPTY_FILTER, FLOOD_PRIORITIES, counters, filterAlarms, groupAlarms, so
 import { priorityLabel } from "../../i18n/labels";
 import { areaTitle } from "./model";
 import { can } from "../../api/permissions";
+import { PriorityMark } from "../../ui/AlarmMark";
 
 /** Alarm sahifasi (F5, ISA-18.2): saralash ustuvorlik → vaqt, filtr (ustuvorlik, uchastka, holat), guruhlash,
  * qidiruv; kvitlash Dialog bilan; «Hammasini kvitlash» — tasdiqlash, faqat filtrlangan to'plam; toshqin rejimida
@@ -73,7 +73,7 @@ function Body() {
         {(["active", "unack", "acked", "suppressed", "history"] as ViewMode[]).map((v) => <button key={v} className={`btn sm ${filter.view === v ? "active" : ""}`} onClick={() => setFilter((f) => ({ ...f, view: v }))}>{VIEW_LABEL[v]}</button>)}
         {filter.view === "history" && <select className="select w-110" value={hours} onChange={(e) => setHours(Number(e.target.value))}>{[24, 72, 168, 720].map((h) => <option key={h} value={h}>{h / 24} kun</option>)}</select>}
         <span className="sep" />
-        {(["critical", "high", "medium", "low"] as const).map((p) => { const st = alarmStyle("high", p); return <button key={p} className={`btn sm ${filter.priorities.has(p) ? "active" : ""}`} style={{ color: filter.priorities.has(p) ? undefined : st.color }} onClick={() => togglePrio(p)} title={priorityLabel(p)}>{st.glyph} {priorityLabel(p)}</button>; })}
+        {(["critical", "high", "medium", "low"] as const).map((p) => <button key={p} className={`btn sm row gap-4 ${filter.priorities.has(p) ? "active" : ""}`} aria-pressed={filter.priorities.has(p)} onClick={() => togglePrio(p)} title={priorityLabel(p)}><PriorityMark priority={p} muted={!filter.priorities.has(p)} title="" /> {priorityLabel(p)}</button>)}
         <select className="select w-160" value={filter.area} onChange={(e) => setFilter((f) => ({ ...f, area: e.target.value as AreaId | "" }))}>
           <option value="">barcha uchastkalar</option>{AREAS.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
         </select>

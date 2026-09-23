@@ -83,7 +83,7 @@ export function CmDialog({ projectId, asset, onClose }: { projectId: number; ass
             <table className="grid small" data-testid="cm-states">
               <thead><tr><th>Kanal</th><th>Holat</th><th>Sabab</th></tr></thead>
               <tbody>{states.map(([k, v]) => (
-                <tr key={k} className={v.state === "alarm" ? "alarm-active" : undefined}>
+                <tr key={k} className={v.state === "alarm" ? "row-attention" : undefined}>
                   <td>{k.startsWith("external:") ? <>{k.slice(9)} <span className="dim small">tashqi</span></> : CHANNEL_TXT[k] ?? k}</td>
                   <td><CmBadge state={v.state} /></td>
                   <td className="small">{v.reason}{v.anomaly && <span className="error"> · anomaliya</span>}</td>
@@ -160,7 +160,7 @@ function SpectrumDialog({ sp, onClose }: { sp: SpectrumRow; onClose: () => void 
               <tbody>{["BPFO", "BPFI", "BSF", "FTF"].map((name) => {
                 const m = f.bearing_matches.find((x) => x.name === name);
                 return (
-                  <tr key={name} className={m && m.share > 0.15 ? "alarm-active" : undefined}>
+                  <tr key={name} className={m && m.share > 0.15 ? "row-attention" : undefined}>
                     <td>{name}</td>
                     <td className="mono">{f.bearing_frequencies?.[name]} Gs</td>
                     <td className="mono">{m ? m.amplitude : "—"}</td>

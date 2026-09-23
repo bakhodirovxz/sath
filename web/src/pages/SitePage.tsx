@@ -58,7 +58,7 @@ export default function SitePage() {
             <b>Tezkor xavf ko'rsatkichlari</b>
             <table className="grid small mt-6">
               <tbody>{risks.map((r) => (
-                <tr key={r.name}><td><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>
+                <tr key={r.name}><td><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} className={r.ok ? "c-ok" : "c-danger"} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>
               ))}</tbody>
             </table>
           </div>

@@ -102,7 +102,7 @@ function Body() {
         <section className="panel">
           <div className="row"><b>Eng muhim alarmlar</b><span className="grow" /><Link className="btn sm" to={opsPath(pid, "alarms")}>Alarm sahifasi ({events.filter((e) => !e.acked_at).length} kvitlanmagan) →</Link></div>
           {worst.length === 0 ? <p className="muted">Faol alarm yo'q</p> : (
-            <div className="vgrid">{worst.map((s) => <ValueCard key={s.id} s={s} pid={pid} compact />)}</div>
+            <div className="vgrid">{worst.map((s) => <ValueCard key={s.id} s={s} pid={pid} compact unacked={unacked.has(s.id)} />)}</div>
           )}
         </section>
       </div>

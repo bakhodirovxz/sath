@@ -65,3 +65,15 @@ export function AlarmMarkSvg({ x, y, state, priority, unacked = false, size = 20
     </g>
   );
 }
+
+/** Faqat ustuvorlik (holat kodisiz): filtr tugmalari, jamlanma qatori, sozlamalar jadvali. `muted` — son 0 bo'lganda
+ * kulrang kontur (rang faqat faol alarm uchun). */
+export function PriorityMark({ priority, size = 14, muted = false, title }: { priority: string | null | undefined; size?: number; muted?: boolean; title?: string }) {
+  const st = alarmStyle("high", priority ?? "medium");
+  const label = title ?? `${st.rank}-ustuvorlik`;
+  return (
+    <span className={`alarm-mark prio-only ${muted ? "muted" : ""}`} role="img" aria-label={label} title={label} data-prio={st.priority}>
+      <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" className="am-svg"><AlarmShapePath st={st} /></svg>
+    </span>
+  );
+}

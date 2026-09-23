@@ -4,6 +4,7 @@ import Dialog from "../../ui/Dialog";
 import Icon from "../../ui/Icon";
 import { dialogs } from "../../ui/dialogs";
 import { fmtDate } from "../../ui/format";
+import { notify } from "../../ui/notice";
 
 /* H2 — CMMS chuqurligi: profilaktik xizmat rejalari, ish buyrug'i tafsiloti (vazifalar, mehnat,
    ehtiyot qism bandlash/sarflash, ruxsatnoma va LOTO), aktiv bo'yicha xizmat tarixi. */
@@ -25,16 +26,16 @@ export function PlansPanel({ projectId, assets, canEdit }: { projectId: number; 
         <span className="muted small">davriylik: kun yoki ish soati (agregat hisoblagichi) — muddati kelganda ish buyrug'i avtomatik yaratiladi</span>
         {due > 0 && <span className="badge high" data-testid="plans-due">{due} ta muddati keldi</span>}
         <span className="grow" />
-        {canEdit && <button className="btn sm" data-testid="plans-run" onClick={() => api.runPlans(projectId).then((w) => { setMsg(w.length ? `${w.length} ta ish buyrug'i yaratildi` : "Muddati kelgan reja yo'q"); void load(); }).catch((e) => setErr(e.message))}>Hozir tekshirish</button>}
+        {canEdit && <button className="btn sm" data-testid="plans-run" onClick={() => api.runPlans(projectId).then((w) => { setMsg(w.length ? `${w.length} ta ish buyrug'i yaratildi` : "Muddati kelgan reja yo'q"); notify(w.length ? `${w.length} ta ish buyrug'i yaratildi` : "Muddati kelgan reja yo'q", w.length ? "success" : "info"); void load(); }).catch((e) => setErr(e.message))}>Hozir tekshirish</button>}
         {canEdit && <button className="btn sm primary" data-testid="plan-add" onClick={() => setAdding(true)}>+ Reja</button>}
       </div>
       {err && <p className="error small">{err}</p>}
-      {msg && <p className="small verdict ok" data-testid="plans-msg">{msg}</p>}
+      {msg && <p className="small muted" data-testid="plans-msg">{msg}</p>}
       {items.length === 0 ? <p className="muted">Rejalar yo'q — davriy ko'rik/moylash rejasini qo'shing.</p> : (
         <table className="grid small" data-testid="plans-table">
           <thead><tr><th>Reja</th><th>Aktiv</th><th>Davriylik</th><th>Oxirgi buyruq</th><th>Holat</th><th /></tr></thead>
           <tbody>{items.map((p) => (
-            <tr key={p.id} className={p.due_reason ? "alarm-active" : undefined}>
+            <tr key={p.id} className={p.due_reason ? "row-attention" : undefined}>
               <td><b>{p.name}</b>{p.description && <div className="dim">{p.description}</div>}{p.tasks.length > 0 && <div className="dim">{p.tasks.length} vazifa: {p.tasks.slice(0, 3).join("; ")}{p.tasks.length > 3 ? "…" : ""}</div>}</td>
               <td className="dim">{p.asset_name ?? "—"}</td>
               <td className="mono">{p.interval_days ? `${p.interval_days} kun` : ""}{p.interval_days && p.interval_hours ? " / " : ""}{p.interval_hours ? `${p.interval_hours} soat` : ""}</td>

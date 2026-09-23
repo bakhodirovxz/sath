@@ -11,6 +11,9 @@ import ValueCard from "./ValueCard";
 import ControlBlock from "./ControlBlock";
 import { AREAS, ageSeconds, areaOf, fmtAge, sortByAlarm, unitOf } from "./model";
 import { can } from "../../api/permissions";
+import AlarmMark from "../../ui/AlarmMark";
+import { priorityLabel } from "../../i18n/labels";
+import { unackedSensorIds } from "../../store/live";
 
 /** Level 3 — faceplate: bitta sensor (yoki agregat) uchun joriy qiymat, chegaralar (LL/L/H/HH), sifat, yosh,
  * trend (6 soat), alarm rejimi (shelve/OOS — C2), ratsionalizatsiya (C3), bog'liq ish buyruqlari, boshqaruv
@@ -26,7 +29,8 @@ export default function L3Faceplate() {
 }
 
 function UnitBody({ unit }: { unit: number }) {
-  const { projectId: pid, sensors } = useOps();
+  const { projectId: pid, sensors, events } = useOps();
+  const unacked = unackedSensorIds(events);
   const mine = useMemo(() => sortByAlarm(sensors.filter((s) => s.enabled && unitOf(s) === unit)), [sensors, unit]);
   const [wos, setWos] = useState<WorkOrder[]>([]);
   useEffect(() => { api.workOrders(pid).then((w) => setWos(w.filter((x) => x.status !== "done" && x.asset_name && new RegExp(`\\b${unit}\\b`).test(x.asset_name)))).catch(() => setWos([])); }, [pid, unit]);
@@ -34,7 +38,7 @@ function UnitBody({ unit }: { unit: number }) {
   return (
     <div className="l3">
       <div className="row mb-8"><h2 className="m-0">Agregat {unit}</h2><span className="grow" />{p && <span className="tile-v">{p.last_value == null ? "—" : fmtValue(p.last_value)} <span className="tile-u">{p.unit}</span></span>}</div>
-      <section className="panel"><div className="row"><b>Sensorlar</b></div><div className="vgrid">{mine.map((s) => <ValueCard key={s.id} s={s} pid={pid} />)}</div>{mine.length === 0 && <p className="muted">Sensor yo'q</p>}</section>
+      <section className="panel"><div className="row"><b>Sensorlar</b></div><div className="vgrid">{mine.map((s) => <ValueCard key={s.id} s={s} pid={pid} unacked={unacked.has(s.id)} />)}</div>{mine.length === 0 && <p className="muted">Sensor yo'q</p>}</section>
       <section className="panel">
         <div className="row"><b>Ochiq ish buyruqlari</b><span className="grow" /><Link className="btn sm" to={`/projects/${pid}/dashboard`}>Ish buyruqlari →</Link></div>
         {wos.length === 0 ? <p className="muted">Yo'q</p> : <ul className="small">{wos.map((w) => <li key={w.id}>#{w.id} {w.title} <span className="dim">({w.status}, {w.priority})</span></li>)}</ul>}
@@ -80,11 +84,11 @@ function SensorBody({ sensorId }: { sensorId: number }) {
         <Link className="btn sm" to={opsPath(pid, "diag", s.id)}>L4 Diagnostika</Link>
       </div>
       <div className="l3-grid">
-        <section className={`panel fp-value ${st.rank ? "alarm" : ""}`} style={st.rank ? { borderColor: st.color } : undefined}>
+        <section className={`panel fp-value ${st.priority ? `alarm prio-${st.priority}` : ""}`}>
           <div className="fp-big">{s.last_value == null ? "—" : fmtValue(s.last_value)} <span className="tile-u">{s.unit}</span></div>
           <div className="row wrap gap-8">
-            {st.code ? <span className="alarm-mark" style={{ color: st.color, fontSize: 14 }}>{st.glyph}{st.code} {st.label} · {s.priority}</span> : <span className="badge published">normal</span>}
-            <span className="alarm-mark" style={{ color: q.color }} title="sifat">{q.code || "✓"} {q.label}</span>
+            {st.code ? <span className="row gap-6"><AlarmMark state={s.alarm} priority={s.priority} size={20} /><b>{st.label}</b><span className="dim">· {priorityLabel(s.priority)}</span></span> : <span className="state-tag">normal</span>}
+            <span className={`quality-mark q-${s.last_quality ?? "good"}`} title="sifat">{q.code || "✓"} {q.label}</span>
             <span className={`dim ${age != null && age > s.stale_after_s ? "error" : ""}`}>yosh {fmtAge(age)} {s.last_ts ? `(${fmtDate(s.last_ts)})` : ""}</span>
           </div>
           <table className="grid small mt-8">

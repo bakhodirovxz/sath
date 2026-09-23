@@ -10,6 +10,7 @@ import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtValue } from "../../ui/format";
 import { priorityLabel } from "../../i18n/labels";
 import { DateTimeField } from "../../ui/DateField";
+import { notify } from "../../ui/notice";
 
 /* Holat monitoringi (sog'liq indeksi, ISO 20816-5 zonalari, RUL, kavitatsiya) va «nima bo'lsa» sinovi + optimal rejim. */
 
@@ -45,7 +46,7 @@ export function HealthPanel({ projectId, sensors, canEdit, canOperate }: { proje
               <CmBadge state={a.state} />
               <span className="health-score">{a.score}</span>
               <button className="btn sm" title="ISO 13374 bloklari, spektrlar, tashqi tizim natijalari" data-testid={`cm-open-${a.asset_id}`} onClick={() => setCmFor(a)}><Icon name="activity" size={12} /></button>
-              {(canOperate || canEdit) && a.problems.length > 0 && <button className="btn sm" title="Ish buyrug'i yaratish (muammolardan)" onClick={() => api.createWorkOrder(projectId, { title: `${a.name}: ${a.problems[0].slice(0, 120)}`, description: a.problems.join("; ") + (a.tips.length ? " | Tavsiya: " + a.tips.join("; ") : ""), asset_id: a.asset_id, priority: a.level === "kritik" ? "critical" : a.level === "yomon" ? "high" : "medium", source: "health" }).then(() => setErr("Ish buyrug'i yaratildi (Ish buyruqlari bo'limi)")).catch((e) => setErr(e.message))}><Icon name="wrench" size={12} /></button>}
+              {(canOperate || canEdit) && a.problems.length > 0 && <button className="btn sm" title="Ish buyrug'i yaratish (muammolardan)" onClick={() => api.createWorkOrder(projectId, { title: `${a.name}: ${a.problems[0].slice(0, 120)}`, description: a.problems.join("; ") + (a.tips.length ? " | Tavsiya: " + a.tips.join("; ") : ""), asset_id: a.asset_id, priority: a.level === "kritik" ? "critical" : a.level === "yomon" ? "high" : "medium", source: "health" }).then(() => notify("Ish buyrug'i yaratildi (Ish buyruqlari bo'limi)")).catch((e) => setErr(e.message))}><Icon name="wrench" size={12} /></button>}
               {canEdit && <button className="btn sm" title="Sensorlar va parametrlar" onClick={() => setCfgFor(a)}><Icon name="settings" size={12} /></button>}
             </div>
             <div className="health-bar"><i style={{ width: `${a.score}%` }} /></div>
@@ -182,7 +183,7 @@ export function WhatIfPanel({ projectId }: { projectId: number }) {
               <tbody>{res.units.map((u) => <tr key={u.sensor_id}><td>{u.name}</td><td className="mono">{fmtValue(u.expected_mw)}</td><td className="mono">{u.flow_m3s ?? "—"}</td><td className="mono">{fmtValue(u.head_net_m)}</td></tr>)}</tbody></table>
           )}
           {res.safety && res.safety.length > 0 && (
-            <table className="grid small mt-6"><tbody>{res.safety.map((r) => <tr key={r.name} className={r.ok ? undefined : "alarm-active"}><td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>)}</tbody></table>
+            <table className="grid small mt-6"><tbody>{res.safety.map((r) => <tr key={r.name} className={r.ok ? undefined : "row-attention"}><td className="w-22"><Icon name={r.ok ? "check-circle" : "alert-triangle"} size={13} className={r.ok ? "c-ok" : "c-danger"} /></td><td>{r.name}</td><td className="mono">{r.value} {r.unit}</td><td className="dim">{r.note}</td></tr>)}</tbody></table>
           )}
           <div className="mt-6"><b className="small">Optimal taqsimot (sinov sharoitida)</b>{dispatchTable(res.dispatch)}</div>
         </div>
@@ -236,7 +237,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
         <table className="grid small">
           <thead><tr><th>#</th><th>Buyruq</th><th>Aktiv</th><th>Ustuvorlik</th><th>Holat</th><th>Ijrochi</th><th>Muddat</th><th /></tr></thead>
           <tbody>{shown.map((w) => (
-            <tr key={w.id} className={w.overdue ? "alarm-active" : undefined}>
+            <tr key={w.id} className={w.overdue ? "row-attention" : undefined}>
               <td className="dim">{w.id}</td>
               <td><b>{w.title}</b>{w.loto_active && <span className="badge rejected" title="Izolyatsiya qo'yilgan — boshqaruv buyruqlari taqiqlangan">LOTO</span>}{w.permit_status !== "none" && <span className={`badge ${w.permit_status === "issued" ? "published" : "shared"}`}>PTW {w.permit_status}</span>}{w.description && <div className="dim maxw-420 pre-wrap">{w.description}</div>}{w.resolution && <div className="ok-text">✓ {w.resolution}{w.downtime_hours ? ` · ${w.downtime_hours} soat to'xtash` : ""}</div>}<div className="dim">{w.source === "health" ? "sog'liq indeksi" : w.source === "alarm" ? "alarm" : w.source === "plan" ? "profilaktik reja" : w.source === "maintenance" ? "texnik xizmat" : w.author_username} · {fmtDate(w.created_at)}{w.cost ? ` · xarajat ${w.cost}` : ""}{w.tasks.length ? ` · ${w.tasks.filter((t) => t.done).length}/${w.tasks.length} vazifa` : ""}</div></td>
               <td>{w.asset_name ?? "—"}</td>
@@ -363,7 +364,7 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
         <table className="grid small">
           <thead><tr><th>Nomi</th><th>Kod</th><th>Qoldiq</th><th>Min</th><th>Joy</th><th>Narx</th><th>Aktiv</th><th /></tr></thead>
           <tbody>{items.map((p) => (
-            <tr key={p.id} className={p.low ? "alarm-active" : undefined}>
+            <tr key={p.id} className={p.low ? "row-attention" : undefined}>
               <td><b>{p.name}</b>{p.notes && <div className="dim">{p.notes}</div>}</td>
               <td className="mono dim">{p.code}</td>
               <td className="mono">{p.qty} {p.unit}{p.low && <Icon name="alert-triangle" size={12} className="c-danger ml-4" />}</td>

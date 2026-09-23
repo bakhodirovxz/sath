@@ -58,3 +58,19 @@ describe("theme.css", () => {
     expect(css).toMatch(/\.dash \{ width: 100%; max-width: \d+px; margin: 0 auto; \}/);
   });
 });
+
+describe("yagona alarm uslubi (UX-02)", () => {
+  const src = files.map((f) => ({ f, s: readFileSync(f, "utf8") }));
+  it("alarm rangi inline emas: st.color / q.color style ichida yo'q, glyph matni ishlatilmaydi (AlarmMark)", () => {
+    const bad = src.filter(({ s }) => /style=\{\{[^}]*\b(st|q|alarmStyle\([^)]*\))\.color/.test(s) || /\.glyph\}/.test(s)).map(({ f }) => f);
+    expect(bad).toEqual([]);
+  });
+  it("SCADA alarm qatori faqat alarm sahifalarida; texnik xizmat/ombor/og'ish — row-attention", () => {
+    const users = src.filter(({ s }) => /"alarm-active"/.test(s)).map(({ f }) => f.replace(/^src\//, "")).sort();
+    expect(users).toEqual(["pages/dashboard/TwinPanels.tsx", "pages/operator/AlarmTable.tsx", "pages/operator/L2Area.tsx", "pages/operator/Shift.tsx"]);
+  });
+  it("muvaffaqiyat xabari xato kanalida emas (setError/setErr → notify)", () => {
+    const bad = src.filter(({ s }) => /set(Err|Error)\(\s*[`"][^`"]*(yaratildi|saqlandi|yuborildi|bajarildi|yangilandi)/.test(s)).map(({ f }) => f);
+    expect(bad).toEqual([]);
+  });
+});

@@ -62,7 +62,7 @@ export function CalibrationPanel({ projectId, canEdit }: { projectId: number; ca
         <table className="grid small" data-testid="calib-runs">
           <thead><tr><th>Vaqt</th><th>Oyna</th><th>Nuqta</th><th>Parametrlar (oldin → keyin)</th><th>RMSE</th><th>Holat</th><th /></tr></thead>
           <tbody>{st.runs.map((r) => (
-            <tr key={r.id} className={r.applied ? "alarm-active" : undefined}>
+            <tr key={r.id} className={r.applied ? "row-attention" : undefined}>
               <td className="dim">{fmtDate(r.created_at)}{r.author && <div className="dim">{r.author}</div>}</td>
               <td className="dim">{r.targets.map((t) => (t === "penstock_roughness_mm" ? "quvur" : "FIK")).join(", ")}</td>
               <td className="mono">{r.n_points}</td>

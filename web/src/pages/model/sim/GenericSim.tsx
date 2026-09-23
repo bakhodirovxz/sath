@@ -602,8 +602,8 @@ export default function GenericSim({ kind, modelId, projectId, current, viewer, 
             <b>Yorilishga moyil joylar</b>
             <table className="grid small mt-4">
               <tbody>{result.prone.map((x, i) => (
-                <tr key={i} className={x.severity === "kritik" ? "alarm-active" : undefined}>
-                  <td className="w-22"><Icon name={x.severity === "kritik" || x.severity === "yuqori" ? "alert-triangle" : x.severity === "o'rtacha" ? "alert-circle" : "info"} size={13} style={{ color: x.severity === "kritik" ? "var(--danger)" : x.severity === "yuqori" ? "var(--danger)" : x.severity === "o'rtacha" ? "var(--warn)" : "var(--text-dim)" }} /></td>
+                <tr key={i} className={x.severity === "kritik" ? "row-attention" : undefined}>
+                  <td className="w-22"><Icon name={x.severity === "kritik" || x.severity === "yuqori" ? "alert-triangle" : x.severity === "o'rtacha" ? "alert-circle" : "info"} size={13} className={x.severity === "kritik" || x.severity === "yuqori" ? "c-danger" : x.severity === "o'rtacha" ? "c-warn" : "dim"} /></td>
                   <td><b>{x.where}</b><div className="dim">{x.why}</div></td>
                   <td className="dim nowrap">{x.severity}</td>
                 </tr>

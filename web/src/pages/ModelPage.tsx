@@ -32,6 +32,7 @@ import HelpPanel from "./model/HelpPanel";
 import { isModalOpen } from "../ui/Dialog";
 import { focusCommandLine } from "../ui/CommandLine";
 import type { SearchItem } from "../ui/blender";
+import { notify } from "../ui/notice";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -423,7 +424,7 @@ export default function ModelPage() {
       setLog(`Yangi versiya v${v.number}: ${v.guids.length} ta element IFC ga qo'shildi`);
     } catch (e) {
       // VCS-01: model boshqa versiya bilan yangilangan — ro'yxatni yangilaymiz, qoralamalar saqlanadi
-      if (isHeadMoved(e)) { setError(HEAD_MOVED_TEXT); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
+      if (isHeadMoved(e)) { notify(HEAD_MOVED_TEXT, "warning"); void reload(); } else setError(e instanceof Error ? e.message : "Xatolik");
     } finally { setDraftBusy(false); }
   };
   const pickWorkspace = (id: string) => { setWorkspace(id); const w = WORKSPACES.find((x) => x.id === id); if (w) { setTab(w.tab); setDockOpen(true); } };

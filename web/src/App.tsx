@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./store/auth";
 import Login from "./pages/Login";
 import { DialogHost } from "./ui/dialogs";
+import NoticeHost from "./ui/NoticeHost";
 import ProfileDialog from "./ui/ProfileDialog";
 import { t, useLocale } from "./i18n";
 import { applyTheme, opsTheme, type ThemeName } from "./ui/tokens";
@@ -55,6 +56,7 @@ export default function App() {
     <>
     <RouteTheme />
     <DialogHost />
+    <NoticeHost />
     <Suspense fallback={<div className="page-body muted">{t("common.loading")}</div>}>
     <Routes key={locale}>
       <Route path="/login" element={<Login />} />

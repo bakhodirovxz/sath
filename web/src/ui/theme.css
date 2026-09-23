@@ -113,8 +113,10 @@ kbd { font-size: 0.92em; padding: 0 var(--sp-1); border: 1px solid var(--line-st
 .link-btn { display: inline; padding: 0; margin: 0; background: none; border: 0; color: var(--link); font: inherit; cursor: pointer; text-align: left; }
 .link-btn:hover { text-decoration: underline; }
 
+/* Kenglik :where() bilan (0 spetsifiklik) — .w-* utilitalari manba tartibidan qat'i nazar ustun */
+:where(.input, .select, .textarea) { width: 100%; }
 .input, .select, .textarea {
-  width: 100%; min-height: var(--ctl-h); padding: var(--sp-1) var(--sp-2);
+  min-height: var(--ctl-h); padding: var(--sp-1) var(--sp-2);
   background: var(--field); border: 1px solid var(--widget-line); border-radius: var(--radius); color: var(--text);
 }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--line-strong); }
@@ -533,6 +535,9 @@ button.tile { color: inherit; font: inherit; text-align: left; cursor: pointer; 
 .site-form .simform-group { break-inside: avoid; }
 .site-form .simform .brow .blabel { flex-basis: 50%; }
 
+.safety-row { display: block; padding: var(--sp-1) var(--sp-1-5); border-left: 3px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.safety-row.st-ok { border-left-color: var(--ok); } .safety-row.st-warn { border-left-color: var(--warn); } .safety-row.st-fail { border-left-color: var(--danger); }
+
 /* ============ 11. Dispetcher (ISA-101) — asos; mimika va alarm uslublari — UX-01..04 bo'limida ============ */
 .dash { width: 100%; max-width: 1440px; margin: 0 auto; }
 .dash-tabs { margin: var(--sp-1-5) 0 var(--sp-2); height: auto; min-height: 30px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
@@ -548,7 +553,13 @@ button.tile { color: inherit; font: inherit; text-align: left; cursor: pointer; 
 .journal-item { padding: var(--sp-1) 0; border-bottom: 1px solid var(--line); }
 .journal-item.shift_start, .journal-item.shift_end, .journal-item.event { background: var(--attention-bg); padding-left: var(--sp-1-5); }
 .panel { border: 1px solid var(--line); background: var(--panel); padding: var(--sp-2) var(--sp-2-5); border-radius: var(--radius); min-width: 0; }
+/* Faqat SCADA alarmi (ISA-18.2). Texnik xizmat, ombor, model og'ishi, simulyatsiya — neytral "e'tibor" (UX-02) */
 tr.alarm-active { background: var(--alarm-row); color: var(--text); }
+.alarm-table { width: 100%; }
+tr.row-stale > td { color: var(--text-muted); }
+tr.row-attention { background: var(--attention-bg); color: var(--text); }
+tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); }
+.attention-text { color: var(--attention); font-weight: 600; }
 .tile-alarm { border-color: var(--alarm-outline); background: var(--alarm-row); }
 .error-boundary { border-color: var(--danger); color: var(--text); }
 .ops-nav { display: flex; gap: var(--sp-1-5); align-items: center; padding: var(--sp-1) var(--sp-4); background: var(--chrome); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -596,6 +607,12 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .alarm-mark .am-code { color: var(--text); }
 .alarm-mark.stale { padding: 0 3px; border: 1px dashed var(--alarm-stale); border-radius: 2px; color: var(--alarm-stale); }
 .am-shape { stroke: var(--alarm-outline); stroke-width: 1.2; }
+.alarm-mark.muted .am-shape { fill: none; stroke: var(--text-dim); }
+.alarm-mark.muted .am-num { fill: var(--text-dim); }
+/* Sifat kodi (✕ yaroqsiz, ~ noaniq, s almashtirilgan, m qo'lda) — rang + belgi */
+.quality-mark { font-family: var(--mono); font-weight: 700; font-size: var(--fs-sm); color: var(--quality-uncertain); }
+.quality-mark.q-bad { color: var(--quality-bad); }
+.quality-mark.q-good { color: var(--text-muted); }
 .am-shape.prio-critical { fill: var(--alarm-critical); } .am-shape.prio-high { fill: var(--alarm-high); }
 .am-shape.prio-medium { fill: var(--alarm-medium); } .am-shape.prio-low { fill: var(--alarm-low); }
 .am-num { font: 700 9px var(--font); pointer-events: none; }
@@ -654,6 +671,19 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .mimic-slot:focus-visible { outline: none; }
 .mimic.editing .mimic-el.draggable { cursor: move; pointer-events: bounding-box; }
 .mimic .mimic-el.selected > * { outline: 2px dashed var(--accent); }
+
+/* Bildirishnomalar (UX-02): xatodan alohida; neytral panel + belgi (operator ekranida alarm rangini olmaydi) */
+.notice-host { position: fixed; right: var(--sp-4); bottom: var(--sp-4); z-index: 60; display: flex; flex-direction: column; gap: var(--sp-2); max-width: min(440px, calc(100vw - 2 * var(--sp-4))); pointer-events: none; }
+.notice { pointer-events: auto; display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-2) var(--sp-2-5); background: var(--menu-bg); color: var(--text); border: 1px solid var(--line-strong); border-left-width: 4px; border-radius: var(--radius); box-shadow: var(--shadow-pop); font-size: var(--fs-body); }
+.notice .ico { flex-shrink: 0; margin-top: 2px; }
+.notice.success { border-left-color: var(--ok); } .notice.success .ico { color: var(--ok); }
+.notice.info { border-left-color: var(--link); } .notice.info .ico { color: var(--link); }
+.notice.warning { border-left-color: var(--attention); } .notice.warning .ico { color: var(--attention); }
+.notice.error { border-left-color: var(--danger); } .notice.error .ico { color: var(--danger); }
+.notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notice-close { background: none; border: 0; color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 var(--sp-1); }
+.notice-close:hover { color: var(--text); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Kichik yordamchilar (UX-08: inline style o'rniga) */
 .rel { position: relative; }
