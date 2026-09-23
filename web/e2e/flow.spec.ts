@@ -469,10 +469,12 @@ test.describe.serial("Sath web oqimi", () => {
     const asset = await (await request.post(`${API}/api/projects/${projectId}/assets`, { headers: h, data: { name: `H3 agregat ${stamp}`, config: { rated_speed_rpm: 600, bearing: { n: 8, d_mm: 20, D_mm: 100 } } } })).json();
     // envelope-spektr: 32 Gs da cho'qqi = BPFO (tashqi halqa nuqsoni)
     const vals = Array.from({ length: 101 }, (_, i) => (i === 32 ? 0.9 : 0.02));
-    const sp = await request.post(`${API}/api/projects/${projectId}/cm/spectra`, { headers: h, data: { asset_id: asset.id, kind: "envelope", unit: "g", rpm: 600, f_min: 0, f_max: 100, values: vals, source: "e2e gateway" } });
+    // SCADA-07: CM yozuvlari gateway ingest kaliti bilan (foydalanuvchi tokeni ham — eski serverlar uchun)
+    const gw = { ...h, ...(await ingest(request)) };
+    const sp = await request.post(`${API}/api/projects/${projectId}/cm/spectra`, { headers: gw, data: { asset_id: asset.id, kind: "envelope", unit: "g", rpm: 600, f_min: 0, f_max: 100, values: vals, source: "e2e gateway" } });
     expect(sp.status()).toBe(201);
     // tashqi CM tizimi natijasi (HA bloki)
-    const ext = await request.post(`${API}/api/projects/${projectId}/cm/results`, { headers: h, data: { asset_id: asset.id, source: "Bently Nevada", block: "HA", state: "alert", health_score: 62, rul_days: 90, diagnosis: "Podshipnik nuqsoni rivojlanmoqda", confidence: 0.75 } });
+    const ext = await request.post(`${API}/api/projects/${projectId}/cm/results`, { headers: gw, data: { asset_id: asset.id, source: "Bently Nevada", block: "HA", state: "alert", health_score: 62, rul_days: 90, diagnosis: "Podshipnik nuqsoni rivojlanmoqda", confidence: 0.75 } });
     expect(ext.status()).toBe(201);
     await login(page);
     await page.goto(`/projects/${projectId}/dashboard`);

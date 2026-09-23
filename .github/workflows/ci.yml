@@ -68,7 +68,7 @@ jobs:
       - run: cd web && npx playwright install --with-deps chromium
       - name: Server (fon)
         run: |
-          export GES_DATA_DIR=/tmp/ges-e2e GES_DATABASE_URL=sqlite:////tmp/ges-e2e/ges.db GES_ADMIN_PASSWORD="$E2E_PASS" GES_SECRET_KEY=e2e-secret-key-that-is-at-least-32-bytes-long GES_CFD_MODE=off
+          export GES_DATA_DIR=/tmp/ges-e2e GES_DATABASE_URL=sqlite:////tmp/ges-e2e/ges.db GES_ADMIN_PASSWORD="$E2E_PASS" GES_SECRET_KEY=e2e-secret-key-that-is-at-least-32-bytes-long GES_CFD_MODE=off GES_RATE_LOGIN_PER_MIN=600
           nohup uvicorn ges_server.main:app --port 8000 > /tmp/server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:8000/api/health && break; sleep 1; done
       - run: cd web && E2E_BASE_URL=http://localhost:8000 E2E_CHANNEL=chromium npx playwright test
