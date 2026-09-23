@@ -117,3 +117,38 @@ def test_unknown_user_same_response_and_hash_verified(client, admin, settings, m
     b = client.post("/api/auth/login", data={"username": "yoq_odam", "password": "xato"})
     assert a.status_code == b.status_code == 401 and a.json() == b.json()
     assert len(calls) == 2 and calls[1] == auth_router._dummy_hash()  # noma'lum loginda ham Argon2
+
+
+# ---------------------------------------------------------------- AUTH-02
+
+
+def test_ws_ticket_single_use_30s(client, users):
+    from ges_server.db import SessionLocal
+    from ges_server.orm import WsTicketUse
+
+    pid = users["project_id"]
+    r = client.post("/api/auth/ws-ticket", headers=users["viewer"])
+    assert r.status_code == 200 and r.json()["expires_in"] == 30
+    ticket = r.json()["ticket"]
+    p = jwt.decode(ticket, options={"verify_signature": False})
+    assert p["scope"] == "ws" and p["exp"] - p["iat"] <= 30
+    with client.websocket_connect(f"/api/projects/{pid}/live?ticket={ticket}") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+    # takror — rad (4401)
+    with pytest.raises(Exception):  # noqa: B017 — WebSocketDisconnect / ulanish rad
+        with client.websocket_connect(f"/api/projects/{pid}/live?ticket={ticket}") as ws:
+            ws.receive_json()
+    with SessionLocal() as db:
+        assert db.get(WsTicketUse, p["jti"]) is not None  # DB da — boshqa API jarayoni ham ko'radi
+    # yangi chipta — yana ulanadi
+    t2 = client.post("/api/auth/ws-ticket", headers=users["viewer"]).json()["ticket"]
+    with client.websocket_connect(f"/api/projects/{pid}/live?ticket={t2}") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+
+
+def test_consume_ticket_unit():
+    import time
+
+    assert sessions.consume_ticket("abc", 1, time.time() + 30) is True
+    assert sessions.consume_ticket("abc", 1, time.time() + 30) is False
+    assert sessions.consume_ticket("", 1, None) is False

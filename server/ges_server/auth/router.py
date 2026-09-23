@@ -298,13 +298,18 @@ def revoke_session(session_id: int, user: CurrentUser, db: DB):
 
 class WsTicket(BaseModel):
     ticket: str
-    expires_in: int = 60
+    expires_in: int = sessions.WS_TICKET_TTL_S
 
 
 @router.post("/auth/ws-ticket", response_model=WsTicket)
 def ws_ticket(user: CurrentUser):
-    """WebSocket uchun 60 s li bir maqsadli chipta (L2): sessiya tokeni URL/loglarga tushmaydi."""
-    return WsTicket(ticket=create_access_token(user.id, minutes=1, scope="ws", ver=user.token_version))
+    """WebSocket uchun bir martalik, 30 s li, bir maqsadli chipta (L2, AUTH-02): sessiya tokeni URL/loglarga
+    tushmaydi. Chipta URL query da (`?ticket=`) — brauzer WebSocket API sarlavha bera olmaydi; bir martalik va
+    qisqa muddatli bo'lgani uchun log/tarixdan o'g'irlangan chipta qayta ishlatib bo'lmaydi (ulanishda `jti`
+    DB da iste'mol qilinadi). Har ulanish (qayta ulanish ham) uchun yangi chipta olinadi."""
+    return WsTicket(
+        ticket=create_access_token(user.id, scope="ws", ver=user.token_version, seconds=sessions.WS_TICKET_TTL_S)
+    )
 
 
 @router.get("/auth/me", response_model=MeOut)

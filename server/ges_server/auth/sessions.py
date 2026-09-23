@@ -7,18 +7,20 @@ belgisi: foydalanuvchining barcha sessiyalari bekor qilinadi (OAuth 2.0 Security
 
 from __future__ import annotations
 
+import random
 import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import event
+from sqlalchemy import delete, event, insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import audit
 from ..config import get_settings
-from ..db import SessionLocal
-from ..orm import User, UserSession
+from ..db import SessionLocal, engine
+from ..orm import User, UserSession, WsTicketUse
 from .security import create_access_token, create_refresh_token, decode_token
 
 
@@ -132,6 +134,9 @@ def revoke_all(db: Session, user_id: int, *, reason: str = "") -> int:
 def purge_expired(db: Session, keep_days: int = 30) -> int:
     """Muddati o'tgan/bekor qilingan eski qatorlarni tozalash (fon vazifasi)."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    db.query(WsTicketUse).filter(WsTicketUse.expires_at < datetime.now(timezone.utc) - timedelta(hours=1)).delete(
+        synchronize_session=False
+    )
     return (
         db.query(UserSession)
         .filter((UserSession.expires_at < cutoff) | (UserSession.revoked_at < cutoff))
@@ -198,4 +203,30 @@ def session_alive(sn: int, user_id: int) -> bool:
         else:
             _ALIVE.pop(sn, None)
     return ok
+
+
+# --------------------------------------------------------------------------- AUTH-02: bir martalik WS chipta
+
+WS_TICKET_TTL_S = 30
+
+
+def consume_ticket(jti: str, user_id: int, exp) -> bool:
+    """Chipta `jti` sini iste'mol qiladi: birinchi marta — True, takror — False. DB da (PRIMARY KEY) — bir necha
+    API jarayoni (L8 HA) orasida ham bitta chipta = bitta ulanish. Eski yozuvlar vaqti-vaqti bilan tozalanadi."""
+    if not jti:
+        return False
+    now = datetime.now(timezone.utc)
+    try:
+        expires = datetime.fromtimestamp(float(exp), tz=timezone.utc) if exp is not None else now
+    except (TypeError, ValueError, OverflowError):
+        expires = now
+    tbl = WsTicketUse.__table__
+    try:
+        with engine.begin() as conn:
+            conn.execute(insert(tbl).values(jti=jti[:64], user_id=user_id, used_at=now, expires_at=expires))
+            if random.random() < 0.02:
+                conn.execute(delete(tbl).where(tbl.c.expires_at < now - timedelta(hours=1)))
+    except IntegrityError:
+        return False
+    return True
 

@@ -963,7 +963,7 @@ export const api = {
   pushReadings: (projectId: number, items: { key?: string; sensor_id?: number; value: number; ts?: string }[]) =>
     request<{ accepted: number; unknown: unknown[] }>(`/api/projects/${projectId}/readings`, { method: "POST", body: json(items) }),
   importReadings: (sensorId: number, file: File) => { const fd = new FormData(); fd.append("file", file); return request<{ accepted: number }>(`/api/sensors/${sensorId}/import`, { method: "POST", body: fd }); },
-  /** Jonli oqim: avval 60 s li chipta (sessiya tokeni URL ga tushmaydi, L2), keyin soket. */
+  /** Jonli oqim: avval bir martalik 30 s li chipta (sessiya tokeni URL ga tushmaydi, L2/AUTH-02) — har ulanishga yangisi, keyin soket. */
   async liveSocket(projectId: number): Promise<WebSocket> {
     const { ticket } = await api.wsTicket();
     const proto = location.protocol === "https:" ? "wss" : "ws";

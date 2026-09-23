@@ -122,7 +122,8 @@ def decode_token(token: str, scope: str = "session") -> dict | None:
     """Imzo, muddat, iss/aud va scope mos bo'lsa payload (sub — int), aks holda None.
 
     AUTH-01: sessiya tokeni (`sn` bilan) — sessiya bekor qilingan bo'lsa (logout, sessiyani yopish) darhol
-    yaroqsiz (qisqa muddatli kesh, HA da ≤ 5 s)."""
+    yaroqsiz (qisqa muddatli kesh, HA da ≤ 5 s). AUTH-02: `ws` chiptasi bir martalik — tekshiruvda `jti` DB da
+    iste'mol qilinadi (ikkinchi ulanish rad etiladi, bir necha API jarayonida ham)."""
     try:
         payload = jwt.decode(
             token, get_settings().secret_key, algorithms=[ALGORITHM], audience=AUDIENCE, issuer=ISSUER
@@ -140,6 +141,8 @@ def decode_token(token: str, scope: str = "session") -> dict | None:
                 return None
         except (TypeError, ValueError):
             return None
+    elif scope == "ws" and not sessions.consume_ticket(str(payload.get("jti") or ""), payload["sub"], payload.get("exp")):
+        return None
     return payload
 
 

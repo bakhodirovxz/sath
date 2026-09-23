@@ -108,6 +108,18 @@ class UserSession(Base):
     revoke_reason: Mapped[str] = mapped_column(String(32), default="")
 
 
+class WsTicketUse(Base):
+    """AUTH-02: iste'mol qilingan WebSocket chiptasi (`jti`) — chipta bir martalik; DB da, shuning uchun bir
+    necha API jarayoni (L8) orasida ham takror ulanish rad etiladi. Muddati o'tganlari tozalanadi."""
+
+    __tablename__ = "ws_ticket_uses"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer)
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
