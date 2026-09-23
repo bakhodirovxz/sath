@@ -105,3 +105,15 @@ describe("kvitlanmagan alarmli sensorlar (UX-01: mimikada belgi miltillaydi)", (
     expect(unackedSensorIds([]).size).toBe(0);
   });
 });
+
+describe("alarm ro'yxati bir marta yuklanadi", () => {
+  it("bir vaqtda uchta komponent — bitta so'rov", async () => {
+    vi.useRealTimers();
+    const f = vi.fn((_u: string) => Promise.resolve(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })));
+    vi.stubGlobal("fetch", f);
+    function A() { useAlarmEvents(7); return null; }
+    render(<><A /><A /><A /></>);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(f.mock.calls.filter(([u]) => String(u).includes("/projects/7/alarm-events")).length).toBe(1);
+  });
+});

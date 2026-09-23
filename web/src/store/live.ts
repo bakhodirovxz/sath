@@ -58,6 +58,7 @@ export function resetLive(): void {
   for (const p of projects.values()) { p.stop?.(); window.clearTimeout(p.closeTimer); window.clearTimeout(p.flushTimer); }
   projects.clear();
   announced.clear();
+  eventsInFlight.clear();
 }
 
 function get(pid: number): ProjectLive {
@@ -195,15 +196,18 @@ export function putSensors(pid: number, sensors: Sensor[], opts: { replace?: boo
 }
 
 /** Faol alarmlarni serverdan qayta o'qish (sahifa ochilganda, qayta ulanganda, kvitlagandan keyin). */
-export async function loadEvents(pid: number): Promise<AlarmEvent[]> {
+const eventsInFlight = new Map<number, Promise<AlarmEvent[]>>();
+/** Faol alarm ro'yxatini yuklash; bir vaqtda bir nechta komponent so'rasa — bitta so'rov (banner, qobiq, sahifa). */
+export function loadEvents(pid: number): Promise<AlarmEvent[]> {
+  const running = eventsInFlight.get(pid);
+  if (running) return running;
   const p = get(pid);
-  try {
-    const ev = await api.alarmEvents(pid, true);
-    setEventsInternal(p, ev);
-    return ev;
-  } catch {
-    return p.events;
-  }
+  const run = api.alarmEvents(pid, true)
+    .then((ev) => { setEventsInternal(p, ev); return ev; })
+    .catch(() => p.events)
+    .finally(() => eventsInFlight.delete(pid));
+  eventsInFlight.set(pid, run);
+  return run;
 }
 /** Kvitlash natijasini darhol qo'llash (server javobi). */
 export function applyEvent(pid: number, e: AlarmEvent): void {
