@@ -88,6 +88,9 @@ describe("umumiy jonli store", () => {
     expect(seen.map((e) => e.id)).toEqual([11]);
     expect(seen[0].sensor_key).toBe("S5");
     expect(alarm).toHaveBeenCalledTimes(1);
+    act(() => { ws.send({ type: "alarm", event: { ...ev, ended_at: "2026-01-01T00:00:30Z" } }); });
+    expect(ack).not.toHaveBeenCalled(); // UX-03: me'yorga qaytdi, lekin kvitlanmagan — ovoz davom etadi
+    expect(seen.map((e) => e.id)).toEqual([11]);
     act(() => { ws.send({ type: "alarm", event: { ...ev, acked_at: "2026-01-01T00:01:00Z", acked_by: 1 } }); });
     expect(ack).toHaveBeenCalledWith(11);
     act(() => { ws.send({ type: "alarm", event: { ...ev, acked_at: "x", ended_at: "y" } }); });

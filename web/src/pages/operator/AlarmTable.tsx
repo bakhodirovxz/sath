@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AlarmEvent, type Sensor } from "../../api/client";
-import Dialog from "../../ui/Dialog";
+import AlarmActionDialog from "./AlarmActionDialog";
 import { fmtDate, fmtValue } from "../../ui/format";
 import { alarmStyle } from "../../ui/tokens";
 import { opsPath } from "./OperatorShell";
@@ -28,17 +28,12 @@ type Dlg = { kind: "ack" | "shelve" | "oos"; row: AlarmRow } | null;
 export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact = false, onChanged, onError }: AlarmTableProps) {
   const [open, setOpen] = useState<number | null>(null);
   const [dlg, setDlg] = useState<Dlg>(null);
-  const [text, setText] = useState("");
-  const [hours, setHours] = useState(8);
   const [busy, setBusy] = useState(false);
-  const run = async (fn: () => Promise<AlarmEvent | Sensor | void>) => {
+  const run = async (fn: () => Promise<Sensor>) => {
     setBusy(true);
-    try {
-      const r = await fn();
-      onChanged(r && "sensor_id" in (r as AlarmEvent) ? (r as AlarmEvent) : undefined);
-      setDlg(null); setText("");
-    } catch (e) { onError?.(e instanceof Error ? e.message : "Xato"); } finally { setBusy(false); }
+    try { await fn(); onChanged(); } catch (e) { onError?.(e instanceof Error ? e.message : "Xato"); } finally { setBusy(false); }
   };
+
   if (rows.length === 0) return <p className="muted">Alarm yo'q</p>;
   return (
     <>
@@ -86,20 +81,7 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
           })}
         </tbody>
       </table>
-      {dlg && (
-        <Dialog title={dlg.kind === "ack" ? `Kvitlash: ${dlg.row.sensor_name}` : dlg.kind === "shelve" ? `Shelving: ${dlg.row.sensor_name}` : `Xizmatdan chiqarish: ${dlg.row.sensor_name}`} onClose={() => setDlg(null)}>
-          <p className="small dim">{alarmStyle(dlg.row.state, dlg.row.priority ?? "medium").label} · {dlg.row.value == null ? "—" : `${fmtValue(dlg.row.value)} ${dlg.row.unit}`} · {fmtDate(dlg.row.started_at)}</p>
-          {dlg.row.corrective_action && <p className="small"><b>Tuzatuvchi harakat:</b> {dlg.row.corrective_action}</p>}
-          <label className="field"><span>{dlg.kind === "ack" ? "Izoh (ixtiyoriy)" : "Sabab (majburiy)"}</span><input className="input" value={text} onChange={(e) => setText(e.target.value)} data-autofocus data-testid="dlg-text" /></label>
-          {dlg.kind === "shelve" && <label className="field"><span>Muddat, soat</span><input className="input" type="number" min={0.5} step={0.5} value={hours} onChange={(e) => setHours(Number(e.target.value) || 8)} /></label>}
-          <div className="actions">
-            <button className="btn" onClick={() => setDlg(null)}>Bekor</button>
-            <button className="btn primary" data-testid="dlg-ok" disabled={busy || (dlg.kind !== "ack" && text.trim().length < 3)} onClick={() => run(() => dlg.kind === "ack" ? api.ackAlarm(dlg.row.id, text.trim()) : dlg.kind === "shelve" ? api.shelveSensor(dlg.row.sensor_id, text.trim(), hours) : api.sensorOutOfService(dlg.row.sensor_id, text.trim()))}>
-              {dlg.kind === "ack" ? "Kvitlash" : dlg.kind === "shelve" ? "Shelve" : "Xizmatdan chiqarish"}
-            </button>
-          </div>
-        </Dialog>
-      )}
+      {dlg && <AlarmActionDialog kind={dlg.kind} event={dlg.row} onClose={() => setDlg(null)} {...(onError ? { onError } : {})} onDone={(u) => { setDlg(null); onChanged(u); }} />}
     </>
   );
 }

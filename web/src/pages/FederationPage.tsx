@@ -48,7 +48,7 @@ export default function FederationPage() {
 
   return (
     <div className="page ws">
-      <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, ...(fed ? [{ label: "Loyiha", to: `/projects/${fed.project_id}` }, { label: `Federatsiya: ${fed.name}` }] : [])]} />
+      <TopBar alarms={fed ? { pid: fed.project_id } : undefined} crumbs={[{ label: "Loyihalar", to: "/" }, ...(fed ? [{ label: "Loyiha", to: `/projects/${fed.project_id}` }, { label: `Federatsiya: ${fed.name}` }] : [])]} />
       <div className="ws-body fed-layout">
         <div className="viewport rel">
           <div ref={containerRef} className="ws-canvas-host" />

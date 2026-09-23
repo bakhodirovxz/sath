@@ -16,14 +16,17 @@ export interface AudioLike {
   createGain(): { gain: { value: number; setValueAtTime?(v: number, t: number): void }; connect(n: unknown): void };
 }
 
-/** Ustuvorlik → signal: chastota (Hz), beep soni, takror davri (ms; 0 — takrorsiz). ISA-18.2: tovush darajasi
- * ustuvorlikka mos, kritik — kvitlanguncha davom etadi. */
+/** Ustuvorlik → signal: chastota (Hz), beep soni, takror davri (ms; 0 — takrorsiz). ISA-18.2 / UX-03: tovush
+ * ustuvorlikka mos va KVITLANGUNCHA takrorlanadi (kritik 5 s, yuqori 10 s, o'rta 20 s); past — jim (faqat ekranda). */
 export const PATTERNS: Record<Priority, { hz: number; beeps: number; repeatMs: number; ms: number }> = {
   critical: { hz: 880, beeps: 3, repeatMs: 5000, ms: 180 },
-  high: { hz: 660, beeps: 2, repeatMs: 0, ms: 200 },
-  medium: { hz: 520, beeps: 1, repeatMs: 0, ms: 200 },
+  high: { hz: 660, beeps: 2, repeatMs: 10_000, ms: 200 },
+  medium: { hz: 520, beeps: 1, repeatMs: 20_000, ms: 200 },
   low: { hz: 0, beeps: 0, repeatMs: 0, ms: 0 },
 };
+const RANK: Record<Priority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+/** Ketma-ket kelgan alarmlar (toshqin, sahifa yuklanishi) bitta signalga birlashadi */
+const COALESCE_MS = 1500;
 
 export interface AnnunciatorOptions {
   contextFactory?: () => AudioLike;
@@ -38,7 +41,11 @@ export class Annunciator {
   private setTimer: (fn: () => void, ms: number) => number;
   private clearTimer: (id: number) => void;
   private now: () => number;
-  private repeats = new Map<number, number>();
+  /** Kvitlanmagan alarmlar (takrorlanadigan ustuvorlik) — bitta umumiy taymer eng yuqori ustuvorlik bo'yicha */
+  private active = new Map<number, Priority>();
+  private timer: number | null = null;
+  private timerPrio: Priority | null = null;
+  private lastBeep = -Infinity;
   private listeners = new Set<() => void>();
   muted = false;
   silencedUntil: number | null = null;
@@ -125,32 +132,57 @@ export class Annunciator {
     }
   }
 
-  /** Alarm keldi: signal; kritik — kvitlanguncha (ack) har 5 s takror. */
+  /** Alarm keldi: signal (toshqinda birlashtiriladi); kvitlanguncha eng yuqori ustuvorlik davri bilan takror.
+   * 45 ta kvitlanmagan alarm — 45 ta taymer emas, bitta (ovoz tartibsiz bo'lmaydi). */
   alarm(eventId: number, priority: Priority): void {
-    this.beep(priority);
-    const p = PATTERNS[priority] ?? PATTERNS.medium;
-    if (p.repeatMs > 0 && !this.repeats.has(eventId)) {
-      const tick = () => {
-        if (!this.repeats.has(eventId)) return;
-        this.beep(priority);
-        this.repeats.set(eventId, this.setTimer(tick, p.repeatMs));
-      };
-      this.repeats.set(eventId, this.setTimer(tick, p.repeatMs));
-    }
+    const isNew = !this.active.has(eventId);
+    const p = PATTERNS[priority] ? priority : "medium";
+    if (PATTERNS[p].repeatMs > 0) this.active.set(eventId, p);
+    if (isNew && this.now() - this.lastBeep >= COALESCE_MS && this.beep(p)) this.lastBeep = this.now();
+    // yuqoriroq ustuvorlik keldi — tezroq davrga o'tish
+    if (this.timer != null && this.timerPrio && RANK[p] > RANK[this.timerPrio] && PATTERNS[p].repeatMs > 0) this.cancelTimer();
+    this.schedule();
   }
 
-  /** Kvitlandi / yopildi — takror to'xtaydi. */
+  private top(): Priority | null {
+    let best: Priority | null = null;
+    for (const p of this.active.values()) if (!best || RANK[p] > RANK[best]) best = p;
+    return best;
+  }
+
+  private schedule() {
+    if (this.timer != null) return;
+    const p = this.top();
+    if (!p) return;
+    this.timerPrio = p;
+    this.timer = this.setTimer(() => {
+      this.timer = null;
+      const q = this.top();
+      if (!q) return;
+      if (this.beep(q)) this.lastBeep = this.now();
+      this.schedule();
+    }, PATTERNS[p].repeatMs);
+  }
+
+  private cancelTimer() {
+    if (this.timer != null) this.clearTimer(this.timer);
+    this.timer = null;
+    this.timerPrio = null;
+  }
+
+  /** Kvitlandi / yopildi — shu alarm takrordan chiqadi; boshqa kvitlanmaganlar bo'lsa davom etadi. */
   ack(eventId: number): void {
-    const t = this.repeats.get(eventId);
-    if (t != null) this.clearTimer(t);
-    this.repeats.delete(eventId);
+    this.active.delete(eventId);
+    if (!this.active.size) this.cancelTimer();
+    else if (this.timerPrio && !([...this.active.values()].includes(this.timerPrio))) { this.cancelTimer(); this.schedule(); }
   }
 
   stopAll(): void {
-    for (const [id] of this.repeats) this.ack(id);
+    this.active.clear();
+    this.cancelTimer();
   }
 
-  get repeating(): number { return this.repeats.size; }
+  get repeating(): number { return this.active.size; }
 }
 
 /** Ilova bo'ylab bitta nusxa (kontekst bitta bo'lishi kerak). */

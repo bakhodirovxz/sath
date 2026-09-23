@@ -42,7 +42,7 @@ export default function SitePage() {
 
   return (
     <div className="page">
-      <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, { label: "Maydon pasporti" }]}>
+      <TopBar alarms={{ pid, role: project?.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, { label: "Maydon pasporti" }]}>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}`)}>Loyiha</button>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/dashboard`)}>Dispetcher paneli</button>
       </TopBar>

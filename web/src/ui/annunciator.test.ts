@@ -50,10 +50,38 @@ describe("annunciator (F6)", () => {
     expect(a.played).toBe(4);
     expect(a.repeating).toBe(0);
     a.alarm(8, "high");
-    vi.advanceTimersByTime(60_000);
-    expect(a.played).toBe(5); // takrorsiz
-    a.alarm(9, "low");
     expect(a.played).toBe(5);
+    vi.advanceTimersByTime(PATTERNS.high.repeatMs * 2 + 10);
+    expect(a.played).toBe(7); // UX-03: yuqori ham kvitlanguncha takrorlanadi (10 s)
+    a.ack(8);
+    a.alarm(9, "low");
+    vi.advanceTimersByTime(60_000);
+    expect(a.played).toBe(7); // past — jim
+    vi.useRealTimers();
+  });
+  it("toshqin: 45 ta kvitlanmagan alarm — bitta signal, bitta taymer, eng yuqori ustuvorlik davri", () => {
+    vi.useFakeTimers();
+    const timers = new Map<number, ReturnType<typeof setTimeout>>();
+    let seq = 0;
+    const a = new Annunciator({
+      contextFactory: () => fakeCtx(),
+      setTimer: (fn, ms) => { const id = ++seq; timers.set(id, setTimeout(() => { timers.delete(id); fn(); }, ms)); return id; },
+      clearTimer: (id) => { clearTimeout(timers.get(id)); timers.delete(id); },
+    });
+    for (let i = 1; i <= 44; i++) a.alarm(i, i % 2 ? "medium" : "high");
+    expect(a.played).toBe(1); // birlashtirildi
+    expect(timers.size).toBe(1);
+    a.alarm(99, "critical"); // yuqoriroq — tezroq davr
+    expect(timers.size).toBe(1);
+    vi.advanceTimersByTime(PATTERNS.critical.repeatMs + 10);
+    expect(a.played).toBe(2);
+    a.ack(99); // kritik kvitlandi — yuqori (10 s) davri bilan davom etadi
+    vi.advanceTimersByTime(PATTERNS.high.repeatMs + 10);
+    expect(a.played).toBe(3);
+    for (let i = 1; i <= 44; i++) a.ack(i);
+    vi.advanceTimersByTime(60_000);
+    expect(a.played).toBe(3);
+    expect(a.repeating).toBe(0);
     vi.useRealTimers();
   });
   it("silence muddat bilan; mute o'chiradi va takrorlarni to'xtatadi", () => {

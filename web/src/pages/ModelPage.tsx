@@ -33,6 +33,7 @@ import { isModalOpen } from "../ui/Dialog";
 import { focusCommandLine } from "../ui/CommandLine";
 import type { SearchItem } from "../ui/blender";
 import { notify } from "../ui/notice";
+import AlarmBanner from "./operator/AlarmBanner";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
 /** Xususiyatlar muharriri yorliqlari (Blender Properties editor kabi — vertikal ikonkalar) */
@@ -648,6 +649,7 @@ export default function ModelPage() {
         {user?.is_admin && <Link to="/admin" className="small">Boshqaruv</Link>}
         <span className="muted small">{user?.full_name || user?.username}</span>
       </div>
+      {project && <AlarmBanner pid={project.id} role={role} />}
 
       <ViewportHeader viewer={ready ? viewer.current : null} shading={shading} onShading={setShading} grid={gridOn}
         onGrid={(v) => { setGridOn(v); viewer.current?.setGridVisible(v); }} projection={projection} onProjection={() => void toggleProjection()}

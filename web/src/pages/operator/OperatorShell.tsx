@@ -81,7 +81,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   return (
     <Ctx.Provider value={ctx}>
       <div className="page ops" data-level={level}>
-        <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
+        <TopBar alarms={{ pid, role: project?.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
           <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
           <AnnunciatorControl projectId={pid} canOperate={can(project?.my_role, "scada.ack")} />
         </TopBar>

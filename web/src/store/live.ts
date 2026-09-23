@@ -100,7 +100,8 @@ function patchSensor(p: ProjectLive, id: number, patch: Partial<Sensor>) {
 }
 
 function announce(e: AlarmEvent) {
-  if (e.acked_at || e.ended_at) { annunciator.ack(e.id); announced.delete(e.id); return; }
+  // UX-03 (ISA-18.2): ovoz kvitlanguncha — me'yorga qaytgan (ended), lekin kvitlanmagan alarm ham; shelved/OOS — jim
+  if (e.acked_at || e.suppressed) { annunciator.ack(e.id); announced.delete(e.id); return; }
   if (announced.has(e.id)) return;
   announced.add(e.id);
   annunciator.alarm(e.id, (e.priority ?? "medium") as Priority);

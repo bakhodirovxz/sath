@@ -74,3 +74,10 @@ export function counters(active: AlarmEvent[]): { active: number; unacked: numbe
 
 /** Toshqin rejimida taklif: faqat yuqori/kritik. */
 export const FLOOD_PRIORITIES = new Set(["critical", "high"]);
+
+/** Kvitlanmagan alarmlar (shelved/OOS dan tashqari) — ustuvorlik, keyin eng yangisi birinchi (alarm banneri, UX-03). */
+export function unackedTop(events: readonly AlarmEvent[]): AlarmEvent[] {
+  return events
+    .filter((e) => !e.acked_at && !e.suppressed)
+    .sort((a, b) => alarmRank(a.state, a.priority ?? "medium") - alarmRank(b.state, b.priority ?? "medium") || Date.parse(b.started_at) - Date.parse(a.started_at));
+}

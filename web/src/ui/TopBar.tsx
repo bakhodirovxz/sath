@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { applyTheme, currentTheme, type ThemeName } from "./tokens";
 import ProfileDialog from "./ProfileDialog";
 import { t } from "../i18n";
+import type { Role } from "../api/client";
+import AlarmBanner from "../pages/operator/AlarmBanner";
 
 /** Dispetcher ekrani kontrasti (UX-05): standart (ISA-101 kulrang) ↔ kunduzgi (yuqori kontrast); tanlov saqlanadi.
  * BIM (muhandis) sahifalarida ko'rsatilmaydi — u yerda Blender Dark doimiy. */
@@ -25,11 +27,13 @@ export interface Crumb {
   to?: string;
 }
 
-export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; children?: React.ReactNode }) {
+/** `alarms` — loyiha sahifasi: ostida doimiy alarm banneri (UX-03; kvitlanmagan alarm bo'lmasa — yo'q). */
+export default function TopBar({ crumbs = [], children, alarms }: { crumbs?: Crumb[]; children?: React.ReactNode; alarms?: { pid: number; role?: Role | null | undefined } | undefined }) {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const [profile, setProfile] = useState(false);
   return (
+    <>
     <div className="topbar ws-top">
       <Link to="/" className="brand">Sath</Link>
       <div className="crumbs">
@@ -49,5 +53,7 @@ export default function TopBar({ crumbs = [], children }: { crumbs?: Crumb[]; ch
       <button className="btn sm" onClick={() => { logout(); nav("/login"); }}>Chiqish</button>
       {profile && <ProfileDialog onClose={() => setProfile(false)} />}
     </div>
+    {alarms && alarms.pid > 0 && <AlarmBanner pid={alarms.pid} role={alarms.role} />}
+    </>
   );
 }

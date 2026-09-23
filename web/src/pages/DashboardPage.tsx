@@ -9,7 +9,7 @@ import { AssetsPanel, CommandsPanel, JournalPanel, SoePanel, TwinPanel } from ".
 import TopBar from "../ui/TopBar";
 import LineChart, { CHART_COLORS } from "../ui/LineChart";
 import { fmtDate, fmtShort, fmtTime, fmtValue } from "../ui/format";
-import { alarmLabel, periodLabel, sensorKindLabel } from "../i18n/labels";
+import { periodLabel, sensorKindLabel } from "../i18n/labels";
 import { DateField, DateTimeField } from "../ui/DateField";
 import Mimic from "./operator/Mimic";
 import MimicEditor from "./operator/MimicEditor";
@@ -61,7 +61,6 @@ export default function DashboardPage() {
   const [mimic, setMimic] = useState<Record<string, number | null>>({});
   const [scheme, setScheme] = useState<Scheme | null>(null);
   const [selEl, setSelEl] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
   const [section, setSection] = useState<Section>("scheme");
   // Vaqt mashinasi: null — jonli; aks holda tanlangan vaqtdagi holat (sensorlar snapshot dan, store ga yozilmaydi)
   const [historyAt, setHistoryAt] = useState<string | null>(null);
@@ -115,18 +114,6 @@ export default function DashboardPage() {
     return () => { dead = true; };
   }, [historyAt, pid, load, dash]);
 
-  // Yangi alarm — qisqa xabar (doimiy banner UX-03 da); ovoz store da (annunciator)
-  useLiveMessages(pid, (m) => {
-    if (m.type === "alarm" && m.event && !m.event.ended_at && !m.event.acked_at) {
-      const e = m.event;
-      setFlash(`${e.priority === "critical" ? "KRITIK · " : e.priority === "high" ? "MUHIM · " : ""}${e.sensor_name}: ${alarmLabel(e.state)}`);
-    }
-  });
-  useEffect(() => {
-    if (!flash) return;
-    const t = window.setTimeout(() => setFlash(null), 6000);
-    return () => window.clearTimeout(t);
-  }, [flash]);
 
   async function saveMimic() {
     try {
@@ -140,7 +127,7 @@ export default function DashboardPage() {
 
   return (
     <div className="page">
-      <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
+      <TopBar alarms={{ pid, role: project.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name, to: `/projects/${pid}` }, { label: "Dispetcher paneli" }]}>
         {historyAt ? <span className="badge high"><Icon name="history" size={12} /> TARIX REJIMI</span> : <span className={`badge live-${live.toLowerCase()} ${live === "LIVE" ? "published" : live === "STALE" ? "shared" : "rejected"}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan"><Icon name={live === "OFFLINE" ? "wifi-off" : "wifi"} size={12} /> {live}</span>}
         <span className="row small" title="Vaqt mashinasi: tanlangan vaqtdagi holatni ko'rish (sxema, qiymatlar)">
           <DateTimeField className="history-at" aria-label="Vaqt mashinasi: sana va vaqt" value={historyAt ?? ""} onChange={(iso) => setHistoryAt(iso || null)} />
@@ -153,7 +140,6 @@ export default function DashboardPage() {
       <div className="page-body dash">
         {!online && <div className="verdict warn" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Ko'rsatilayotgan qiymatlar oxirgi ma'lum holat, yangilanmaydi.</div>}
         {error && <p className="error">{error}</p>}
-        {flash && <div className="dash-flash" role="alert"><Icon name="alert-triangle" /> ALARM — {flash}</div>}
         {historyAt && <div className="dash-history"><Icon name="history" size={14} /> Tarix rejimi: {fmtDate(historyAt)} holati ko'rsatilmoqda. <button type="button" className="link-btn" onClick={() => setHistoryAt(null)}>Jonli rejimga qaytish</button></div>}
         <UnackedTabs pid={pid} section={section} onSection={setSection} />
 

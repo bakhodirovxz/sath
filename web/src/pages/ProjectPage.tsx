@@ -69,7 +69,7 @@ export default function ProjectPage() {
 
   return (
     <div className="page">
-      <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name }]}>
+      <TopBar alarms={{ pid, role: project.my_role }} crumbs={[{ label: "Loyihalar", to: "/" }, { label: project.name }]}>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/dashboard`)} title="SCADA: jonli qiymatlar, alarmlar, hisobot">Dispetcher paneli</button>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/ops`)} title="ISA-101 operator ekranlari">Operator (L1)</button>
         <button className="btn sm" onClick={() => nav(`/projects/${pid}/site`)} title="Yer, tuproq, seysmiklik, sathlar, inshoot belgilari — simulyatsiyalar uchun">Maydon pasporti</button>

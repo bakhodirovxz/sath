@@ -242,10 +242,12 @@ table.grid tr.selected td { background: var(--sel); }
 /* ============ 8. BIM ish maydoni (Blender Dark) ============ */
 .workspace {
   height: 100%; display: grid;
-  grid-template-rows: var(--top-h) var(--vhead-h) 1fr var(--cmd-h) var(--status-h);
+  /* "alarm" qatori — auto: kvitlanmagan alarm bo'lmasa 0 balandlik (UX-03) */
+  grid-template-rows: var(--top-h) auto var(--vhead-h) 1fr var(--cmd-h) var(--status-h);
   grid-template-columns: var(--tools-w) 1fr var(--dock-w);
-  grid-template-areas: "top top top" "vhead vhead dock" "tools canvas dock" "cmd cmd dock" "status status status";
+  grid-template-areas: "top top top" "alarm alarm alarm" "vhead vhead dock" "tools canvas dock" "cmd cmd dock" "status status status";
 }
+.workspace > .alarm-banner { grid-area: alarm; }
 .workspace.dock-hidden { grid-template-columns: var(--tools-w) 1fr 0; }
 .workspace.tools-hidden { grid-template-columns: 0 1fr var(--dock-w); }
 .workspace.dock-hidden.tools-hidden { grid-template-columns: 0 1fr 0; }
@@ -547,7 +549,6 @@ button.tile { color: inherit; font: inherit; text-align: left; cursor: pointer; 
 .dash-mimic, .dash-alarms, .dash-block { border: 1px solid var(--line); background: var(--panel); padding: var(--sp-2) var(--sp-2-5); min-width: 0; }
 .dash-block { margin-top: var(--sp-2-5); }
 .dash-alarms { max-height: 420px; overflow: auto; }
-.dash-flash { background: var(--danger-strong); color: var(--on-danger); font-weight: 600; padding: var(--sp-1-5) var(--sp-2-5); margin: var(--sp-1-5) 0; }
 .dash-history { background: var(--attention-bg); border: 1px solid var(--attention); border-left-width: 3px; color: var(--text); padding: var(--sp-1) var(--sp-2-5); margin: var(--sp-1-5) 0; font-weight: 600; }
 .dash-history .link-btn { margin-left: var(--sp-2); }
 .journal-item { padding: var(--sp-1) 0; border-bottom: 1px solid var(--line); }
@@ -671,6 +672,24 @@ tr.row-attention > td:first-child { box-shadow: inset 3px 0 0 var(--attention); 
 .mimic-slot:focus-visible { outline: none; }
 .mimic.editing .mimic-el.draggable { cursor: move; pointer-events: bounding-box; }
 .mimic .mimic-el.selected > * { outline: 2px dashed var(--accent); }
+
+/* Doimiy alarm banneri (UX-03): neytral panel, chap chiziq — eng yuqori ustuvorlik rangi; rang/shakl belgida */
+.alarm-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); padding: var(--sp-1-5) var(--sp-4); background: var(--panel); border-bottom: 1px solid var(--line-strong); border-left: 6px solid var(--alarm-low); font-size: var(--fs-body); color: var(--text); }
+.alarm-banner.prio-critical { border-left-color: var(--alarm-critical); } .alarm-banner.prio-high { border-left-color: var(--alarm-high); }
+.alarm-banner.prio-medium { border-left-color: var(--alarm-medium); }
+.ab-count { color: var(--text); white-space: nowrap; text-decoration: none; } .ab-count b { font-size: var(--fs-md); }
+.ab-list { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); list-style: none; margin: 0; padding: 0; flex: 1 1 520px; min-width: 0; }
+.ab-item { display: flex; align-items: center; gap: var(--sp-1-5); min-width: 0; max-width: 100%; }
+.ab-item > * { white-space: nowrap; }
+.ab-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; min-width: 64px; max-width: 260px; flex: 0 1 auto; }
+.ab-state { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ab-more { white-space: nowrap; }
+@media (max-width: 600px) {
+  .ab-list { flex-direction: column; flex-basis: 100%; }
+  .ab-item { width: 100%; }
+  .ab-name { flex: 1 1 auto; max-width: none; }
+  .ab-state { display: none; }
+}
 
 /* Bildirishnomalar (UX-02): xatodan alohida; neytral panel + belgi (operator ekranida alarm rangini olmaydi) */
 .notice-host { position: fixed; right: var(--sp-4); bottom: var(--sp-4); z-index: 60; display: flex; flex-direction: column; gap: var(--sp-2); max-width: min(440px, calc(100vw - 2 * var(--sp-4))); pointer-events: none; }
