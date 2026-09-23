@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createHmac } from "node:crypto";
+import { ADMIN, API, SAMPLE_IFC } from "./env";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,9 +8,8 @@ import { fileURLToPath } from "node:url";
 /** To'liq oqim (reja «Tekshirish»): login → loyiha → model (viewer yuklanadi) → tasdiqlash so'rovi →
  * ma'qullash/merge (webdan) → dispetcher paneli → bildirishnoma. Ma'lumotlar API orqali tayyorlanadi. */
 
-const API = process.env.E2E_API_URL ?? "http://localhost:8000";
-const ADMIN = { username: process.env.E2E_USER ?? "admin", password: process.env.E2E_PASS ?? "admin123" };
-const SAMPLE = resolve(dirname(fileURLToPath(import.meta.url)), "../../docs/samples/namuna_ges_v2.ifc");
+// Server manzili va admin hisobi — env.ts (CI da E2E_PASS majburiy)
+const SAMPLE = SAMPLE_IFC;
 const stamp = Date.now().toString(36);
 
 async function token(req: APIRequestContext): Promise<string> {
