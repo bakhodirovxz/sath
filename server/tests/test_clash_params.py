@@ -2,8 +2,8 @@
 
 import pytest
 from conftest import upload
+from ges_server.config import get_settings
 from ges_server.models import geometry
-from ges_server.models import router as models_router
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def test_normalized_key():
 
 
 def test_new_computations_rate_limited(client, users, vid, monkeypatch):
-    monkeypatch.setattr(models_router, "DERIVED_RATE_PER_MIN", 2)
+    monkeypatch.setattr(get_settings(), "rate_derived_per_min", 2)
     calls = []
     monkeypatch.setattr(geometry, "compute_clashes", lambda *a, **k: calls.append(a) or {"clashes": [], "hard": 0})
     types = ["IfcWall", "IfcSlab", "IfcBeam"]

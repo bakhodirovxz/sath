@@ -41,7 +41,7 @@ def privileged_min_length() -> int:
     """AUTH-01: administrator va tasdiqlovchi uchun minimal uzunlik (default 12; `password_min_length_privileged`
     sozlamasi bo'lsa — o'sha; umumiy minimaldan kam bo'lmaydi)."""
     s = get_settings()
-    return max(s.password_min_length, int(getattr(s, "password_min_length_privileged", 12)))
+    return max(s.password_min_length, s.password_min_length_privileged)
 
 
 def password_problems(password: str, username: str = "", min_length: int | None = None) -> list[str]:

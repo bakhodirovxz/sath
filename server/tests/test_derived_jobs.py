@@ -8,7 +8,6 @@ from conftest import get_ready, upload
 from ges_server.config import get_settings
 from ges_server.db import SessionLocal
 from ges_server.models import fragments, geometry, ifc_meta
-from ges_server.models import router as models_router
 from ges_server.orm import Job
 
 
@@ -77,7 +76,7 @@ def test_fragments_queued_not_in_request(client, users, vid, monkeypatch):
 
 
 def test_viewer_new_conversions_rate_limited(client, users, vid, monkeypatch):
-    monkeypatch.setattr(models_router, "DERIVED_RATE_PER_MIN", 1)
+    monkeypatch.setattr(get_settings(), "rate_derived_per_min", 1)
     monkeypatch.setattr(geometry, "compute_clashes", lambda *a, **k: time.sleep(0.5) or {"clashes": []})
     assert client.get(f"/api/versions/{vid}/clashes?types_a=IfcWall", headers=users["viewer"]).status_code in (200, 202)
     assert client.get(f"/api/versions/{vid}/clashes?types_a=IfcSlab", headers=users["viewer"]).status_code == 429

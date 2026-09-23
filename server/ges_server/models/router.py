@@ -649,12 +649,9 @@ def download_version(version_id: int, user: CurrentUser, db: DB):
 
 
 # OPS-03/04: og'ir hosilaviy hisob (geometriya, fragments) — foydalanuvchi bo'yicha yangi hisoblar chegarasi
-# (keshdagi natijani o'qish va navbatdagi ishni kuzatish cheklanmaydi)
-DERIVED_RATE_PER_MIN = 10
-
-
+# (keshdagi natijani o'qish va navbatdagi ishni kuzatish cheklanmaydi); chegara — `rate_derived_per_min`
 def _derived_rate(user) -> None:
-    ratelimit.check("derived", f"user:{user.id}", int(getattr(get_settings(), "rate_derived_per_min", DERIVED_RATE_PER_MIN)))
+    ratelimit.check("derived", f"user:{user.id}", get_settings().rate_derived_per_min)
 
 
 DERIVED_FAILED_RETRY_S = 600  # yiqilgan hisob shuncha vaqt ichida qayta navbatga qo'yilmaydi (xato qaytadi)
