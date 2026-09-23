@@ -386,7 +386,7 @@ def upload_document(
     try:
         sha, size = storage.store(file.file, ext=ext, max_bytes=get_settings().small_upload_mb * 1024 * 1024)
     except ValueError as e:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(e)) from e
     d = ProjectDocument(project_id=project.id, kind=kind, title=title.strip() or name, file_name=name, file_sha256=sha, file_size=size, ext=ext, uploaded_by=user.id)
     db.add(d)
     db.flush()

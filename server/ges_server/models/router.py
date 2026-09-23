@@ -431,13 +431,13 @@ def upload_version(
     # G4: konteyner nomlash qoidasi (ISO 19650-2 §5.1.6 — loyiha shabloni)
     naming_warning = iso19650.check_name(file.filename or "", model.project.naming_template or "")
     if naming_warning and model.project.naming_required:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, naming_warning)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, naming_warning)
 
     settings = get_settings()
     try:
         sha, size = storage.store(file.file, max_bytes=settings.max_upload_mb * 1024 * 1024)
     except ValueError as e:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(e)) from e
 
     try:
         # OPS-03: katta fayl so'rov ichida to'liq parse qilinmaydi (faqat sarlavha) — to'liq metadata navbatda
@@ -589,7 +589,7 @@ def update_version(version_id: int, body: VersionPatch, user: CurrentUser, db: D
                     iso19650.check_revision(rev, v.state)
                 v.revision_code = rev
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     audit.log(
         db,
         user_id=user.id,
@@ -783,11 +783,11 @@ def version_clashes(
     from . import geometry
 
     if kind is not None and kind not in ("hard", "possible", "touch"):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "kind: hard | possible | touch")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "kind: hard | possible | touch")
     try:
         ta, tb = geometry.normalize_types(types_a), geometry.normalize_types(types_b)
     except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     version, _path = _version_path(db, version_id, user)
     key = geometry.clash_kind(ta, tb)
     data = geometry.peek(version.file_sha256, key)

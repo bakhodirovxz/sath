@@ -129,7 +129,7 @@ def _check_policy(password: str, username: str, *, privileged: bool = False) -> 
     """AUTH-01: umumiy minimal (NIST, `password_min_length`) + admin/tasdiqlovchi uchun kamida 12 belgi."""
     problems = password_problems(password, username, privileged_min_length() if privileged else None)
     if problems:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Parol talabga javob bermaydi: " + "; ".join(problems))
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Parol talabga javob bermaydi: " + "; ".join(problems))
 
 
 # Yangi xato (b): noma'lum login, noto'g'ri parol, nofaol va bloklangan hisob — bir xil javob (login mavjudligini
@@ -391,7 +391,7 @@ def change_password(body: PasswordChange, user: CurrentUser, db: DB, request: Re
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Eski parol noto'g'ri")
     _check_policy(body.new_password, user.username, privileged=_is_privileged(db, user))
     if verify_password(body.new_password, user.password_hash):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Yangi parol eskisi bilan bir xil")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Yangi parol eskisi bilan bir xil")
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
     user.password_changed_at = datetime.now(timezone.utc)

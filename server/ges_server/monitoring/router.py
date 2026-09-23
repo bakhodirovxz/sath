@@ -277,14 +277,14 @@ def validate_control(writable: bool, lo: float | None, hi: float | None, rate: f
     Buzilsa 422."""
     for name, v in (("min_setpoint", lo), ("max_setpoint", hi), ("max_rate_per_min", rate)):
         if v is not None and not math.isfinite(v):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{name} chekli son bo'lishi kerak")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{name} chekli son bo'lishi kerak")
     if rate is not None and rate <= 0:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "max_rate_per_min musbat bo'lishi kerak")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "max_rate_per_min musbat bo'lishi kerak")
     if lo is not None and hi is not None and lo > hi:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "min_setpoint max_setpoint dan katta bo'lmasin")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "min_setpoint max_setpoint dan katta bo'lmasin")
     if writable and (lo is None or hi is None):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Boshqariladigan (writable) nuqtaga buyruq diapazoni majburiy: min_setpoint va max_setpoint",
         )
 
@@ -338,7 +338,7 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
     try:
         data["kks_code"] = kks.validate(data.get("kks_code"))
     except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     if body.writable:
         check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
     validate_control(body.writable, body.min_setpoint, body.max_setpoint, body.max_rate_per_min)
@@ -526,7 +526,7 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB, 
         try:
             changes["kks_code"] = kks.validate(changes["kks_code"])
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
     before = _control_snapshot(s)
     if body.clear_setpoint_range or any(k in changes and changes[k] != before[k] for k in CONTROL_FIELDS):
         check_project_permission(db, s.project_id, user, P_SENSOR_CONFIGURE)
@@ -668,7 +668,7 @@ def push_readings(
     auth_kind, actor_id = keys.authorize_ingest(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
+            status.HTTP_413_CONTENT_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
         )
     items = [b.model_dump() for b in body]
     if auth_kind == "manual":
@@ -766,7 +766,7 @@ async def import_csv(sensor_id: int, file: UploadFile, user: CurrentUser, db: DB
     if not items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV da 'ts,value' qatorlar topilmadi")
     if len(items) > 200_000:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir CSV da 200 000 tagacha qator — bo'lib yuklang")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Bir CSV da 200 000 tagacha qator — bo'lib yuklang")
     items = _as_manual(items)
     out = await run_in_threadpool(live.ingest, db, s.project_id, items, "manual")
     _audit_manual(db, user.id, "sensor", s.id, s.project_id, items, {**out, "csv": True})
@@ -798,7 +798,7 @@ def push_soe(
     ms aniqlik, takror tashlanadi."""
     auth_kind, actor_id = keys.authorize_ingest(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
     events = [b.model_dump() for b in body]
     if auth_kind == "manual":
         events = [{**e, "source": "manual"} for e in events]

@@ -281,20 +281,20 @@ def check_envelope(db, s: Sensor, value: float, check_rate: bool = True) -> None
     """B1/SCADA-02: diapazon va o'zgarish tezligi — sensor konverti. Buzilsa HTTPException 422.
     Diapazoni sozlanmagan (eski) boshqaruv nuqtasiga buyruq berilmaydi."""
     if not math.isfinite(value):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "qiymat chekli son bo'lishi kerak")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "qiymat chekli son bo'lishi kerak")
     if s.min_setpoint is None or s.max_setpoint is None:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Nuqtaning buyruq diapazoni (min/max_setpoint) sozlanmagan — muhandis sozlashi kerak",
         )
     if value < s.min_setpoint:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"Qiymat {value:g} ruxsat etilgan minimum {s.min_setpoint:g} {s.unit} dan kichik",
         )
     if value > s.max_setpoint:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"Qiymat {value:g} ruxsat etilgan maksimum {s.max_setpoint:g} {s.unit} dan katta",
         )
     if check_rate and s.max_rate_per_min is not None and s.max_rate_per_min > 0:
@@ -314,7 +314,7 @@ def check_envelope(db, s: Sensor, value: float, check_rate: bool = True) -> None
             rate = abs(value - ref_value) / minutes
             if rate > s.max_rate_per_min:
                 raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                     f"O'zgarish tezligi {rate:.3g} {s.unit}/min > ruxsat {s.max_rate_per_min:g} "
                     f"(oxirgi qiymat {ref_value:g}) — bosqichma-bosqich o'zgartiring",
                 )

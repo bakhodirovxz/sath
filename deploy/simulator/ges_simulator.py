@@ -324,7 +324,8 @@ class Replayer:
     """Yozib olingan seriyani qayta ijro etadi (operator mashqi): teglar faylga yozilgan tartibda."""
 
     def __init__(self, path: str, dt: float = 1.0, speed: float = 1.0):
-        self.rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+        with open(path, encoding="utf-8") as fh:
+            self.rows = [json.loads(line) for line in fh if line.strip()]
         self.dt, self.speed = dt, speed
         self.i = 0
 
@@ -420,12 +421,14 @@ class ModbusServer:
             await self._server.serve_forever()
 
         def run():
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+            loop = self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                self._loop.run_until_complete(serve())
+                loop.run_until_complete(serve())
             except Exception as e:  # noqa: BLE001
                 log.error("Modbus server: %s", e)
+            finally:
+                loop.close()
 
         self._thread = threading.Thread(target=run, daemon=True)
         self._thread.start()
@@ -434,11 +437,20 @@ class ModbusServer:
         log.info("Modbus TCP server %s:%d", self.host, self.port)
 
     def stop(self) -> None:
-        if self._server is not None and self._loop is not None:
+        """Serverni to'xtatadi va sikl tugashini kutadi. Takroriy chaqiruv (aloqa uzilgandan keyin `finally`)
+        to'xtagan siklga korutina yubormaydi — aks holda «coroutine ... shutdown was never awaited»."""
+        server, loop = self._server, self._loop
+        self._server = None
+        self._running = False
+        if server is not None and loop is not None and loop.is_running():
             import asyncio
 
-            asyncio.run_coroutine_threadsafe(self._server.shutdown(), self._loop)
-        self._running = False
+            try:
+                asyncio.run_coroutine_threadsafe(server.shutdown(), loop).result(timeout=5)
+            except Exception as e:  # noqa: BLE001
+                log.warning("Modbus server to'xtatish: %s", e)
+        if self._thread is not None:
+            self._thread.join(timeout=5)
 
     def update(self, tags: dict[str, float], plant: Plant | None) -> None:
         self._plant = plant

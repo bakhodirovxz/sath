@@ -15,7 +15,7 @@ CHUNK = 1 << 20
 
 def too_large(max_bytes: int) -> HTTPException:
     return HTTPException(
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"Fayl juda katta — chegara {max_bytes // (1024 * 1024)} MB"
+        status.HTTP_413_CONTENT_TOO_LARGE, f"Fayl juda katta — chegara {max_bytes // (1024 * 1024)} MB"
     )
 
 

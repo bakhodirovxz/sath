@@ -259,10 +259,21 @@ class OpcUaSource(Source):
         self._latest.clear()
         self._connect()
 
+    def _loop_alive(self) -> bool:
+        """asyncua.sync klientining fon sikli (ThreadLoop) ishlayaptimi. `disconnect()` dan keyin sikl
+        to'xtaydi: sinxron chaqiruv korutina yaratadi-yu, uni siklga qo'ya olmaydi (ThreadLoopNotRunning) —
+        «coroutine ... was never awaited». Shuning uchun o'lik klientga chaqiruv yubormaymiz."""
+        tl = getattr(self.client, "tloop", None)
+        loop = getattr(tl, "loop", None)
+        return bool(tl is not None and loop is not None and loop.is_running() and tl.is_alive())
+
     def tag_keys(self) -> list[str]:
         return [k for k, _ in self.nodes]
 
     def read(self) -> list[dict]:
+        if self.client is not None and not self._loop_alive():  # klient yopilgan — qayta ulanamiz
+            self._reconnect()
+            raise ConnectionError("opcua klient yopilgan edi, qayta ulandi")
         if self.mode == "subscribe":
             return self._read_subscribed()
         out = []
@@ -306,14 +317,15 @@ class OpcUaSource(Source):
         node.write_value(float(value))
 
     def close(self) -> None:
+        alive = self.client is not None and self._loop_alive()  # o'lik siklga korutina yubormaslik
         try:
-            if self.sub is not None:
+            if self.sub is not None and alive:
                 self.sub.delete()
         except Exception:  # noqa: BLE001
             pass
         self.sub = None
         try:
-            if self.client is not None:
+            if alive:
                 self.client.disconnect()
         except Exception:  # noqa: BLE001
             pass
