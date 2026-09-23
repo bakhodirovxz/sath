@@ -29,6 +29,9 @@ import { DRAFT_KINDS, type DraftKind } from "../viewer/draftKinds";
 import ViewportSidebar from "./model/ViewportSidebar";
 import PieMenu from "./model/PieMenu";
 import SearchMenu from "./model/SearchMenu";
+import HelpPanel from "./model/HelpPanel";
+import { isModalOpen } from "../ui/Dialog";
+import { focusCommandLine } from "../ui/CommandLine";
 import type { SearchItem } from "../ui/blender";
 
 type Tab = "props" | "layers" | "versions" | "review" | "issues" | "sim" | "mon" | "checks";
@@ -130,6 +133,9 @@ export default function ModelPage() {
     if (t && TABS.some((x) => x.id === t)) { setTab(t); setDockOpen(true); }
     if (sel) void viewer.current?.selectByGuids([sel], true);
   }, [loadedKey, latestParams, viewer]);
+  useEffect(() => {
+    if (loadedKey && (document.activeElement === document.body || document.activeElement == null)) viewportRef.current?.focus({ preventScroll: true });
+  }, [loadedKey]);
   // Versiya almashganda tahrirlanayotgan/o'chirilgan asl elementlar yana yashiriladi (yorliqlar holati o'qiladi, qayta ishga tushirmaydi)
   const latestLabelsOn = useLatest(labelsOn);
   useEffect(() => { if (loadedKey) { void viewer.current?.drafts?.syncHidden(); if (latestLabelsOn.current) void viewer.current?.setLabels(true); } }, [loadedKey, latestLabelsOn, viewer]);
@@ -145,6 +151,8 @@ export default function ModelPage() {
   const [error, setError] = useState("");
   const loadingRef = useRef<number | null>(null);
   const lastMouse = useRef<[number, number]>([300, 200]);
+  /** 3D ko'rinish konteyneri: bitta harfli tezkor tugmalar faqat u fokusda bo'lganda ishlaydi (UX-10). */
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const role = project?.my_role ?? null;
   const canEdit = role === "engineer" || role === "approver";
@@ -450,15 +458,24 @@ export default function ModelPage() {
   ];
 
   // Tezkor tugmalar (Blender): H yashirish, Alt+H hammasi, / ajratish, Home moslash, . tanlanganga,
-  // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor
+  // numpad 1/3/7 (Ctrl — qarama-qarshi), 5 proyeksiya, Z shading, N panel, T asboblar, Esc bekor.
+  // UX-10: bitta harfli/raqamli tugmalar faqat 3D ko'rinish fokusda bo'lganda (panel/forma ichida yozish,
+  // ekran o'quvchi tugmalari bilan to'qnashmaydi); F2/F3/F12, Ctrl+Space, Ctrl+K, Esc — istalgan joyda
+  // (matn maydoni va modal dialogdan tashqari).
   const keys = useLatest({ deleteDraft, duplicateDraft, editElement, deleteElement, render, selectAll, toggleLabels, toggleMaximize, toggleProjection, cmd });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (isModalOpen()) return;
       const vw = viewer.current;
       if (!vw) return;
       const k = e.key;
+      const inViewport = !!viewportRef.current && viewportRef.current.contains(document.activeElement);
+      const global = k === "F2" || k === "F3" || k === "F12" || k === "Escape" || (e.ctrlKey && (k === " " || k === "k" || k === "K"));
+      if (!inViewport && !global) return;
+      if (e.ctrlKey && (k === "k" || k === "K")) { e.preventDefault(); focusCommandLine(); return; }
+      if (k === ":") { e.preventDefault(); focusCommandLine(); return; }
       // Qoralamalar (Blender): Shift+A qo'shish, G/R/S, X, Shift+D, Esc
       if ((k === "A" || k === "a") && e.shiftKey) { e.preventDefault(); setAddMenu({ x: lastMouse.current[0], y: lastMouse.current[1] }); return; }
       const dr = vw.drafts.handleKey(e);
@@ -656,8 +673,10 @@ export default function ModelPage() {
         <ToolBtn title="Tozalash (CLEAR)" onClick={() => cmd("CLEAR")}><Icon name="trash" /></ToolBtn>
       </div>
 
-      <div className="ws-canvas">
-        <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      {/* role=application: 3D ko'rinish o'z klaviatura boshqaruviga ega (tezkor tugmalar faqat shu fokusda) */}
+      <div className="ws-canvas" ref={viewportRef} tabIndex={0} role="application" aria-label="3D ko'rinish — tezkor tugmalar faol (yordam: ?)"
+        onPointerDown={() => viewportRef.current?.focus({ preventScroll: true })}>
+        <div ref={containerRef} className="ws-canvas-host" />
         {progress !== null && (
           <div className="overlay">
             <div style={{ width: 240 }}>
@@ -683,6 +702,7 @@ export default function ModelPage() {
             version={current} modelName={model?.name ?? ""} canEdit={canEdit} onAction={sideAction}
           />
         )}
+        {help && <HelpPanel onClose={closeHelp} />}
         <div className="vp-info">
           <div>{projection === "Perspective" ? "Perspektiva" : "Ortografik"} · {shading === "solid" ? "Solid" : shading === "wire" ? "Wireframe" : shading === "xray" ? "X-ray" : "Rendered"}{navMode !== "Orbit" && ` · ${navMode === "FirstPerson" ? "Yurish" : "Plan"}`}</div>
           {selection.length > 0 && <div>{selection.length === 1 ? (selection[0].name || selection[0].category) : `${selection.length} ta tanlangan`}</div>}
@@ -692,11 +712,11 @@ export default function ModelPage() {
       <div className="ws-dock">
         {/* Outliner (Blender): model daraxti */}
         <div className={`outliner${outlinerOpen ? "" : " collapsed"}`}>
-          <div className="dock-head" onClick={() => setOutlinerOpen(!outlinerOpen)}>
+          <button type="button" className="dock-head dock-toggle" onClick={() => setOutlinerOpen(!outlinerOpen)} aria-expanded={outlinerOpen}>
             <span className="tw"><Icon name={outlinerOpen ? "chevron-down" : "chevron-right"} size={12} /></span> Outliner
             <span className="grow" />
             {current?.meta?.element_count != null && <span className="dim small">{current.meta.element_count}</span>}
-          </div>
+          </button>
           {outlinerOpen && <div className="outliner-body">
             {viewer.current && <DraftList drafts={drafts} selected={draftSel} dm={viewer.current.drafts} canEdit={canEdit} onCommit={() => void commitDrafts()} onDelete={(uid) => void deleteDraft(uid)} busy={draftBusy} />}
             {model && (canEdit || underlays.length > 0) && <UnderlayPanel modelId={model.id} list={underlays} canEdit={canEdit} onChange={setUnderlays} centerIfc={() => { const vw = viewer.current; if (!vw) return null; const b = vw.boundsIfc; return b ? [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, b.min[2]] : [0, 0, 0]; }} />}
@@ -766,21 +786,6 @@ export default function ModelPage() {
             ...menus.flatMap((m) => m.items.filter((i) => !i.sep && !i.disabled && i.onClick).map((i) => ({ label: i.label, hint: i.hint, group: m.title, run: () => i.onClick?.() }))),
           ]}
         />
-      )}
-      {help && (
-        <div className="help-overlay" onClick={closeHelp}>
-          <div className="help-card" onClick={(e) => e.stopPropagation()}>
-            <h2>Sath — qisqa yo'riqnoma</h2>
-            <div className="help-grid">
-              <div><b>1 · Ko'rish</b><p>Chap tugma — tanlash, o'rta — surish, g'ildirak — masshtab, Shift+o'rta — aylantirish. Yuqorida shading (Solid/Wire/X-ray/Rendered), o'ngda Outliner va xususiyatlar.</p></div>
-              <div><b>Element qo'shish / tahrirlash</b><p>Shift+A yoki «Qo'shish» menyusi: primitiv yoki GES inshooti (to'g'on, quvur, turbina…) — model/yer ustiga bosib joylashtiring, G/R/S bilan sozlang, o'ng panelda o'lchamlar va Pset_GES. Mavjud elementni tanlab <b>Tab</b> — tahrirlash (surish/burish/masshtab, nom, Pset), <b>X</b> — o'chirish. «IFC ga qo'shish» — yangi versiya (commit), GUID lar saqlanadi.</p></div>
-              <div><b>2 · Versiyalar va tasdiqlash</b><p>Har IFC yuklash — versiya. Muhandis «Tasdiqqa yuboradi», tasdiqlovchi farqni ko'rib ma'qullaydi/merge qiladi. Issue — 3D ko'rinish bilan.</p></div>
-              <div><b>3 · Tekshiruv va simulyatsiya</b><p>To'qnashuvlar, hajm-miqdor (Tekshiruv); suv ombori/turbina rejimi va CFD (Simulyatsiya); jonli SCADA va raqamli egizak (Monitoring, Dispetcher paneli).</p></div>
-              <div><b>Tezkor tugmalar</b><p>Shift+A qo'shish · G/R/S surish/burish/masshtab · X o'chirish · Shift+D nusxa · H yashir · Alt+H hammasi · / ajrat · Home moslash · . tanlanganga · 1/3/7 ko'rinish · 5 orto · Z shading pie · B kesim qutisi · N yon panel · T asboblar · F3 qidiruv · Ctrl+Space maksimal · A hammasi / Alt+A bekor · F12 render · ? yo'riqnoma</p></div>
-            </div>
-            <div className="actions"><button className="btn primary" onClick={closeHelp}>Tushunarli</button></div>
-          </div>
-        </div>
       )}
       <CommandLine onCommand={onCommand} log={log} />
 

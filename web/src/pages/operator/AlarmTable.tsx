@@ -49,7 +49,7 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
             return (
               <FragmentRow key={e.id}>
                 <tr className={!e.ended_at && !e.suppressed ? "alarm-active" : undefined} data-testid="alarm-row" data-priority={e.priority} data-state={e.state} onClick={() => setOpen(isOpen ? null : e.id)} style={{ cursor: "pointer" }}>
-                  <td><span className="alarm-mark" style={{ color: st.color, fontSize: 14 }} title={`${e.priority}`}>{st.glyph || "·"}</span></td>
+                  <td><button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={`${e.sensor_name}: tafsilotlar (ratsionalizatsiya)`} onClick={(ev) => { ev.stopPropagation(); setOpen(isOpen ? null : e.id); }}><span className="alarm-mark" style={{ color: st.color, fontSize: 14 }} title={`${e.priority}`}>{st.glyph || "·"}</span></button></td>
                   <td className="mono">{fmtDate(e.started_at)}{e.ended_at && <div className="dim">→ {fmtDate(e.ended_at)}</div>}</td>
                   <td><Link to={opsPath(pid, "sensor", e.sensor_id)} onClick={(ev) => ev.stopPropagation()}>{e.sensor_name}</Link><div className="dim">{e.sensor_key}{e.area ? ` · ${e.area}` : ""}</div></td>
                   <td><span className="alarm-mark" style={{ color: st.color }}>{st.code || "—"}</span> {st.label}{e.suppressed && <span className="badge archived" style={{ marginLeft: 4 }}>{e.suppressed}</span>}</td>
@@ -87,7 +87,7 @@ export default function AlarmTable({ rows, pid, canOperate, canEngineer, compact
         <Dialog title={dlg.kind === "ack" ? `Kvitlash: ${dlg.row.sensor_name}` : dlg.kind === "shelve" ? `Shelving: ${dlg.row.sensor_name}` : `Xizmatdan chiqarish: ${dlg.row.sensor_name}`} onClose={() => setDlg(null)}>
           <p className="small dim">{alarmStyle(dlg.row.state, dlg.row.priority ?? "medium").label} · {dlg.row.value == null ? "—" : `${fmtValue(dlg.row.value)} ${dlg.row.unit}`} · {fmtDate(dlg.row.started_at)}</p>
           {dlg.row.corrective_action && <p className="small"><b>Tuzatuvchi harakat:</b> {dlg.row.corrective_action}</p>}
-          <label className="field"><span>{dlg.kind === "ack" ? "Izoh (ixtiyoriy)" : "Sabab (majburiy)"}</span><input className="input" value={text} onChange={(e) => setText(e.target.value)} autoFocus data-testid="dlg-text" /></label>
+          <label className="field"><span>{dlg.kind === "ack" ? "Izoh (ixtiyoriy)" : "Sabab (majburiy)"}</span><input className="input" value={text} onChange={(e) => setText(e.target.value)} data-autofocus data-testid="dlg-text" /></label>
           {dlg.kind === "shelve" && <label className="field"><span>Muddat, soat</span><input className="input" type="number" min={0.5} step={0.5} value={hours} onChange={(e) => setHours(Number(e.target.value) || 8)} /></label>}
           <div className="actions">
             <button className="btn" onClick={() => setDlg(null)}>Bekor</button>

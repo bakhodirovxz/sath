@@ -150,7 +150,7 @@ export default function IssuesPanel(p: Props) {
           {detail.comments.map((c) => (
             <div key={c.id} className="comment">
               <span className="who">{c.author_username} · {fmtDate(c.created_at)}</span>
-              {c.viewpoint && <> · <a onClick={() => p.applyViewpoint(c.viewpoint!)}>ko'rinish</a></>}
+              {c.viewpoint && <> · <button type="button" className="link-btn" onClick={() => p.applyViewpoint(c.viewpoint!)}>ko'rinish</button></>}
               <div>{c.body}</div>
             </div>
           ))}
@@ -167,7 +167,7 @@ export default function IssuesPanel(p: Props) {
       {creating && (
         <Dialog title="Yangi issue" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Sarlavha</span><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus required /></label>
+            <label className="field"><span>Sarlavha</span><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} data-autofocus required /></label>
             <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
             <div className="row">
               <label className="field grow"><span>Ijrochi</span>

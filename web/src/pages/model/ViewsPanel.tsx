@@ -29,7 +29,7 @@ export default function ViewsPanel({ modelId, viewer, refresh }: Props) {
       {views.length === 0 && <p className="dim small">Joriy kamera/tanlovni nom bilan saqlang; VIEW nom bilan qaytasiz.</p>}
       {views.map((v) => (
         <div key={v.id} className="row" style={{ padding: "3px 0", borderBottom: "1px solid var(--line)" }}>
-          <a className="grow" onClick={() => viewer?.setViewpoint(v.viewpoint)}>{v.name}</a>
+          <button type="button" className="link-btn grow" onClick={() => viewer?.setViewpoint(v.viewpoint)}>{v.name}</button>
           <span className="dim small">{v.author_username}</span>
           <button className="btn sm" title="O'chirish" onClick={() => api.deleteView(v.id).then(load).catch((e) => setError(e.message))}><Icon name="trash" size={13} /></button>
         </div>

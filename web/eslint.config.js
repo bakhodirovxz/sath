@@ -1,5 +1,6 @@
-// ESLint 9 (flat config): TypeScript + React hooks qoidalari (F10). CI da `npm run lint`.
+// ESLint 9 (flat config): TypeScript + React hooks + jsx-a11y qoidalari (F10, UX-10). CI da `npm run lint`.
 import js from "@eslint/js";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
@@ -16,6 +17,15 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "warn",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "prefer-const": "error",
+    },
+  },
+  // UX-10: klaviatura va ekran o'quvchi — bosiladigan elementlar tugma/havola, dialoglar modal (0 ogohlantirish)
+  { files: ["src/**/*.tsx"], ...jsxA11y.flatConfigs.recommended },
+  {
+    files: ["src/**/*.tsx"],
+    rules: {
+      // 3D ko'rinish (role=application) o'z klaviatura boshqaruviga ega — Tab bilan yetib borilishi shart
+      "jsx-a11y/no-noninteractive-tabindex": ["error", { tags: [], roles: ["tabpanel", "application"], allowExpressionValues: true }],
     },
   },
   { files: ["**/*.test.{ts,tsx}", "e2e/**"], rules: { "@typescript-eslint/no-non-null-assertion": "off" } },

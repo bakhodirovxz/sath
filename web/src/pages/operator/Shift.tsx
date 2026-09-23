@@ -100,7 +100,7 @@ function Body() {
             </div>
           )}
           {dlg === "receive" && open && <p className="small">Topshiruvchi: <b>{open.handed_by_username}</b>, {fmtDate(open.handed_at!)}. Izoh: {open.notes || "—"}{open.warnings.length ? <><br />Ogohlantirishlar: {open.warnings.join("; ")}</> : null}</p>}
-          <label className="field"><span>Izoh</span><textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} autoFocus data-testid="handover-notes" /></label>
+          <label className="field"><span>Izoh</span><textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} data-autofocus data-testid="handover-notes" /></label>
           {err && <p className="error">{err}</p>}
           <div className="actions">
             <button className="btn" onClick={() => setDlg(null)}>Bekor</button>

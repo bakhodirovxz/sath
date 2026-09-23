@@ -105,16 +105,16 @@ export default function CfdPanel({ modelId, current, viewer, selection, jobs, on
   return (
     <div className="cfd">
       {status && !status.available && <p className="error small">CFD bu serverda mavjud emas (rejim: {status.mode}). Administrator: docker yoki `--profile cfd`.</p>}
-      {error && <p className="error small">{error} <a onClick={() => setError("")}>yopish</a></p>}
+      {error && <p className="error small">{error} <button type="button" className="link-btn" onClick={() => setError("")}>yopish</button></p>}
 
       {cfdJobs.length > 0 && (
         <details open={cfdJobs.length <= 3} className="section-box">
           <summary>CFD hisoblari ({cfdJobs.length})</summary>
           {cfdJobs.map((j) => (
-            <div key={j.id} className={`list-item${active?.id === j.id ? " selected" : ""}`} onClick={() => (j.status === "done" ? openResult(j) : setActive(j))}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : `${Math.round(j.progress * 100)}%`}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "failed" && <span className="error"> · {j.error.slice(0, 120)}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className={`list-item${active?.id === j.id ? " selected" : ""}`} aria-pressed={active?.id === j.id} onClick={() => (j.status === "done" ? openResult(j) : setActive(j))}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : `${Math.round(j.progress * 100)}%`}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "failed" && <span className="error"> · {j.error.slice(0, 120)}</span>}</span>
+            </button>
           ))}
         </details>
       )}

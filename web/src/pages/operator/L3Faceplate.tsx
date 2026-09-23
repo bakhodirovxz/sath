@@ -120,7 +120,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
       </div>
       {dlg && (
         <Dialog title={dlg === "shelve" ? `Shelving: ${s.name}` : `Xizmatdan chiqarish: ${s.name}`} onClose={() => setDlg(null)}>
-          <label className="field"><span>Sabab (majburiy)</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></label>
+          <label className="field"><span>Sabab (majburiy)</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} data-autofocus /></label>
           {dlg === "shelve" && <label className="field"><span>Muddat, soat</span><input className="input" type="number" min={0.5} step={0.5} value={shelveH} onChange={(e) => setShelveH(Number(e.target.value) || 8)} /></label>}
           {err && <p className="error">{err}</p>}
           <div className="actions">

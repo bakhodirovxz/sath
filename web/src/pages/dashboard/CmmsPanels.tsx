@@ -50,7 +50,7 @@ export function PlansPanel({ projectId, assets, canEdit }: { projectId: number; 
       )}
       {adding && (
         <Dialog title="Yangi profilaktik reja" onClose={() => setAdding(false)}>
-          <label className="field"><span>Nomi</span><input className="input" value={form.name} autoFocus data-testid="plan-name" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+          <label className="field"><span>Nomi</span><input className="input" value={form.name} data-autofocus data-testid="plan-name" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
           <label className="field"><span>Vazifalar (har qatorda bittadan)</span><textarea className="textarea" value={form.tasks} onChange={(e) => setForm({ ...form, tasks: e.target.value })} /></label>
           <div className="row">

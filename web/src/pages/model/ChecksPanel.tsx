@@ -87,15 +87,17 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
           {rows.length === 0 ? <p className="muted">Bu turda yo'q</p> : (
             <div className="list">
               {rows.map((c, i) => (
-                <div key={i} className={`list-item ${picked === i ? "selected" : ""}`} onClick={() => show(c, i)}>
-                  <div className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></div>
-                  <div><Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)}</span></div>
-                  <div><Icon name="square" size={11} style={{ color: "#e0a93a" }} /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)}</span></div>
+                <div key={i} className={`list-item ${picked === i ? "selected" : ""}`}>
+                  <button type="button" className="list-item-head" aria-expanded={picked === i} onClick={() => show(c, i)}>
+                    <span className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></span>
+                    <span className="li-line"><Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)}</span></span>
+                    <span className="li-line"><Icon name="square" size={11} style={{ color: "#e0a93a" }} /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)}</span></span>
+                  </button>
                   {picked === i && c.kind !== "touch" && (
                     <div className="row" style={{ marginTop: 4 }}>
                       <span className="dim small mono">{c.point.map((v) => v.toFixed(2)).join(", ")} m · kesishuv {c.overlap_m.map((v) => v.toFixed(2)).join("×")} m</span>
                       <span className="grow" />
-                      <button className="btn sm" onClick={(e) => { e.stopPropagation(); onCreateIssue(); }}>Issue ochish</button>
+                      <button className="btn sm" onClick={() => onCreateIssue()}>Issue ochish</button>
                     </div>
                   )}
                 </div>
@@ -133,9 +135,9 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
                       <div key={i} style={{ marginTop: 4 }}>
                         <div className="small">{r.description}</div>
                         {r.failed.slice(0, 50).map((f, j) => (
-                          <div key={j} className="small clickable" onClick={() => f.guid && viewer?.selectByGuids([f.guid], true)} title={f.reason ?? ""}>
+                          <button type="button" key={j} className="row-btn small" disabled={!f.guid} onClick={() => f.guid && viewer?.selectByGuids([f.guid], true)} title={f.reason ?? ""}>
                             <Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {f.name || f.guid} <span className="dim">{f.class ? ifcLabel(f.class) : ""} — {f.reason}</span>
-                          </div>
+                          </button>
                         ))}
                         {r.failed_total > 50 && <div className="dim small">…yana {r.failed_total - 50} ta</div>}
                       </div>
@@ -168,7 +170,7 @@ export default function ChecksPanel({ current, viewer, onCreateIssue }: Props) {
             <tbody>
               {qRows.slice(0, 300).map((e) => (
                 <tr key={e.guid} className="clickable" onClick={() => viewer?.selectByGuids([e.guid], true)}>
-                  <td>{e.name || e.guid}<div className="dim">{ifcLabel(e.type)}{e.storey && ` · ${e.storey}`}{e.material && ` · ${e.material}`}</div></td>
+                  <td><button type="button" className="link-btn" onClick={(ev) => { ev.stopPropagation(); void viewer?.selectByGuids([e.guid], true); }}>{e.name || e.guid}</button><div className="dim">{ifcLabel(e.type)}{e.storey && ` · ${e.storey}`}{e.material && ` · ${e.material}`}</div></td>
                   <td className="mono">{fmtValue(e.volume_m3)}</td>
                   <td className="mono">{e.length_m.toFixed(1)}×{e.width_m.toFixed(1)}×{e.height_m.toFixed(1)}</td>
                 </tr>

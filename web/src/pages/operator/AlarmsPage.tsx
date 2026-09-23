@@ -89,7 +89,7 @@ function Body() {
       {ackAll && (
         <Dialog title="Hammasini kvitlash" onClose={() => setAckAll(false)}>
           <p><b>{unackedFiltered.length}</b> ta alarm kvitlanadi — faqat hozirgi filtrdagi kvitlanmagan hodisalar{filter.priorities.size ? ` (${[...filter.priorities].join(", ")})` : ""}{filter.area ? `, uchastka ${filter.area}` : ""}.</p>
-          <label className="field"><span>Izoh (ixtiyoriy)</span><input className="input" value={comment} onChange={(e) => setComment(e.target.value)} autoFocus /></label>
+          <label className="field"><span>Izoh (ixtiyoriy)</span><input className="input" value={comment} onChange={(e) => setComment(e.target.value)} data-autofocus /></label>
           <div className="actions">
             <button className="btn" onClick={() => setAckAll(false)}>Bekor</button>
             <button className="btn primary" data-testid="ack-all-ok" disabled={busy} onClick={async () => { setBusy(true); try { await api.ackAlarmsBatch(pid, unackedFiltered.map((r) => r.id), comment); setAckAll(false); setComment(""); onChanged(); } catch (e) { setErr(e instanceof Error ? e.message : "Xato"); } finally { setBusy(false); } }}>Kvitlash</button>

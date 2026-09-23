@@ -90,7 +90,7 @@ function Body() {
       </div>
       {saveDlg && (
         <Dialog title="Qalam guruhini saqlash" onClose={() => setSaveDlg(false)}>
-          <label className="field"><span>Nom</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
+          <label className="field"><span>Nom</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} data-autofocus /></label>
           <p className="small dim">{pens.map((id) => sensors.find((s) => s.id === id)?.name).join(", ")}</p>
           <div className="actions"><button className="btn" onClick={() => setSaveDlg(false)}>Bekor</button><button className="btn primary" disabled={name.trim().length < 2} onClick={saveGroup}>Saqlash</button></div>
         </Dialog>

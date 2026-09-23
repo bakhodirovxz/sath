@@ -245,6 +245,10 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 .ws-tools .btn.icon.active { background: var(--accent); border-color: var(--accent); }
 .ws-canvas { grid-area: canvas; position: relative; min-width: 0; min-height: 0; background: linear-gradient(var(--canvas), #2b2b2b); }
 .ws-canvas canvas { display: block; outline: none; }
+.ws-canvas:focus { outline: none; }
+.ws-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ws-canvas-host { width: 100%; height: 100%; }
+.dock-toggle { width: 100%; border: 0; border-bottom: 1px solid var(--line); color: var(--text); font: inherit; font-weight: 600; text-align: left; }
 .ws-canvas .overlay {
   position: absolute; inset: 0; display: grid; place-items: center;
   background: rgba(48, 48, 48, 0.75); color: var(--text-muted); pointer-events: none;
@@ -342,15 +346,38 @@ h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--text-mu
 .list-item.selected { background: var(--sel); }
 .list-item .title { display: flex; gap: 8px; align-items: baseline; }
 .list-item .title b { font-weight: 600; }
-.list-item .meta { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.list-item .meta { display: block; color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+/* UX-10: bosiladigan qatorlar — haqiqiy tugmalar (klaviatura, ekran o'quvchi) */
+button.list-item, .list-item-head, .row-btn, .diff-row, .node-main {
+  display: block; width: 100%; margin: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+button.list-item { border-bottom: 1px solid var(--line); }
+button.list-item:disabled, .row-btn:disabled { cursor: default; }
+.list-item-head { padding: 0; }
+.list-item-body { margin-top: 6px; }
+.li-line { display: block; }
+.row-btn { padding: 1px 2px; border-radius: 3px; }
+.row-btn:hover:not(:disabled), .diff-row:hover { background: var(--chrome-2); }
+.link-btn { display: inline; padding: 0; margin: 0; background: none; border: 0; color: var(--link); font: inherit; cursor: pointer; text-align: left; }
+.link-btn:hover { text-decoration: underline; }
+.row-toggle { padding: 0 4px; margin: 0; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; line-height: 1; }
+.row-link { color: var(--text); }
+.node-main { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; padding: 0; }
+.draft-list .node.deleted { opacity: 0.7; }
+.draft-list .node.deleted .name { text-decoration: line-through; }
+.card { position: relative; }
+.card-link { color: var(--text); }
+.card-link::after { content: ""; position: absolute; inset: 0; }
+.card-link:focus-visible { outline: none; }
+.card:focus-within { border-color: var(--accent); }
+.card-actions { position: relative; z-index: 1; }
 .section-box { border: 1px solid var(--line); padding: 10px; margin-bottom: 10px; background: var(--chrome); }
 .comment { border-left: 2px solid var(--line-strong); padding: 4px 8px; margin: 6px 0; font-size: 12px; }
 .comment .who { color: var(--text-muted); }
 .diff-legend { display: flex; gap: 12px; font-size: 12px; margin: 6px 0; }
 .diff-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
 .diff-list { max-height: 200px; overflow: auto; font-size: 12px; }
-.diff-list div { padding: 2px 4px; cursor: pointer; display: flex; gap: 6px; }
-.diff-list div:hover { background: var(--chrome-2); }
+.diff-list .diff-row, .diff-list > div { padding: 2px 4px; display: flex; gap: 6px; }
 .diff-list .g { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
 .progress { height: 3px; background: var(--line); }
 .progress > i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
@@ -457,13 +484,14 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .card-stats { color: var(--text-muted); font-size: 12px; }
 .card-actions { margin-top: 4px; }
 
-/* --- Yo'riqnoma --- */
-.help-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 80; }
-.help-card { background: var(--panel); border: 1px solid var(--line-strong); padding: 18px 22px; max-width: 760px; width: 92%; }
-.help-card h2 { margin: 0 0 12px; color: var(--accent-2); }
-.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
-.help-grid p { margin: 4px 0 0; color: var(--text-muted); font-size: 12.5px; line-height: 1.5; }
-@media (max-width: 700px) { .help-grid { grid-template-columns: 1fr; } }
+/* --- Yo'riqnoma: yopiladigan yon panel (viewportni to'smaydi, UX-07) --- */
+.help-panel { position: absolute; top: 8px; right: 8px; bottom: 8px; width: min(380px, calc(100% - 16px)); overflow: auto; z-index: 7; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); padding: 12px 16px; }
+.help-panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.help-panel-head h2 { flex: 1; margin: 0; font-size: 15px; color: var(--text); }
+.help-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.help-grid h3 { margin: 0; color: var(--text); font-size: 13px; }
+.help-grid p { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+kbd { font-family: var(--mono); font-size: 0.92em; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--field); }
 
 /* --- Ikonkalar (inline SVG) --- */
 .ico { display: inline-block; vertical-align: -0.2em; flex-shrink: 0; }
@@ -505,7 +533,7 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .add-menu .menu-item { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 5px 8px; cursor: pointer; font-size: 12.5px; }
 .add-menu .menu-item:hover { background: var(--chrome-2); }
 .draft-list { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 4px; }
-.draft-list .node { display: flex; align-items: center; gap: 4px; padding: 2px 6px; cursor: pointer; font-size: 12.5px; }
+.draft-list .node { display: flex; align-items: center; gap: 4px; padding: 2px 6px 2px 10px; font-size: 12.5px; }
 .draft-list .node:hover { background: var(--chrome); }
 .draft-list .node.selected { background: #2f3b4a; }
 .draft-list .node .cat { font-size: 11px; margin-left: 4px; }
@@ -549,6 +577,9 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 .bpanel { background: #3a3a3a; border-radius: var(--radius); margin-bottom: 6px; overflow: hidden; }
 .bpanel-head { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; background: #424242; }
 .bpanel-head:hover { background: #4a4a4a; }
+.bpanel-toggle { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; height: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.bpanel-count { font-weight: 400; }
+.bpanel-ops { gap: 4px; }
 .bpanel-body { padding: 6px 8px 8px; }
 .brow { display: flex; align-items: center; gap: 6px; min-height: 22px; margin-bottom: 2px; }
 .brow .blabel { flex: 0 0 40%; text-align: right; color: var(--text-muted); font-size: 12px; padding-right: 4px; }
@@ -597,7 +628,8 @@ tr.alarm-active { background: var(--alarm-row); color: var(--text); }
 
 /* --- Blender UI to'plami: UIList, operatorlar, badge, section → panel --- */
 .blist { overflow-y: auto; background: var(--field); border: 1px solid var(--widget-line); border-radius: var(--radius); outline: none; }
-.blist:focus-visible { border-color: var(--accent); }
+.blist:focus-within { border-color: var(--accent); }
+.blist-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .blist-row { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 .blist-row:nth-child(even) { background: rgba(255,255,255,0.025); }
 .blist-row:hover { background: rgba(255,255,255,0.06); }

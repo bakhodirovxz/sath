@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Icon from "./Icon";
 import { CommandHistory, parseCommand, suggest, type ParsedCommand } from "../viewer/commands";
 
 interface Props {
   onCommand: (cmd: ParsedCommand) => void;
   log: string;
+}
+
+const INPUT_ID = "ws-cmd-input";
+const LIST_ID = "ws-cmd-suggest";
+
+/** Buyruqlar qatoriga fokus — faqat aniq tezkor tugma bilan (`:` 3D ko'rinishda yoki Ctrl+K), UX-10:
+ * avvalgi "istalgan harf bosilsa fokusni tortib olish" panel/forma va ekran o'quvchi bilan to'qnashardi. */
+export function focusCommandLine(): void {
+  document.getElementById(INPUT_ID)?.focus();
 }
 
 /** AutoCAD uslubidagi buyruqlar qatori: Enter — bajarish, bo'sh Enter — oxirgisini takrorlash, ↑/↓ — tarix, Tab — to'ldirish. */
@@ -14,22 +23,6 @@ export default function CommandLine({ onCommand, log }: Props) {
   const history = useRef(new CommandHistory());
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestions = value.includes(" ") ? [] : suggest(value);
-
-  // Canvas ustida yozishni boshlasa — fokus buyruqlar qatoriga (AutoCAD odati)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (e.defaultPrevented) return; // viewport tezkor tugmasi (Blender: G/R/S/Z/H…) ishlatilgan — buyruq qatoriga o'tmaymiz
-      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        inputRef.current?.focus();
-      } else if (e.key === "Escape") {
-        onCommand({ name: "ESC", args: [], raw: "ESC" });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCommand]);
 
   function run(text: string) {
     const parsed = parseCommand(text) ?? (history.current.last ? parseCommand(history.current.last) : null);
@@ -69,9 +62,9 @@ export default function CommandLine({ onCommand, log }: Props) {
   return (
     <div className="ws-cmd">
       {suggestions.length > 0 && (
-        <div className="suggest">
+        <div className="suggest" role="listbox" id={LIST_ID} aria-label="Buyruq takliflari">
           {suggestions.map((s, i) => (
-            <div key={s.name} className={i === sel ? "active" : ""} onMouseDown={(e) => { e.preventDefault(); run(s.name); }}>
+            <div key={s.name} id={`${LIST_ID}-${i}`} role="option" aria-selected={i === sel} tabIndex={-1} className={i === sel ? "active" : ""} onMouseDown={(e) => { e.preventDefault(); run(s.name); }}>
               <b>{s.name}</b>
               <span>{s.usage ?? s.description}</span>
             </div>
@@ -81,10 +74,16 @@ export default function CommandLine({ onCommand, log }: Props) {
       <span className="prompt"><Icon name="chevron-right" size={12} /></span>
       <input
         ref={inputRef}
+        id={INPUT_ID}
+        role="combobox"
+        aria-expanded={suggestions.length > 0}
+        aria-controls={LIST_ID}
+        aria-autocomplete="list"
+        aria-activedescendant={suggestions.length ? `${LIST_ID}-${sel}` : undefined}
         value={value}
         onChange={(e) => { setValue(e.target.value); setSel(0); }}
         onKeyDown={onKeyDown}
-        placeholder="Buyruq kiriting (HELP — ro'yxat)"
+        placeholder="Buyruq ( : yoki Ctrl+K ) — HELP ro'yxat"
         spellCheck={false}
         aria-label="Buyruqlar qatori"
       />

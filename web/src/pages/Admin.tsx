@@ -86,7 +86,7 @@ export default function Admin() {
       {creating && (
         <Dialog title="Yangi foydalanuvchi" onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Login (lotin harflar, raqam, . _ -)</span><input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} autoFocus required pattern="[a-zA-Z0-9_.-]{3,64}" /></label>
+            <label className="field"><span>Login (lotin harflar, raqam, . _ -)</span><input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} data-autofocus required pattern="[a-zA-Z0-9_.-]{3,64}" /></label>
             <label className="field"><span>Ism familiya</span><input className="input" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></label>
             <label className="field"><span>Email (bildirishnomalar uchun, ixtiyoriy)</span><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
             <label className="field"><span>Parol (kamida 4 belgi)</span><input className="input" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={4} /></label>
@@ -102,7 +102,7 @@ export default function Admin() {
       {resetFor && (
         <Dialog title={`Parol: ${resetFor.username}`} onClose={() => setResetFor(null)}>
           <form onSubmit={resetPassword}>
-            <label className="field"><span>Yangi parol</span><input className="input" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={4} /></label>
+            <label className="field"><span>Yangi parol</span><input className="input" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} data-autofocus required minLength={4} /></label>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setResetFor(null)}>Bekor qilish</button>
               <button type="submit" className="btn primary">Saqlash</button>

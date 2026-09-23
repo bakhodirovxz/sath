@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 
 /** Blender uslubidagi UI to'plami: yopiladigan panel, label/maydon qatori, UIList, sarlavha operatorlari. */
@@ -18,12 +18,14 @@ export function BPanel({ id, title, children, defaultOpen = true, count, right, 
   const toggle = () => { const v = !open; setOpen(v); saveState({ ...loadState(), [id]: v }); };
   return (
     <div className="bpanel">
-      <div className="bpanel-head" onClick={toggle}>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={11} />
-        {icon && <Icon name={icon} size={12} />}
-        <span className="grow">{title}</span>
-        {count != null && <span className="dim" style={{ fontWeight: 400 }}>{count}</span>}
-        {right && <span onClick={(e) => e.stopPropagation()} className="row" style={{ gap: 4 }}>{right}</span>}
+      <div className="bpanel-head">
+        <button type="button" className="bpanel-toggle" onClick={toggle} aria-expanded={open}>
+          <Icon name={open ? "chevron-down" : "chevron-right"} size={11} />
+          {icon && <Icon name={icon} size={12} />}
+          <span className="grow">{title}</span>
+          {count != null && <span className="dim bpanel-count">{count}</span>}
+        </button>
+        {right && <span className="row bpanel-ops">{right}</span>}
       </div>
       {open && <div className="bpanel-body">{children}</div>}
     </div>
@@ -43,26 +45,39 @@ export function BRow({ label, value, mono, children, title }: { label: string; v
   );
 }
 
-/** Blender UIList: qatorlar, faol (ko'k), ikkinchi bosish/Enter — «ochish». Klaviatura: ↑/↓. */
-export function BList<T>({ items, keyOf, render, activeKey, onSelect, onActivate, rows = 5, empty }: {
+/** Blender UIList (WAI-ARIA listbox, «roving tabindex»): Tab bilan faol qatorga kiriladi; ↑/↓/Home/End —
+ * tanlash (fokus ergashadi), Enter yoki ikkinchi bosish — «ochish». */
+export function BList<T>({ items, keyOf, render, activeKey, onSelect, onActivate, rows = 5, empty, label }: {
   items: T[]; keyOf: (t: T) => string | number; render: (t: T, active: boolean) => React.ReactNode;
-  activeKey?: string | number | null; onSelect?: (t: T) => void; onActivate?: (t: T) => void; rows?: number; empty?: string;
+  activeKey?: string | number | null; onSelect?: (t: T) => void; onActivate?: (t: T) => void; rows?: number; empty?: string; label?: string;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const hasActive = items.some((t) => keyOf(t) === activeKey);
+  // Klaviatura bilan tanlanganda fokus yangi faol qatorga o'tadi (faqat fokus ro'yxat ichida bo'lsa)
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !el.contains(document.activeElement)) return;
+    el.querySelector<HTMLElement>("[role=option][aria-selected=true]")?.focus();
+  }, [activeKey]);
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!items.length || !onSelect) return;
+    const i = items.findIndex((t) => keyOf(t) === activeKey);
+    if (e.key === "ArrowDown") { e.preventDefault(); onSelect(items[Math.min(i + 1, items.length - 1)]); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); onSelect(items[Math.max(i - 1, 0)]); }
+    else if (e.key === "Home") { e.preventDefault(); onSelect(items[0]); }
+    else if (e.key === "End") { e.preventDefault(); onSelect(items[items.length - 1]); }
+    else if (e.key === " " && i < 0) { e.preventDefault(); onSelect(items[0]); }
+    else if (e.key === "Enter" && i >= 0 && onActivate) { e.preventDefault(); onActivate(items[i]); }
+  };
   return (
-    <div className="blist" style={{ maxHeight: rows * 22 + 2 }} tabIndex={0}
-      onKeyDown={(e) => {
-        if (!items.length || !onSelect) return;
-        const i = items.findIndex((t) => keyOf(t) === activeKey);
-        if (e.key === "ArrowDown") { e.preventDefault(); onSelect(items[Math.min(i + 1, items.length - 1)]); }
-        else if (e.key === "ArrowUp") { e.preventDefault(); onSelect(items[Math.max(i - 1, 0)]); }
-        else if (e.key === "Enter" && i >= 0 && onActivate) { e.preventDefault(); onActivate(items[i]); }
-      }}>
-      {items.length === 0 && <div className="blist-row dim">{empty ?? "Bo'sh"}</div>}
-      {items.map((t) => {
-        const active = keyOf(t) === activeKey;
+    <div ref={listRef} className="blist" style={{ maxHeight: rows * 22 + 2 }} role="listbox" aria-label={label}>
+      {items.length === 0 && <div className="blist-row dim" role="presentation">{empty ?? "Bo'sh"}</div>}
+      {items.map((t, idx) => {
+        const isActive = keyOf(t) === activeKey;
         return (
-          <div key={keyOf(t)} className={`blist-row${active ? " active" : ""}`} onClick={() => onSelect?.(t)} onDoubleClick={() => onActivate?.(t)}>
-            {render(t, active)}
+          <div key={keyOf(t)} role="option" aria-selected={isActive} tabIndex={isActive || (!hasActive && idx === 0) ? 0 : -1}
+            className={`blist-row${isActive ? " active" : ""}`} onClick={() => onSelect?.(t)} onDoubleClick={() => onActivate?.(t)} onKeyDown={onKey}>
+            {render(t, isActive)}
           </div>
         );
       })}

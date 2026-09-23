@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "../../ui/Icon";
 import type { Quaternion } from "three";
 import type { NavMode, Shading, ViewName, Viewer } from "../../viewer/Viewer";
+import { onActivateKey } from "../../ui/a11y";
 
 /* Blender/3ds Max uslubidagi viewport atrofi: menyu satri, viewport sarlavhasi, navigatsiya gizmosi. */
 
@@ -133,7 +134,7 @@ export function NavGizmo({ viewer, ready }: { viewer: Viewer | null; ready: bool
       <circle cx={C} cy={C} r={42} className="gizmo-bg" />
       {pts.filter((p) => p.pos).map((p) => <line key={p.name} x1={C} y1={C} x2={p.x} y2={p.y} stroke={p.color} strokeWidth="2" />)}
       {pts.map((p) => (
-        <g key={p.name + (p.pos ? "+" : "-")} className="gizmo-axis" onClick={() => viewer?.setView(p.pos ? p.view : p.neg)}>
+        <g key={p.name + (p.pos ? "+" : "-")} className="gizmo-axis" role="button" tabIndex={0} aria-label={`Ko'rinish: ${p.pos ? p.view : p.neg}`} onClick={() => viewer?.setView(p.pos ? p.view : p.neg)} onKeyDown={onActivateKey(() => viewer?.setView(p.pos ? p.view : p.neg))}>
           <circle cx={p.x} cy={p.y} r={p.pos ? 9 : 7} fill={p.pos ? p.color : "var(--panel)"} stroke={p.color} strokeWidth="1.5" opacity={p.depth < -0.2 ? 0.55 : 1} />
           {p.pos && <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="gizmo-lbl">{p.name}</text>}
         </g>

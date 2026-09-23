@@ -161,7 +161,7 @@ export default function ReviewPanel({ modelId, role, versions, current, crs, onC
       {creating && current && (
         <Dialog title={`v${current.number} ni tasdiqqa yuborish`} onClose={() => setCreating(false)}>
           <form onSubmit={create}>
-            <label className="field"><span>Sarlavha</span><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus required /></label>
+            <label className="field"><span>Sarlavha</span><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} data-autofocus required /></label>
             <label className="field"><span>Tavsif (nima o'zgardi, nimani tekshirish kerak)</span><textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setCreating(false)}>Bekor qilish</button>

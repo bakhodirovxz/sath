@@ -75,11 +75,11 @@ export default function FederationPage() {
                 <p className="dim small">Modellar orasida: {rep.element_count} element, {rep.pairs_checked} juftlik{rep.exact ? "" : " (ba'zi juftliklar aniq tekshirilmadi)"} <button className="btn sm" onClick={() => setKind("")}>hammasi</button></p>
                 <div className="list">
                   {rows.map((c, i) => (
-                    <div key={i} className={`list-item ${picked === i ? "selected" : ""}`} onClick={() => void show(c, i)}>
-                      <div className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></div>
-                      <div><Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)} · {c.a.model}</span></div>
-                      <div><Icon name="square" size={11} style={{ color: "#e0a93a" }} /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)} · {c.b.model}</span></div>
-                    </div>
+                    <button type="button" key={i} className={`list-item ${picked === i ? "selected" : ""}`} aria-pressed={picked === i} onClick={() => void show(c, i)}>
+                      <span className="title"><span className={`badge ${KIND_CLASS[c.kind]}`}>{KIND_LABEL[c.kind]}</span><span className="grow" /><span className="dim small">{c.kind === "touch" ? "" : `${fmtValue(c.overlap_volume_m3)} m³`}</span></span>
+                      <span className="li-line"><Icon name="square" size={11} style={{ color: "#d95c5c" }} /> {c.a.name || c.a.guid} <span className="dim">{ifcLabel(c.a.type)} · {c.a.model}</span></span>
+                      <span className="li-line"><Icon name="square" size={11} style={{ color: "#e0a93a" }} /> {c.b.name || c.b.guid} <span className="dim">{ifcLabel(c.b.type)} · {c.b.model}</span></span>
+                    </button>
                   ))}
                   {rows.length === 0 && <p className="muted">Bu turda yo'q</p>}
                 </div>

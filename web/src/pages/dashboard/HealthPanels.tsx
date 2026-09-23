@@ -256,7 +256,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
       )}
       {adding && (
         <Dialog title="Yangi ish buyrug'i" onClose={() => setAdding(false)}>
-          <label className="field"><span>Sarlavha</span><input className="input" value={form.title} autoFocus onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+          <label className="field"><span>Sarlavha</span><input className="input" value={form.title} data-autofocus onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
           <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
           <div className="row">
             <label className="field grow"><span>Ustuvorlik</span><select className="select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{["low", "medium", "high", "critical"].map((p) => <option key={p}>{p}</option>)}</select></label>
@@ -270,7 +270,7 @@ export function WorkOrdersPanel({ projectId, members, canOperate, canEdit, canAp
       <PlansPanel projectId={projectId} assets={assets} canEdit={canEdit} />
       {closing && (
         <Dialog title={`Yopish: ${closing.title}`} onClose={() => setClosing(null)}>
-          <label className="field"><span>Natija / bajarilgan ish</span><textarea className="textarea" value={closeForm.resolution} autoFocus onChange={(e) => setCloseForm({ ...closeForm, resolution: e.target.value })} /></label>
+          <label className="field"><span>Natija / bajarilgan ish</span><textarea className="textarea" value={closeForm.resolution} data-autofocus onChange={(e) => setCloseForm({ ...closeForm, resolution: e.target.value })} /></label>
           <div className="row">
             <label className="field grow"><span>To'xtab turish, soat</span><input className="input" type="number" step="any" value={closeForm.downtime_hours} onChange={(e) => setCloseForm({ ...closeForm, downtime_hours: e.target.value })} /></label>
             <label className="field grow"><span>Qo'shimcha xarajat (pudrat, transport)</span><input className="input" type="number" step="any" value={closeForm.extra_cost} onChange={(e) => setCloseForm({ ...closeForm, extra_cost: e.target.value })} /></label>
@@ -381,7 +381,7 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
       )}
       {adding && (
         <Dialog title="Yangi ehtiyot qism" onClose={() => setAdding(false)}>
-          <div className="row"><label className="field grow"><span>Nomi</span><input className="input" value={form.name} autoFocus onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label className="field"><span>Kod</span><input className="input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></label></div>
+          <div className="row"><label className="field grow"><span>Nomi</span><input className="input" value={form.name} data-autofocus onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label className="field"><span>Kod</span><input className="input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></label></div>
           <div className="row">
             <label className="field grow"><span>Boshlang'ich qoldiq</span><input className="input" type="number" step="any" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} /></label>
             <label className="field grow"><span>Birlik</span><input className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></label>
@@ -395,7 +395,7 @@ export function PartsPanel({ projectId, canOperate, canEdit }: { projectId: numb
       {moving && (
         <Dialog title={`${moving.dir > 0 ? "Kirim" : "Sarf"}: ${moving.part.name} (qoldiq ${moving.part.qty} ${moving.part.unit})`} onClose={() => setMoving(null)}>
           <div className="row">
-            <label className="field grow"><span>Miqdor, {moving.part.unit}</span><input className="input" type="number" step="any" min="0" value={mv.qty} autoFocus onChange={(e) => setMv({ ...mv, qty: e.target.value })} /></label>
+            <label className="field grow"><span>Miqdor, {moving.part.unit}</span><input className="input" type="number" step="any" min="0" value={mv.qty} data-autofocus onChange={(e) => setMv({ ...mv, qty: e.target.value })} /></label>
             {moving.dir < 0 && <label className="field grow"><span>Ish buyrug'i (xarajat unga yoziladi)</span><select className="select" value={mv.work_order_id} onChange={(e) => setMv({ ...mv, work_order_id: e.target.value })}><option value="">—</option>{orders.map((o) => <option key={o.id} value={o.id}>#{o.id} {o.title}</option>)}</select></label>}
           </div>
           <label className="field"><span>Izoh</span><input className="input" value={mv.note} onChange={(e) => setMv({ ...mv, note: e.target.value })} /></label>

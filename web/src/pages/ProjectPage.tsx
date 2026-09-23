@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type DocKind, type FedMember, type Federation, type Member, type Model, type Project, type ProjectDocument, type Role, type User } from "../api/client";
 import { useAuth } from "../store/auth";
 import TopBar from "../ui/TopBar";
@@ -91,7 +91,7 @@ export default function ProjectPage() {
             <tbody>
               {models.map((m) => (
                 <tr key={m.id} className="clickable" onClick={() => nav(`/models/${m.id}`)}>
-                  <td><b>{m.name}</b>{m.description && <div className="muted small">{m.description}</div>}</td>
+                  <td><Link to={`/models/${m.id}`} className="row-link" onClick={(e) => e.stopPropagation()}><b>{m.name}</b></Link>{m.description && <div className="muted small">{m.description}</div>}</td>
                   <td>{m.version_count}</td>
                   <td>{m.published_version_id ? <span className="badge published">bor</span> : <span className="dim">yo'q</span>}</td>
                   <td>{m.safety ? <span className="badge" title={`${m.safety.verdict}${m.safety.fails.length ? ": " + m.safety.fails.join("; ") : ""} · ${new Date(m.safety.at).toLocaleString("uz")}`} style={{ background: m.safety.counts.fail ? "var(--danger)" : m.safety.counts.warn ? "var(--warn, #b98626)" : "var(--ok)", color: "#fff" }}>{m.safety.score ?? "—"}/100</span> : <span className="dim small">tekshirilmagan</span>}</td>
@@ -150,7 +150,7 @@ export default function ProjectPage() {
       {creating && (
         <Dialog title="Yangi model" onClose={() => setCreating(false)}>
           <form onSubmit={createModel}>
-            <label className="field"><span>Nomi (masalan: To'g'on, Mashina zali)</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus required /></label>
+            <label className="field"><span>Nomi (masalan: To'g'on, Mashina zali)</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-autofocus required /></label>
             <label className="field"><span>Tavsif</span><textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
             <div className="actions">
               <button type="button" className="btn" onClick={() => setCreating(false)}>Bekor qilish</button>

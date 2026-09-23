@@ -198,10 +198,10 @@ export default function CustomSim({ modelId, projectId, current, canEdit, jobs, 
         <details className="section-box" style={{ marginTop: 8 }}>
           <summary>Oldingi hisoblar ({myJobs.length})</summary>
           {myJobs.map((j) => (
-            <div key={j.id} className="list-item" onClick={async () => { if (j.status !== "done") return; const full = await api.simJob(j.id); if (full.params?.template) load(full.params.template as CustomTemplate, (full.params.template_id as number) ?? null); setInputs((full.params?.inputs as GenericParams) ?? {}); setResult(await api.genericResult(j.id)); }}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.error && <span className="error"> · {j.error}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={async () => { if (j.status !== "done") return; const full = await api.simJob(j.id); if (full.params?.template) load(full.params.template as CustomTemplate, (full.params.template_id as number) ?? null); setInputs((full.params?.inputs as GenericParams) ?? {}); setResult(await api.genericResult(j.id)); }}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.error && <span className="error"> · {j.error}</span>}</span>
+            </button>
           ))}
         </details>
       )}

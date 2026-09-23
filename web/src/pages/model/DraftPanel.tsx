@@ -4,6 +4,7 @@ import { api, type Underlay } from "../../api/client";
 import type { Draft, DraftManager, GizmoMode } from "../../viewer/drafts";
 import { DRAFT_KINDS, DRAFT_KIND_BY_ID, type DraftKind } from "../../viewer/draftKinds";
 import Icon from "../../ui/Icon";
+import { focusOnMount } from "../../ui/focus";
 
 /* Qoralama obyektlar (Blender "Add" bilan yaratilgan): tanlangan obyekt xususiyatlari (nom, o'lchamlar,
    joylashuv, Pset_GES_*), ro'yxat, IFC ga commit. */
@@ -116,11 +117,12 @@ export function DraftList({ drafts, selected, dm, canEdit, onCommit, onDelete, b
       {drafts.map((d) => {
         const kind = DRAFT_KIND_BY_ID[d.kind];
         return (
-          <div key={d.uid} className={`node${selected?.uid === d.uid || dm.multiSelected.includes(d.uid) ? " selected" : ""}`} style={{ paddingLeft: 10, opacity: d.kind === "deleted" ? 0.7 : 1 }} onClick={(e) => (e.shiftKey && selected && selected.uid !== d.uid ? dm.toggleMulti(d.uid) : dm.select(d.uid))} onDoubleClick={() => dm.fit(d.uid)} title="Shift+bosish — guruhga (birga surish/burish)">
-            <Icon name={kind.icon} size={12} /> <span className="name" style={d.kind === "deleted" ? { textDecoration: "line-through" } : undefined}>{d.name}</span><span className="cat dim">{d.kind === "deleted" ? "o'chiriladi" : d.kind === "mesh" ? "tahrir" : kind.title.split(" (")[0]}</span>
-            <span className="grow" />
-            {d.kind !== "deleted" && <button className="eye" title={d.visible ? "Yashirish" : "Ko'rsatish"} onClick={(e) => { e.stopPropagation(); dm.update(d.uid, { visible: !d.visible }); }}><Icon name={d.visible ? "eye" : "eye-off"} size={13} /></button>}
-            {canEdit && <button className="eye" title={d.sourceGuid ? "Bekor qilish (asl element qaytadi)" : "O'chirish"} onClick={(e) => { e.stopPropagation(); onDelete(d.uid); }}><Icon name={d.sourceGuid ? "rotate" : "x"} size={12} /></button>}
+          <div key={d.uid} className={`node${selected?.uid === d.uid || dm.multiSelected.includes(d.uid) ? " selected" : ""}${d.kind === "deleted" ? " deleted" : ""}`}>
+            <button type="button" className="node-main" aria-pressed={selected?.uid === d.uid || dm.multiSelected.includes(d.uid)} onClick={(e) => (e.shiftKey && selected && selected.uid !== d.uid ? dm.toggleMulti(d.uid) : dm.select(d.uid))} onDoubleClick={() => dm.fit(d.uid)} title="Shift+bosish — guruhga (birga surish/burish); ikki marta — moslash">
+              <Icon name={kind.icon} size={12} /> <span className="name">{d.name}</span><span className="cat dim">{d.kind === "deleted" ? "o'chiriladi" : d.kind === "mesh" ? "tahrir" : kind.title.split(" (")[0]}</span>
+            </button>
+            {d.kind !== "deleted" && <button type="button" className="eye" title={d.visible ? "Yashirish" : "Ko'rsatish"} aria-label={`${d.visible ? "Yashirish" : "Ko'rsatish"}: ${d.name}`} onClick={() => dm.update(d.uid, { visible: !d.visible })}><Icon name={d.visible ? "eye" : "eye-off"} size={13} /></button>}
+            {canEdit && <button type="button" className="eye" title={d.sourceGuid ? "Bekor qilish (asl element qaytadi)" : "O'chirish"} aria-label={`${d.sourceGuid ? "Bekor qilish" : "O'chirish"}: ${d.name}`} onClick={() => onDelete(d.uid)}><Icon name={d.sourceGuid ? "rotate" : "x"} size={12} /></button>}
           </div>
         );
       })}
@@ -163,11 +165,12 @@ export function UnderlayPanel({ modelId, list, canEdit, onChange, centerIfc }: {
       {err && <div className="error small" style={{ padding: "0 6px" }}>{err}</div>}
       {list.map((u) => (
         <div key={u.id}>
-          <div className={`node${open === u.id ? " selected" : ""}`} style={{ paddingLeft: 10 }} onClick={() => setOpen(open === u.id ? null : u.id)}>
-            <Icon name="image" size={12} /> <span className="name">{u.name}</span><span className="cat dim">{u.width_m} m{u.vertical ? " · vertikal" : ""}</span>
-            <span className="grow" />
-            <button className="eye" title={u.visible ? "Yashirish" : "Ko'rsatish"} onClick={(e) => { e.stopPropagation(); void patch(u, { visible: !u.visible }); }}><Icon name={u.visible ? "eye" : "eye-off"} size={13} /></button>
-            {canEdit && <button className="eye" title="O'chirish" onClick={(e) => { e.stopPropagation(); void remove(u); }}><Icon name="x" size={12} /></button>}
+          <div className={`node${open === u.id ? " selected" : ""}`}>
+            <button type="button" className="node-main" aria-expanded={open === u.id} onClick={() => setOpen(open === u.id ? null : u.id)}>
+              <Icon name="image" size={12} /> <span className="name">{u.name}</span><span className="cat dim">{u.width_m} m{u.vertical ? " · vertikal" : ""}</span>
+            </button>
+            <button type="button" className="eye" title={u.visible ? "Yashirish" : "Ko'rsatish"} aria-label={`${u.visible ? "Yashirish" : "Ko'rsatish"}: ${u.name}`} onClick={() => void patch(u, { visible: !u.visible })}><Icon name={u.visible ? "eye" : "eye-off"} size={13} /></button>
+            {canEdit && <button type="button" className="eye" title="O'chirish" aria-label={`O'chirish: ${u.name}`} onClick={() => void remove(u)}><Icon name="x" size={12} /></button>}
           </div>
           {open === u.id && (
             <div className="small" style={{ padding: "4px 10px 6px" }}>
@@ -197,7 +200,7 @@ export function AddMenu({ x, y, onPick, onClose }: { x: number; y: number; onPic
   const filt = (k: DraftKind) => !q || k.title.toLowerCase().includes(q.toLowerCase());
   return (
     <div className="add-menu" style={{ left: Math.min(x, window.innerWidth - 280), top: Math.min(y, window.innerHeight - 420) }} onMouseLeave={onClose}>
-      <input className="input" autoFocus placeholder="Qidirish…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") onClose(); if (e.key === "Enter") { const first = DRAFT_KINDS.find(filt); if (first) onPick(first); } }} />
+      <input className="input" ref={focusOnMount} placeholder="Qidirish…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") onClose(); if (e.key === "Enter") { const first = DRAFT_KINDS.find(filt); if (first) onPick(first); } }} />
       {groups.map((g) => (
         <div key={g}>
           <div className="add-group">{g}</div>

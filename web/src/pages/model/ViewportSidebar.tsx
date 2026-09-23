@@ -33,7 +33,7 @@ function Panel({ title, children, open = true }: { title: string; children: Reac
   const [o, setO] = useState(open);
   return (
     <div className="bpanel">
-      <div className="bpanel-head" onClick={() => setO(!o)}><Icon name={o ? "chevron-down" : "chevron-right"} size={11} /> {title}</div>
+      <div className="bpanel-head"><button type="button" className="bpanel-toggle" aria-expanded={o} onClick={() => setO(!o)}><Icon name={o ? "chevron-down" : "chevron-right"} size={11} /> {title}</button></div>
       {o && <div className="bpanel-body">{children}</div>}
     </div>
   );
@@ -59,7 +59,7 @@ export default function ViewportSidebar(p: SidebarProps) {
   }, [pv, localId]);
 
   return (
-    <div className="vp-sidebar" onKeyDown={(e) => e.stopPropagation()}>
+    <div className="vp-sidebar">
       <div className="vp-sidebar-body">
         {tab === "item" && (
           <>

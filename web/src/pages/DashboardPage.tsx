@@ -216,7 +216,7 @@ export default function DashboardPage() {
         {!online && <div className="verdict warn" data-testid="offline-banner">OFFLAYN — tarmoq yo'q. Ko'rsatilayotgan qiymatlar oxirgi ma'lum holat, yangilanmaydi.</div>}
         {error && <p className="error">{error}</p>}
         {flash && <div className="dash-flash" role="alert"><Icon name="alert-triangle" /> ALARM — {flash}</div>}
-        {historyAt && <div className="dash-history"><Icon name="history" size={14} /> Tarix rejimi: {fmtDate(historyAt)} holati ko'rsatilmoqda. <a onClick={() => setHistoryAt(null)}>Jonli rejimga qaytish</a></div>}
+        {historyAt && <div className="dash-history"><Icon name="history" size={14} /> Tarix rejimi: {fmtDate(historyAt)} holati ko'rsatilmoqda. <button type="button" className="link-btn" onClick={() => setHistoryAt(null)}>Jonli rejimga qaytish</button></div>}
         <div className="ws-tabs dash-tabs">
           {SECTIONS.map((sct) => <button key={sct.id} className={section === sct.id ? "active" : ""} onClick={() => setSection(sct.id)}>{sct.title}{sct.id === "scheme" && unacked > 0 && <span className="count">{unacked}</span>}</button>)}
         </div>

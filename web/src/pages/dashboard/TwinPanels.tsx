@@ -232,7 +232,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
           <tbody>
             {items.map((a) => (
               <tr key={a.id}>
-                <td>{a.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</a> : a.name}{a.kks_code && <span className="mono dim small"> {a.kks_code}</span>}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
+                <td>{a.element_guid && onSelectGuid ? <button type="button" className="link-btn" onClick={() => onSelectGuid(a.element_guid!)}>{a.name}</button> : a.name}{a.kks_code && <span className="mono dim small"> {a.kks_code}</span>}{a.config?.manufacturer && <div className="dim small">{a.config.manufacturer}{a.config.model ? ` ${a.config.model}` : ""}{a.config.serial ? ` · SN ${a.config.serial}` : ""}{a.config.classification ? ` · ${a.config.classification}` : ""}</div>}</td>
                 <td>{a.running ? <span className="badge published">ishlayapti</span> : <span className="badge archived">to'xtagan</span>}</td>
                 <td className="mono">{a.run_hours_total.toFixed(0)} s</td>
                 <td className="mono">{a.starts_total}</td>
@@ -251,7 +251,7 @@ export function AssetsPanel({ projectId, sensors, canEdit, canMaint, onSelectGui
       {histFor != null && <AssetHistoryDialog assetId={histFor} onClose={() => setHistFor(null)} />}
       {adding && (
         <Dialog title="Yangi aktiv" onClose={() => setAdding(false)}>
-          <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus /></label>
+          <label className="field"><span>Nomi</span><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-autofocus /></label>
           <label className="field"><span>Quvvat sensori (ish soatlari shundan)</span>
             <select className="select" value={form.power_sensor_id} onChange={(e) => setForm({ ...form, power_sensor_id: e.target.value })}><option value="">—</option>{powerSensors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
           </label>
@@ -362,7 +362,7 @@ function TreeRows({ n, depth, labels, canEdit, onEdit, onSelectGuid }: { n: Asse
     <>
       <tr>
         <td style={{ paddingLeft: 8 + depth * 18 }}>
-          {n.kks_code && <span className="mono">{n.kks_code}</span>} {n.element_guid && onSelectGuid ? <a onClick={() => onSelectGuid(n.element_guid!)}>{n.name}</a> : n.name}
+          {n.kks_code && <span className="mono">{n.kks_code}</span>} {n.element_guid && onSelectGuid ? <button type="button" className="link-btn" onClick={() => onSelectGuid(n.element_guid!)}>{n.name}</button> : n.name}
           {n.kks?.system_name && <span className="dim small"> · {n.kks.system_name}</span>}
         </td>
         <td className="dim small">{n.taxonomy_level ? labels[n.taxonomy_level] ?? n.taxonomy_level : "—"}</td>

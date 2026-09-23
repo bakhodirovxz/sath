@@ -78,6 +78,10 @@ test.describe.serial("Sath web oqimi", () => {
     await page.locator(".vp-group button[title^='X-ray']").click();
     await expect(page.locator(".vp-info")).toContainText("X-ray");
     await page.mouse.move(600, 450);
+    // UX-10: bitta harfli tezkor tugmalar faqat 3D ko'rinish fokusda — avval viewport ga fokus
+    await page.locator(".ws-canvas").focus();
+    await page.keyboard.press("h"); // panel/tugma fokusda emas — ko'rinish tugmasi (yashirish) ishlaydi, buyruqlar qatoriga yozilmaydi
+    await expect(page.locator("#ws-cmd-input")).toHaveValue("");
     await page.keyboard.press("z");
     await expect(page.locator(".pie-item")).toHaveCount(4);
     await page.keyboard.press("3"); // Rendered
@@ -85,6 +89,7 @@ test.describe.serial("Sath web oqimi", () => {
     // N-panel (viewport yon paneli) va F3 qidiruv
     await page.keyboard.press("n");
     await expect(page.locator(".vp-sidebar")).toBeVisible();
+    await page.locator(".ws-canvas").focus(); // N-panel tugmalari fokusni olgan bo'lishi mumkin
     await page.keyboard.press("n");
     await page.keyboard.press("F3");
     await page.locator(".search-input").fill("grid");

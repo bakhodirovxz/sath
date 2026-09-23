@@ -216,7 +216,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
           <div className="dim small">Slayder — tanlangan vaqtdagi o'qishlar 3D ga (yorliqlar, ranglar, suv sathi, darvozalar, agregatlar); jonli oqim vaqtincha ko'rsatilmaydi.</div>
         </div>
       )}
-      {error && <p className="error small">{error} <a onClick={() => setError("")}>yopish</a></p>}
+      {error && <p className="error small">{error} <button type="button" className="link-btn" onClick={() => setError("")}>yopish</button></p>}
       {gwKeys && (
         <div className="section-box small">
           <b>Gateway kalitlari</b> — ikkita alohida kalit: <code>ingest</code> faqat o'lchov yuboradi (<code>X-Ingest-Key</code>), <code>command</code> buyruq kanali (<code>X-Command-Key</code>: claim/ack/readback). Kalitni faqat gateway hostida saqlang (muhit o'zgaruvchilari: <code>GES_GATEWAY_INGEST_KEY</code>, <code>GES_GATEWAY_COMMAND_KEY</code>).
@@ -241,22 +241,24 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
 
       {sensors.length === 0 && <p className="muted">Sensor yo'q. {canEdit ? "«Sensor qo'shish» — SCADA tegi nomi (kalit), turi, alarm chegaralari." : ""}</p>}
       {view.map((s) => (
-        <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`} onClick={() => setSelected(selected === s.id ? null : s.id)}>
-          <div className="title">
+        <div key={s.id} className={`list-item${selected === s.id ? " selected" : ""}`}>
+          <button type="button" className="list-item-head" aria-expanded={selected === s.id} onClick={() => setSelected(selected === s.id ? null : s.id)}>
+          <span className="title">
             <i className="dot" style={{ background: alarmStyle(s.alarm, s.priority).color }} title={alarmStyle(s.alarm, s.priority).label} />{alarmStyle(s.alarm, s.priority).code && <span className="alarm-mark" style={{ color: alarmStyle(s.alarm, s.priority).color }}>{alarmStyle(s.alarm, s.priority).glyph}{alarmStyle(s.alarm, s.priority).code}</span>}
             <b>{s.name}</b>
             <span className="grow" />
             <span className="mono">{s.last_value != null ? `${fmtVal(s.last_value)} ${s.unit}` : "—"}</span>
             <span className={`badge ${s.stale ? "archived" : s.alarm === "ok" ? "published" : "rejected"}`}>{ALARM_LABEL[s.alarm]}</span>
-          </div>
-          <div className="meta">
+          </span>
+          <span className="meta">
             <span className="mono">{s.key}</span> · {KINDS.find((k) => k.id === s.kind)?.title}
             {s.last_ts && <> · {fmtDate(s.last_ts)}</>}
             {s.element_guid ? " · elementga bog'langan" : " · element bog'lanmagan"}
             {s.protocol === "mqtt" && <> · mqtt:{String(s.address.topic ?? "")}</>}
-          </div>
+          </span>
+          </button>
           {selected === s.id && (
-            <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
+            <div className="list-item-body">
               <div className="row wrap" style={{ marginBottom: 6 }}>
                 {[1, 24, 168, 720].map((h) => <button key={h} className={`btn sm${hours === h ? " active" : ""}`} onClick={() => setHours(h)}>{h === 1 ? "1 soat" : h === 24 ? "1 kun" : h === 168 ? "1 hafta" : "1 oy"}</button>)}
                 {s.element_guid && <button className="btn sm" onClick={() => viewer?.selectByGuids([s.element_guid!], true)}>3D da ko'rsatish</button>}

@@ -292,10 +292,10 @@ export default function SimPanel({ modelId, projectId, current, viewer, selectio
         <details open={hydroJobs.length <= 3} className="section-box">
           <summary>Oldingi hisoblar ({hydroJobs.length})</summary>
           {hydroJobs.map((j) => (
-            <div key={j.id} className="list-item" onClick={() => j.status === "done" && openResult(j)}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && <> · {j.summary.energy_mwh} MWh · CF {(j.summary.capacity_factor * 100).toFixed(0)}%</>}{j.error && <span className="error"> · {j.error}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={() => openResult(j)}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span><span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && <> · {j.summary.energy_mwh} MWh · CF {(j.summary.capacity_factor * 100).toFixed(0)}%</>}{j.error && <span className="error"> · {j.error}</span>}</span>
+            </button>
           ))}
         </details>
       )}

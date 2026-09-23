@@ -149,8 +149,8 @@ export default function VersionsPanel({ model, versions, current, canEdit, diff,
             <span><i style={{ background: "#e74c3c" }} />O'chirilgan {diff.summary.deleted}</span>
           </div>
           <div className="diff-list">
-            {diff.added.map((d) => <div key={d.guid} onClick={() => onPickGuid(d.guid)}><span style={{ color: "#2ecc71" }}>+</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></div>)}
-            {diff.changed.map((d) => <div key={d.guid} onClick={() => onPickGuid(d.guid)}><span style={{ color: "#f1c40f" }}>~</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.changes?.join(", ")}</span></div>)}
+            {diff.added.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span style={{ color: "#2ecc71" }}>+</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></button>)}
+            {diff.changed.map((d) => <button type="button" key={d.guid} className="diff-row" onClick={() => onPickGuid(d.guid)}><span style={{ color: "#f1c40f" }}>~</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.changes?.join(", ")}</span></button>)}
             {diff.deleted.map((d) => <div key={d.guid} title="Joriy modelda yo'q"><span style={{ color: "#e74c3c" }}>−</span>{ifcLabel(d.type)} {d.name}<span className="g">{d.guid}</span></div>)}
           </div>
         </BPanel>

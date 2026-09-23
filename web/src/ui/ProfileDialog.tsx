@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type UserSession } from "../api/client";
 import { useAuth } from "../store/auth";
 import Dialog from "./Dialog";
+import { focusOnMount } from "./focus";
 
 /** Profil (L1): parolni o'zgartirish va TOTP MFA (RFC 6238) sozlash/o'chirish. */
 export default function ProfileDialog({ onClose }: { onClose: () => void }) {
@@ -49,7 +50,7 @@ export default function ProfileDialog({ onClose }: { onClose: () => void }) {
           <p className="mono" style={{ wordBreak: "break-all", userSelect: "all" }} data-testid="mfa-secret">{setup.secret}</p>
           <p className="small"><a href={setup.otpauth_url}>otpauth havolasi</a></p>
           <div className="row" style={{ gap: 8 }}>
-            <input className="input" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} autoFocus style={{ width: 140 }} data-testid="mfa-code" />
+            <input className="input" placeholder="6 raqamli kod" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} ref={focusOnMount} style={{ width: 140 }} data-testid="mfa-code" />
             <button className="btn primary" type="submit" disabled={busy || code.length < 6}>Tasdiqlash va yoqish</button>
             <button className="btn" type="button" onClick={() => { setSetup(null); setCode(""); }}>Bekor</button>
           </div>

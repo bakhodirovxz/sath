@@ -551,7 +551,7 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
               <table style={{ marginTop: 4 }}><thead><tr><th>Suv bosgan inshoot</th><th>Chuqurlik</th><th>Kelish</th><th>Xavf</th></tr></thead><tbody>
                 {flood.elements.slice(0, 30).map((e) => (
                   <tr key={e.localId} style={{ cursor: "pointer" }} onClick={() => void viewer?.selectLocalIds([e.localId], true)} title={e.category}>
-                    <td>{e.name || e.category}</td><td className="mono">{e.depth.toFixed(1)} m</td><td className="mono">{e.t_arrive >= 0 ? `${(e.t_arrive / 3600).toFixed(1)} soat` : "—"}</td><td>{hazardLabel(e.hv)}</td>
+                    <td><button type="button" className="link-btn" onClick={(ev) => { ev.stopPropagation(); void viewer?.selectLocalIds([e.localId], true); }}>{e.name || e.category}</button></td><td className="mono">{e.depth.toFixed(1)} m</td><td className="mono">{e.t_arrive >= 0 ? `${(e.t_arrive / 3600).toFixed(1)} soat` : "—"}</td><td>{hazardLabel(e.hv)}</td>
                   </tr>
                 ))}
               </tbody></table>
@@ -654,10 +654,10 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px
         <details open={myJobs.length <= 3} className="section-box">
           <summary>Oldingi hisoblar ({myJobs.length})</summary>
           {myJobs.map((j) => (
-            <div key={j.id} className="list-item" onClick={() => j.status === "done" && openResult(j)}>
-              <div className="title"><b>#{j.id}</b><span className="grow">{j.name}</span>{j.status === "done" && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={13} style={{ color: j.summary.ok === false ? "var(--danger)" : "var(--ok)" }} />}<span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></div>
-              <div className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && j.summary.verdict ? ` · ${String(j.summary.verdict).slice(0, 80)}` : ""}{j.error && <span className="error"> · {j.error}</span>}</div>
-            </div>
+            <button type="button" key={j.id} className="list-item" disabled={j.status !== "done"} onClick={() => openResult(j)}>
+              <span className="title"><b>#{j.id}</b><span className="grow">{j.name}</span>{j.status === "done" && <Icon name={j.summary.ok === false ? "alert-triangle" : "check-circle"} size={13} style={{ color: j.summary.ok === false ? "var(--danger)" : "var(--ok)" }} />}<span className={`badge ${j.status === "done" ? "published" : j.status === "failed" ? "rejected" : "shared"}`}>{j.status === "done" ? "Tayyor" : j.status === "failed" ? "Xato" : "Hisoblanmoqda"}</span></span>
+              <span className="meta">{j.author_username} · {fmtDate(j.created_at)}{j.status === "done" && j.summary.verdict ? ` · ${String(j.summary.verdict).slice(0, 80)}` : ""}{j.error && <span className="error"> · {j.error}</span>}</span>
+            </button>
           ))}
         </details>
       )}
