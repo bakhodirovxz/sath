@@ -32,7 +32,7 @@ function Body() {
   const [comment, setComment] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const canOperate = ["operator", "engineer", "approver"].includes(project?.my_role ?? "");
+  const canOperate = ["operator", "shift_supervisor", "engineer", "approver"].includes(project?.my_role ?? "");
   const canEngineer = ["engineer", "approver"].includes(project?.my_role ?? "");
   const flood = !!dash?.alarm_flood;
   const loadHistory = useCallback(() => api.alarmEvents(pid, false, hours).then(setHistory).catch((e) => setErr(e instanceof Error ? e.message : "Xato")), [pid, hours]);

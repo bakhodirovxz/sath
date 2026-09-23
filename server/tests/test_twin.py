@@ -99,6 +99,8 @@ def test_commands_gateway_flow(client, users, operator, admin):
         writable=True,
         protocol="modbus",
         address={"register": 10},
+        min_setpoint=0,
+        max_setpoint=100,
     )
     ro = _sensor(client, users, "RES.H", "Sath", "level", "m")
     # bir bosqichli eski endpoint yo'q (410); writable emas → 400; viewer → 403

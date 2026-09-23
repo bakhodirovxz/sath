@@ -38,6 +38,9 @@ class Role(str, enum.Enum):
     )
     engineer = "engineer"  # Muhandis: commit, CR ochish
     approver = "approver"  # Tasdiqlovchi: approve/reject
+    # Smena boshlig'i: dispetcher huquqlari + buyruqni ikkinchi imzo bilan tasdiqlash, blokirovkani
+    # chetlab o'tish, qo'lda o'lchov kiritish (SCADA-01). Loyihalash huquqlari yo'q.
+    shift_supervisor = "shift_supervisor"
 
 
 class VersionState(str, enum.Enum):

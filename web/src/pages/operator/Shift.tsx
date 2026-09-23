@@ -30,7 +30,7 @@ function Body() {
   const [dlg, setDlg] = useState<null | "hand" | "receive">(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const canOperate = ["operator", "engineer", "approver"].includes(project?.my_role ?? "");
+  const canOperate = ["operator", "shift_supervisor", "engineer", "approver"].includes(project?.my_role ?? "");
   const load = useCallback(async () => {
     try {
       const [s, h, f] = await Promise.all([api.shiftSnapshot(pid), api.shiftHandovers(pid), api.shiftFeed(pid, 12)]);

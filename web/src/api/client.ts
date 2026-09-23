@@ -1,6 +1,8 @@
 // Server API bilan ishlash. Token localStorage da saqlanadi.
 
-export type Role = "viewer" | "operator" | "engineer" | "approver";
+export type Role = "viewer" | "operator" | "shift_supervisor" | "engineer" | "approver";
+/** SCADA-01: buyruq faqat dispetcher va smena boshlig'ida (loyihalash rollari buyruq bermaydi). */
+export const canCommandRole = (r: Role | null | undefined) => r === "operator" || r === "shift_supervisor";
 export type VersionState = "wip" | "shared" | "published" | "archived";
 export type CRStatus = "open" | "changes_requested" | "approved" | "rejected" | "merged";
 export type IssueStatus = "open" | "in_progress" | "resolved" | "closed";

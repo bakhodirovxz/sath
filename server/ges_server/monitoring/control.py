@@ -27,7 +27,21 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
 from .. import audit, notifications, ratelimit
-from ..auth.deps import DB, CurrentUser, get_project_role, has_role, require_project_role
+from ..auth.deps import (
+    DB,
+    P_SCADA_COMMAND,
+    P_SCADA_COMMAND_APPROVE,
+    P_SCADA_INTERLOCK_OVERRIDE,
+    P_SENSOR_CONFIGURE,
+    CurrentUser,
+    check_project_permission,
+    get_project_role,
+    has_permission,
+    has_role,
+    member_ids_with_permission,
+    require_project_permission,
+    require_project_role,
+)
 from ..config import get_settings
 from ..orm import (
     Command,
@@ -46,6 +60,8 @@ router = APIRouter(prefix="/api", tags=["control"])
 
 ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 OperatorProject = Annotated[Project, Depends(require_project_role(Role.operator))]
+# SCADA-01: buyruq — ruxsat bo'yicha (dispetcher, smena boshlig'i); muhandis/tasdiqlovchi buyruq bermaydi
+CommandProject = Annotated[Project, Depends(require_project_permission(P_SCADA_COMMAND))]
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -370,7 +386,7 @@ def _target_sensor(db, project: Project, sensor_id: int, value: float) -> Sensor
 
 
 @router.post("/projects/{project_id}/commands", status_code=410)
-def create_command_legacy(project: OperatorProject):
+def create_command_legacy(project: CommandProject):
     """Bir bosqichli buyruq olib tashlandi (B2): `POST .../commands/select` → `.../commands/execute`."""
     raise HTTPException(
         status.HTTP_410_GONE,
@@ -393,15 +409,16 @@ def _interlock_results(db, s: Sensor, value: float) -> list[InterlockResult]:
 @router.post("/projects/{project_id}/commands/select", response_model=SelectOut)
 def select_command(
     body: CommandIn,
-    project: OperatorProject,
+    project: CommandProject,
     user: CurrentUser,
     db: DB,
-    override: bool = Query(False, description="Blokirovkani chetlab o'tish (faqat tasdiqlovchi)"),
+    override: bool = Query(False, description="Blokirovkani chetlab o'tish (faqat smena boshlig'i)"),
     override_reason: str = Query("", max_length=300),
 ):
     """1-bosqich: tanlash — sensor/qiymat tekshiriladi, blokirovkalar baholanadi (natija javobda),
     30 s li imzolangan token qaytadi, yozilmaydi. Blokirovka bajarilmasa 409 (sabablar bilan);
-    `override=true` — faqat tasdiqlovchi, sabab majburiy, audit + dispetcherlarga alarm."""
+    `override=true` — faqat `scada.interlock.override` ruxsati (smena boshlig'i), sabab majburiy,
+    audit + dispetcherlarga alarm."""
     ratelimit.check("commands", str(user.id), get_settings().rate_commands_per_min)
     s = _target_sensor(db, project, body.sensor_id, body.value)
     results = _interlock_results(db, s, body.value)
@@ -412,9 +429,9 @@ def select_command(
             status.HTTP_409_CONFLICT, "; ".join(r.message for r in loto)
         )
     if blocked and override:
-        if not has_role(get_project_role(db, project.id, user), Role.approver):
+        if not has_permission(db, project.id, user, P_SCADA_INTERLOCK_OVERRIDE):
             raise HTTPException(
-                status.HTTP_403_FORBIDDEN, "Blokirovkani chetlab o'tish — faqat tasdiqlovchi"
+                status.HTTP_403_FORBIDDEN, "Blokirovkani chetlab o'tish — faqat smena boshlig'i"
             )
         if len(override_reason.strip()) < 5:
             raise HTTPException(
@@ -472,9 +489,9 @@ def select_command(
 
 
 @router.post("/projects/{project_id}/commands/execute", response_model=CommandOut, status_code=201)
-def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser, db: DB):
+def execute_command(body: ExecuteIn, project: CommandProject, user: CurrentUser, db: DB):
     """2-bosqich: bajarish — faqat amaldagi select_token bilan (sensor va qiymat tokenda). Sensor
-    `requires_dual_approval` bo'lsa buyruq `pending_approval` — boshqa operator tasdiqlaydi."""
+    `requires_dual_approval` bo'lsa buyruq `pending_approval` — smena boshlig'i tasdiqlaydi."""
     ratelimit.check("commands", str(user.id), get_settings().rate_commands_per_min)
     tok = parse_select_token(body.select_token, user.id, project.id)
     s = _target_sensor(db, project, int(tok["s"]), float(tok["v"]))
@@ -542,10 +559,10 @@ def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser
         },
     )
     if needs_approval:
-        # Tasdiqlashi mumkin bo'lganlar (operator+, muallifdan tashqari)
+        # Tasdiqlashi mumkin bo'lganlar (scada.command.approve, muallifdan tashqari)
         notifications.push(
             db,
-            notifications.member_ids(db, project.id, Role.operator, exclude=user.id, at_least=True),
+            member_ids_with_permission(db, project.id, P_SCADA_COMMAND_APPROVE, exclude=user.id),
             "system",
             f"Tasdiq kutilmoqda: {s.name} → {value:g} {s.unit}",
             f"{user.username}: {body.note} — ikkinchi kishi tasdig'i kerak",
@@ -568,13 +585,13 @@ def execute_command(body: ExecuteIn, project: OperatorProject, user: CurrentUser
 
 @router.post("/commands/{command_id}/approve", response_model=CommandOut)
 def approve_command(command_id: int, user: CurrentUser, db: DB):
-    """Ikki kishi tasdig'i: boshqa operator+ tasdiqlaydi; muallif o'zini tasdiqlay olmaydi.
-    Tasdiqdan keyin buyruq `pending` (TTL boshlanadi) va gateway ga beriladi."""
+    """Ikki kishi tasdig'i: `scada.command.approve` ruxsatli boshqa shaxs (smena boshlig'i) tasdiqlaydi;
+    muallif o'zini tasdiqlay olmaydi. Tasdiqdan keyin buyruq `pending` (TTL boshlanadi) va gateway ga beriladi."""
     c = db.get(Command, command_id)
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
-    if not has_role(get_project_role(db, c.project_id, user), Role.operator):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
+    if not has_permission(db, c.project_id, user, P_SCADA_COMMAND_APPROVE):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Buyruqni tasdiqlash huquqi kerak (smena boshlig'i)")
     if c.status != CommandStatus.pending_approval:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Buyruq holati {c.status.value} — tasdiq kutilmayapti")
     if c.created_by == user.id:
@@ -604,8 +621,8 @@ def cancel_command(command_id: int, user: CurrentUser, db: DB):
     c = db.get(Command, command_id)
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Buyruq topilmadi")
-    if not has_role(get_project_role(db, c.project_id, user), Role.operator):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Operator huquqi kerak")
+    if not has_permission(db, c.project_id, user, P_SCADA_COMMAND):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Buyruq huquqi kerak (dispetcher)")
     if c.status not in (CommandStatus.pending, CommandStatus.pending_approval):
         # sent — gateway allaqachon olgan, PLC ga yozilishi mumkin: bekor qilish yolg'on xavfsizlik beradi;
         # javob kelmasa watchdog (command_sent_timeout_s) failed ga o'tkazadi
@@ -767,7 +784,8 @@ def readback_command(
 
 # ---------- Blokirovkalar (interlock) ----------
 
-EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
+# Blokirovkalar — nuqta sozlamasi (sensor.configure), buyruq ruxsatidan alohida
+ConfigureProject = Annotated[Project, Depends(require_project_permission(P_SENSOR_CONFIGURE))]
 
 
 def _il_out(db, il: Interlock) -> InterlockOut:
@@ -813,7 +831,7 @@ def interlock_variables(project: ViewerProject, db: DB):
 
 
 @router.post("/projects/{project_id}/interlocks", response_model=InterlockOut, status_code=201)
-def create_interlock(body: InterlockIn, project: EngineerProject, user: CurrentUser, db: DB):
+def create_interlock(body: InterlockIn, project: ConfigureProject, user: CurrentUser, db: DB):
     s = db.get(Sensor, body.sensor_id)
     if s is None or s.project_id != project.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sensor topilmadi")
@@ -853,8 +871,7 @@ def update_interlock(interlock_id: int, body: InterlockPatch, user: CurrentUser,
     il = db.get(Interlock, interlock_id)
     if il is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Blokirovka topilmadi")
-    if not has_role(get_project_role(db, il.project_id, user), Role.engineer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi kerak")
+    check_project_permission(db, il.project_id, user, P_SENSOR_CONFIGURE)
     changes = body.model_dump(exclude_none=True)
     if "condition" in changes:
         try:
@@ -881,8 +898,7 @@ def delete_interlock(interlock_id: int, user: CurrentUser, db: DB):
     il = db.get(Interlock, interlock_id)
     if il is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Blokirovka topilmadi")
-    if not has_role(get_project_role(db, il.project_id, user), Role.engineer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi kerak")
+    check_project_permission(db, il.project_id, user, P_SENSOR_CONFIGURE)
     audit.log(
         db,
         user_id=user.id,

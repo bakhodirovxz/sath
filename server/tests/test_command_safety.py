@@ -24,6 +24,14 @@ def operator(client, admin, users):
     return login(client, "operator", "pass1234")
 
 
+@pytest.fixture(autouse=True)
+def _op(client, admin, users):
+    """SCADA-01: buyruqlar dispetcher nomidan (muhandis buyruq bera olmaydi)."""
+    from conftest import add_member
+
+    users["op"] = add_member(client, admin, users["project_id"], "opr", "operator")
+
+
 @pytest.fixture
 def gate(client, users):
     r = client.post(
@@ -48,7 +56,7 @@ def gate(client, users):
 
 
 def _cmd(client, users, sid, value, hdr=None):
-    return send_command(client, hdr or users["engineer"], users["project_id"], sid, value, "t")
+    return send_command(client, hdr or users["op"], users["project_id"], sid, value, "t")
 
 
 def _key(client, users):
@@ -142,7 +150,7 @@ def test_watchdog_frees_sensor_stuck_in_sent(client, users, gate, monkeypatch):
     assert me["status"] == "failed" and "watchdog" in me["result"]
     assert _cmd(client, users, gate["id"], 41).status_code == 201  # blok ochildi
     # muallif bildirishnoma oldi
-    n = client.get("/api/notifications", headers=users["engineer"]).json()
+    n = client.get("/api/notifications", headers=users["op"]).json()
     assert any("bajarilmadi" in x["title"] for x in n)
     # audit
     acts = [a["action"] for a in client.get("/api/audit", headers=users["approver"], params={"project_id": users["project_id"]}).json()]

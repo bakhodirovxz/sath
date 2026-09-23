@@ -28,7 +28,9 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, ratelimit, uploads
 from ..auth.deps import (
     DB,
+    P_SENSOR_CONFIGURE,
     CurrentUser,
+    check_project_permission,
     get_project_role,
     has_role,
     require_project_role,
@@ -253,6 +255,38 @@ class ReadingIn(BaseModel):
 
 # ---------- Sensorlar ----------
 
+# Boshqaruv sozlamalari (SCADA-01): o'zgartirish `sensor.configure` ruxsati bilan, alohida audit
+CONTROL_FIELDS = (
+    "writable",
+    "protocol",
+    "address",
+    "min_setpoint",
+    "max_setpoint",
+    "max_rate_per_min",
+    "requires_dual_approval",
+    "command_ttl_s",
+    "readback_tolerance",
+)
+
+
+def _control_snapshot(s: Sensor) -> dict:
+    return {k: getattr(s, k) for k in CONTROL_FIELDS}
+
+
+def _audit_configure(db, user_id: int, s: Sensor, before: dict | None) -> None:
+    after = _control_snapshot(s)
+    changed = {k: {"old": (before or {}).get(k), "new": v} for k, v in after.items() if before is None or before.get(k) != v}
+    if changed:
+        audit.log(
+            db,
+            user_id=user_id,
+            action="sensor.configure",
+            target_type="sensor",
+            target_id=s.id,
+            project_id=s.project_id,
+            detail={"key": s.key, "changes": changed},
+        )
+
 
 @router.get("/projects/{project_id}/sensors", response_model=list[SensorOut])
 def list_sensors(
@@ -284,6 +318,8 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
         data["kks_code"] = kks.validate(data.get("kks_code"))
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    if body.writable:
+        check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
     sensor = Sensor(project_id=project.id, **data)
     db.add(sensor)
     db.flush()
@@ -296,6 +332,8 @@ def create_sensor(body: SensorIn, project: EngineerProject, user: CurrentUser, d
         project_id=project.id,
         detail={"key": sensor.key},
     )
+    if sensor.writable:
+        _audit_configure(db, user.id, sensor, None)
     db.commit()
     mqtt_bridge.refresh()
     live.invalidate_sensors()
@@ -413,10 +451,16 @@ def import_sensors(body: SensorImportIn, project: EngineerProject, user: Current
         if existing:
             if not body.update_existing:
                 continue
+            before = _control_snapshot(existing)
             for k, v in data.model_dump().items():
                 if k == "element_guid" and v is None:
                     continue
+                if k in CONTROL_FIELDS and k not in ("protocol", "address"):
+                    continue  # import boshqaruv sozlamalarini (writable, chegaralar) tushirib yubormasin
                 setattr(existing, k, v)
+            if existing.writable:
+                check_project_permission(db, project.id, user, P_SENSOR_CONFIGURE)
+                _audit_configure(db, user.id, existing, before)
             updated += 1
         else:
             db.add(Sensor(project_id=project.id, **data.model_dump()))
@@ -459,6 +503,9 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
             changes["kks_code"] = kks.validate(changes["kks_code"])
         except ValueError as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+    before = _control_snapshot(s)
+    if body.clear_setpoint_range or any(k in changes and changes[k] != before[k] for k in CONTROL_FIELDS):
+        check_project_permission(db, s.project_id, user, P_SENSOR_CONFIGURE)
     for k, v in changes.items():
         setattr(s, k, v)
     if body.clear_alarms:
@@ -471,6 +518,7 @@ def update_sensor(sensor_id: int, body: SensorPatch, user: CurrentUser, db: DB):
         s.min_raw = s.max_raw = None
     if body.clear_setpoint_range:
         s.min_setpoint = s.max_setpoint = s.max_rate_per_min = None
+    _audit_configure(db, user.id, s, before)
     if s.last_value is not None and not s.stale:
         s.alarm = live.evaluate_alarm(s, s.last_value)
         s.alarm_pending = s.alarm_pending_since = None

@@ -97,7 +97,10 @@ def test_commands_and_sim_rate_limit(client, users, settings):
     assert r.status_code == 201
     sid = r.json()["id"]
     body = {"sensor_id": sid, "value": 10}
-    codes = [client.post(f"/api/projects/{pid}/commands/select", json=body, headers=users["engineer"]).status_code for _ in range(3)]
+    from conftest import add_member
+
+    op = add_member(client, users["admin"], pid, "opr", "operator")
+    codes = [client.post(f"/api/projects/{pid}/commands/select", json=body, headers=op).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 
 

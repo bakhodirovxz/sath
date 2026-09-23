@@ -84,7 +84,7 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
       <div className="page ops" data-level={level}>
         <TopBar crumbs={[{ label: "Loyihalar", to: "/" }, { label: project?.name ?? "…", to: `/projects/${pid}` }, ...crumbs]}>
           <span className={`live-dot ${live.toLowerCase()}`} title="Jonli oqim: LIVE — xabar yaqinda; STALE — heartbeat kechikmoqda; OFFLINE — uzilgan" data-testid="live-state">● {live}</span>
-          <AnnunciatorControl projectId={pid} canOperate={["operator", "engineer", "approver"].includes(project?.my_role ?? "")} />
+          <AnnunciatorControl projectId={pid} canOperate={["operator", "shift_supervisor", "engineer", "approver"].includes(project?.my_role ?? "")} />
         </TopBar>
         <nav className="ops-nav" aria-label="ISA-101 navigatsiya">
           <span className="ops-level">L{level}</span>

@@ -98,6 +98,14 @@ def users(client, admin):
     }
 
 
+def add_member(client, admin, project_id: int, username: str, role: str) -> dict:
+    """Loyihaga yangi a'zo (masalan operator / shift_supervisor) — login sarlavhasini qaytaradi."""
+    uid = make_user(client, admin, username)
+    r = client.put(f"/api/projects/{project_id}/members", json={"user_id": uid, "role": role}, headers=admin)
+    assert r.status_code == 200, r.text
+    return login(client, username, "pass1234")
+
+
 def make_ifc(path: Path, wall_names=("Wall 1",), project_name="Test GES") -> Path:
     """Minimal IFC4 fayl: loyiha → site → storey → devorlar."""
     import ifcopenshell.api.aggregate

@@ -4,7 +4,7 @@ import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { api, canCommandRole, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
@@ -269,7 +269,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
                 <LineChart title={s.name} unit={s.unit} x={history.map((p) => p.ts.slice(0, 16).replace("T", " "))} series={[{ name: s.name, values: history.map((p) => p.v) }]}
                   refLines={[...(s.hh_alarm != null ? [{ value: s.hh_alarm, label: "HH" }] : []), ...(s.high_alarm != null ? [{ value: s.high_alarm, label: "yuqori" }] : []), ...(s.low_alarm != null ? [{ value: s.low_alarm, label: "past" }] : []), ...(s.ll_alarm != null ? [{ value: s.ll_alarm, label: "LL" }] : [])]} />
               ) : <p className="dim small">Bu davrda o'lchov yo'q.</p>}
-              {s.writable && (role === "operator" || role === "engineer" || role === "approver") && (
+              {s.writable && canCommandRole(role) && (
                 <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 6, flexWrap: "wrap" }} title="Supervisory control: buyruq gateway orqali SCADA ga yuboriladi (pending → sent → acked), audit jurnalida">
                   <b className="small">Boshqaruv</b>
                   <span className="dim small">joriy {s.last_value == null ? "—" : s.last_value} {s.unit}</span>
@@ -352,7 +352,7 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
       )}
       {cmdTarget && (
         <Dialog title={`Buyruq: ${cmdTarget.name}`} onClose={() => setCmdTarget(null)}>
-          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={role === "operator" || canEdit} canOverride={role === "approver"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
+          <ControlBlock projectId={projectId} sensor={cmdTarget} canCommand={canCommandRole(role)} canOverride={role === "shift_supervisor"} onCommand={(c) => { setError(`Buyruq #${c.id}: ${c.status}`); setCmdTarget(null); }} />
         </Dialog>
       )}
     </div>

@@ -6,7 +6,7 @@ import TopBar from "../ui/TopBar";
 import Dialog from "../ui/Dialog";
 import { label } from "../ui/format";
 
-const ROLES: Role[] = ["viewer", "operator", "engineer", "approver"];
+const ROLES: Role[] = ["viewer", "operator", "shift_supervisor", "engineer", "approver"];
 
 export default function ProjectPage() {
   const { projectId } = useParams();

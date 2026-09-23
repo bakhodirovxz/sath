@@ -119,7 +119,7 @@ export function CommandsPanel({ projectId, sensors, canCommand, live, canOverrid
                 <td className="dim small">{c.result}{c.readback_value != null && <div>readback: <span className="mono">{fmtValue(c.readback_value)} {c.unit}</span></div>}{c.approved_by_username && <div>tasdiq: {c.approved_by_username}</div>}</td>
                 <td>
                   {(c.status === "pending" || c.status === "pending_approval") && canCommand && <button className="btn sm" onClick={() => api.cancelCommand(c.id).then((u) => setCmds((p) => p.map((x) => (x.id === u.id ? u : x))))}>Bekor</button>}
-                  {c.status === "pending_approval" && canCommand && <button className="btn sm primary" title="Ikki kishi qoidasi: muallif o'zini tasdiqlay olmaydi" onClick={() => approve(c.id)}>Tasdiqlash</button>}
+                  {c.status === "pending_approval" && canOverride && <button className="btn sm primary" title="Ikki kishi qoidasi: muallif o'zini tasdiqlay olmaydi" onClick={() => approve(c.id)}>Tasdiqlash</button>}
                 </td>
               </tr>
             ))}

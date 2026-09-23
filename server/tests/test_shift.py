@@ -18,7 +18,9 @@ def test_handover_requires_acknowledging_warnings_and_two_signatures(client, use
     client.post(f"/api/projects/{pid}/readings", json=[{"key": "RES.H", "value": 905}, {"key": "GATE1.SP", "value": 40}], headers=users["engineer"])
     client.post(f"/api/sensors/{s['id']}/shelve", json={"reason": "sinov"}, headers=users["engineer"])
     client.post(f"/api/sensors/{s['id']}/unshelve", headers=users["engineer"])
-    send_command(client, users["engineer"], pid, sp["id"], 55.0, "smena")
+    from conftest import add_member
+
+    send_command(client, add_member(client, users["admin"], pid, "opr", "operator"), pid, sp["id"], 55.0, "smena")
     # varaqa: kvitlanmagan alarm + kutilayotgan buyruq → ogohlantirishlar
     snap = client.get(f"/api/projects/{pid}/shift/snapshot", headers=users["viewer"]).json()
     assert snap["unacked"] == 1 and len(snap["pending_commands"]) == 1 and snap["alarms"][0]["key"] == "RES.H"
