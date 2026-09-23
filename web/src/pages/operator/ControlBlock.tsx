@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePolling } from "../../hooks/usePolling";
 import { api, type Command, type Interlock, type SelectResult, type Sensor } from "../../api/client";
 import { fmtDate, fmtValue } from "../../ui/format";
+import { useLiveMessages } from "../../store/live";
 
 /** Boshqaruv bloki (F8, faceplate ichida): joriy qiymat, ruxsat etilgan diapazon (B1), kiritish validatsiyasi,
  * sabab maydoni, blokirovkalar (B4) natijasi oldindan, select → execute (B2) qolgan vaqt bilan, ikkinchi kishi
@@ -39,6 +40,8 @@ export default function ControlBlock({ projectId, sensor, canCommand, canOverrid
   usePolling(loadInterlocks, 15_000, `${projectId}:${sensor.id}`);
   useEffect(() => { api.commands(projectId).then((cs) => setLast(cs.find((c) => c.sensor_id === sensor.id) ?? null)).catch(() => undefined); }, [projectId, sensor.id]);
   useEffect(() => { if (liveCommand && liveCommand.sensor_id === sensor.id) setLast(liveCommand); }, [liveCommand, sensor.id]);
+  // Buyruq holati (pending → sent → acked) — umumiy jonli oqimdan (UX-11), alohida soket yo'q
+  useLiveMessages(projectId, (m) => { if (m.type === "command" && m.command && m.command.sensor_id === sensor.id) setLast(m.command); });
   useEffect(() => {
     if (!sel) return;
     const tick = () => { const s = Math.max(0, Math.round((new Date(sel.expires_at).getTime() - Date.now()) / 1000)); setLeft(s); if (s <= 0) setSel(null); };

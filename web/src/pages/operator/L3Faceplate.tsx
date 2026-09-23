@@ -43,7 +43,7 @@ function UnitBody({ unit }: { unit: number }) {
 }
 
 function SensorBody({ sensorId }: { sensorId: number }) {
-  const { projectId: pid, sensors, reload, project, liveCommand } = useOps();
+  const { projectId: pid, sensors, reload, project } = useOps();
   const s = sensors.find((x) => x.id === sensorId);
   const [pts, setPts] = useState<ReadingPoint[]>([]);
   const [hours, setHours] = useState(6);
@@ -102,7 +102,7 @@ function SensorBody({ sensorId }: { sensorId: number }) {
           </div>
           {err && <p className="error">{err}</p>}
         </section>
-        {s.writable && <ControlBlock projectId={pid} sensor={s} canCommand={!!canOperate} canOverride={project?.my_role === "approver"} liveCommand={liveCommand} onCommand={() => void reload()} />}
+        {s.writable && <ControlBlock projectId={pid} sensor={s} canCommand={!!canOperate} canOverride={project?.my_role === "approver"} onCommand={() => void reload()} />}
         <section className="panel">
           <div className="row"><b>Trend</b><span className="grow" />{[1, 6, 24, 168].map((h) => <button key={h} className={`btn sm ${hours === h ? "active" : ""}`} onClick={() => setHours(h)}>{h < 24 ? `${h} s` : `${h / 24} k`}</button>)}</div>
           {pts.length ? <Trend series={[{ id: s.id, name: s.name, unit: s.unit, points: pts.map((p) => ({ t: Date.parse(p.ts), v: p.v, min: p.min, max: p.max })) }]} height={200} refLines={refLines} /> : <p className="muted">Ma'lumot yo'q</p>}

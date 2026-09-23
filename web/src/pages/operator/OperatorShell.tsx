@@ -1,12 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import ErrorBoundary from "../../ui/ErrorBoundary";
 import { useOnline } from "../../hooks/useOnline";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, type AlarmEvent, type Command, type Dashboard, type LiveMessage, type Project, type Sensor, type ShiftHandover } from "../../api/client";
-import { useLive, type LiveState } from "../../hooks/useLive";
+import { api, type AlarmEvent, type Dashboard, type Project, type Sensor, type ShiftHandover } from "../../api/client";
+import type { LiveState } from "../../hooks/liveConnection";
+import { loadEvents, putSensors, useAlarmEvents, useLiveSelector, useLiveState, useProjectLive, useSensors } from "../../store/live";
 import TopBar from "../../ui/TopBar";
 import { alarmStyle, applyTheme, savedTheme } from "../../ui/tokens";
-import { annunciator } from "../../ui/annunciator";
 import AnnunciatorControl from "../../ui/AnnunciatorControl";
 import { summarize, type AlarmSummary } from "./model";
 import { priorityLabel } from "../../i18n/labels";
@@ -14,26 +14,37 @@ import { priorityLabel } from "../../i18n/labels";
 /** ISA-101 ekranlar ierarxiyasi (F2): L1 umumiy → L2 uchastka → L3 faceplate → L4 diagnostika.
  * Umumiy qobiq: jonli sensorlar (WebSocket), alarm jamlanmasi, navigatsiya (pastga/yuqoriga, tezkor tugmalar). */
 
-export interface OpsContext {
+/** Qobiq konteksti — kam o'zgaradigan qismlar (loyiha, konfiguratsiya). Jonli qismlar (sensorlar, alarmlar,
+ * ulanish holati) umumiy store dan olinadi (UX-11): qobiq o'zi har o'qishda qayta chizilmaydi. */
+interface OpsStatic {
   projectId: number;
   project: Project | null;
-  sensors: Sensor[];
   dash: Dashboard | null;
-  live: LiveState;
-  summary: AlarmSummary;
-  events: AlarmEvent[];
-  /** Oxirgi jonli buyruq yangilanishi (WS) — boshqaruv bloki holat kuzatuvi uchun */
-  liveCommand: Command | null;
   reload: () => Promise<void>;
   error: string;
 }
+export interface OpsContext extends OpsStatic {
+  sensors: Sensor[];
+  live: LiveState;
+  summary: AlarmSummary;
+  events: AlarmEvent[];
+}
 
-const Ctx = createContext<OpsContext | null>(null);
+const Ctx = createContext<OpsStatic | null>(null);
+/** Operator sahifasi konteksti + jonli ma'lumot (chaqirgan komponent sensorlar ro'yxatiga obuna bo'ladi). */
 export const useOps = (): OpsContext => {
   const c = useContext(Ctx);
   if (!c) throw new Error("useOps OperatorShell ichida ishlatiladi");
-  return c;
+  const sensors = useSensors(c.projectId);
+  const events = useAlarmEvents(c.projectId);
+  const live = useLiveState(c.projectId);
+  const summary = useLiveSelector(c.projectId, summarize, sameSummary);
+  return { ...c, sensors, events, live, summary };
 };
+
+function sameSummary(a: AlarmSummary, b: AlarmSummary): boolean {
+  return a.total === b.total && a.stale === b.stale && a.worst === b.worst && (["critical", "high", "medium", "low"] as const).every((p) => a.byPriority[p] === b.byPriority[p]);
+}
 
 export function opsPath(pid: number, ...parts: (string | number)[]): string {
   return [`/projects/${pid}/ops`, ...parts].join("/");
@@ -47,38 +58,25 @@ export default function OperatorShell({ level, crumbs, children }: { level: 1 | 
   const nav = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [dash, setDash] = useState<Dashboard | null>(null);
-  const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [events, setEvents] = useState<AlarmEvent[]>([]);
-  const [liveCommand, setLiveCommand] = useState<Command | null>(null);
   const [openHandover, setOpenHandover] = useState<ShiftHandover | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { applyTheme(savedTheme("operator"), false); }, []);
   const reload = useCallback(async () => {
     try {
-      const [p, d, ev, hs] = await Promise.all([api.project(pid), api.dashboard(pid), api.alarmEvents(pid, true), api.shiftHandovers(pid).catch(() => [] as ShiftHandover[])]);
-      setProject(p); setDash(d); setSensors(d.sensors); setEvents(ev); setError("");
+      const [p, d, hs] = await Promise.all([api.project(pid), api.dashboard(pid), api.shiftHandovers(pid).catch(() => [] as ShiftHandover[]), loadEvents(pid)]);
+      putSensors(pid, d.sensors, { replace: true });
+      setProject(p); setDash(d); setError("");
       setOpenHandover(hs.find((h) => h.status === "handed") ?? null); // F9: qabul qilinmagan topshirish — ogohlantirish
     } catch (e) {
       setError(e instanceof Error ? e.message : "Yuklab bo'lmadi");
     }
   }, [pid]);
   useEffect(() => { void reload(); }, [reload]);
-  const onMessage = useCallback((m: LiveMessage) => {
-    if (m.type === "alarm" && m.event) {
-      const e = m.event as AlarmEvent;
-      setEvents((prev) => [e, ...prev.filter((x) => x.id !== e.id)].filter((x) => !(x.ended_at && x.acked_at)));
-      // Annunciator (F6): yangi kvitlanmagan alarm — signal (kritik ack gacha takror); kvitlash/yopilish — to'xtaydi
-      if (e.acked_at || e.ended_at) annunciator.ack(e.id);
-      else if (!prevIds.current.has(e.id)) annunciator.alarm(e.id, (e.priority ?? "medium") as "low" | "medium" | "high" | "critical");
-      prevIds.current.add(e.id);
-    }
-    if (m.type === "command" && m.command) setLiveCommand(m.command);
-  }, []);
-  const prevIds = useRef(new Set<number>());
-  const live = useLive(pid, setSensors, onMessage);
+  // Jonli oqim — umumiy store (bitta soket); annunciator ham store da (yangi kvitlanmagan alarm)
+  const live = useProjectLive(pid);
   const online = useOnline();
-  const summary = useMemo(() => summarize(sensors), [sensors]);
-  const ctx: OpsContext = { projectId: pid, project, sensors, dash, live, summary, events, liveCommand, reload, error };
+  const summary = useLiveSelector(pid, summarize, sameSummary);
+  const ctx: OpsStatic = { projectId: pid, project, dash, reload, error };
   const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2] : null;
   return (
     <Ctx.Provider value={ctx}>

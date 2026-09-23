@@ -3,14 +3,14 @@ import { useLatest } from "../../hooks/useLatest";
 import { dialogs } from "../../ui/dialogs";
 import ControlBlock from "../operator/ControlBlock";
 import { BOps, BPanel, BRow } from "../../ui/BlenderUI";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type AlarmState, type GatewayKey, type LiveMessage, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, type AlarmState, type GatewayKey, type ReadingPoint, type Role, type Sensor, type SensorIn, type SensorKind } from "../../api/client";
 import type { SelectedItem, Viewer } from "../../viewer/Viewer";
 import LineChart from "../../ui/LineChart";
 import Dialog from "../../ui/Dialog";
 import { fmtDate, fmtDay, fmtShort, isAlarm } from "../../ui/format";
 import { alarmLabel, keyKindLabel, sensorKindLabel } from "../../i18n/labels";
-import { useLive } from "../../hooks/useLive";
+import { putSensors, useLiveMessages, useProjectLive, useSensorsByIds } from "../../store/live";
 import { THEMES, alarmStyle, currentTheme } from "../../ui/tokens";
 
 interface Props {
@@ -45,7 +45,9 @@ const EMPTY: SensorIn = { key: "", name: "", kind: "value", unit: "", protocol: 
 
 /** Digital twin: SCADA o'lchovlari jonli (WebSocket), alarmlar, tarix, elementga bog'lash, 3D rang. */
 export default function MonitoringPanel({ projectId, modelId, role, viewer, selection }: Props) {
-  const [sensors, setSensors] = useState<Sensor[]>([]);
+  // UX-11: sensorlar umumiy jonli store da (bitta soket loyiha uchun); panel faqat o'z modeli sensorlariga obuna
+  const [ids, setIds] = useState<number[]>([]);
+  const sensors = useSensorsByIds(projectId, ids);
   const [selected, setSelected] = useState<number | null>(null);
   const [hours, setHours] = useState(24);
   const [history, setHistory] = useState<ReadingPoint[]>([]);
@@ -66,16 +68,17 @@ export default function MonitoringPanel({ projectId, modelId, role, viewer, sele
   const [topic, setTopic] = useState("");
   const canEdit = role === "engineer" || role === "approver";
 
-  const load = useCallback(() => api.sensors(projectId, modelId).then(setSensors).catch((e) => setError(e.message)), [projectId, modelId]);
+  const load = useCallback(() => api.sensors(projectId, modelId).then((ss) => { putSensors(projectId, ss); setIds(ss.map((s) => s.id)); }).catch((e) => setError(e.message)), [projectId, modelId]);
   useEffect(() => { void load(); }, [load]);
 
-  // Jonli oqim — umumiy hook (F4: heartbeat, LIVE/STALE/OFFLINE, eksponensial qayta ulanish)
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
-  const onLive = useCallback((m: LiveMessage) => {
-    if (m.type === "reading" && m.sensor_id === selectedRef.current && m.ts && m.value != null) setHistory((h) => [...h, { ts: m.ts!, v: m.value!, min: m.value!, max: m.value! }].slice(-2000));
-  }, []);
-  const live = useLive(projectId, setSensors, onLive);
+  // Jonli oqim — umumiy store (F4: heartbeat, LIVE/STALE/OFFLINE, eksponensial qayta ulanish; UX-11: bitta soket)
+  const live = useProjectLive(projectId);
+  useLiveMessages(projectId, (m) => {
+    if (m.type === "reading" && m.sensor_id === selected && m.ts && m.value != null) {
+      const pt = { ts: m.ts, v: m.value, min: m.value, max: m.value };
+      setHistory((h) => [...h, pt].slice(-2000));
+    }
+  });
 
   // Tarix
   useEffect(() => {
