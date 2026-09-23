@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .. import audit
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..orm import AuditLog, Role, User
 
 router = APIRouter(prefix="/api/audit", tags=["system"])
@@ -39,7 +40,7 @@ def export_day(_: AdminUser, db: DB, day: str = Query(..., description="YYYY-MM-
         body,
         media_type="application/x-ndjson",
         headers={
-            "Content-Disposition": f'attachment; filename="audit-{day}.jsonl"',
+            "Content-Disposition": content_disposition(f"audit-{day}.jsonl"),
             "X-Audit-Signature": sig,
         },
     )

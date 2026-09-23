@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import audit, notifications, notify, uploads
 from ..auth.deps import DB, CurrentUser, get_project_role, has_role
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..models import iso19650, storage
 from ..models.router import VersionOut, get_model_checked, get_version_checked, version_out
 from ..orm import (
@@ -600,7 +601,7 @@ def export_bcf(model_id: int, user: CurrentUser, db: DB, status_filter: IssueSta
     return Response(
         data,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{model.name}_issues.bcfzip"'},
+        headers={"Content-Disposition": content_disposition(f"{model.name}_issues.bcfzip")},
     )
 
 

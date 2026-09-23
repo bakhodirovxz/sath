@@ -17,6 +17,7 @@ from ..auth.deps import (
     require_project_role,
 )
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..orm import Federation, Model, Project, Role, Version, VersionState
 from . import classification, cobie, derived, federation, ifc_meta, ifc_schema, iso19650, storage
 from . import crs as crs_mod
@@ -344,8 +345,10 @@ def version_fragments(version_id: int, user: CurrentUser, db: DB):
     return FileResponse(
         out,
         media_type="application/octet-stream",
-        filename=f"{version.model.name}_v{version.number}.frag",
-        headers={"Cache-Control": "private, max-age=86400"},
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Content-Disposition": content_disposition(f"{version.model.name}_v{version.number}.frag"),
+        },
     )
 
 
@@ -458,7 +461,7 @@ def download_version(version_id: int, user: CurrentUser, db: DB):
     return FileResponse(
         path,
         media_type="application/x-step",
-        filename=f"{version.model.name}_v{version.number}.ifc",
+        headers={"Content-Disposition": content_disposition(f"{version.model.name}_v{version.number}.ifc")},
     )
 
 
@@ -533,7 +536,7 @@ def version_qto(
             "﻿" + buf.getvalue(),
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": f'attachment; filename="qto_{version.model.name}_v{version.number}.csv"'
+                "Content-Disposition": content_disposition(f"qto_{version.model.name}_v{version.number}.csv")
             },
         )
     return data
@@ -741,7 +744,9 @@ def federation_ifc(fed_id: int, user: CurrentUser, db: DB):
         path = federation.merged_ifc(federation.resolve_members(db, fed.members))
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
-    return FileResponse(path, filename=f"federation_{fed.id}.ifc", media_type="application/octet-stream")
+    return FileResponse(
+        path, media_type="application/octet-stream", headers={"Content-Disposition": content_disposition(f"federation_{fed.id}.ifc")}
+    )
 
 
 # --------------------------------------------------------------------------- G6: aktiv registri (COBie ga o'xshash)
@@ -761,7 +766,7 @@ def version_asset_register(version_id: int, user: CurrentUser, db: DB, format: s
     if format == "csv":
         audit.log(db, user_id=user.id, action="export.cobie", target_type="version", target_id=v.id, project_id=v.model.project_id, detail=reg["counts"])
         db.commit()
-        return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="cobie_{v.model.name}_v{v.number}.zip"'})
+        return Response(cobie.to_csv_zip(reg), media_type="application/zip", headers={"Content-Disposition": content_disposition(f"cobie_{v.model.name}_v{v.number}.zip")})
     return reg
 
 

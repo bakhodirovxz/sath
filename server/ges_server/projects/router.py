@@ -10,6 +10,7 @@ from sqlalchemy import func
 from .. import audit
 from ..auth import sessions
 from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
+from ..downloads import content_disposition
 from ..models import crs as crs_mod
 from ..orm import Model, Project, ProjectDocument, ProjectMember, Role, User
 
@@ -381,7 +382,7 @@ def download_document(doc_id: int, project: ViewerProject, db: DB):
         path = storage.resolve(d.file_sha256, ext=d.ext)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_410_GONE, "Fayl xotirada topilmadi") from None
-    return FileResponse(path, filename=d.file_name)
+    return FileResponse(path, headers={"Content-Disposition": content_disposition(d.file_name)})
 
 
 @router.delete("/{project_id}/documents/{doc_id}", status_code=204)

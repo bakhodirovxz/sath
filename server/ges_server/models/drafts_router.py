@@ -14,6 +14,7 @@ from sqlalchemy import func
 from .. import audit
 from ..auth.deps import DB, CurrentUser
 from ..config import get_settings
+from ..downloads import content_disposition
 from ..orm import DraftObject, Role, Version, utcnow
 from . import assimp_load, cad_import, derived, drafts, ifc_meta, mesh_import, storage
 from . import crs as crs_mod
@@ -614,7 +615,7 @@ def export_version(version_id: int, user: CurrentUser, db: DB, fmt: str = "glb")
     return Response(
         content=data,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": content_disposition(name)},
     )
 
 
