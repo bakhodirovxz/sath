@@ -243,11 +243,17 @@ def _run_block(dockerfile: str, marker: str) -> str:
 def test_dwg_build_arg_fails_loudly():
     """CAD-10: WITH_DWG=1 (default) da LibreDWG o'rnatilmasa build to'xtaydi (`|| true` yo'q); sintaksis to'g'ri."""
     text = (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
-    assert "ARG WITH_DWG=1" in text and "libredwg" in text
-    cmd = _run_block(text, "WITH_DWG")
-    assert "|| true" not in cmd.split("WITH_BLENDER")[0] and "command -v dwg2dxf" in cmd and "exit 1" in cmd
-    r = subprocess.run(["sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=30)
-    assert r.returncode == 0, r.stderr
+    import re
+
+    assert text.count("ARG WITH_DWG=1") == 2  # dwg bosqichi va runtime
+    assert re.search(r"^ARG LIBREDWG_SHA256=[0-9a-f]{64}$", text, re.M)
+    build = _run_block(text, "LIBREDWG_VERSION")  # Debian da paket yo'q — GNU manbadan, sha256 bilan
+    assert "sha256sum -c -" in build and "ftp.gnu.org/gnu/libredwg" in build and "|| true" not in build
+    runtime = _run_block(text, "ln -s /opt/libredwg/bin/dwg2dxf")
+    assert "exit 1" in runtime and "|| true" not in runtime
+    for cmd in (build, runtime):
+        r = subprocess.run(["sh", "-n", "-c", cmd], capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
     assert "GPLv3" in (DEPLOY / "README.md").read_text(encoding="utf-8")
 
 

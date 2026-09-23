@@ -12,7 +12,28 @@ RUN node scripts/copy-assets.mjs && npx vite build
 # Server tomonida IFC → fragments konvertatsiya vositasi (faqat kerakli paketlar, ~90 MB)
 RUN cd tools && npm ci --no-audit --no-fund --omit=dev
 
-# 2-bosqich: Python server
+# 2-bosqich: LibreDWG (dwg2dxf) — Debian da paket YO'Q (CAD-10), shuning uchun GNU manba tarbolidan, sha256
+# tekshiruvi bilan (imzo: libredwg-X.tar.xz.sig — Reini Urban, GNU keyring). WITH_DWG=0 — bosqich bo'sh.
+FROM python:3.12-slim AS dwg
+ARG WITH_DWG=1
+ARG LIBREDWG_VERSION=0.13.4
+ARG LIBREDWG_SHA256=7e153ea4dac4cbf3dc9c50b9ef7a5604e09cdd4c5520bcf8017877bbe1422cd5
+# Korporativ TLS proksi: --build-arg DWG_CURL_OPTS=-k (butunlikni sha256 kafolatlaydi)
+ARG DWG_CURL_OPTS=""
+RUN mkdir -p /opt/libredwg && if [ "$WITH_DWG" = "1" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends build-essential curl ca-certificates xz-utils \
+      && curl -fsSL $DWG_CURL_OPTS -o /tmp/libredwg.tar.xz \
+         "https://ftp.gnu.org/gnu/libredwg/libredwg-${LIBREDWG_VERSION}.tar.xz" \
+      && echo "${LIBREDWG_SHA256}  /tmp/libredwg.tar.xz" | sha256sum -c - \
+      && mkdir -p /tmp/src && tar -xJf /tmp/libredwg.tar.xz -C /tmp/src --strip-components=1 \
+      && cd /tmp/src \
+      && ./configure --prefix=/opt/libredwg --disable-bindings --disable-python --disable-docs --disable-static \
+         --disable-werror --disable-dependency-tracking \
+      && make -j"$(nproc)" && make install \
+      && /opt/libredwg/bin/dwg2dxf --version; \
+    fi
+
+# 3-bosqich: Python server
 FROM python:3.12-slim
 # Korporativ proksi (TLS intercept) bo'lsa: --build-arg PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org"
 ARG PIP_TRUSTED_HOST=""
@@ -30,12 +51,13 @@ ARG WITH_BLENDER=0
 # Litsenziya: LibreDWG — GPLv3 (alohida CLI dastur sifatida chaqiriladi); obrazni tashqariga tarqatsangiz
 # manba taklifi kerak — deploy/README.md.
 ARG WITH_DWG=1
+COPY --from=dwg /opt/libredwg /opt/libredwg
 # bubblewrap — ishonchsiz CAD/IFC parserlari uchun sandbox (L5; foydalanuvchi nom maydoni yopiq bo'lsa rlimit rejimi)
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs assimp-utils bubblewrap \
     && if [ "$WITH_DWG" = "1" ]; then \
-         { apt-get install -y --no-install-recommends libredwg-utils || apt-get install -y --no-install-recommends libredwg-tools; } \
-         && command -v dwg2dxf >/dev/null \
-         || { echo "XATO: WITH_DWG=1, lekin LibreDWG (dwg2dxf) o'rnatilmadi — DWG siz obraz uchun WITH_DWG=0" >&2; exit 1; }; \
+         [ -x /opt/libredwg/bin/dwg2dxf ] && /opt/libredwg/bin/dwg2dxf --version >/dev/null \
+         && ln -s /opt/libredwg/bin/dwg2dxf /usr/local/bin/dwg2dxf \
+         || { echo "XATO: WITH_DWG=1, lekin LibreDWG (dwg2dxf) ishlamayapti — DWG siz obraz uchun WITH_DWG=0" >&2; exit 1; }; \
        fi \
     && rm -rf /var/lib/apt/lists/*
 # WITH_BLENDER=1 — rasmiy Blender (CAD-08): Debian apt dagi blender eski (3.4) va 5.x .blend ni ochmaydi.
