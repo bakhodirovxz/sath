@@ -1,12 +1,14 @@
 """Holat monitoringi API (H3, ISO 13374): spektr yozuvlari (DA), tashqi tizim natijalari (SD/HA/PA)
 va aktiv bo'yicha blok natijalari.
 
-Rollar: ko'rish — ko'ruvchi; spektr va tashqi natija yuborish — muhandis yoki gateway (loyiha ingest
-kaliti bilan, `keys.project_from_ingest_key` — SCADA/CM gateway'i odatda foydalanuvchi emas).
+Rollar: ko'rish — ko'ruvchi; spektr va tashqi natija yuborish (SCADA-07) — gateway (loyiha ingest kaliti,
+`keys.authorize_ingest`) yoki `scada.manual_entry` ruxsati bilan qo'lda kiritish (manba `manual: …`, audit).
+Muhandis CM ni sozlaydi (aktiv konfiguratsiyasi/chegaralari, spektrni o'chirish), jonli ma'lumot yubormaydi.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
@@ -20,7 +22,6 @@ from ..auth.deps import (
     get_project_role,
     has_role,
     require_project_role,
-    user_from_token,
 )
 from ..orm import Asset, CmResult, Project, Role, Sensor, Spectrum
 from . import cm, keys, live, twin
@@ -31,6 +32,7 @@ ViewerProject = Annotated[Project, Depends(require_project_role(Role.viewer))]
 EngineerProject = Annotated[Project, Depends(require_project_role(Role.engineer))]
 
 MAX_LINES = 8192
+MANUAL_PREFIX = "manual: "  # qo'lda kiritilgan yozuv manbasi (tashqi tizim nomi saqlanadi)
 
 
 class SpectrumIn(BaseModel):
@@ -103,36 +105,37 @@ class CmResultOut(BaseModel):
     detail: dict
 
 
-def _writer_project(
+@dataclass
+class Writer:
+    """CM ma'lumoti yuboruvchi: `kind` — "key" (gateway) yoki "manual" (qo'lda, `user_id` bilan)."""
+
+    project: Project
+    kind: str
+    user_id: int | None
+
+    @property
+    def manual(self) -> bool:
+        return self.kind == "manual"
+
+
+def _writer(
     project_id: int,
     db: DB,
     x_ingest_key: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
-) -> Project:
-    """Yozish huquqi: X-Ingest-Key (CM gateway'i) yoki foydalanuvchi tokeni (muhandis+) —
-    o'lchov yuborish bilan bir xil qoida (`POST /readings`)."""
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    if x_ingest_key:
-        keys.verify(db, project, "ingest", x_ingest_key)  # 401/403 tashlaydi
-        db.commit()
-        return project
-    user = (
-        user_from_token(db, authorization[7:])
-        if authorization and authorization.lower().startswith("bearer ")
-        else None
-    )
-    if (
-        user is None
-        or not user.is_active
-        or not has_role(get_project_role(db, project.id, user), Role.engineer)
-    ):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Muhandis huquqi yoki ingest kaliti kerak")
-    return project
+) -> Writer:
+    """SCADA-07 (`POST /readings` bilan bir xil qoida): CM o'lchovi/natijasi — gateway `X-Ingest-Key` bilan;
+    foydalanuvchi tokeni faqat `scada.manual_entry` ruxsati bilan (qo'lda kiritish, manba `manual:` belgili,
+    auditda). Muhandis CM ni sozlaydi (aktiv konfiguratsiyasi, chegaralar), lekin ma'lumot yubormaydi."""
+    kind, user_id = keys.authorize_ingest(db, project_id, x_ingest_key, authorization, bucket="cm")
+    return Writer(db.get(Project, project_id), kind, user_id)
 
 
-WriterProject = Annotated[Project, Depends(_writer_project)]
+CmWriter = Annotated[Writer, Depends(_writer)]
+
+
+def _manual_source(source: str) -> str:
+    return f"{MANUAL_PREFIX}{source}"[:64] if source else MANUAL_PREFIX.rstrip(": ")
 
 
 def _check_asset(db, project_id: int, asset_id: int | None) -> Asset | None:
@@ -165,9 +168,11 @@ def _spec_out(sp: Spectrum, values: bool = False, features: dict | None = None) 
 
 
 @router.post("/projects/{project_id}/cm/spectra", response_model=SpectrumOut, status_code=201)
-def add_spectrum(project: WriterProject, body: SpectrumIn, db: DB):
+def add_spectrum(w: CmWriter, body: SpectrumIn, db: DB):
     """Spektr/envelope/orbita yozuvini saqlash (DA bloki). Chastota o'qi: `f_min`..`f_max` bir tekis
-    to'r yoki aniq `freqs` (uzunligi `values` bilan bir xil)."""
+    to'r yoki aniq `freqs` (uzunligi `values` bilan bir xil). Yuborish: gateway ingest kaliti yoki
+    `scada.manual_entry` (qo'lda — manba `manual: …`, `meta.entry=manual`, audit)."""
+    project = w.project
     _check_asset(db, project.id, body.asset_id)
     if body.freqs is not None and len(body.freqs) != len(body.values):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "freqs va values uzunligi bir xil bo'lsin")
@@ -191,10 +196,21 @@ def add_spectrum(project: WriterProject, body: SpectrumIn, db: DB):
         n_lines=len(body.values),
         values=body.values,
         freqs=body.freqs,
-        source=body.source,
-        meta=body.meta,
+        source=_manual_source(body.source) if w.manual else body.source,
+        meta={**body.meta, "entry": "manual", "entered_by": w.user_id} if w.manual else body.meta,
     )
     db.add(sp)
+    db.flush()
+    if w.manual:
+        audit.log(
+            db,
+            user_id=w.user_id,
+            action="cm.spectrum.manual",
+            target_type="asset" if body.asset_id else "project",
+            target_id=body.asset_id or project.id,
+            project_id=project.id,
+            detail={"spectrum_id": sp.id, "kind": body.kind, "n_lines": len(body.values), "source": body.source},
+        )
     db.commit()
     db.refresh(sp)
     return _spec_out(sp)
@@ -235,14 +251,17 @@ def delete_spectrum(spectrum_id: int, user: CurrentUser, db: DB):
 
 
 @router.post("/projects/{project_id}/cm/results", response_model=CmResultOut, status_code=201)
-def add_cm_result(project: WriterProject, body: CmResultIn, db: DB):
+def add_cm_result(w: CmWriter, body: CmResultIn, db: DB):
     """Tashqi holat monitoringi tizimi natijasi (SD/HA/PA bloki) — sog'liq indeksiga qo'shiladi.
-    `valid_hours` o'tgach natija hisobga olinmaydi (eskirgan baho sog'liqni ushlab turmasin)."""
+    `valid_hours` o'tgach natija hisobga olinmaydi (eskirgan baho sog'liqni ushlab turmasin).
+    Yuborish: gateway ingest kaliti yoki `scada.manual_entry` (qo'lda — manba `manual: <tizim>`,
+    `detail.entry=manual`, audit foydalanuvchi bilan)."""
+    project = w.project
     _check_asset(db, project.id, body.asset_id)
     r = CmResult(
         project_id=project.id,
         asset_id=body.asset_id,
-        source=body.source,
+        source=_manual_source(body.source) if w.manual else body.source,
         block=body.block,
         ts=body.ts or datetime.now(timezone.utc),
         state=body.state,
@@ -251,18 +270,24 @@ def add_cm_result(project: WriterProject, body: CmResultIn, db: DB):
         diagnosis=body.diagnosis,
         confidence=body.confidence,
         valid_hours=body.valid_hours,
-        detail=body.detail,
+        detail={**body.detail, "entry": "manual", "entered_by": w.user_id} if w.manual else body.detail,
     )
     db.add(r)
     db.flush()
     audit.log(
         db,
-        user_id=None,
-        action="cm.result",
+        user_id=w.user_id,
+        action="cm.result.manual" if w.manual else "cm.result",
         target_type="asset",
         target_id=body.asset_id,
         project_id=project.id,
-        detail={"source": body.source, "block": body.block, "state": body.state, "score": body.health_score},
+        detail={
+            "source": body.source,
+            "block": body.block,
+            "state": body.state,
+            "score": body.health_score,
+            "auth": w.kind,
+        },
     )
     db.commit()
     db.refresh(r)

@@ -271,7 +271,9 @@ MKA generator — 4), aks holda 4.
 
 **Spektr saqlash** (`spectra` jadvali — vaqt qatori emas): `POST /api/projects/{id}/cm/spectra`
 (`kind`: spectrum | envelope | orbit | waveform, `values` + `f_min`/`f_max` yoki aniq `freqs`,
-`rpm`, `unit`, `source`). Yuborish huquqi: muhandis tokeni yoki `X-Ingest-Key` (CM gateway'i).
+`rpm`, `unit`, `source`). Yuborish huquqi (SCADA-07, `POST /readings` bilan bir xil): `X-Ingest-Key`
+(CM gateway'i) yoki `scada.manual_entry` ruxsatli foydalanuvchi — qo'lda kiritish, manba `manual: …`,
+`meta.entry = manual`, auditda. Muhandis CM ni sozlaydi (aktiv konfiguratsiyasi), lekin ma'lumot yubormaydi.
 `GET /api/cm/spectra/{id}` qiymatlar bilan birga DM xususiyatlarini qaytaradi. Podshipnik nuqson
 chastotalari aktiv konfiguratsiyasidagi geometriyadan hisoblanadi: `bearing: {n, d_mm, D_mm,
 alpha_deg}` (BPFO/BPFI/BSF/FTF — ISO 13373-3, Harris). Nuqson chastotasi envelope-spektr
@@ -279,7 +281,8 @@ energiyasining 15 % idan oshsa «ogohlantirish», 30 % idan oshsa «alarm».
 
 **Tashqi tizim natijasi** (Bently Nevada, SKF IMx, Voith OnCare): `POST /api/projects/{id}/cm/results`
 — `block` SD | HA | PA, `state`, `health_score` (0–100), `rul_days`, `diagnosis`, `confidence`,
-`valid_hours` (muddatidan keyin natija hisobga olinmaydi). Yakuniy sog'liq indeksi ichki va tashqi
+`valid_hours` (muddatidan keyin natija hisobga olinmaydi); huquq — spektr bilan bir xil (qo'lda kiritilgan
+natija manbasi `manual: <tizim>`, `detail.entry = manual`). Yakuniy sog'liq indeksi ichki va tashqi
 bahoning **eng pastiga** tenglashtiriladi — tashqi tizim Sath ko'rmaydigan kanallarni ko'rishi mumkin.
 `GET /api/assets/{id}/cm` — aktiv bo'yicha butun zanjir natijasi (dispetcher paneli → Sog'liq →
 aktiv kartochkasidagi ⚡ tugmasi).

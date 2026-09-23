@@ -23,7 +23,9 @@ from typing import Literal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import audit, notifications
+from .. import audit, notifications, ratelimit
+from ..auth.deps import P_SCADA_MANUAL_ENTRY, has_permission, user_from_token
+from ..config import get_settings
 from ..orm import Project, Role, utcnow
 
 KeyKind = Literal["ingest", "command"]
@@ -163,6 +165,35 @@ def verify(db: Session, project: Project, kind: KeyKind, presented: str | None) 
             f"bu kalit {('buyruq' if kind == 'ingest' else 'ingest')} kanali uchun — {kind} kaliti kerak",
         )
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"{kind} kaliti noto'g'ri")
+
+
+def authorize_ingest(
+    db: Session,
+    project_id: int,
+    x_ingest_key: str | None,
+    authorization: str | None,
+    bucket: str = "ingest",
+) -> tuple[str, int | None]:
+    """SCADA-07: o'lchov/CM ma'lumoti yuborish huquqi. Gateway ingest kaliti → ("key", None);
+    foydalanuvchi tokeni faqat `scada.manual_entry` ruxsati bilan → ("manual", user id), ruxsatsiz → 403;
+    hech biri → 401. Loyiha bo'yicha tezlik cheklovi (`rate_ingest_per_min`, `bucket` nomi bilan) — 429."""
+    ratelimit.check(bucket, str(project_id), get_settings().rate_ingest_per_min)
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
+    if x_ingest_key:
+        verify(db, project, "ingest", x_ingest_key)
+        return "key", None
+    if authorization and authorization.lower().startswith("bearer "):
+        user = user_from_token(db, authorization[7:])
+        if user is not None:
+            if not has_permission(db, project_id, user, P_SCADA_MANUAL_ENTRY):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Jonli o'lchov faqat gateway ingest kaliti bilan; qo'lda kiritish — scada.manual_entry ruxsati",
+                )
+            return "manual", user.id
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
 
 
 def info(project: Project, kind: KeyKind, new_key: str | None = None) -> dict:

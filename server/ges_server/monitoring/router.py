@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 from sqlalchemy import func
 from starlette.concurrency import run_in_threadpool
 
-from .. import audit, ratelimit, uploads
+from .. import audit, uploads
 from ..auth.deps import (
     DB,
     P_GATEWAY_KEYS,
@@ -34,7 +34,6 @@ from ..auth.deps import (
     CurrentUser,
     check_project_permission,
     get_project_role,
-    has_permission,
     has_role,
     require_project_permission,
     require_project_role,
@@ -666,7 +665,7 @@ def push_readings(
     tokeni — faqat `scada.manual_entry` ruxsati bilan (smena boshlig'i) qo'lda kiritish: yozuvlar
     `quality=manual` (bad bo'lsa bad), `source=manual`, har kiritish qiymatlari bilan auditda.
     Loyiha bo'yicha tezlik cheklovi (`rate_ingest_per_min` so'rov/daqiqa) — 429."""
-    auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
+    auth_kind, actor_id = keys.authorize_ingest(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha o'lchov"
@@ -787,28 +786,6 @@ class SoeIn(BaseModel):
     raw: dict | list | str | None = None
 
 
-def _ingest_auth(db, project_id: int, x_ingest_key: str | None, authorization: str | None) -> tuple[str, int | None]:
-    """SCADA-07: gateway ingest kaliti → ("key", None); foydalanuvchi tokeni faqat `scada.manual_entry`
-    ruxsati bilan → ("manual", user id), ruxsatsiz → 403; hech biri → 401."""
-    ratelimit.check("ingest", str(project_id), get_settings().rate_ingest_per_min)
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Loyiha topilmadi")
-    if x_ingest_key:
-        keys.verify(db, project, "ingest", x_ingest_key)
-        return "key", None
-    if authorization and authorization.lower().startswith("bearer "):
-        user = user_from_token(db, authorization[7:])
-        if user is not None:
-            if not has_permission(db, project_id, user, P_SCADA_MANUAL_ENTRY):
-                raise HTTPException(
-                    status.HTTP_403_FORBIDDEN,
-                    "Jonli o'lchov faqat gateway ingest kaliti bilan; qo'lda kiritish — scada.manual_entry ruxsati",
-                )
-            return "manual", user.id
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ingest kaliti yoki token noto'g'ri")
-
-
 @router.post("/projects/{project_id}/soe")
 def push_soe(
     project_id: int,
@@ -819,7 +796,7 @@ def push_soe(
 ):
     """SOE hodisalarini yuborish (ingest kaliti; qo'lda — `scada.manual_entry`, source=manual): partiyali,
     ms aniqlik, takror tashlanadi."""
-    auth_kind, actor_id = _ingest_auth(db, project_id, x_ingest_key, authorization)
+    auth_kind, actor_id = keys.authorize_ingest(db, project_id, x_ingest_key, authorization)
     if len(body) > 10000:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Bir so'rovda 10000 tagacha hodisa")
     events = [b.model_dump() for b in body]
