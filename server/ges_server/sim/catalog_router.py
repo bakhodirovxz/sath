@@ -139,9 +139,9 @@ def _live_values(db, project: Project) -> dict[str, float]:
         v = twin._live(slots.get(key))
         if v is not None:
             out[key] = v
-    p_total = sum((twin._live(slots.get(f"unit{i}_power")) or 0) for i in (1, 2, 3, 4))
-    if any(slots.get(f"unit{i}_power") for i in (1, 2, 3, 4)):
-        out["power"] = p_total
+    units = twin.unit_sensors(project, slots, rows)  # SCADA-14: 1…12 agregat (sxema/mimika)
+    if units:
+        out["power"] = sum((twin._live(ps) or 0) for _n, ps, _fs in units)
     st = {**site.defaults(), **(project.site or {})}
     if "upstream_level" in out and "downstream_level" in out:
         out["gross_head"] = out["upstream_level"] - out["downstream_level"]

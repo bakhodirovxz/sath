@@ -72,9 +72,11 @@ def samples(db: Session, project: Project, days: int = 30) -> list[dict]:
     up = _hourly_map(db, slots.get("upstream_level"), since)
     down = _hourly_map(db, slots.get("downstream_level"), since)
     flow = _hourly_map(db, slots.get("penstock_flow"), since)
-    units = {i: slots.get(f"unit{i}_power") for i in (1, 2, 3, 4)}
-    units = {i: s for i, s in units.items() if s is not None}
+    # SCADA-14: barqaror agregat raqamlari (1…12), mimika slotlari va sxema bo'yicha
+    unit_rows = twin.unit_sensors(project, slots, sensors)
+    units = {n: ps for n, ps, _fs in unit_rows}
     power = {i: _hourly_map(db, s, since) for i, s in units.items()}
+    uflow = {n: _hourly_map(db, fs, since) for n, _ps, fs in unit_rows if fs is not None}
     out = []
     for hour in sorted(set(up) & set(down)):
         powers = {i: p[hour] for i, p in power.items() if hour in p and p[hour] > twin.RUN_THRESHOLD}
@@ -87,6 +89,7 @@ def samples(db: Session, project: Project, days: int = 30) -> list[dict]:
                 "down": down[hour],
                 "flow": flow.get(hour),
                 "powers": powers,
+                "unit_flows": {i: f[hour] for i, f in uflow.items() if i in powers and hour in f and f[hour] > 0},
                 "sensor_ids": {i: units[i].id for i in powers},
             }
         )
@@ -116,19 +119,28 @@ def predict(sample: dict, params: dict, theta: dict) -> dict[int, float]:
     specs = _unit_specs(params)
     running = sorted(sample["powers"])
     out: dict[int, float] = {}
+    built: dict[int, tuple[float, TurbineSpec]] = {}
     for idx in running:
         spec_d = specs[min(idx - 1, len(specs) - 1)]
         eff = theta["eff"].get(idx, spec_d.get("max_efficiency", 0.92))
-        spec = TurbineSpec(
-            name=spec_d["name"],
-            type=spec_d.get("type", "Francis"),
-            rated_power_mw=spec_d["rated_power_mw"],
-            rated_head_m=spec_d["rated_head_m"],
-            rated_flow_m3s=spec_d["rated_flow_m3s"],
-            max_efficiency=eff,
+        built[idx] = (
+            sample["powers"][idx],
+            TurbineSpec(
+                name=spec_d["name"],
+                type=spec_d.get("type", "Francis"),
+                rated_power_mw=spec_d["rated_power_mw"],
+                rated_head_m=spec_d["rated_head_m"],
+                rated_flow_m3s=spec_d["rated_flow_m3s"],
+                max_efficiency=eff,
+            ),
         )
-        measured = sample["powers"][idx]
-        q = (sample["flow"] / len(running)) if sample["flow"] else None
+    own = sample.get("unit_flows") or {}
+    # SCADA-14: umumiy sarf quvvat va nominal Q/P ga proporsional taqsimlanadi (twin bilan bir xil)
+    split = twin.split_flow(sample["flow"], built, own) if sample["flow"] else {}
+    for idx in running:
+        measured, spec = built[idx]
+        eff = spec.max_efficiency
+        q = own.get(idx) or split.get(idx)
         if q is None:  # sarf sensori yo'q — quvvatdan teskari baho (twin bilan bir xil qoida)
             h_est = net_head(head_gross, spec.rated_flow_m3s, spec_p)
             q = measured * 1e6 / (eff * twin.RHO * twin.G * max(h_est, 1e-3))

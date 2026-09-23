@@ -45,6 +45,8 @@ class WhatIf(BaseModel):
     unit2_power: float | None = None
     unit3_power: float | None = None
     unit4_power: float | None = None
+    # SCADA-14: istalgan agregat (1…12) — {raqam: MW}; unitN_power maydonlaridan ustun
+    unit_power: dict[int, float] | None = None
     target_mw: float | None = None
 
 
@@ -52,7 +54,10 @@ class WhatIf(BaseModel):
 def twin_what_if(project: ViewerProject, body: WhatIf, db: DB):
     """Egizakni o'zgartirilgan sharoitda hisoblash (sath, sarf, quvvat) — natija va xavfsizlik ko'rsatkichlari,
     optimal taqsimot; jonli ma'lumotga tegilmaydi (operatorni oldindan sinash, mashq)."""
-    ov = {k: v for k, v in body.model_dump().items() if v is not None and k != "target_mw"}
+    ov = {k: v for k, v in body.model_dump().items() if v is not None and k not in ("target_mw", "unit_power")}
+    for n, mw in (body.unit_power or {}).items():
+        if 1 <= int(n) <= twin.MAX_UNITS and mw is not None:
+            ov[f"unit{int(n)}_power"] = mw
     state = twin.compute(db, project, ov)
     state["dispatch"] = twin.optimal_dispatch(db, project, body.target_mw, ov)
     return state
