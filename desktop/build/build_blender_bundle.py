@@ -159,7 +159,7 @@ def blender_ver_dir() -> Path:
 def install_template(ver: str) -> Path:
     run([sys.executable, TEMPLATE / "make_splash.py", "--version", ver, "--out", TEMPLATE / "Sath"])
     dst = blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath"
-    shutil.copytree(TEMPLATE / "Sath", dst, dirs_exist_ok=True)
+    shutil.copytree(TEMPLATE / "Sath", dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
     return dst
 
 
@@ -173,6 +173,22 @@ def install_extensions(bonsai_zip: Path, sath_zip: Path) -> None:
 def setup_prefs(template_dir: Path) -> None:
     run([STAGE / "blender.exe", "-b", "--app-template", "Sath", "--python",
          TEMPLATE / "setup_bundle.py", "--", template_dir])  # fmt: skip
+
+
+def stage_mb() -> int:
+    return sum(f.stat().st_size for f in STAGE.rglob("*") if f.is_file()) // 2**20
+
+
+def check_stage() -> None:
+    """P4: FreeCAD siz (K1), Sath template ish joylari va temasi bilan; hajm logda."""
+    if (STAGE / "freecad").exists():
+        raise SystemExit("stage da freecad/ bor — FreeCAD bundle dan chiqqan bo'lishi kerak (P2)")
+    tpl = blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath"
+    need = ("__init__.py", "workspaces.py", "theme_sath.xml", "startup.blend")
+    missing = [n for n in need if not (tpl / n).exists()]
+    if missing:
+        raise SystemExit(f"Sath template da yo'q: {missing}")
+    print(f"stage: {stage_mb()} MB (FreeCAD siz)", flush=True)
 
 
 def copy_libredwg() -> bool:
@@ -196,6 +212,7 @@ def write_readme(ver: str) -> None:
 
 Ishga tushirish: Sath.exe (yoki blender.exe). Sozlamalar va extension lar `portable\\` papkasida —
 kompyuterdagi boshqa Blender bilan aralashmaydi. 3D Viewport → N panel → «Sath» yorlig'i.
+Ish joylari: BIM (asosiy), Compare, Simulation, SCADA; tiklash — Sath menyusi → «Ish joylarini tiklash».
 Server: Sath → Server → manzil, login, parol → Ulanish.
 DWG/DXF: tools\\libredwg (dwg2dxf).
 """,
@@ -265,6 +282,7 @@ def main() -> int:
     copy_libredwg()
     write_readme(ver)
     write_build_info(ver)
+    check_stage()
     if not a.no_zip:
         z = make_zip(ver)
         print(f"tayyor: {z} ({z.stat().st_size // 2**20} MB)")

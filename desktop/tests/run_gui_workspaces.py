@@ -5,12 +5,13 @@ tushiriladi — sath_boot.py template ga o'tkazadi, extension lar bundle dan).
 
   python desktop/tests/run_gui_workspaces.py [--blender <exe>] [--bundle desktop/build/_work/sath-bundle/Sath]
   $env:SATH_SCREENSHOT="$PWD\\ws_bim.png"  # ixtiyoriy: BIM bosqichida oyna skrinshoti
-Natija: [GUI-OK] — exit 0, aks holda 1."""
+Natija: [GUI-OK] — exit 0; [GUI-FAIL] — 1; [GUI-SKIP] (bundle bosqichi yo'q/to'liq emas) — 2."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CHECK = ROOT / "desktop" / "tests" / "blender_gui_workspaces.py"
 TEMPLATE = ROOT / "desktop" / "blender" / "template" / "Sath"
+BLENDER_SERIES = "5.2"  # haqiqiy profil papkasi (bundle rejimida bosqichdagi versiya papkasidan olinadi)
 DEFAULT_BLENDER = Path(os.environ.get("GES_BLENDER", Path.home() / "Tools" / "blender-5.2" / "blender.exe"))
 
 
@@ -30,16 +32,28 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=240)
     a = ap.parse_args()
     env = dict(os.environ)
-    real = Path(os.environ.get("APPDATA", "")) / "Blender Foundation" / "Blender" / "5.2" / "config" / "userpref.blend"
+    appdata = os.environ.get("APPDATA")
+    if sys.platform == "win32" and not appdata:
+        print("[GUI-FAIL] APPDATA yo'q — haqiqiy profilni himoya qilib bo'lmaydi")
+        return 1
+    series = BLENDER_SERIES
+    if a.bundle and a.bundle.is_dir():
+        series = next((d.name for d in a.bundle.iterdir() if d.is_dir() and re.fullmatch(r"\d+\.\d+", d.name)), series)
+    real = Path(appdata or Path.home()) / "Blender Foundation" / "Blender" / series / "config" / "userpref.blend"
     before = real.stat().st_mtime_ns if real.is_file() else None
+    if a.bundle:  # bundle: faqat o'zining portable/ i; hech qanday BLENDER_USER_* o'rnatilmaydi
+        for k in [k for k in env if k.startswith("BLENDER_USER_")]:
+            env.pop(k)
+        need = (a.bundle / "portable" / "config", a.bundle / "portable" / "extensions" / "user_default" / "sath")
+        if not (a.bundle / "blender.exe").is_file() or not all(n.is_dir() for n in need):
+            print(f"[GUI-SKIP] bundle bosqichi to'liq emas: {a.bundle} (build_blender_bundle.py --keep-stage)")
+            return 2  # portable/ siz Blender %APPDATA% ga tushadi — ishga tushirilmaydi
     with tempfile.TemporaryDirectory(prefix="sath-gui-ws-") as tmp:
-        for k, d in (("CONFIG", "config"), ("EXTENSIONS", "extensions"), ("DATAFILES", "datafiles")):
-            (Path(tmp) / d).mkdir()  # vaqtinchalik profil — foydalanuvchining haqiqiy sozlamalariga tegilmaydi
-            env[f"BLENDER_USER_{k}"] = str(Path(tmp) / d)
+        if not a.bundle:
+            for k, d in (("CONFIG", "config"), ("EXTENSIONS", "extensions"), ("DATAFILES", "datafiles")):
+                (Path(tmp) / d).mkdir()  # vaqtinchalik profil — foydalanuvchining haqiqiy sozlamalariga tegilmaydi
+                env[f"BLENDER_USER_{k}"] = str(Path(tmp) / d)
         if a.bundle:
-            if not (a.bundle / "blender.exe").is_file():
-                print(f"[GUI-SKIP] bundle bosqichi yo'q: {a.bundle} (build_blender_bundle.py --keep-stage)")
-                return 2  # jim o'tib ketmasin (Task 7 darvozasi)
             env["SATH_GUI_BUNDLE"] = "1"
             cmd = [str(a.bundle / "blender.exe"), "--python", str(CHECK)]
         else:
@@ -55,7 +69,8 @@ def main() -> int:
             print(f"[GUI-FAIL] {a.timeout}s ichida tugamadi")
             return 1
     out = r.stdout + r.stderr
-    if before is not None and real.stat().st_mtime_ns != before:
+    after = real.stat().st_mtime_ns if real.is_file() else None
+    if after != before:
         print(f"[GUI-FAIL] haqiqiy userpref.blend o'zgargan: {real}")
         return 1
     keep = ("[GUI", "GUI-WS", "Traceback", "  File", "AssertionError", "Error:", "[sath]")
