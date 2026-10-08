@@ -334,6 +334,18 @@ def _viewer_hides():
         s.projects.clear()
 
 
+def _io_live():
+    """P3 io moduli: Import paneli, File→Import va menyu bandlari hamda sath.assign_ifc (commit uchun) jonli
+    o'chadi va yonadi."""
+    from sath.core import host
+
+    assert _registered("import_dxf") and hasattr(bpy.types, "SATH_PT_import") and _registered("assign_ifc")
+    assert host.set_enabled("io", False) == ["io"]
+    assert not _registered("import_dxf") and not _registered("import_mesh") and not hasattr(bpy.types, "SATH_PT_import")
+    assert not _registered("assign_ifc")
+    assert host.set_enabled("io", True) == ["io"] and _registered("import_mesh") and _registered("assign_ifc")
+
+
 def run(ctx):
     _user_modules()
     _legacy_pinned()
@@ -341,4 +353,5 @@ def run(ctx):
     _review_live()
     _scada_off()
     _twin_cascade()
+    _io_live()
     _viewer_hides()

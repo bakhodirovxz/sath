@@ -8,7 +8,7 @@ import webbrowser
 import bpy
 
 from . import flows, ifc, props, session, update, viewpoint
-from .core import perms
+from .core import host, perms
 from .core.tasks import TASKS
 from .core.ui_tasks import run_op
 from .prefs import prefs
@@ -338,7 +338,10 @@ class SATH_OT_commit(bpy.types.Operator):
             box = self.layout.box()
             box.label(text=self.unassigned_note, icon="ERROR")
             box.label(text="Ular yangi versiyaga kirmaydi. Davom etish — OK, to'xtatish — Bekor.")
-            box.prop(self, "assign_missing")
+            if host.is_enabled("io"):  # P3: sath.assign_ifc — io moduli operatori
+                box.prop(self, "assign_missing")
+            else:
+                box.label(text="IFC ga qo'shish uchun «Import» (io) modulini yoqing", icon="INFO")
         if self.orphan_note:
             box = self.layout.box()
             for i, line in enumerate(self.orphan_note.splitlines()):
@@ -355,8 +358,11 @@ class SATH_OT_commit(bpy.types.Operator):
             # commit to'xtaydi — eskirgan IFC serverga ketmasin (sabab operator xabarida/holat qatorida).
             if bpy.ops.sath.sync_ifc() != {"FINISHED"}:
                 raise RuntimeError("GES o'zgarishlarini IFC ga yozib bo'lmadi («IFC ga qo'llash» xabarini ko'ring)")
-            if self.assign_missing and bpy.ops.sath.assign_ifc(names=";".join(unassigned(context))) != {"FINISHED"}:
-                raise RuntimeError("IFC ga kirmagan obyektlarni qo'shib bo'lmadi")
+            if self.assign_missing:
+                if not host.is_enabled("io"):
+                    raise RuntimeError("IFC ga qo'shish uchun «Import» (io) moduli yoqilmagan")
+                if bpy.ops.sath.assign_ifc(names=";".join(unassigned(context))) != {"FINISHED"}:
+                    raise RuntimeError("IFC ga kirmagan obyektlarni qo'shib bo'lmadi")
             if self.purge_orphans and ifc.orphans() and bpy.ops.sath.purge_orphans() != {"FINISHED"}:
                 raise RuntimeError("Yetim IFC entitylarni o'chirib bo'lmadi")
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)

@@ -7,12 +7,11 @@ from __future__ import annotations
 from ... import (
     demo_plant,
     ges_objects,
-    ops_import,
     ops_server,
     ui,
 )
 
-FILES = [ges_objects, ops_server, demo_plant, ops_import, ui]
+FILES = [ges_objects, ops_server, demo_plant, ui]
 
 
 def register(api):

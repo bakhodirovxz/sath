@@ -94,16 +94,6 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
             lay.label(text=f"Ochiq: {s.model_name} v{s.version_number}", icon="FILE_TICK")
 
 
-class SATH_PT_import(GesPanel, bpy.types.Panel):
-    bl_label = "Import"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        col = self.layout.column(align=True)
-        col.operator("sath.import_dxf", icon="GREASEPENCIL")
-        col.operator("sath.import_mesh", icon="MESH_DATA")
-
-
 class SATH_PT_notifications(GesPanel, bpy.types.Panel):
     bl_order = 1000
     bl_label = "Bildirishnomalar"
@@ -142,8 +132,6 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator("sath.notifications")
         lay.separator()
         lay.operator_menu_enum("sath.add_object", "kind", text="GES obyekti")
-        lay.operator("sath.import_dxf")
-        lay.operator("sath.import_mesh")
         host.draw_menus(lay, context)
 
 
@@ -164,7 +152,7 @@ def _register_keymap():
     _keymaps.append((km, kmi))
 
 
-CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_import, SATH_PT_notifications]
+CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_notifications]
 
 
 def register():
