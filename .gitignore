@@ -49,3 +49,6 @@ skills-lock.json
 
 # Spike loglari (lokal yo'llar bor, CODE-04)
 desktop/blender/spike/*.log
+
+# superpowers SDD ish joyi (ledger, brief, review paketlari)
+.superpowers/
