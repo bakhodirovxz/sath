@@ -9,7 +9,6 @@ from __future__ import annotations
 import ctypes
 import json
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -70,22 +69,53 @@ def synthetic_ifc(n: int, path: Path) -> Path:
     return path
 
 
+def enable_bonsai() -> None:
+    bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
+    assert "bl_ext.user_default.bonsai" in bpy.context.preferences.addons, "Bonsai yoqilmadi"
+
+
+def register_sath() -> float:
+    """Faqat import + register vaqti (wheel ochish va yo'l sozlash taymerdan tashqarida). ms qaytaradi."""
+    import importlib
+
+    blender_headless.unpack_wheels()
+    installed = "bl_ext.user_default.sath"
+    if installed in bpy.context.preferences.addons:
+        bpy.ops.preferences.addon_disable(module=installed)
+    sys.path.insert(0, str(blender_headless.ADDON_DIR.parent))
+    t = time.perf_counter()
+    importlib.import_module("sath").register()
+    return round((time.perf_counter() - t) * 1000, 1)
+
+
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    n = int(argv[argv.index("--n") + 1]) if "--n" in argv else 2000
-    out: dict = {"rss_start_mb": rss_mb()}
-    t = time.perf_counter()
-    blender_headless.load_addon()
-    out["addon_register_ms"] = round((time.perf_counter() - t) * 1000, 1)
-    out["rss_addon_mb"] = rss_mb()
-    bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
-    path = synthetic_ifc(n, Path(tempfile.mkdtemp(prefix="sath-perf-")) / f"perf_{n}.ifc")
-    out["ifc_elements"] = n
-    out["ifc_size_mb"] = round(path.stat().st_size / 2**20, 2)
-    t = time.perf_counter()
-    bpy.ops.bim.load_project(filepath=str(path))
-    out["ifc_open_s"] = round(time.perf_counter() - t, 2)
-    out["rss_ifc_mb"] = rss_mb()
+
+    def opt(name: str, default: str | None = None) -> str | None:
+        return argv[argv.index(name) + 1] if name in argv else default
+
+    n = int(opt("--n", "2000"))
+    if "--gen" in argv:  # alohida jarayon: IFC yaratish (RSS ni ifloslamasin)
+        synthetic_ifc(n, Path(opt("--gen")))
+        return
+    if "--cold" in argv:  # sovuq start: Bonsai + Sath, keyin chiqish
+        enable_bonsai()
+        register_sath()
+        return
+    out: dict = {"rss_blender_mb": rss_mb()}
+    enable_bonsai()
+    out["rss_bonsai_mb"] = rss_mb()
+    out["addon_register_ms"] = register_sath()
+    out["rss_sath_mb"] = rss_mb()
+    ifc = opt("--ifc")
+    if ifc:
+        path = Path(ifc)
+        out["ifc_elements"] = n
+        out["ifc_size_mb"] = round(path.stat().st_size / 2**20, 2)
+        t = time.perf_counter()
+        bpy.ops.bim.load_project(filepath=str(path))
+        out["ifc_open_s"] = round(time.perf_counter() - t, 2)
+        out["rss_ifc_mb"] = rss_mb()
     print("PERF " + json.dumps(out), flush=True)
 
 

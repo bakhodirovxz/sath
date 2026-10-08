@@ -12,6 +12,7 @@ import os
 import platform
 import statistics
 import subprocess
+import tempfile
 import time
 from datetime import date
 from pathlib import Path
@@ -27,9 +28,14 @@ def wall(cmd: list[str]) -> float:
     return time.perf_counter() - t
 
 
-def perf_json(exe: Path, n: int) -> dict:
+BLENDER = ["-b", "--factory-startup"]  # barcha qatorlar bir xil boshlang'ich rejimda
+SCRIPT = str(ROOT / "desktop" / "tests" / "perf_blender.py")
+BONSAI = "import bpy; bpy.ops.preferences.addon_enable(module='bl_ext.user_default.bonsai')"
+
+
+def perf_json(exe: Path, n: int, ifc: Path) -> dict:
     r = subprocess.run(
-        [str(exe), "-b", "--python", str(ROOT / "desktop" / "tests" / "perf_blender.py"), "--", "--n", str(n)],
+        [str(exe), *BLENDER, "--python", SCRIPT, "--", "--n", str(n), "--ifc", str(ifc)],
         capture_output=True, text=True, check=True,
     )  # fmt: skip
     line = next(ln for ln in r.stdout.splitlines() if ln.startswith("PERF "))
@@ -58,23 +64,33 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=2000)
     a = ap.parse_args()
     exe = a.blender
-    quit_expr = ["--python-expr", "import bpy; bpy.ops.wm.quit_blender()"]
-    vanilla = [wall([str(exe), "-b", "--factory-startup", *quit_expr]) for _ in range(REPEAT)]
-    bonsai = [
-        wall([str(exe), "-b", "--python-expr",
-              "import bpy; bpy.ops.preferences.addon_enable(module='bl_ext.user_default.bonsai'); bpy.ops.wm.quit_blender()"])
+    a_n = a.n
+    quit_ = "; bpy.ops.wm.quit_blender()"
+    vanilla = [wall([str(exe), *BLENDER, "--python-expr", "import bpy" + quit_]) for _ in range(REPEAT)]
+    bonsai = [wall([str(exe), *BLENDER, "--python-expr", BONSAI + quit_]) for _ in range(REPEAT)]
+    sath = [
+        wall([str(exe), *BLENDER, "--python", SCRIPT, "--", "--cold"])
         for _ in range(REPEAT)
     ]  # fmt: skip
-    runs = [perf_json(exe, a.n) for _ in range(REPEAT)]
-    keys = ["addon_register_ms", "rss_start_mb", "rss_addon_mb", "ifc_open_s", "rss_ifc_mb", "ifc_size_mb"]
+    with tempfile.TemporaryDirectory(prefix="sath-perf-") as tmp:
+        ifc = Path(tmp) / f"perf_{a_n}.ifc"
+        subprocess.run([str(exe), *BLENDER, "--python", SCRIPT, "--", "--n", str(a_n), "--gen", str(ifc)], check=True, capture_output=True)
+        runs = [perf_json(exe, a_n, ifc) for _ in range(REPEAT)]
+    keys = ["addon_register_ms", "rss_blender_mb", "rss_bonsai_mb", "rss_sath_mb", "ifc_open_s", "rss_ifc_mb", "ifc_size_mb"]
     med = {k: median([r.get(k) for r in runs]) for k in keys}
+    mv, mb, ms = median(vanilla), median(bonsai), median(sath)
+    ratio = round(ms / mb, 2)
+    rss_delta = round(med["rss_sath_mb"] - med["rss_bonsai_mb"], 1)
     rows = [
-        ("Sovuq start, vanilla (-b, factory)", f"{median(vanilla)} s"),
-        ("Sovuq start, + Bonsai", f"{median(bonsai)} s"),
-        ("Sath import + register", f"{med['addon_register_ms']} ms"),
-        ("RSS: start / Sath bilan", f"{med['rss_start_mb']} / {med['rss_addon_mb']} MB"),
+        ("Sovuq start, Blender", f"{mv} s"),
+        ("Sovuq start, + Bonsai", f"{mb} s"),
+        ("Sovuq start, + Bonsai + Sath", f"{ms} s"),
+        ("Sovuq start nisbati (+Sath / +Bonsai), byudjet <= 1.2", f"{ratio}x"),
+        ("Sath import + register (Bonsai yoqilgan), byudjet < 150 ms", f"{med['addon_register_ms']} ms"),
+        ("Idle RSS: Blender / + Bonsai / + Sath", f"{med['rss_blender_mb']} / {med['rss_bonsai_mb']} / {med['rss_sath_mb']} MB"),
+        ("Sath RSS ortishi (Bonsai ustiga), byudjet <= 50 MB", f"{rss_delta} MB"),
         (f"Sintetik IFC ({a.n} element, {med['ifc_size_mb']} MB) ochish", f"{med['ifc_open_s']} s"),
-        ("RSS IFC ochilgandan keyin", f"{med['rss_ifc_mb']} MB"),
+        ("RSS IFC ochilgandan keyin (alohida jarayonda yaratilgan IFC)", f"{med['rss_ifc_mb']} MB"),
     ]
     md = [
         "# Desktop (Blender) unumdorligi — bazaviy o'lchov",
@@ -84,6 +100,10 @@ def main() -> int:
         "",
         f"Usul: `python desktop/tests/perf_baseline.py --n {a.n}` — har o'lchov {REPEAT} marta, mediana. "
         "Spec §5 byudjetlari va C++ (`sath_core`) qarorlari shu raqamlarga tayanadi.",
+        "",
+        "Rejim: barcha qatorlar `blender -b --factory-startup` (bir xil toza profil; Bonsai extension "
+        "`bl_ext.user_default.bonsai` o'zi yoqiladi va tekshiriladi). Sath repo dan ro'yxatga olinadi. "
+        "Eslatma: o'lchovlar ketma-ket, issiq OS keshi bilan (sovuq-disk start emas).",
         "",
         "| O'lchov | Qiymat |",
         "|---|---|",
