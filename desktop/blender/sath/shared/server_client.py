@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
+import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
@@ -23,6 +26,13 @@ class ServerError(Exception):
         self.headers = headers or {}  # javob sarlavhalari (masalan X-Head-Id)
 
 
+CHUNK = 1 << 20  # oqimli yuklash bo'lagi (1 MiB)
+
+
+class TransferCancelled(Exception):
+    """Yuklash foydalanuvchi tomonidan bekor qilindi (fayl o'zgarmaydi)."""
+
+
 class GesClient:
     def __init__(self, base_url: str, token: str | None = None, timeout: float = 60.0):
         self.base_url = base_url.rstrip("/")
@@ -30,6 +40,7 @@ class GesClient:
         # L2: access token qisqa umrli (15 daqiqa) — 401 da refresh token bilan yangilanib, so'rov takrorlanadi
         self.refresh_token: str | None = None
         self.timeout = timeout
+        self._lock = threading.Lock()  # K3: refresh bir vaqtda faqat bitta oqimda
 
     # --- Ichki ---
 
@@ -43,27 +54,34 @@ class GesClient:
         params: dict | None = None,
         raw: bool = False,
         timeout: float | None = None,
+        stream_to: Path | None = None,
+        progress: Callable[[int, int], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
         _retry: bool = True,
     ) -> Any:
         url = self.base_url + path
         if params:
             url += "?" + parse.urlencode({k: v for k, v in params.items() if v is not None})
         req = request.Request(url, data=body, method=method)
+        sent = self.token
         if self.token:
             req.add_header("Authorization", f"Bearer {self.token}")
         if content_type:
             req.add_header("Content-Type", content_type)
         try:
             with request.urlopen(req, timeout=timeout or self.timeout) as resp:
+                if stream_to is not None:
+                    return self._stream(resp, stream_to, progress, cancelled)
                 data = resp.read()
                 if raw:
                     return data
                 return json.loads(data) if data else None
         except error.HTTPError as e:
-            if e.code == 401 and _retry and self.refresh_token and path != "/api/auth/refresh" and self._refresh():
+            if e.code == 401 and _retry and self.refresh_token and path != "/api/auth/refresh" and self._refresh(sent):
                 return self._request(
-                    method, path, body=body, content_type=content_type, params=params, raw=raw, timeout=timeout, _retry=False
-                )
+                    method, path, body=body, content_type=content_type, params=params, raw=raw, timeout=timeout,
+                    stream_to=stream_to, progress=progress, cancelled=cancelled, _retry=False,
+                )  # fmt: skip
             payload: dict = {}
             try:
                 payload = json.loads(e.read())
@@ -75,6 +93,37 @@ class GesClient:
             raise ServerError(e.code, str(detail), data, hdrs) from None
         except error.URLError as e:
             raise ServerError(0, f"Serverga ulanib bo'lmadi: {e.reason}") from None
+        except TimeoutError:  # socket.timeout — TimeoutError ning taxallusi (3.10+)
+            raise ServerError(0, f"Server javob bermadi (timeout {timeout or self.timeout:.0f} s)") from None
+        except (ConnectionError, OSError) as e:
+            if isinstance(e, TransferCancelled):
+                raise
+            raise ServerError(0, f"Tarmoq xatosi: {e}") from None
+
+    @staticmethod
+    def _stream(resp, dest: Path, progress, cancelled) -> Path:
+        """Javobni `<dest>.part` ga bo'laklab yozadi; to'liq bo'lsa `dest` ni almashtiradi. Xato/bekor → .part o'chadi."""
+        total = int(resp.headers.get("Content-Length") or 0)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(dest.name + ".part")
+        got = 0
+        try:
+            with open(part, "wb") as fh:
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise TransferCancelled("bekor qilindi")
+                    chunk = resp.read(CHUNK)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    got += len(chunk)
+                    if progress is not None:
+                        progress(got, total or got)
+            os.replace(part, dest)
+        except BaseException:
+            part.unlink(missing_ok=True)
+            raise
+        return dest
 
     def _json(self, method: str, path: str, data: dict | None = None, **kw) -> Any:
         body = json.dumps(data).encode() if data is not None else None
@@ -97,22 +146,26 @@ class GesClient:
         self.must_change_password = bool(r.get("must_change_password"))
         return self.token
 
-    def _refresh(self) -> bool:
-        """Refresh token bilan yangi juftlik; muvaffaqiyatsiz bo'lsa False (chaqiruvchi 401 ni oladi)."""
-        try:
-            r = self._request(
-                "POST",
-                "/api/auth/refresh",
-                body=json.dumps({"refresh_token": self.refresh_token}).encode(),
-                content_type="application/json",
-                _retry=False,
-            )
-        except ServerError:
-            self.refresh_token = None
-            return False
-        self.token = r["access_token"]
-        self.refresh_token = r.get("refresh_token") or None
-        return True
+    def _refresh(self, stale_token: str | None = None) -> bool:
+        """Refresh token bilan yangi juftlik (K3: lock ostida). `stale_token` — 401 olgan so'rovdagi token; u allaqachon
+        almashtirilgan bo'lsa (boshqa oqim yangiladi) tarmoqqa chiqmasdan True. Muvaffaqiyatsiz → False."""
+        with self._lock:
+            if stale_token is not None and self.token != stale_token:
+                return True
+            try:
+                r = self._request(
+                    "POST",
+                    "/api/auth/refresh",
+                    body=json.dumps({"refresh_token": self.refresh_token}).encode(),
+                    content_type="application/json",
+                    _retry=False,
+                )
+            except ServerError:
+                self.refresh_token = None
+                return False
+            self.token = r["access_token"]
+            self.refresh_token = r.get("refresh_token") or None
+            return True
 
     def logout(self) -> None:
         self._request("POST", "/api/auth/logout", _retry=False)
@@ -150,11 +203,17 @@ class GesClient:
     def version(self, version_id: int) -> dict:
         return self._json("GET", f"/api/versions/{version_id}")
 
-    def download_version(self, version_id: int, dest: Path) -> Path:
-        data = self._request("GET", f"/api/versions/{version_id}/file", raw=True)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(data)
-        return dest
+    def download_version(
+        self,
+        version_id: int,
+        dest: Path,
+        progress: Callable[[int, int], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> Path:
+        """IFC ni oqim bilan yuklaydi (`.part` → `dest`); `progress(olingan, jami)`, `cancelled()` → TransferCancelled."""
+        return self._request(
+            "GET", f"/api/versions/{version_id}/file", stream_to=dest, progress=progress, cancelled=cancelled
+        )
 
     def upload_version(
         self, model_id: int, path: Path, message: str = "", parent_id: int | None = None
