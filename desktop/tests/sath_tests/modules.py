@@ -290,11 +290,22 @@ def _scada_off():
     s = bpy.context.scene.ges
     s.monitor_on = True
     off = host.set_enabled("scada", False)
-    assert off[-1] == "scada", off  # twin (Task 10 dan keyin) birga o'chadi
+    assert off == ["twin", "scada"], off  # twin birga o'chadi
     assert not s.monitor_on and not hasattr(bpy.types, "SATH_PT_monitor") and not _registered("monitor_toggle")
     for mid in reversed(off):
         assert host.set_enabled(mid, True) == [mid]
     assert hasattr(bpy.types, "SATH_PT_monitor")
+
+
+def _twin_cascade():
+    """Bog'liqlik: sim o'chsa twin ham o'chadi; twin yoqilsa sim ham yonadi."""
+    from sath.core import host
+
+    assert host.is_enabled("twin") and hasattr(bpy.types, "SATH_PT_twin_sims")
+    assert host.set_enabled("sim", False) == ["twin", "sim"]
+    assert not hasattr(bpy.types, "SATH_PT_twin") and not _registered("sim_hammer")
+    assert host.set_enabled("twin", True) == ["sim", "twin"]
+    assert hasattr(bpy.types, "SATH_PT_sim") and hasattr(bpy.types, "SATH_PT_twin") and _registered("sim_hammer")
 
 
 def _viewer_hides():
@@ -314,6 +325,9 @@ def _viewer_hides():
             assert bpy.ops.sath.commit.poll() is sees, role
             assert bpy.ops.sath.sim_hydro.poll() is sees, role
             assert bpy.ops.sath.safety_check.poll() is sees, role
+            assert bpy.types.SATH_PT_twin_sims.poll(bpy.context) is sees, role
+            for op in ("sim_hammer", "sim_governor", "sim_transformer", "sim_seismic"):
+                assert getattr(bpy.ops.sath, op).poll() is sees, (role, op)
     finally:
         session.logout()
         s.project_id = s.model_id = 0
@@ -326,4 +340,5 @@ def run(ctx):
     _bundled_retry()
     _review_live()
     _scada_off()
+    _twin_cascade()
     _viewer_hides()

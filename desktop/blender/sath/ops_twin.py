@@ -7,6 +7,7 @@ from __future__ import annotations
 import bpy
 
 from . import ges_objects, ops_sim, session, sim_anim, water
+from .core import perms
 from .shared.server_client import ServerError
 
 HAMMER_META = {
@@ -142,7 +143,7 @@ class _TwinSim(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.model_id > 0
+        return session.is_logged_in() and context.scene.ges.model_id > 0 and perms.poll(cls, "sim.run", context)
 
     def params(self, s) -> dict:
         raise NotImplementedError
