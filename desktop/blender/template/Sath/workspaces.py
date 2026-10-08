@@ -155,10 +155,8 @@ def ensure(context, *, rebuild: bool = False, activate: bool = True) -> dict:
         report["removed"] = sorted(w.name for w in drop)
         data.batch_remove(ids=drop)
     order = [have[t].name for t in ORDER if t in have] + [n for n in KEEP if n in data.workspaces]
-    if bpy.app.background:
-        _reorder_now(context, win, order)  # oynasiz — natija ko'rinmaydi, lekin xato ham bermaydi
-    else:
-        _reorder_chain(order, "BIM" if activate and "BIM" in have else None)
+    if not bpy.app.background:  # oynasiz tab tartibi yo'q (reorder_to_front faol ish joyini ko'chiradi)
+        _reorder_chain(order, have["BIM"].name if activate and "BIM" in have else None)
     if activate and "BIM" in have:
         # oyna qayta olinadi: startup ilgagida context.window None bo'lishi mumkin, yuqoridagi win eskirgan bo'lsa
         cwm = bpy.context.window_manager
@@ -167,18 +165,13 @@ def ensure(context, *, rebuild: bool = False, activate: bool = True) -> dict:
     return report
 
 
-def _reorder_now(context, win, names) -> None:
-    import bpy
-
-    for n in reversed(names):
-        ws = bpy.data.workspaces.get(n)
-        if ws is not None:
-            with context.temp_override(window=win, workspace=ws):
-                bpy.ops.workspace.reorder_to_front()  # {'INTERFACE'} qaytaradi — bu normal
-
-
 CHAIN_DONE = [False]  # GUI sinovi: tab tartibi zanjiri tugadimi
 _CHAIN_STEP_S = 0.05
+_chain_gen = [0]  # avlod: yangi zanjir, fayl yuklash (load_pre) yoki unregister eskisini to'xtatadi
+
+
+def cancel_chain() -> None:
+    _chain_gen[0] += 1
 
 
 def _reorder_chain(names, final) -> None:
@@ -188,6 +181,8 @@ def _reorder_chain(names, final) -> None:
     import bpy
 
     CHAIN_DONE[0] = False
+    _chain_gen[0] += 1
+    gen = _chain_gen[0]
     wm = bpy.context.window_manager
     if wm is None or not wm.windows:
         return
@@ -196,6 +191,8 @@ def _reorder_chain(names, final) -> None:
     state = {"want": None, "tries": 0}
 
     def step():
+        if gen != _chain_gen[0]:
+            return None  # bekor qilindi / almashtirildi
         cwm = bpy.context.window_manager
         if cwm is None or not cwm.windows:
             return None
@@ -228,7 +225,7 @@ def _reorder_chain(names, final) -> None:
         state["want"] = None
         return _CHAIN_STEP_S
 
-    bpy.app.timers.register(step, first_interval=_CHAIN_STEP_S, persistent=True)
+    bpy.app.timers.register(step, first_interval=_CHAIN_STEP_S, persistent=False)
 
 
 def finish(win) -> bool:

@@ -28,7 +28,7 @@ def _win():
 
 
 def _W():
-    return next(m for k, m in sys.modules.items() if k.endswith(".workspaces") and hasattr(m, "finish"))
+    return next((m for k, m in sys.modules.items() if k.endswith(".workspaces") and hasattr(m, "finish")), None)
 
 
 def _tagged(tag):
@@ -84,6 +84,9 @@ def scada():
 
 
 def simulation():
+    # Eslatma: startup zanjiri Simulation ni ham faollashtirib o'tadi, shuning uchun bu qadam birinchi
+    # almashishni emas, msgbus (Window.workspace) yo'lini tekshiradi. reset_workspaces ham tablarni ~0.7 s
+    # almashtiradi va uning INFO xabari zanjir tugashidan oldin chiqadi.
     win = _win()
     ws = win.workspace
     assert ws.get("sath_ws") == "Simulation", ws.name
@@ -97,6 +100,11 @@ def simulation():
     _draw(win)
 
 
+def _quit():
+    bpy.context.preferences.use_preferences_save = False  # quit userpref.blend ni yozmasin
+    bpy.ops.wm.quit_blender()
+
+
 STEPS = [bim, scada, simulation]
 _i = 0
 _wait = [0]
@@ -104,7 +112,12 @@ _wait = [0]
 
 def _tick():
     global _i
-    if _i == 0 and not _W().CHAIN_DONE[0] and _wait[0] < 40:  # tab tartibi zanjiri (taymerlar) tugashini kutamiz
+    W = _W()
+    if W is None:
+        print("[GUI-FAIL] workspaces moduli yuklanmagan (template ishlamadi)", flush=True)
+        _quit()
+        return None
+    if _i == 0 and not W.CHAIN_DONE[0] and _wait[0] < 40:  # tab tartibi zanjiri (taymerlar) tugashini kutamiz
         _wait[0] += 1
         return 0.5
     try:
@@ -113,12 +126,12 @@ def _tick():
     except Exception:  # noqa: BLE001
         traceback.print_exc()
         print("[GUI-FAIL]", flush=True)
-        bpy.ops.wm.quit_blender()
+        _quit()
         return None
     _i += 1
     if _i == len(STEPS):
         print("[GUI-OK]", flush=True)
-        bpy.ops.wm.quit_blender()
+        _quit()
         return None
     return 0.7  # Window.workspace almashinuvi keyingi siklda qo'llanadi
 

@@ -30,11 +30,16 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=240)
     a = ap.parse_args()
     env = dict(os.environ)
+    real = Path(os.environ.get("APPDATA", "")) / "Blender Foundation" / "Blender" / "5.2" / "config" / "userpref.blend"
+    before = real.stat().st_mtime_ns if real.is_file() else None
     with tempfile.TemporaryDirectory(prefix="sath-gui-ws-") as tmp:
+        for k, d in (("CONFIG", "config"), ("EXTENSIONS", "extensions"), ("DATAFILES", "datafiles")):
+            (Path(tmp) / d).mkdir()  # vaqtinchalik profil — foydalanuvchining haqiqiy sozlamalariga tegilmaydi
+            env[f"BLENDER_USER_{k}"] = str(Path(tmp) / d)
         if a.bundle:
             if not (a.bundle / "blender.exe").is_file():
                 print(f"[GUI-SKIP] bundle bosqichi yo'q: {a.bundle} (build_blender_bundle.py --keep-stage)")
-                return 0
+                return 2  # jim o'tib ketmasin (Task 7 darvozasi)
             env["SATH_GUI_BUNDLE"] = "1"
             cmd = [str(a.bundle / "blender.exe"), "--python", str(CHECK)]
         else:
@@ -50,6 +55,9 @@ def main() -> int:
             print(f"[GUI-FAIL] {a.timeout}s ichida tugamadi")
             return 1
     out = r.stdout + r.stderr
+    if before is not None and real.stat().st_mtime_ns != before:
+        print(f"[GUI-FAIL] haqiqiy userpref.blend o'zgargan: {real}")
+        return 1
     keep = ("[GUI", "GUI-WS", "Traceback", "  File", "AssertionError", "Error:", "[sath]")
     for ln in out.splitlines():
         if ln.startswith(keep):

@@ -83,6 +83,11 @@ def load_handler(_):
 
 
 @persistent
+def cancel_chain(_):
+    workspaces.cancel_chain()  # boshqa fayl yuklanmoqda — tab tartibi zanjiri uning ish joylariga tegmasin
+
+
+@persistent
 def resubscribe(_):
     _subscribe()  # fayl yuklanganda msgbus obunalari tozalanadi
     if not bpy.app.background:
@@ -124,6 +129,7 @@ class SATH_OT_reset_workspaces(bpy.types.Operator):
 _HANDLERS = (
     (bpy.app.handlers.load_factory_startup_post, load_handler),
     (bpy.app.handlers.load_post, resubscribe),
+    (bpy.app.handlers.load_pre, cancel_chain),
 )
 _TIMERS = (_retry, _activate_bim)
 
@@ -137,6 +143,7 @@ def register():
 
 
 def unregister():
+    workspaces.cancel_chain()
     bpy.msgbus.clear_by_owner(_MSGBUS)
     for fn in _TIMERS:
         if bpy.app.timers.is_registered(fn):
