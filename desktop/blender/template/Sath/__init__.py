@@ -13,6 +13,20 @@ _RETRIES = 5
 _retry_left = [0]
 
 
+def _no_bonsai_workspace():
+    """Bonsai ning o'z «BIM» ish joyini qurishi o'chiriladi (Sath BIM bilan to'qnashmasin). Eski (0.3.x)
+    userpref.blend da True bo'lishi mumkin — shuning uchun har ishga tushishda majburlanadi. Bonsai yo'q yoki
+    o'chiq bo'lishi mumkin (getattr / try)."""
+    try:
+        for name, addon in bpy.context.preferences.addons.items():
+            if name.rsplit(".", 1)[-1] == "bonsai":
+                prefs = getattr(addon, "preferences", None)
+                if prefs is not None and getattr(prefs, "should_setup_workspace", False):
+                    prefs.should_setup_workspace = False
+    except Exception as e:  # noqa: BLE001 — ish joylarini hech qachon buzmasin
+        print("[sath] bonsai should_setup_workspace:", e, flush=True)
+
+
 def _setup_screens():
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -73,6 +87,7 @@ def _subscribe():
 
 @persistent
 def load_handler(_):
+    _no_bonsai_workspace()
     _setup_screens()
     _setup_scenes()
     rep = workspaces.ensure(bpy.context)
@@ -135,6 +150,7 @@ _TIMERS = (_retry, _activate_bim)
 
 
 def register():
+    _no_bonsai_workspace()
     bpy.utils.register_class(SATH_OT_reset_workspaces)
     for lst, fn in _HANDLERS:
         if fn not in lst:

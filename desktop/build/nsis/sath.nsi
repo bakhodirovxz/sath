@@ -30,10 +30,23 @@ BrandingText "Sath ${VERSION} — gidroelektrostansiya BIM"
 
 Section "Sath" SEC_MAIN
   SetOutPath "$INSTDIR"
-  ; eski versiya ustiga: portable/ (sozlamalar) saqlanadi, qolgani yangilanadi
+  ; eski versiya ustiga: faqat portable\config (foydalanuvchi sozlamalari) saqlanadi, qolgani yangilanadi
+  ; 0.3.x dan: FreeCAD olib tashlangan (P4) — eski papka o'chiriladi
+  RMDir /r "$INSTDIR\freecad"
   File /r /x "portable" "${STAGE}\*"
-  IfFileExists "$INSTDIR\portable\config\userpref.blend" +2 0
-    File /r "${STAGE}\portable"
+  ; extension lar va boot skripti HAR DOIM almashadi (olib tashlangan modullar qolib ketmasin)
+  RMDir /r "$INSTDIR\portable\extensions\user_default\sath"
+  RMDir /r "$INSTDIR\portable\extensions\user_default\bonsai"
+  RMDir /r "$INSTDIR\portable\scripts"
+  SetOutPath "$INSTDIR\portable\extensions"
+  File /r "${STAGE}\portable\extensions\*"
+  SetOutPath "$INSTDIR\portable\scripts"
+  File /r "${STAGE}\portable\scripts\*"
+  ; portable\config HECH QACHON o'chirilmaydi; yangi o'rnatishda boshlang'ich userpref.blend qo'yiladi
+  IfFileExists "$INSTDIR\portable\config\userpref.blend" +3 0
+    SetOutPath "$INSTDIR\portable\config"
+    File /r "${STAGE}\portable\config\*"
+  SetOutPath "$INSTDIR"
   WriteRegStr HKCU "Software\Sath" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Sath" "Version" "${VERSION}"
   WriteUninstaller "$INSTDIR\Uninstall-Sath.exe"
