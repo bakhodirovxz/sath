@@ -130,6 +130,8 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator("sath.submit")
         lay.operator("sath.open_web")
         lay.operator("sath.notifications")
+        if hasattr(bpy.types, "SATH_OT_reset_workspaces"):  # Sath app template (bundle) faol bo'lsa
+            lay.operator("sath.reset_workspaces", icon="WORKSPACE")
         host.draw_menus(lay, context)  # modul bandlari (bim: «GES obyekti», io, sim …) — har biri separator bilan
 
 

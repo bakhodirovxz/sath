@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from .. import session
 from . import host, perms
+from .registry import WORKSPACE_TAG
 
 
 class SathPanel:
@@ -25,6 +26,13 @@ class SathPanel:
         return True
 
 
+def in_workspace(manifest, workspace) -> bool:
+    """Modul paneli shu ish joyida ko'rinadimi: tegi (ws["sath_ws"], app template qo'yadi) manifest
+    `workspaces` ida bo'lsa. Tegsiz ish joyi (Layout, Modeling …) yoki `workspaces` bo'sh modul — hamma joyda."""
+    tag = workspace.get(WORKSPACE_TAG) if workspace is not None else None
+    return not tag or not manifest.workspaces or tag in manifest.workspaces
+
+
 def visible(cls, context) -> bool:
     m = None
     if cls.sath_module:
@@ -32,9 +40,7 @@ def visible(cls, context) -> bool:
         if rec is None or rec.state != "enabled":
             return False
         m = rec.manifest
-        ws = getattr(context, "workspace", None)
-        tag = ws.get("sath_ws") if ws is not None else None
-        if tag and m.workspaces and tag not in m.workspaces:  # tegsiz workspace (P4 gacha) — hammasi ko'rinadi
+        if not in_workspace(m, getattr(context, "workspace", None)):
             return False
     needs = cls.sath_needs
     if ("login" in needs or "model" in needs or cls.sath_perm or (m is not None and m.visible_if_any)) and not session.is_logged_in():

@@ -42,6 +42,8 @@ except ModuleNotFoundError:  # Python 3.10 (pytest .venv): tomli — pytest ning
     import tomli as tomllib
 
 API_VERSION = (1, 0)
+WORKSPACE_TAG = "sath_ws"  # app template ish joyi tegi: ws["sath_ws"] (template/Sath/workspaces.py)
+WORKSPACES = ("BIM", "Compare", "Simulation", "SCADA")  # Sath ish joylari = manifest `workspaces` qiymatlari
 MANIFEST = "sath_module.toml"
 SIGNATURE = "sath_module.sig"
 CAPABILITIES = frozenset({"network", "files", "subprocess", "ifc.write"})
