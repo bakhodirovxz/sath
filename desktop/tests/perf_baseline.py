@@ -40,12 +40,13 @@ FREECAD_MB = 935  # P0 bundle dagi freecad/ (P2 da to'liq olib tashlangan)
 
 
 def bundle_breakdown(stage: Path) -> dict[str, int]:
-    """Stage hajmi (bayt) toifalar bo'yicha: Blender (qolgani), Bonsai, Sath (extension + template + boot), libredwg
-    asboblari, .pyc (Sath/Bonsai/template/boot uchun oldindan kompilyatsiya)."""
+    """Stage hajmi (bayt) toifalar bo'yicha: Blender (qolgani), Bonsai (extension + .local bog'liqliklari: numpy,
+    ifcopenshell ...), Sath (extension + template + boot), libredwg asboblari, .pyc (portable/ va template dagi
+    barcha .pyc — oldindan kompilyatsiya)."""
     ver = next((d for d in stage.iterdir() if d.is_dir() and d.name.replace(".", "").isdigit()), None)
     tpl = ver / "scripts" / "startup" / "bl_app_templates_system" / "Sath" if ver else stage / "_yoq"
     groups = {
-        "Bonsai": [stage / "portable" / "extensions" / "user_default" / "bonsai"],
+        "Bonsai": [stage / "portable" / "extensions" / "user_default" / "bonsai", stage / "portable" / "extensions" / ".local"],
         "Sath": [stage / "portable" / "extensions" / "user_default" / "sath", tpl, stage / "portable" / "scripts"],
         "libredwg": [stage / "tools"],
     }
@@ -56,7 +57,7 @@ def bundle_breakdown(stage: Path) -> dict[str, int]:
             continue
         n = f.stat().st_size
         total += n
-        compiled = f.suffix == ".pyc" and any(r in f.parents for g in ("Bonsai", "Sath") for r in groups[g])
+        compiled = f.suffix == ".pyc" and (stage / "portable" in f.parents or tpl in f.parents)
         if compiled:
             out[".pyc"] += n
             continue
@@ -232,7 +233,8 @@ def _main() -> int:
         "keyin) register ~260–310 ms (2026-10-09 o'lchovi: 265 / 276 / 307 ms; import ~115–155, host ~140) — "
         "bu bir martalik .pyc kompilyatsiyasi, byudjet unga qo'llanmaydi. Bundle da .pyc oldindan "
         "kompilyatsiya qilingan (checked-hash, `compileall -f`): zip/installer fayl vaqtini o'zgartirsa ham "
-        "birinchi ishga tushishda qayta kompilyatsiya yo'q (`bundle_check` tekshiradi).",
+        "birinchi ishga tushishda qayta kompilyatsiya yo'q (`bundle_check` tekshiradi); bundle (GUI, yangi stage) "
+        "birinchi ishga tushishda register ~69 ms, keyingisida ~43 ms (2026-10-09, `run_gui_workspaces.py --bundle`).",
         "",
         "| O'lchov | P0 | Hozir |",
         "|---|---|---|",

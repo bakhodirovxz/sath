@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping
 REGISTER_MS = 150.0  # Sath import + register jami (modullar bilan)
 COLD_START_RATIO = 1.2  # sovuq start: Blender+Bonsai+Sath / Blender+Bonsai
 IDLE_RSS_DELTA_MB = 50.0  # bo'sh sahnada Sath RSS ortishi (Bonsai ustiga)
-BUNDLE_MAX_MB = 1750  # ochilgan bundle stage: joriy hajm (1 MB = 2**20) 50 MB gacha yuqoriga yaxlitlanib + 50 MB zaxira
+BUNDLE_MAX_MB = 1700  # ochilgan bundle stage: 1637 MB (1 MB = 2**20) 50 MB gacha yuqoriga yaxlitlanib (1650) + 50 MB zaxira
 HEAVY_MODULES = ("numpy", "ifcopenshell", "ezdxf", "assimp_py")  # faqat funksiya ichida import qilinadi
 
 

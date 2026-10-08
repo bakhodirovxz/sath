@@ -16,7 +16,7 @@ python desktop/build/build_blender_bundle.py --installer
 → `desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
 (splash, bo'sh metr sahna, N-panel ochiq, **ish joylari** BIM/Compare/Simulation/SCADA, Sath temasi) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
 (prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
-Sath template ga o'tkazadi) + `tools/libredwg/`. Bundle hajmi ≈1637 MB (`freecad/` siz, .pyc oldindan kompilyatsiya qilingan; 0.3.0 da 2392 MB edi). Kerak: `~\Tools\blender-5.2`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
+Sath template ga o'tkazadi) + `tools/libredwg/`. Bundle hajmi ≈1637 MB (`freecad/` siz — u 935 MB tejadi; 0.3.0 da 2392 MB edi, sof o'zgarish −755 MB: o'sish Bonsai 0.9.0 va oldindan kompilyatsiya qilingan checked-hash `.pyc` dan; byudjet `BUNDLE_MAX_MB` = 1700, `perf_baseline.py --check` tekshiradi; installer yangilashda `portable\config` ga tegmaydi, extension va boot skriptini almashtiradi, eski `freecad\` ni o'chiradi). Kerak: `~\Tools\blender-5.2`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
 yoki avtomatik yuklab olinadi), NSIS (`~\Tools\NSIS`), venv da `pillow` (splash/ikonka).
 Oyna sarlavhasi «Sath» bo'lishi uchun manba forki: GitHub Actions **«Blender fork (Sath brend)»** (qo'lda, ~2–3 soat) —
 `desktop/blender/fork/brand.py` Blender manbasiga sarlavha/ProductName/ikonka/splash brendini qo'llaydi, artefakt
@@ -94,7 +94,7 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 - Unumdorlik: `python desktop/tests/perf_baseline.py --bundle <stage> --check` → `docs/benchmark-desktop.md`
   (P0 bilan taqqoslash, spec §5 byudjetlari; har ishga tushishda `[sath] register … ms` logi).
 
-Sinalgan: 2026-10-09, Blender 5.2.2, Bonsai 0.9.0, FreeCAD siz — headless 25/25, FAIL 0, SKIP 0 (`SATH_REQUIRE_NO_SKIP=1`); GUI ish joylari (repo va bundle) [GUI-OK]; bundle_check [BUNDLE-OK], stage 1637 MB; byudjetlar: register 61.9 ms, sovuq start 1.03x, RSS +1.5 MB, og'ir importlar yo'q (`docs/benchmark-desktop.md`).
+Sinalgan: 2026-10-09, Blender 5.2.2, Bonsai 0.9.0, FreeCAD siz — headless 25/25, FAIL 0, SKIP 0 (`SATH_REQUIRE_NO_SKIP=1`; haydovchi haqiqiy Blender profiliga yozmaydi — vaqtinchalik `BLENDER_USER_CONFIG`/`DATAFILES`); GUI ish joylari (repo va bundle) [GUI-OK]; bundle_check [BUNDLE-OK], stage 1637 MB; byudjetlar: register 62.0 ms, sovuq start 1.03x, RSS +2.2 MB, og'ir importlar yo'q (`docs/benchmark-desktop.md`).
 
 Avval sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).

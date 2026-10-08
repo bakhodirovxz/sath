@@ -12,6 +12,7 @@ if ($env:GES_TEST_SERVER) { $tests += ,@("e2e_server", "--bonsai"); $tests += ,@
 # EXTENSIONS ataylab tegilmaydi: Bonsai odatiy extensions repodan topilaveradi.
 $iso = Join-Path ([System.IO.Path]::GetTempPath()) ("sath_tests_" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force (Join-Path $iso "config"), (Join-Path $iso "datafiles") | Out-Null
+$oldCfg = $env:BLENDER_USER_CONFIG; $oldData = $env:BLENDER_USER_DATAFILES
 $env:BLENDER_USER_CONFIG = Join-Path $iso "config"
 $env:BLENDER_USER_DATAFILES = Join-Path $iso "datafiles"
 $fails = 0; $skips = 0
@@ -22,6 +23,7 @@ foreach ($t in $tests) {
     else { "[FAIL] $($t[0])"; $out | Select-String -Pattern "Error|assert" | ForEach-Object { "       " + $_.Line }; $fails++ }
 }
 Remove-Item -Recurse -Force $iso -ErrorAction SilentlyContinue
+$env:BLENDER_USER_CONFIG = $oldCfg; $env:BLENDER_USER_DATAFILES = $oldData
 "`nFAIL soni: $fails · SKIP: $skips"
 if ($fails -eq 0 -and $skips -gt 0 -and $env:SATH_REQUIRE_NO_SKIP -eq "1") { "SKIP taqiqlangan (SATH_REQUIRE_NO_SKIP=1)"; exit 1 }
 exit $fails
