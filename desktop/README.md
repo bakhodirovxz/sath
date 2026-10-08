@@ -1,82 +1,21 @@
 # Sath Desktop
 
-> **Asosiy desktop — Blender 5.2 extension (`blender/sath`, pastda).** FreeCAD forki, `GesWorkbench/` GUI,
-> `build/sync_fork.py`, `build/build_portable.py` va `blender/spike/` — **legacy** (CODE-02): faqat xato tuzatishlar,
-> qarang `GesWorkbench/LEGACY.md`, `blender/spike/LEGACY.md`. Paket nomlari (CODE-03): Blender —
-> `Sath-Blender-<ver>-Windows-x86_64.zip`, FreeCAD (legacy) — `Sath-FreeCAD-<ver>-Windows-x86_64.zip`.
-
-O'z dasturimiz — **FreeCAD 1.1.3 forki** (`../Sath-FreeCAD`, LGPL) + shu papkadagi GES workbench.
-Ishchi bitta installer o'rnatadi: dastur «Sath» nomi, o'z ikonkasi/splash i bilan, qora tema,
-metr birliklari, CAD navigatsiya, Sath workbench bilan ochiladi; profil `%APPDATA%\Sath`
-(o'rnatilgan FreeCAD bilan aralashmaydi). FreeCAD 1.1.3 da sinalgan (2026-09-14): workbench,
-serverga kirish, model ochish (NativeIFC), GES obyektlar, commit (GUID lar saqlanadi, Pset_GES_*
-yoziladi), issue/ko'rinish, installer o'rnatish/o'chirish.
-
-## Blender addoni
-
-Yangi yo'nalish (2026-09-17): desktop qobiq **Blender** bo'ladi, FreeCAD faqat dvigatel. `blender/sath/` —
-Blender 5.2 extension: shu workbench beradigan hamma narsa (server, GES obyektlari, sim, monitoring, DXF/DWG)
-Blender panellarida, IFC Bonsai da. Batafsil: `blender/README.md`; texnik asos: `../docs/spike-blender-freecad.md`,
-dizayn: `../docs/superpowers/specs/2026-09-17-blender-addon-design.md`.
+Desktop klient — **Blender 5.2 extension** `blender/sath` (Bonsai IFC; GES geometriyasi sof Python — FreeCAD siz).
+Batafsil: [`blender/README.md`](blender/README.md); bundle (`Sath.exe`, installer): `build/build_blender_bundle.py`.
 
 ## Tuzilma
-- `GesWorkbench/` — workbench manbasi (**yagona manba**; fork `src/Mod/Ges` shundan sinxronlanadi)
-- `build/sync_fork.py` — fork ga nusxalash (`--check` CI uchun)
-- `build/build_portable.py` — paket yig'ish (fork overlay + zip + NSIS installer)
-- `tests/` — `test_server_client.py` (pytest), `fc_headless.py` (freecadcmd), `fc_gui.py` (GUI, server kerak)
+- `blender/sath/` — addon; `blender/template/` — Sath app template; `blender/fork/` — Blender brend forki skriptlari
+- `build/` — `sync_blender.py` (umumiy modullar nusxasi, `--check`), `build_blender_addon.py`, `build_blender_bundle.py`,
+  `publish_desktop.py` (serverga yuklash, Ed25519 imzo), `ci_blender_setup.py`
+- `tests/` — pytest (`test_*.py`, Blender siz) va headless Blender testlari (`run_blender_tests.ps1`, `sath_tests/`);
+  `data/ges_golden.json` — GES turlari uchun FreeCAD etaloni (paritet testlari)
 
-Fork da nima bor (brending, CMake presetlar, NSIS, CI) — `../Sath-FreeCAD/README.md`.
+## Legacy: FreeCAD (arxivlangan)
+FreeCAD 1.1.3 forki (`Sath-FreeCAD`), `GesWorkbench/` workbench, `build_portable.py`/`sync_fork.py`, FreeCAD
+testlari va Blender+FreeCAD spike Poydevor P2 da (roadmap K1) repodan olib tashlandi. Oxirgi holat —
+`archive/freecad-legacy` tegida:
 
-## Nima beradi
-- **Serverga ulanish** — login/parol, server manzili saqlanadi; yangi versiya bo'lsa xabar
-- **Modelni ochish** — loyiha → model → versiya, IFC yuklab olinib NativeIFC bilan ochiladi
-- **Commit** — hujjat IFC qilib yangi versiya sifatida yuklanadi (ixtiyoriy: darhol tasdiqqa)
-- **Tasdiqqa yuborish**, **Issue lar** (3D ko'rinish bilan, izohlar)
-- **Versiyalar va farq** — tarix, istalgan versiyani ochish, ota bilan farq 3D da (yashil/sariq), webda ochish
-- **Simulyatsiya katalogi** — webdagi barcha turlar (forma serverdan, pasport/modeldan to'ladi, grafik, 3D suv),
-  **Xavfsizlik tekshiruvi** (12 ssenariy, ball)
-- **Monitoring (SCADA)** — jonli qiymatlar, obyektlar alarm rangi, suv sathi tekisligi, sensor → 3D
-- **Webda ochish** — joriy model va tanlangan element brauzerda (`?v=&sel=`)
-- **GES obyektlari** — To'g'on, Bosimli quvur, Turbina agregati, Suv tashlagich, Mashina zali, Transformator,
-  Suv qabul qilgich: parametrik, IFC ga `Pset_GES_*` xususiyatlari bilan chiqadi (web bilan bir xil nomlar)
-- Chizish uchun FreeCAD ning BIM/Draft/Part/Sketcher/TechDraw/FEM workbench lari (Robot, CAM,
-  OpenSCAD va h.k. olib tashlangan)
+    git show archive/freecad-legacy:desktop/GesWorkbench/LEGACY.md
+    git checkout archive/freecad-legacy -- desktop/GesWorkbench   # kerak bo'lsa vaqtincha tiklash
 
-## Paket yig'ish (Windows)
-Kerak: o'rnatilgan FreeCAD 1.1.3 (`C:\Program Files\FreeCAD 1.1`), fork (`../Sath-FreeCAD`),
-installer uchun NSIS (`winget download NSIS.NSIS` → setup `/S /D=%USERPROFILE%\Tools\NSIS`; admin kerak emas).
-```
-python desktop/build/build_portable.py            # zip + siqilgan installer (~15 daqiqa)
-python desktop/build/build_portable.py --fast     # installer siqilmagan (sinov, ~2 daqiqa)
-```
-Natija `desktop/dist/`:
-- `Sath-FreeCAD-<ver>-Windows-x86_64-installer.exe` (legacy) — ishchiga shu (Start menyu, ishchi stol, o'chirish)
-- `Sath-FreeCAD-<ver>-Windows-x86_64.zip` (legacy) — portable (Blender bundle — `Sath-Blender-<ver>-…`, `blender/README.md`)
-
-FreeCAD kompilyatsiya qilinmaydi: rasmiy 1.1.3 binari fork tegi bilan bir xil commit, fork
-`overlay.py` uni brending + Mod/Ges bilan Sath ga aylantiradi. To'liq kompilyatsiya (yadro
-o'zgartirilganda) — fork dagi GitHub Actions «Sath build» (~2–3 soat), natija bir xil nomlar.
-
-**Formatlar**: FreeCAD o'zi — IFC, STEP/IGES/BREP, OBJ/STL/PLY/OFF/3MF, glTF/GLB, DAE, 3DS, DXF; Sath qo'shimchasi —
-DWG (LibreDWG) va DXF/DWG ni AutoCAD kabi tahrirlanadigan ochish (`dxf_edit`, ezdxf), FBX/LWO/X/ASE/AC/MS3D/AMF/X3D…
-(`mesh_open`, assimp-py) — Fayl → Ochish. Kutubxonalar `Mod/Ges/vendor` da (paket bilan keladi).
-
-**DWG**: yig'ishda `~/Tools/libredwg/dwg2dxf.exe` (yoki `LIBREDWG_DIR`) topilsa `tools/libredwg/` sifatida paketga
-qo'shiladi (https://github.com/LibreDWG/libredwg/releases → win64 zip). Dastur ochilganda `Init.py`
-(`ges_workbench/converters.py`) uni topib Draft «DWG converter» sozlamasiga yozadi — ishchi hech narsa
-sozlamaydi. Paketda bo'lmasa `~/Tools`, `C:\Tools`, `GES_TOOLS_DIR`, PATH va ODA File Converter qidiriladi.
-
-Versiya: `GesWorkbench/package.xml` `<version>` — installer nomi, o'rnatish papkasi, yangilanish tekshiruvi.
-Serverga yuklash: `docs/admin.md`.
-
-## Ishlab chiquvchi uchun (installer siz)
-O'rnatilgan FreeCAD ga workbench ni bog'lash: `mklink /J "%APPDATA%\FreeCAD\v1-1\Mod\GesWorkbench" desktop\GesWorkbench`
-(FreeCAD 1.1 foydalanuvchi papkasi `%APPDATA%\FreeCAD\v1-1`). FreeCAD ni qayta oching, Workbench → Sath.
-Workbench o'zgarganda fork ga: `python desktop/build/sync_fork.py`.
-
-## Testlar
-```
-python -m pytest desktop/tests                                   # server_client (haqiqiy server oqimda)
-"C:\Program Files\FreeCAD 1.1\bin\freecadcmd.exe" desktop\tests\fc_headless.py
-"C:\Program Files\FreeCAD 1.1\bin\freecad.exe" desktop\tests\fc_gui.py        # yoki Sath.exe; natija %TEMP%\sath\fc_gui.log
-```
+Serverda avval yuklangan `Sath-FreeCAD-*` paketlari (`?product=freecad`) qoladi, yangilari yig'ilmaydi.

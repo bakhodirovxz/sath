@@ -1684,7 +1684,7 @@ Bog'liqlik: J1–J12.
 
 ## K. Desktop konsolidatsiya
 
-### K1 — Blender ni yagona trek qilish
+### K1 — Blender ni yagona trek qilish ◐ (8d9e8e1) — FreeCAD olib tashlandi, GES builderlari sof Python (geom/ges_kinds, paritet testlari); umumiy o'rnatiladigan sath-common paketi keyinroq
 
 Muammo: `desktop/GesWorkbench/ges_workbench` va `desktop/blender/sath` orasida 1538 qator
 bir xil (o'lchangan: `ges_objects.py` 753 qator 100 %, `server_client.py` 273 qator 100 %,
@@ -1715,7 +1715,7 @@ Fayllar: `desktop/blender/sath/ges_objects.py`, `fc_engine.py`, `wb/`, `prefs.py
 Qabul mezoni: FreeCAD o'rnatilmagan mashinada barcha GES obyektlari yaratiladi (test).
 Bog'liqlik: yo'q. Katta ish, lekin ikkinchi trekni yopadigan yagona yo'l.
 
-### K2 — Round-trip da obyekt ma'lumotini saqlash
+### K2 — Round-trip da obyekt ma'lumotini saqlash ◐ headless (5d25b11, 72e89b6) — lokal saqlash/ochish va eski model (roundtrip_ges); server orqali (commit → ochish → sim) tekshiruvi kutilmoqda (server-backed sim_hydro/sim_twin o'tdi)
 
 Muammo: `props.py:175` — `snapshot(s)` faqat `Scene.ges` xususiyatlari bo'yicha yuradi.
 `ops_server.py:184` esa `ifc.load()` dan keyin faqat `props.restore(bpy.context.scene.ges, snap)`
@@ -1767,7 +1767,7 @@ Fayllar: `desktop/blender/sath/server_client.py`, `ops_server.py`, `ops_review.p
 Qabul mezoni: uzoq operatsiya davomida interfeys javob beradi (qo'lda tekshiriladi + headless test).
 Bog'liqlik: yo'q.
 
-### K4 — Undo/redo va IFC izchilligi
+### K4 — Undo/redo va IFC izchilligi ◐ headless (b0560c9) — undo_ifc (IfcStore.undo); GUI da Ctrl+Z qo'lda tekshiruvi kutilmoqda
 
 Muammo: 45 ta operatordan faqat ikkitasi undo e'lon qiladi (`ges_objects.py:175`,
 `demo_plant.py:201`). Bundan ham yomoni — aynan shu ikkitasi xavfli.

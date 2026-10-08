@@ -459,10 +459,9 @@ Parolni foydalanuvchi o'zi o'zgartira oladi (API `/api/auth/change-password`); a
 
 ## Desktop paketini tarqatish
 
-Windows mashinada (o'rnatilgan FreeCAD 1.1.3, fork `../Sath-FreeCAD`, NSIS — `desktop/README.md`):
+Windows mashinada (Blender 5.2 `~\Tools\blender-5.2`, NSIS — `desktop/blender/README.md`):
 ```bash
 python desktop/build/build_blender_bundle.py --installer   # dist: Sath-Blender-<ver>-Windows-x86_64-installer.exe va .zip
-python desktop/build/build_portable.py                    # (legacy) Sath-FreeCAD-<ver>-Windows-x86_64-*
 # bir martalik: imzo kalit juftligi (private — CI secret / parol menejeri; ochiq — serverga va addonga)
 python desktop/build/publish_desktop.py --gen-key ~/.sath/release-ed25519.pem
 python desktop/build/publish_desktop.py --server https://<server> --user admin --product blender     --signing-key ~/.sath/release-ed25519.pem   # dist dagi eng yangi installer + zip
@@ -486,9 +485,7 @@ Yangilanish butunligi (SEC-03):
   lokal NSIS installer — shu sertifikat bilan `signtool sign /fd SHA256 /tr <timestamp> /td SHA256`.
 
 Webda «Loyihalar» sahifasida «Sath x.y.z o'rnatish ↓ / zip ↓» tugmalari chiqadi; desktop kirishda
-`GET /api/desktop/latest` bilan tekshiradi (installer afzal). Versiya `desktop/GesWorkbench/package.xml` da —
-oshirib, `python desktop/build/sync_fork.py` bilan fork ga o'tkazing. Yadro (FreeCAD) o'zgartirilganda
-fork dagi GitHub Actions «Sath build» ishlatiladi.
+`GET /api/desktop/latest` bilan tekshiradi (installer afzal). Versiya — `desktop/blender/sath/blender_manifest.toml` (`version`). Legacy FreeCAD paketi (`--product freecad`) endi yig'ilmaydi; manba `archive/freecad-legacy` tegida.
 
 ## SCADA ulanishi
 

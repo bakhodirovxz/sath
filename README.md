@@ -95,7 +95,7 @@ Namunaviy model: `docs/samples/namuna_ges_v1.ifc` / `_v2.ifc` (`docs/samples/mak
 ```
 server/ges_server/   auth/ projects/ models/ review/ sim/ — FastAPI routerlar, orm.py, audit.py
 web/src/             viewer/ (ThatOpen o'rami, buyruqlar) ui/ pages/ api/
-desktop/GesWorkbench FreeCAD addon: ges_workbench/{server_client,commands,dialogs,ges_objects,preset}
+desktop/blender/sath Blender 5.2 addon (asosiy desktop); desktop/GesWorkbench — arxivlangan FreeCAD workbench (tag `archive/freecad-legacy`)
 sim/ges_sim/         reservoir.py penstock.py turbine.py scenario.py
 deploy/              Dockerfile docker-compose.yml .env.example backup.sh
 ```

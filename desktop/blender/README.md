@@ -1,17 +1,11 @@
 # Sath Blender addoni (`sath`)
 
-FreeCAD workbench imkoniyatlari Blender 5.2 LTS ichida: server (loyiha/model/versiya, commit, tasdiqlash,
-issue lar, versiyalar farqi), GES parametrik obyektlari, simulyatsiya katalogi va xavfsizlik tekshiruvi,
-SCADA monitoring, DWG/DXF va mesh import. IFC — **Bonsai** da yashaydi, **FreeCAD** faqat geometriya/import
-dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-blender-freecad.md`).
+Sath desktop Blender 5.2 LTS ichida: server (loyiha/model/versiya, commit, tasdiqlash, issue lar, versiyalar farqi), GES parametrik obyektlari, simulyatsiya katalogi va xavfsizlik tekshiruvi, SCADA monitoring, DWG/DXF va mesh import. IFC — **Bonsai** da; GES geometriyasi — sof Python (`shared/geom`, `shared/ges_kinds`, numpy), FreeCAD kerak emas.
 
 ## Talablar
 
 - Blender **5.2 LTS** (Python 3.13) — `~\Tools\blender-5.2`
 - Bonsai **0.9.0+** extension (Edit → Preferences → Get Extensions → Bonsai)
-- FreeCAD **1.1.3 py313** (conda-forge): `micromamba create -p %USERPROFILE%\Tools\fc-py313 -c conda-forge "freecad=1.1.3=py313*"`
-  (yo'l: addon sozlamalari «FreeCAD papkasi» yoki `GES_FC_HOME` env). Rasmiy installer (py3.11) faqat Blender 4.5 bilan mos.
-  Hozircha FreeCAD faqat GES obyektlari uchun kerak; P2 da olib tashlanadi.
 - DWG uchun LibreDWG `dwg2dxf` (`~\Tools\libredwg`) yoki ODA File Converter.
 
 ## Tayyor bundle (foydalanuvchi uchun)
@@ -22,8 +16,7 @@ python desktop/build/build_blender_bundle.py --installer
 → `desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
 (splash, bo'sh metr sahna, N-panel ochiq) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
 (prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
-Sath template ga o'tkazadi) + `freecad/` (conda py313 muhiti, ~0.9 GB ga kesilgan: MKL/VTK/libclang/FEM yo'q)
-+ `tools/libredwg/`. Kerak: `~\Tools\blender-5.2`, `~\Tools\fc-py313`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
+Sath template ga o'tkazadi) + `tools/libredwg/`. Bundle hajmi ≈1568 MB (`freecad/` siz). Kerak: `~\Tools\blender-5.2`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
 yoki avtomatik yuklab olinadi), NSIS (`~\Tools\NSIS`), venv da `pillow` (splash/ikonka).
 Oyna sarlavhasi «Sath» bo'lishi uchun manba forki: GitHub Actions **«Blender fork (Sath brend)»** (qo'lda, ~2–3 soat) —
 `desktop/blender/fork/brand.py` Blender manbasiga sarlavha/ProductName/ikonka/splash brendini qo'llaydi, artefakt
@@ -45,29 +38,28 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 |---|---|
 | Server | manzil, login, parol → Ulanish (yangi versiya va o'qilmagan bildirishnomalar haqida xabar) |
 | Model | loyiha → model → versiya; Ochish (Bonsai), Commit (IFC → yangi versiya, ixtiyoriy darhol tasdiqqa), Tasdiqqa yuborish, Webda ochish (`?v=&sel=GUID`) |
-| GES obyektlari | To'g'on, Bosimli quvur (to'g'ri/egri: qiyalik, tirsak radiusi), Turbina, **Generator**, **Chiqarish quvuri**, Suv tashlagich, Mashina zali (yopiq/kesim), **Boshqaruv xonasi**, Transformator, Suv qabul qilgich, **Daryo oqimi kanali** — parametrlar obyektda, geometriya FreeCAD dan, IFC klass + `Pset_GES_*` Bonsai da; parametr o'zgarsa qayta quriladi. **«Namuna GES qurish»** — rasmdagi 9 komponentli stansiya egizagi bir tugma bilan (napor, agregatlar soni, quvvat → joylashuv, egri quvurlar, suv tekisliklari, `obj.ges.role`) |
+| GES obyektlari | To'g'on, Bosimli quvur (to'g'ri/egri: qiyalik, tirsak radiusi), Turbina, **Generator**, **Chiqarish quvuri**, Suv tashlagich, Mashina zali (yopiq/kesim), **Boshqaruv xonasi**, Transformator, Suv qabul qilgich, **Daryo oqimi kanali** — parametrlar obyektda, geometriya sof Python (`ges_kinds`, FreeCAD bilan paritet ±0.5 %), IFC klass + `Pset_GES_*` Bonsai da; parametr o'zgarsa mesh darhol yangilanadi, IFC — «IFC ga qo'llash» (`sath.sync_ifc`) yoki commit da; qo'shish va «Namuna GES» — bitta undo qadami; qayta ochilganda tur/rol/parametrlar `Pset_SathParametric` dan tiklanadi (K2). **«Namuna GES qurish»** — rasmdagi 9 komponentli stansiya egizagi bir tugma bilan (napor, agregatlar soni, quvvat → joylashuv, egri quvurlar, suv tekisliklari, `obj.ges.role`) |
 | Taqriz va issue lar | ota bilan farq (3D rang: yashil/sariq), issue lar (ko'rinishga o'tish, izoh, yangi issue kamera bilan), tasdiqlash so'rovlari (ma'qullash / o'zgartirish / merge / rad — rolga qarab) |
 | Simulyatsiya | **Suv ombori/energiya → Blender timeline** (suv sathi keyframe, agregat/generator/transformator rangi yuklama bo'yicha, Francis qo'pol zona sariq, quyi byef Manning reyting egri chizig'i, chiqarish quvuri Thoma σ < σ_c → qizil, tashlama rangi). **Egizak simulyatsiyalari** (parametrlar modeldagi obyektlardan): gidrozarba (MOC) — quvur bo'ylab bosim markerlari; regulyator (HYGOV) — rotor aylanishi n·f/f_nom, chastota rangi; transformator (IEC 60076-7) — issiq nuqta rangi; zilzila (EC8) — S_d = S_a(T/2π)² siljish tebranishi. Server katalogi (barcha turlar), forma pasport/modeldan, natija, xavfsizlik tekshiruvi (12 ssenariy) |
 | Monitoring (SCADA) | 5 s da sensorlar, obyektlar alarm yoki sog'liq rangi, suv sathi tekisligi, sensor → 3D |
 | Raqamli egizak | napor, agregatlar o'lchangan/kutilgan quvvat va og'ish, jonli xavfsizlik ko'rsatkichlari, aktivlar sog'liq indeksi (aktiv → 3D), vaqt mashinasi (N soat oldingi sath 3D da) |
-| Import | DWG/DXF (FreeCAD importeri, ezdxf bilan tekislash, qatlam = collection), mesh (assimp: FBX/3DS/OBJ/…) |
+| Import | DWG/DXF (ezdxf bilan tekislash, qatlam = collection), mesh (assimp: FBX/3DS/OBJ/…) |
 
 ## Tuzilma
 
 - `sath/` — extension (`blender_manifest.toml`, `wheels/`)
-  - `fc_engine.py` FreeCAD yuklash + `ges_build` · `ifc.py` Bonsai ko'prigi · `flows.py` bpy siz server oqimlari
+  - `ifc.py` Bonsai ko'prigi (+ `orphans`) · `flows.py` bpy siz server oqimlari
   - `ops_*.py` operatorlar · `ui.py` panellar/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
-  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`) — **`common/sath_common`
-    nusxasi**, `wb/ges_objects.py` — workbench nusxasi (`python desktop/build/sync_blender.py`, CI `--check`)
-  - `core/` — `tasks.py` (fon vazifalari, bpy siz), `events.py` (hodisalar shinasi), `ui_tasks.py` (pompa, status bar
+  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`, `geom`, `ges_kinds`) — **`common/sath_common`
+    nusxasi** (`python desktop/build/sync_blender.py`, CI `--check`)
+  - `core/` — `tasks.py` (fon vazifalari, bpy siz), `events.py` (hodisalar shinasi), `ifc_ops.py` (IfcOperator — IFC undo, K4), `ui_tasks.py` (pompa, status bar
     progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3)
-- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, client threading);
-  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 19 ta sinov, `GES_TEST_SERVER` bilan yana 4 ta server sinovi;
-  FreeCAD yo'q bo'lsa 3 ta FreeCAD testi — engine, objects, demo_plant — `[SKIP]`; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
-  CI: `desktop-blender` ishi (windows-2022).
+- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, client threading, `geom`, `ges_kinds` — FreeCAD etaloniga paritet, `data/ges_golden.json`);
+  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 21 ta sinov — `kinds_mesh`, `roundtrip_ges`, `undo_ifc` yangi; `GES_TEST_SERVER` bilan yana 4 ta server sinovi: e2e_server, commit_conflict, sim_hydro, sim_twin; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
+  CI: `desktop-blender` ishi (windows-2022), SKIP taqiqlangan.
 - Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
 
-Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD 1.1.3 py313 — headless: 19/19 (+ real server bilan 4 ta: e2e_server, commit_conflict, sim_hydro, sim_twin), FAIL 0, SKIP 0.
+Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD siz — headless 21/21, FAIL 0, SKIP 0 (`SATH_REQUIRE_NO_SKIP=1`); dev server bilan 4 ta (e2e_server, commit_conflict, sim_hydro, sim_twin) OK; bundle ≈1568 MB (freecad/ siz); GUI: Ctrl+Z dan keyin orphans() tekshiruvi qo'lda kutilmoqda; GUI chizish va bundle installer qayta sinalmagan.
 
 Avval sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
