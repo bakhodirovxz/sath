@@ -81,14 +81,14 @@ BONSAI_SHA256 = "54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2
 - [ ] **Step 3: Lokal Blender 5.2 ga o'rnating (eski 0.8.5 ustidan)**
 
 ```powershell
-& "$HOME\Toolslender-5.2lender.exe" -b --command extension install-file --repo user_default --enable "$HOME\Toolsonsai-0.9.0-py313-win64.zip"
-& "$HOME\Toolslender-5.2lender.exe" -b --python-expr "import bpy; bpy.ops.preferences.addon_enable(module='bl_ext.user_default.bonsai'); import addon_utils; m=[m for m in addon_utils.modules() if m.__name__.endswith('bonsai')][0]; print('BONSAI', m.bl_info.get('version') if hasattr(m,'bl_info') else 'ok'); import ifcopenshell; print('IFCOS', ifcopenshell.version)"
+& "$HOME/Tools/blender-5.2/blender.exe" -b --command extension install-file --repo user_default --enable "$HOME/Tools/bonsai-0.9.0-py313-win64.zip"
+& "$HOME/Tools/blender-5.2/blender.exe" -b --python-expr "import bpy; bpy.ops.preferences.addon_enable(module='bl_ext.user_default.bonsai'); import addon_utils; m=[m for m in addon_utils.modules() if m.__name__.endswith('bonsai')][0]; print('BONSAI', m.bl_info.get('version') if hasattr(m,'bl_info') else 'ok'); import ifcopenshell; print('IFCOS', ifcopenshell.version)"
 ```
 Expected: `IFCOS 0.9.0` (yoki 0.9.x) chiqadi, xatosiz.
 
 - [ ] **Step 4: To'liq headless to'plam**
 
-Run: `$env:GES_BLENDER="$HOME\Toolslender-5.2lender.exe"; .\desktop	estsun_blender_tests.ps1`
+Run: `$env:GES_BLENDER="$HOME/Tools/blender-5.2/blender.exe"; ./desktop/tests/run_blender_tests.ps1`
 Expected: `FAIL soni: 0`. Yiqilgan test bo'lsa — `superpowers:systematic-debugging` bilan sababini toping (odatda `bonsai.tool.*` yoki `ifcopenshell.api.*` imzo o'zgarishi), `ifc.py`/tegishli modulda tuzating, har tuzatishdan keyin to'plamni qayta ishlating. Bonsai ichki API ni faqat `ifc.py` orqali chaqiring (izolyatsiya).
 
 - [ ] **Step 5: Server tomoni (ifcopenshell) — o'zgarmaydi**
@@ -319,7 +319,7 @@ if __name__ == "__main__":
 - [ ] **Step 3: Lokal tekshiruv (internet bor mashinada, keshdagi zip lar bilan)**
 
 Run: `python desktop/build/ci_blender_setup.py`
-Expected: `GES_BLENDER = C:\Users\...\Tools\blender-5.2.2-windows-x64\blender.exe`, xatosiz. (Lokal `~/Tools/blender-5.2` ga tegmaydi — alohida papka.)
+Expected: `GES_BLENDER = <home>\Tools\blender-5.2.2-windows-x64\blender.exe`, xatosiz. (Lokal `~/Tools/blender-5.2` ga tegmaydi — alohida papka.)
 
 - [ ] **Step 4: Ochilgan portable Blender da smoke**
 
