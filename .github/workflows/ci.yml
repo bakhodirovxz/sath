@@ -115,7 +115,7 @@ jobs:
         run: cat /tmp/server.log | tail -50
   desktop-blender:
     # K7: Blender addoni headless testlari — Blender 5.2.2 + Bonsai 0.9.0 (sha256 pin), FreeCAD siz
-    # (FreeCAD testlari [SKIP]; P2 da FreeCAD siz builder lar bilan almashadi). Server talab qiladigan
+    # (3 ta FreeCAD testi [SKIP]: engine, objects, demo_plant; P2 da FreeCAD siz builder lar bilan almashadi). Server talab qiladigan
     # testlar (GES_TEST_SERVER) bu yerda ishlamaydi.
     runs-on: windows-2022
     needs: [server]

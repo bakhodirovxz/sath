@@ -63,7 +63,7 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
     progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3)
 - Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, client threading);
   `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 19 ta sinov, `GES_TEST_SERVER` bilan yana 4 ta server sinovi;
-  FreeCAD yo'q bo'lsa FreeCAD testlari `[SKIP]`; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
+  FreeCAD yo'q bo'lsa 3 ta FreeCAD testi — engine, objects, demo_plant — `[SKIP]`; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
   CI: `desktop-blender` ishi (windows-2022).
 - Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
 

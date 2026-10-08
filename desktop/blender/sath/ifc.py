@@ -149,27 +149,57 @@ def _has_any_ref(value) -> bool:
     return False
 
 
+def _record_batch_inverses(tr, ids: set[int]) -> dict:
+    """Chiziqli batch yozuvi: o'chiriladigan har bir elementning o'z oldinga havolalari va tirik (o'chirilmaydigan)
+    havola qiluvchilarning shu elementlarga ishora qiluvchi atributlari — {id: [(indeks, qiymat)]}, BIR marta."""
+    inv: dict = {}
+    survivors: dict = {}
+    for i in ids:
+        el = tr.file.by_id(i)
+        fwd = [(k, tr.serialise_value(el, el[k])) for k in range(len(el)) if _has_any_ref(el[k])]
+        if fwd:
+            inv[i] = fwd
+        for r in tr.file.get_inverse(el):
+            if r.id() not in ids:
+                survivors[r.id()] = r
+    for rid, r in survivors.items():
+        refs = [(k, tr.serialise_value(r, r[k])) for k in range(len(r)) if _has_ref(r[k], ids)]
+        if refs:
+            inv[rid] = refs
+    return inv
+
+
+# Faqat shu versiyada sinalgan (undo_rep headless testi). Har bir Bonsai/ifcopenshell yangilanishida undo_rep bilan
+# qayta tekshirib, keyin bu yerga yangi versiyani yozing — boshqa versiyada yamoq yoqilmaydi (sekin, lekin to'g'ri).
+_BATCH_PATCH_VERSION = "0.9.0"
+
+
 @contextlib.contextmanager
 def _linear_batch_delete():
     """ifcopenshell 0.9.0: tranzaksiya ichidagi batch o'chirish har bir yuz uchun butun Faces ro'yxatini qayta
     serializatsiya qiladi (kvadratik; 30 ming yuzda soatlar). Bu yerda batch yozuvi chiziqli: o'chirilgan har bir
     element uchun (1) o'z oldinga havolalari va (2) tirik (o'chirilmaydigan) havola qiluvchilarning atributlari
     unbatch da BIR marta yoziladi — rollback (Ctrl+Z) hamma elementni qayta yaratgach ularni qayta bog'laydi.
-    Faqat ifcopenshell 0.9.x va faqat faol IFC fayl tranzaksiyasi uchun."""
+    Faqat ifcopenshell 0.9.0 (aniq versiya) va faqat faol IFC fayl tranzaksiyasi uchun. Yozuv xato bersa —
+    upstream (element bo'yicha, sekin) yozuvga qaytiladi; asl unbatch HAR DOIM chaqiriladi (fayl batch da qolmaydi)."""
     global _warned_batch
     try:
         import ifcopenshell
         from ifcopenshell.file import Transaction
 
-        ok = ifcopenshell.version.startswith("0.9.") and all(
-            hasattr(Transaction, a) for a in ("store_delete", "unbatch", "serialise_value", "serialise_entity_instance")
+        ok = ifcopenshell.version == _BATCH_PATCH_VERSION and all(
+            hasattr(Transaction, a)
+            for a in ("store_delete", "unbatch", "serialise_value", "serialise_entity_instance", "get_element_inverses")
         )
     except (ImportError, AttributeError):
         ok = False
     if not ok:
         if not _warned_batch:
             _warned_batch = True
-            print("sath: ifcopenshell 0.9.x emas — tez batch o'chirish yoqilmadi (katta mesh sekin bo'lishi mumkin)")
+            print(
+                f"sath: ifcopenshell {_BATCH_PATCH_VERSION} emas — tez batch o'chirish yoqilmadi "
+                "(katta mesh sekin bo'lishi mumkin)"
+            )
         yield
         return
     f = file()
@@ -182,24 +212,17 @@ def _linear_batch_delete():
         self.operations.append({"action": "delete", "inverses": {}, "value": self.serialise_entity_instance(element)})
 
     def unbatch(self):
-        if self.file is f and self.is_batched and self.batch_delete_ids:
-            ids = set(self.batch_delete_ids)
-            inv: dict = {}
-            survivors: dict = {}
-            for i in ids:
-                el = self.file.by_id(i)
-                fwd = [(k, self.serialise_value(el, el[k])) for k in range(len(el)) if _has_any_ref(el[k])]
-                if fwd:
-                    inv[i] = fwd
-                for r in self.file.get_inverse(el):
-                    if r.id() not in ids:
-                        survivors[r.id()] = r
-            for rid, r in survivors.items():
-                refs = [(k, self.serialise_value(r, r[k])) for k in range(len(r)) if _has_ref(r[k], ids)]
-                if refs:
-                    inv[rid] = refs
-            self.batch_inverses = [inv] if inv else []
-        return orig_unbatch(self)
+        try:
+            if self.file is f and self.is_batched and self.batch_delete_ids:
+                ids = set(self.batch_delete_ids)
+                try:
+                    inv = _record_batch_inverses(self, ids)
+                    self.batch_inverses = [inv] if inv else []
+                except Exception as e:  # noqa: BLE001 — kutilmagan element: upstream yozuviga qaytamiz
+                    print(f"sath: tez batch yozuvi bajarilmadi ({e}) — upstream (sekin) yozuv ishlatildi")
+                    self.batch_inverses = [self.get_element_inverses(self.file.by_id(i)) for i in ids]
+        finally:
+            orig_unbatch(self)
 
     Transaction.store_delete, Transaction.unbatch = store_delete, unbatch
     try:
