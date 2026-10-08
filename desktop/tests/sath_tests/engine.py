@@ -4,6 +4,9 @@ import bpy
 
 
 def run(ctx):
+    from _req import require_freecad
+
+    require_freecad()
     from sath import fc_engine
 
     assert fc_engine.available(), "FreeCAD topilmadi (GES_FC_HOME)"

@@ -7,7 +7,6 @@ Testlar: desktop/tests/sath_tests/<nom>.py, `run(ctx)`; ctx = {"addon": modul}. 
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 import traceback
 from pathlib import Path
@@ -51,12 +50,17 @@ def main() -> int:
     name = argv[argv.index("--test") + 1] if "--test" in argv else "smoke"
     if "--bonsai" in argv:
         bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
-    os.environ.setdefault("GES_FC_HOME", os.path.join(os.path.expanduser("~"), "Tools", "fc-py313"))
+    # K7: FreeCAD yo'li faqat muhitdan yoki addon sozlamasidan (CI da yo'q → FreeCAD testlari [SKIP])
     addon = load_addon()
     sys.path.insert(0, str(ROOT / "desktop" / "tests" / "sath_tests"))
+    from _req import SkipTest
+
     try:
         importlib.import_module(name).run({"addon": addon})
         print(f"[OK] {name}", flush=True)
+        return 0
+    except SkipTest as e:
+        print(f"[SKIP] {name}: {e}", flush=True)
         return 0
     except Exception:  # noqa: BLE001
         traceback.print_exc()
