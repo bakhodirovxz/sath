@@ -33,9 +33,15 @@ def ensure_project():
 
 def load(path: Path) -> bool:
     """IFC ni Bonsai da ochadi. Loyiha allaqachon ochiq bo'lsa Bonsai yangi sessiya (read_homefile) boshlaydi —
-    Scene.ges yo'qoladi; chaqiruvchi props.snapshot/restore qilsin. Qaytaradi: sessiya yangilandimi."""
+    Scene.ges yo'qoladi; chaqiruvchi props.snapshot/restore qilsin. Qaytaradi: sessiya yangilandimi.
+    K3: epoch oshadi (oldingi model uchun boshlangan fon vazifalari natijasi tashlanadi), `ifc.loaded` e'lon qilinadi."""
+    from . import session
+    from .core import events
+
     fresh = file() is not None
     bpy.ops.bim.load_project(filepath=str(path), should_start_fresh_session=fresh)
+    session.bump_epoch()
+    events.publish("ifc.loaded", path=str(path))
     return fresh
 
 
