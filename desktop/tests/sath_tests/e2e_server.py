@@ -1,5 +1,5 @@
 """Uchdan-uchiga: real server (GES_TEST_SERVER) — ulanish, loyiha/model, GES obyekt, commit, ochish, diff,
-issue + ko'rinish, taqriz ro'yxati, sim katalogi, monitoring tick. Bonsai + FreeCAD kerak."""
+issue + ko'rinish, taqriz ro'yxati, sim katalogi, monitoring tick. Bonsai kerak."""
 
 import os
 
@@ -8,7 +8,7 @@ from creds import admin_password
 
 
 def run(ctx):
-    from sath import fc_engine, ges_objects, ifc, ops_monitor, prefs, session
+    from sath import ges_objects, ifc, ops_monitor, prefs, session
 
     url = os.environ.get("GES_TEST_SERVER", "http://127.0.0.1:8765")
     p = prefs.prefs()
@@ -72,5 +72,4 @@ def run(ctx):
     s.time_hours = 2.0
     assert ops_monitor._tick() == ops_monitor.INTERVAL
     assert bpy.ops.sath.monitor_toggle() == {"FINISHED"} and not s.monitor_on
-    assert fc_engine.doc() is not None
     print("E2E:", s.status, "|", s.diff_note, "|", s.monitor_status)

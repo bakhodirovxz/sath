@@ -6,9 +6,6 @@ import bpy
 
 
 def run(ctx):
-    from _req import require_freecad
-
-    require_freecad()
     import ifcopenshell.util.element as ue
     from mathutils import Vector
     from sath import demo_plant, ges_objects, ifc, physics

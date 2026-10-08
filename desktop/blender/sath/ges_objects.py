@@ -1,28 +1,19 @@
-"""GES parametrik obyektlari Blender da: parametrlar obyektda (Object.ges), geometriya FreeCAD dan (fc_engine),
-IFC element + Pset_GES_* Bonsai da. Parametr o'zgarsa mesh va psetlar qayta quriladi."""
+"""GES parametrik obyektlari Blender da: parametrlar obyektda (Object.ges), sxema va geometriya — sof Python
+`shared/ges_kinds` (+ `shared/geom`, numpy; FreeCAD siz), IFC element + Pset_GES_* Bonsai da. Mesh Blender ga
+numpy massivlari bilan (`foreach_set`) uzatiladi. Parametr o'zgarsa mesh va psetlar qayta quriladi."""
 
 from __future__ import annotations
 
 import os
 
 import bpy
+import numpy as np
 
-from . import fc_engine, ifc
+from . import ifc
+from .shared import ges_kinds
 
-KIND_ITEMS = [
-    ("GES_Dam", "To'g'on", ""),
-    ("GES_Penstock", "Bosimli quvur", ""),
-    ("GES_Turbine", "Turbina agregati", ""),
-    ("GES_Spillway", "Suv tashlagich", ""),
-    ("GES_Powerhouse", "Mashina zali", ""),
-    ("GES_Transformer", "Transformator", ""),
-    ("GES_Intake", "Suv qabul qilgich", ""),
-    ("GES_Generator", "Generator", ""),
-    ("GES_DraftTube", "Chiqarish quvuri", ""),
-    ("GES_ControlRoom", "Boshqaruv xonasi", ""),
-    ("GES_Tailrace", "Daryo oqimi kanali", ""),
-]
-KIND_LABEL = {k: v for k, v, _ in KIND_ITEMS}
+KIND_ITEMS = [(k, s.label, "") for k, s in ges_kinds.KINDS.items()]
+KIND_LABEL = {k: s.label for k, s in ges_kinds.KINDS.items()}
 
 
 def _enum_items(self, context):
@@ -120,64 +111,86 @@ def by_kind(kind: str) -> list:
     return sorted((o for o in bpy.data.objects if getattr(o, "ges", None) and o.ges.kind == kind), key=lambda o: o.name)
 
 
-def _fill_schema(obj, kind: str) -> None:
+def _fill_schema(obj, kind: str, values: dict | None = None) -> None:
+    """Sxema (ges_kinds) → obj.ges.params; values — parametrlar (tekshiriladi), yo'q bo'lsa defaultlar."""
+    vals = ges_kinds.normalize(kind, values)
     g = obj.ges
     g.busy = True
     try:
         g.kind = kind
         g.params.clear()
-        for f in fc_engine.ges_schema(kind):
+        for prm in ges_kinds.spec(kind).params:
             p = g.params.add()
-            p.name, p.label, p.ptype = f["name"], f["label"], f["type"]
-            if f["type"] == "enum":
-                p.items = ";".join(f["items"])
-                p.value_enum = f["default"]
-            elif f["type"] == "int":
-                p.value_int = f["default"]
+            p.name, p.label, p.ptype = prm.name, prm.label, prm.ptype
+            v = vals[prm.name]
+            if prm.ptype == "enum":
+                p.items = ";".join(prm.items)
+                p.value_enum = v
+            elif prm.ptype == "int":
+                p.value_int = v
             else:
-                p.value_float = f["default"]
+                p.value_float = v
     finally:
         g.busy = False
 
 
-def rebuild(obj) -> None:
-    """FreeCAD dan geometriya, mesh ni almashtirish, IFC representation + psetlarni yangilash."""
-    g = obj.ges
-    b = fc_engine.ges_build(g.kind, params_dict(obj))
-    me = obj.data
+def set_mesh(me, verts: np.ndarray, faces: np.ndarray) -> None:
+    """(V float64, F int64 uchburchak) → bpy Mesh, numpy foreach_set bilan (from_pydata Python ro'yxatlarisiz)."""
     me.clear_geometry()
-    me.from_pydata(b.verts, [], b.faces)
-    me.update()
+    me.vertices.add(len(verts))
+    me.vertices.foreach_set("co", np.ascontiguousarray(verts, dtype=np.float32).ravel())
+    me.loops.add(faces.size)
+    me.loops.foreach_set("vertex_index", np.ascontiguousarray(faces, dtype=np.int32).ravel())
+    me.polygons.add(len(faces))
+    me.polygons.foreach_set("loop_start", np.arange(0, faces.size, 3, dtype=np.int32))
+    me.update(calc_edges=True)
+
+
+def rebuild_mesh(obj) -> None:
+    """Parametrlardan mesh (ges_kinds.build). Yaroqsiz parametr — ValueError (matn foydalanuvchiga)."""
+    v, f = ges_kinds.build(obj.ges.kind, params_dict(obj))
+    set_mesh(obj.data, v, f)
+
+
+def write_ifc(obj) -> None:
+    """IFC element (yo'q bo'lsa assign_class) yoki representation + Pset_GES_* yangilash."""
+    g = obj.ges
+    ps = ges_kinds.psets(g.kind, params_dict(obj))
     e = ifc.entity(obj)
     if e is None:
-        ifc.assign_class(obj, b.ifc_class, b.psets)
+        ifc.assign_class(obj, ges_kinds.spec(g.kind).ifc_class, ps)
     else:
         ifc.update_representation(obj)
-        ifc.write_psets(e, b.psets)
+        ifc.write_psets(e, ps)
 
 
-def add(context, kind: str, name: str | None = None):
+def rebuild(obj) -> None:
+    """Mesh (ges_kinds) + IFC (representation, psetlar)."""
+    rebuild_mesh(obj)
+    write_ifc(obj)
+
+
+def add(context, kind: str, name: str | None = None, role: str = "", **params):
+    """GES obyekti: parametrlar darhol beriladi (keyin set_params bilan qayta qurish shart emas)."""
     ifc.ensure_project()  # avval: GUI da create_project sahnani qayta quradi (obyekt havolasi eskiradi)
+    s = ges_kinds.spec(kind)
     me = bpy.data.meshes.new(kind)
-    obj = bpy.data.objects.new(name or KIND_LABEL[kind], me)
+    obj = bpy.data.objects.new(name or s.label, me)
     context.scene.collection.objects.link(obj)
-    obj.color = fc_engine.ges_color(kind)
-    _fill_schema(obj, kind)
+    obj.color = (*s.color, 1.0)
+    _fill_schema(obj, kind, params)
+    obj.ges.role = role
     rebuild(obj)
     return obj
 
 
 class SATH_OT_add_object(bpy.types.Operator):
-    """GES obyekti qo'shish (FreeCAD geometriya, IFC element + Pset_GES_*)"""
+    """GES obyekti qo'shish (sof Python geometriya, IFC element + Pset_GES_*)"""
 
     bl_idname = "sath.add_object"
     bl_label = "GES obyekti"
     bl_options = {"REGISTER", "UNDO"}
     kind: bpy.props.EnumProperty(name="Turi", items=KIND_ITEMS)
-
-    @classmethod
-    def poll(cls, context):
-        return fc_engine.available()
 
     def execute(self, context):
         try:
@@ -214,9 +227,6 @@ class SATH_PT_objects(bpy.types.Panel):
 
     def draw(self, context):
         lay = self.layout
-        if not fc_engine.available():
-            lay.label(text="FreeCAD topilmadi — Sozlamalar → Sath", icon="ERROR")
-            return
         s = context.scene.ges
         box = lay.box()
         row = box.row(align=True)

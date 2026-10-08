@@ -31,11 +31,7 @@ def _place(obj, x: float, y: float, z: float, rot_z_deg: float = 0.0) -> None:
 
 
 def _add(context, kind: str, name: str, role: str, **params):
-    obj = ges_objects.add(context, kind, name)
-    obj.ges.role = role
-    if params:
-        ges_objects.set_params(obj, **params)
-    return obj
+    return ges_objects.add(context, kind, name, role=role, **params)
 
 
 def _ground(context, xr: float, y0: float, y1: float):

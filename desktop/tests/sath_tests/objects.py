@@ -1,16 +1,13 @@
-"""11 GES obyekt yaratiladi: mesh, IFC klass, Pset_GES_*; parametr o'zgarsa mesh va pset yangilanadi."""
+"""11 GES obyekt FreeCAD siz yaratiladi: mesh, IFC klass, Pset_GES_*; parametr o'zgarsa mesh va pset yangilanadi."""
 
 import bpy
 
 
 def run(ctx):
-    from _req import require_freecad
-
-    require_freecad()
     import ifcopenshell.util.element as ue
-    from sath import fc_engine, ges_objects, ifc
+    from sath import ges_objects, ifc
 
-    kinds = [k for k, _ in fc_engine.ges_kinds()]
+    kinds = [k for k, _, _ in ges_objects.KIND_ITEMS]
     made = {}
     for k in kinds:
         ob = ges_objects.add(bpy.context, k)
