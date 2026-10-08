@@ -17,6 +17,17 @@ def slow(obj):
     return f
 
 
+def _pump_until(cond, timeout: float, msg: str) -> None:
+    from sath.core.tasks import TASKS
+
+    deadline = time.monotonic() + timeout
+    while not cond():
+        TASKS.pump()
+        assert time.monotonic() < deadline, msg
+        time.sleep(0.02)
+    TASKS.pump()
+
+
 def run(ctx):
     from sath import props
     from sath.core.tasks import TASKS
@@ -35,6 +46,8 @@ def run(ctx):
         ("GET", "/api/versions/11/file"): lambda: (time.sleep(SLOW), (200, ifc_bytes))[1],
         ("GET", "/api/versions/11/diff"): slow({"added": [], "changed": [], "deleted": [], "summary": {"added": 0, "changed": 0, "deleted": 0}}),
         ("POST", "/api/models/3/sim/safety-check"): slow({"score": 100, "verdict": "yaxshi", "counts": {"ok": 0, "warn": 0, "fail": 0, "skip": 0}, "rows": []}),
+        ("GET", "/api/sim/55"): js({"id": 55, "status": "queued"}),  # navbatda qotib qolgan ish
+        ("GET", "/api/sim/56"): js({"id": 56, "status": "queued"}),
     })  # fmt: skip
     TASKS.inline = False
     try:
@@ -91,6 +104,25 @@ def run(ctx):
         assert s.twin_head.startswith("Egizak:"), s.twin_head
         assert s.monitor_status, "monitoring davom etishi kerak"
         s.monitor_on = False
+
+        # sim kutish: X bilan bekor qilinadi (on_cancel holat yozadi), kalit darhol bo'shaydi
+        from sath import ops_sim, session
+
+        t = ops_sim.wait_job(ops_sim.HYDRO_META, 56)
+        assert t is not None and t.cancellable
+        assert TASKS.cancel(t.id) and not TASKS.running("sim.job.56")
+        _pump_until(lambda: t not in TASKS.active(), 3.0, "X dan keyin wait_job tugamadi")
+        assert bpy.context.scene.ges.sim_status.startswith("Bekor qilindi"), bpy.context.scene.ges.sim_status
+
+        # sim kutish: sessiya/model almashsa (epoch) eski klient so'rashni to'xtatadi
+        bpy.context.scene.ges.sim_status = ""
+        t = ops_sim.wait_job(ops_sim.HYDRO_META, 55)
+        assert t in TASKS.active()
+        time.sleep(0.3)
+        assert t in TASKS.active(), "navbatdagi ish kutilishi kerak"
+        session.bump_epoch()
+        _pump_until(lambda: t not in TASKS.active(), 2.0, "epoch almashgach wait_job tugamadi")
+        assert bpy.context.scene.ges.sim_status == "", bpy.context.scene.ges.sim_status  # eski model: holat yozilmaydi
     finally:
         TASKS.inline = True
         stop()

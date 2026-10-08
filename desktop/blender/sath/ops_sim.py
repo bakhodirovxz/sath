@@ -3,11 +3,13 @@ xavfsizlik tekshiruvi."""
 
 from __future__ import annotations
 
+import time
+
 import bpy
 
 from . import flows, props, session, sim_anim, water
 from .core import ui_tasks
-from .core.tasks import TASKS
+from .core.tasks import TASKS, Cancelled
 from .core.ui_tasks import ensure_pump, run_op, show_error
 from .ops_server import _sel
 from .shared.server_client import ServerError
@@ -135,16 +137,24 @@ def _raw(s) -> dict:
 
 
 POLL_S = 0.6
+WAIT_MAX_S = 2 * 3600  # navbatda qotib qolgan ish: kutish cheksiz emas
 
 
 def wait_job(meta: dict, job_id: int, on_done=None, title: str = "Simulyatsiya"):
     """Sim ishini ishchi oqimda kutadi (K3; avval timer ichida bloklovchi so'rov edi); natija asosiy oqimda.
-    TASKS.run run_op dan tashqarida — epoch himoyasi shu yerda: model almashgan bo'lsa natija sahnaga yozilmaydi."""
+    TASKS.run run_op dan tashqarida — epoch himoyasi shu yerda: model almashgan bo'lsa natija sahnaga yozilmaydi.
+    Kutish bekor qilinadi: X (status bar), sessiya/model almashishi (epoch — logout dan keyin eski klient so'ramaydi)
+    yoki WAIT_MAX_S. Serverdagi hisob to'xtatilmaydi."""
     ep = session.epoch()
 
     def work(ctx):
         c = session.client()
+        deadline = time.monotonic() + WAIT_MAX_S
         while True:
+            if session.epoch() != ep:
+                raise Cancelled()
+            if time.monotonic() > deadline:
+                return {"ok": False, "error": "kutish muddati tugadi"}
             j = c.sim_job(job_id)
             if j["status"] == "done":
                 return {"ok": True, "result": c.sim_result(job_id)}
@@ -183,7 +193,11 @@ def wait_job(meta: dict, job_id: int, on_done=None, title: str = "Simulyatsiya")
         bpy.context.scene.ges.sim_status = f"Xato: {e}"
         show_error(title, str(e))
 
-    task = TASKS.run(title, work, apply, error, key=f"sim.job.{job_id}", cancellable=False)  # bekor qilish status'da qotib qolardi
+    def cancelled():
+        if session.epoch() == ep:
+            bpy.context.scene.ges.sim_status = "Bekor qilindi (serverdagi hisob davom etishi mumkin)"
+
+    task = TASKS.run(title, work, apply, error, key=f"sim.job.{job_id}", on_cancel=cancelled)
     ensure_pump()
     return task
 
