@@ -14,9 +14,9 @@ Sath desktop Blender 5.2 LTS ichida: server (loyiha/model/versiya, commit, tasdi
 python desktop/build/build_blender_bundle.py --installer
 ```
 → `desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip` va `-installer.exe`: rasmiy Blender 5.2 + **Sath app template**
-(splash, bo'sh metr sahna, N-panel ochiq) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
+(splash, bo'sh metr sahna, N-panel ochiq, **ish joylari** BIM/Compare/Simulation/SCADA, Sath temasi) + `Sath.exe` (konsolsiz launcher, Sath ikonkasi) + `portable/`
 (prefs, Bonsai va sath extension lari yoqilgan; `portable/scripts/startup/sath_boot.py` argumentsiz ochilganda ham
-Sath template ga o'tkazadi) + `tools/libredwg/`. Bundle hajmi ≈1568 MB (`freecad/` siz). Kerak: `~\Tools\blender-5.2`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
+Sath template ga o'tkazadi) + `tools/libredwg/`. Bundle hajmi ≈1637 MB (`freecad/` siz, .pyc oldindan kompilyatsiya qilingan; 0.3.0 da 2392 MB edi). Kerak: `~\Tools\blender-5.2`, `~\Tools\libredwg`, Bonsai zip (`~\Tools`
 yoki avtomatik yuklab olinadi), NSIS (`~\Tools\NSIS`), venv da `pillow` (splash/ikonka).
 Oyna sarlavhasi «Sath» bo'lishi uchun manba forki: GitHub Actions **«Blender fork (Sath brend)»** (qo'lda, ~2–3 soat) —
 `desktop/blender/fork/brand.py` Blender manbasiga sarlavha/ProductName/ikonka/splash brendini qo'llaydi, artefakt
@@ -56,6 +56,19 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
   Kalit «Modul kalitlari» dan olib tashlansa uning modullari darhol (qayta skanerlashsiz) o'chadi va ro'yxatdan
   chiqadi. `SATH_MODULE_PUBLIC_KEYS` muhit o'zgaruvchisidagi kalitlar doim ishonchli — ularni Sozlamalardan bekor
   qilib bo'lmaydi (faqat muhitdan olib tashlash).
+- **Ish joylari (bundle):** Sath BIM ish joyida ochiladi. BIM — Outliner, Properties (Bonsai), 3D + N-panel
+  (GES obyektlari, Import, Taqriz, Simulyatsiya); Compare — ikki 3D ko'rinish (taqqoslash — 3-quyi-loyiha);
+  Simulation — Timeline + Graph editor (simulyatsiya va egizak natijalari); SCADA — ISA-101 kulrang fon,
+  alarm/sog'liq ranglari (Monitoring, Raqamli egizak). Panel ish joyiga modul manifestidagi `workspaces` bo'yicha
+  chiqadi; Layout/Modeling/Animation da hammasi. Sath ish joylarida faqat Sath va Bonsai interfeysi. Blender ning
+  Sculpting/UV/Texture/Shading/Rendering/Compositing/Geometry Nodes ish joylari yo'q, Scripting — faqat
+  Preferences → Interface → Developer Extras bilan. Eski faylda: Sath menyusi → «Ish joylarini tiklash»
+  (`sath.reset_workspaces`, «Qaytadan qurish» — teglilarni yangidan).
+- **Ranglar va tema:** 3D diff (yashil/sariq) va alarm (ustuvorlik bo'yicha; normal — kulrang) ranglari web
+  bilan bir xil — manba `web/src/ui/tokens.ts`, `python desktop/build/gen_tokens.py` → `sath/core/tokens.py`
+  va `template/Sath/theme_sath.xml` (Blender Dark + tanlov, viewport foni, gizmo o'qlari); CI `--check`.
+- **Yorliq:** `Ctrl+Shift+G` — «Sath» menyusi (3D View va Object Mode; Object Mode dagi standart «faol obyektni
+  kolleksiyaga qo'shish» Object → Collection menyusida qoladi).
 - **Rollar:** panel va tugmalar loyihadagi ruxsatga qarab — ko'ruvchi commit/simulyatsiyani ko'rmaydi, kulrang
   tugma ustida sababi («Ruxsat yo'q: cr.approve»). Haqiqiy tekshiruv serverda.
 
@@ -68,15 +81,20 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
     nusxasi** (`python desktop/build/sync_blender.py`, CI `--check`)
   - `core/` — `tasks.py` (fon vazifalari, bpy siz), `events.py` (hodisalar shinasi), `ifc_ops.py` (IfcOperator — IFC undo, K4), `ui_tasks.py` (pompa, status bar
     progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3), `registry.py` (modul reyestri: manifest, imzo, tartib, hayot sikli — bpy siz), `host.py` (reyestrning
-    Blender ulagichi, Sozlamalardagi ro'yxat), `perms.py` (rolga sezgir UI), `panels.py` (`SathPanel`)
+    Blender ulagichi, Sozlamalardagi ro'yxat), `perms.py` (rolga sezgir UI), `panels.py` (`SathPanel`), `tokens.py` (web tokenlari, generatsiya), `keys.py` (yorliqlar va to'qnashuv qoidalari), `budget.py` (spec §5 byudjetlari)
   - `api.py` — modullar uchun barqaror fasad (`API_VERSION`); `modules/<id>/` — `sath_module.toml` + `__init__.py`
     (`review`, `sim`, `scada`, `twin`, `io`, `bim`); `ops_*.py` o'z joyida, modul ularni `api.adopt` bilan oladi
-- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, registry, perms, client threading, `geom`, `ges_kinds` — FreeCAD etaloniga paritet, `data/ges_golden.json`); server: `test_permissions_mirror`;
-  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 22 ta sinov — `modules` yangi (jonli yoqish/o'chirish, imzo, viewer roli); `GES_TEST_SERVER` bilan yana 4 ta server sinovi: e2e_server, commit_conflict, sim_hydro, sim_twin; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
+- `template/` — Sath app template: `Sath/__init__.py` (ilgaklar, `sath.reset_workspaces`), `Sath/workspaces.py`
+  (ish joylari, `ensure`/`finish`), `Sath/theme_sath.xml` (generatsiya), `setup_bundle.py` (tema, startup.blend)
+- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, registry, perms, client threading, tokens, workspaces, keys, budget, `geom`, `ges_kinds` — FreeCAD etaloniga paritet, `data/ges_golden.json`); server: `test_permissions_mirror`;
+  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 25 ta sinov — `modules` yangi (jonli yoqish/o'chirish, imzo, viewer roli); `GES_TEST_SERVER` bilan yana 4 ta server sinovi: e2e_server, commit_conflict, sim_hydro, sim_twin; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan); yangi `workspaces` (template ish joylari, tema), `keymap` (Blender standart + Bonsai bilan to'qnashuv), `budgets` (register < 150 ms, og'ir importlar yo'q, perf logi).
+  Oynali (lokal, CI da emas): `python desktop/tests/run_gui_workspaces.py [--bundle <stage>]` — ochilganda BIM,
+  SCADA/Simulation, Graph editor; bundle: `python desktop/tests/bundle_check.py`.
   CI: `desktop-blender` ishi (windows-2022), SKIP taqiqlangan.
-- Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
+- Unumdorlik: `python desktop/tests/perf_baseline.py --bundle <stage> --check` → `docs/benchmark-desktop.md`
+  (P0 bilan taqqoslash, spec §5 byudjetlari; har ishga tushishda `[sath] register … ms` logi).
 
-Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD siz — headless 22/22, FAIL 0, SKIP 0 (`SATH_REQUIRE_NO_SKIP=1`); dev server bilan 4 ta (e2e_server, commit_conflict, sim_hydro, sim_twin) OK; bundle ≈1568 MB (freecad/ siz); GUI: Ctrl+Z dan keyin orphans() tekshiruvi qo'lda kutilmoqda; GUI chizish va bundle installer qayta sinalmagan.
+Sinalgan: 2026-10-09, Blender 5.2.2, Bonsai 0.9.0, FreeCAD siz — headless 25/25, FAIL 0, SKIP 0 (`SATH_REQUIRE_NO_SKIP=1`); GUI ish joylari (repo va bundle) [GUI-OK]; bundle_check [BUNDLE-OK], stage 1637 MB; byudjetlar: register 61.9 ms, sovuq start 1.03x, RSS +1.5 MB, og'ir importlar yo'q (`docs/benchmark-desktop.md`).
 
 Avval sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
