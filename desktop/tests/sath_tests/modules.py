@@ -284,6 +284,19 @@ def _review_live():
     assert hasattr(bpy.types, "SATH_PT_review") and bpy.ops.sath.clear_diff() == {"FINISHED"}
 
 
+def _scada_off():
+    from sath.core import host
+
+    s = bpy.context.scene.ges
+    s.monitor_on = True
+    off = host.set_enabled("scada", False)
+    assert off[-1] == "scada", off  # twin (Task 10 dan keyin) birga o'chadi
+    assert not s.monitor_on and not hasattr(bpy.types, "SATH_PT_monitor") and not _registered("monitor_toggle")
+    for mid in reversed(off):
+        assert host.set_enabled(mid, True) == [mid]
+    assert hasattr(bpy.types, "SATH_PT_monitor")
+
+
 def _viewer_hides():
     """Spec P3 mezoni: viewer roli sim panelini va commit ni yashiradi; engineer (eski server — rol zaxirasi) ko'radi.
     IFC yuklaydi (Bonsai yangi sessiya) — run() da oxirgi."""
@@ -297,6 +310,7 @@ def _viewer_hides():
             props.fill(s.projects, [{"item_id": 9, "name": "P", "state": role, "perms": perms_str}])
             s.project_id, s.model_id = 9, 5
             assert bpy.types.SATH_PT_sim.poll(bpy.context) is sees, role
+            assert bpy.types.SATH_PT_monitor.poll(bpy.context), role  # scada.read — hamma rolda
             assert bpy.ops.sath.commit.poll() is sees, role
             assert bpy.ops.sath.sim_hydro.poll() is sees, role
             assert bpy.ops.sath.safety_check.poll() is sees, role
@@ -311,4 +325,5 @@ def run(ctx):
     _legacy_pinned()
     _bundled_retry()
     _review_live()
+    _scada_off()
     _viewer_hides()

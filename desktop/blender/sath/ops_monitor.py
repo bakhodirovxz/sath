@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import bpy
 
 from . import flows, ifc, props, session, water
+from .core import events, perms
 from .core.tasks import TASKS
 from .core.ui_tasks import ensure_pump
 from .ops_server import _sel
@@ -73,6 +74,7 @@ def _apply(d: dict, hours: float) -> None:
         lvl = flows.water_sensor_level(sensors) if hours <= 0 else _level_from(d, hours)
         if lvl is not None:
             water.place_water_plane(bpy.context, lvl)
+    events.publish("scada.snapshot", data=d)
 
 
 def _level_from(d: dict, hours_ago: float) -> float | None:
@@ -109,7 +111,7 @@ def _tick():
         sc.monitor_status = f"Xato: {e}"
 
     # K3: tarmoq ishchi oqimda; oldingi tik hali tugamagan bo'lsa bu tik o'tkazib yuboriladi (key)
-    TASKS.run("Monitoring", lambda ctx: _fetch(pid, mid, hours), apply, error, key="monitor.tick", cancellable=False, quiet=True)
+    TASKS.run("Monitoring", lambda ctx: _fetch(pid, mid, hours), apply, error, key="scada.tick", cancellable=False, quiet=True)
     ensure_pump()
     return INTERVAL
 
@@ -122,7 +124,7 @@ class SATH_OT_monitor_toggle(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.model_id > 0
+        return session.is_logged_in() and context.scene.ges.model_id > 0 and perms.poll(cls, "scada.read", context)
 
     def execute(self, context):
         s = context.scene.ges
@@ -186,7 +188,7 @@ class SATH_OT_monitor_refresh(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.monitor_on
+        return session.is_logged_in() and context.scene.ges.monitor_on and perms.poll(cls, "scada.read", context)
 
     def execute(self, context):
         _tick()

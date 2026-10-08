@@ -94,37 +94,6 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
             lay.label(text=f"Ochiq: {s.model_name} v{s.version_number}", icon="FILE_TICK")
 
 
-class SATH_PT_monitor(GesPanel, bpy.types.Panel):
-    bl_label = "Monitoring (SCADA)"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.model_id > 0
-
-    def draw(self, context):
-        s = context.scene.ges
-        lay = self.layout
-        row = lay.row(align=True)
-        row.operator(
-            "sath.monitor_toggle",
-            text="To'xtatish" if s.monitor_on else "Boshlash",
-            icon="PAUSE" if s.monitor_on else "PLAY",
-            depress=s.monitor_on,
-        )
-        row.operator("sath.monitor_refresh", text="", icon="FILE_REFRESH")
-        row = lay.row(align=True)
-        row.prop(s, "monitor_color")
-        row.prop(s, "monitor_color_mode", text="")
-        lay.prop(s, "monitor_water")
-        if s.monitor_status:
-            lay.label(text=s.monitor_status, icon="INFO")
-        draw_list(lay, s, "sensors", "sensors_index", 5)
-        row = lay.row(align=True)
-        row.operator("sath.show_sensor", icon="RESTRICT_SELECT_OFF")
-        row.operator("sath.open_web", text="Webda (HMI)", icon="URL").tab = "mon"
-
-
 class SATH_PT_twin(GesPanel, bpy.types.Panel):
     bl_label = "Raqamli egizak"
     bl_options = {"DEFAULT_CLOSED"}
@@ -212,8 +181,6 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator_menu_enum("sath.add_object", "kind", text="GES obyekti")
         lay.operator("sath.import_dxf")
         lay.operator("sath.import_mesh")
-        lay.separator()
-        lay.operator("sath.monitor_toggle")
         host.draw_menus(lay, context)
 
 
@@ -234,7 +201,7 @@ def _register_keymap():
     _keymaps.append((km, kmi))
 
 
-CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_monitor, SATH_PT_twin, SATH_PT_import, SATH_PT_notifications]
+CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_twin, SATH_PT_import, SATH_PT_notifications]
 
 
 def register():

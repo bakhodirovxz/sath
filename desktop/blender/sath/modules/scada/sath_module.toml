@@ -1,0 +1,11 @@
+id = "scada"
+name = "Monitoring (SCADA)"
+version = "1.0.0"
+api = ">=1.0,<2"
+requires = []
+permissions = ["network"]
+visible_if_any = ["scada.read"]
+workspaces = ["SCADA"]
+category = "Sath"
+default_enabled = true
+order = 40
