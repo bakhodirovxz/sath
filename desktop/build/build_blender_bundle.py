@@ -91,8 +91,8 @@ def build_addon_zip(blender: Path) -> Path:
 
 # CI-03: Bonsai versiyasi va sha256 qotirilgan (eng oxirgisi emas). Yangilash: yangi zip ni sinab, ikkalasini
 # birga o'zgartiring (sha256sum bonsai-<ver>-py313-win64.zip).
-BONSAI_VERSION = "0.8.5"
-BONSAI_SHA256 = "81c0cfc9a6204e13fdd4391daef6e91ed8033488fde69ca5933b3535f490514f"
+BONSAI_VERSION = "0.9.0"
+BONSAI_SHA256 = "54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2e"
 
 
 def _sha256(path: Path) -> str:

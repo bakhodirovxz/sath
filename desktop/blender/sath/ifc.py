@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import bpy
@@ -119,8 +120,34 @@ def assign_class(obj, ifc_class: str, psets: dict[str, dict] | None = None):
     return e
 
 
+@contextlib.contextmanager
+def _cheap_batch_delete():
+    """ifcopenshell 0.9.0: tranzaksiya ichida katta ko'pburchakli to'rni o'chirish kvadratik (har bir yuz uchun
+    inverslar butun Faces ro'yxatini qayta serializatsiya qiladi — 30 ming yuzda soatlar). Batch rejimida inverslarni
+    yig'maymiz: o'chirilayotgan to'r butunlay ketadi, tirik bog'lanishlar esa add_representation da qayta yoziladi."""
+    try:
+        from ifcopenshell.file import Transaction
+    except ImportError:
+        yield
+        return
+    original = Transaction.store_delete
+
+    def store_delete(self, element):
+        if not self.is_batched:
+            return original(self, element)
+        self.batch_delete_ids.add(element.id())
+        self.operations.append({"action": "delete", "inverses": {}, "value": self.serialise_entity_instance(element)})
+
+    Transaction.store_delete = store_delete
+    try:
+        yield
+    finally:
+        Transaction.store_delete = original
+
+
 def update_representation(obj) -> None:
-    bpy.ops.bim.update_representation(obj=obj.name)
+    with _cheap_batch_delete():
+        bpy.ops.bim.update_representation(obj=obj.name)
 
 
 def sync_placement(obj) -> None:

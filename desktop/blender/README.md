@@ -8,7 +8,7 @@ dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-b
 ## Talablar
 
 - Blender **5.2 LTS** (Python 3.13) — `~\Tools\blender-5.2`
-- Bonsai **0.8.5+** extension (Edit → Preferences → Get Extensions → Bonsai)
+- Bonsai **0.9.0+** extension (Edit → Preferences → Get Extensions → Bonsai)
 - FreeCAD **1.1.3 py313** (conda-forge): `micromamba create -p %USERPROFILE%\Tools\fc-py313 -c conda-forge "freecad=1.1.3=py313*"`
   (yo'l: addon sozlamalari «FreeCAD papkasi» yoki `GES_FC_HOME` env). Rasmiy installer (py3.11) faqat Blender 4.5 bilan mos.
 - DWG uchun LibreDWG `dwg2dxf` (`~\Tools\libredwg`) yoki ODA File Converter.
