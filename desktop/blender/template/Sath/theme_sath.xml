@@ -1,0 +1,32 @@
+<!-- Sath temasi: Blender Dark + Sath farqlari. Avtomatik (desktop/build/gen_tokens.py, manba
+     web/src/viewer/palette.ts), qo'lda tahrirlamang. setup_bundle.py qo'llaydi (script.execute_preset). -->
+<bpy>
+  <Theme>
+    <user_interface>
+      <ThemeUserInterface
+        axis_x="#e0656a"
+        axis_y="#3aa864"
+        axis_z="#3d8ee6"
+        >
+      </ThemeUserInterface>
+    </user_interface>
+    <view_3d>
+      <ThemeView3D
+        object_active="#f5a623"
+        >
+        <space>
+          <ThemeSpaceGradient>
+            <gradients>
+              <ThemeGradientColors
+                high_gradient="#3d3d3d"
+                >
+              </ThemeGradientColors>
+            </gradients>
+          </ThemeSpaceGradient>
+        </space>
+      </ThemeView3D>
+    </view_3d>
+  </Theme>
+  <ThemeStyle>
+  </ThemeStyle>
+</bpy>

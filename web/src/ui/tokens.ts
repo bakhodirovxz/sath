@@ -5,6 +5,8 @@
  * kontrast — yorug' boshqaruv xonasi). Alarm holati × ustuvorlik → rang + SHAKL + raqam + kod: rang yagona kanal
  * emas (ISA-101, WCAG 1.4.1). Barcha juftliklar WCAG AA (matn 4.5:1, grafik 3:1) — `tokens.test.ts`.
  * CSS da xuddi shu qiymatlar `tokens.css` da (test sinxronlikni tekshiradi); komponentlarda hex yo'q.
+ * Desktop (Blender) nusxasi: `python desktop/build/gen_tokens.py` → desktop/blender/sath/core/tokens.py va
+ * template/Sath/theme_sath.xml (CI `--check` — bu yerdagi rang o'zgarsa desktop ham yangilanadi).
  */
 
 import { alarmLabel, qualityLabel } from "../i18n/labels";
