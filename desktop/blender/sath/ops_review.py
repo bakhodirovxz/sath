@@ -11,7 +11,7 @@ from .ops_server import _sel, guard
 
 def _need_model(op, s) -> bool:
     if not s.model_id:
-        op.report({"ERROR"}, "Avval serverdagi modelni oching (Model в†’ Ochish)")
+        op.report({"ERROR"}, "Avval serverdagi modelni oching (Model → Ochish)")
         return False
     return True
 
@@ -26,7 +26,7 @@ class SATH_OT_refresh_issues(bpy.types.Operator):
             return {"CANCELLED"}
         ok = guard(self, lambda: props.fill(s.issues, flows.issue_rows(session.client(), s.model_id)))
         if ok and len(s.issues) and not (0 <= s.issues_index < len(s.issues)):
-            s.issues_index = 0  # update в†’ show_issue
+            s.issues_index = 0  # update → show_issue
         return {"FINISHED"} if ok else {"CANCELLED"}
 
 
@@ -88,7 +88,7 @@ class SATH_OT_comment_issue(bpy.types.Operator):
 
 
 class SATH_OT_new_issue(bpy.types.Operator):
-    """Yangi issue вЂ” joriy ko'rinish (kamera, tanlangan elementlar) bilan"""
+    """Yangi issue — joriy ko'rinish (kamera, tanlangan elementlar) bilan"""
 
     bl_idname = "sath.new_issue"
     bl_label = "Yangi issue"
@@ -128,7 +128,7 @@ class SATH_OT_refresh_crs(bpy.types.Operator):
             props.fill(s.crs, flows.cr_rows(session.client(), s.model_id))
             s.my_role = flows.model_role(session.client(), s.model_id) or ""
             if len(s.crs) and not (0 <= s.crs_index < len(s.crs)):
-                s.crs_index = 0  # update в†’ show_cr
+                s.crs_index = 0  # update → show_cr
 
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
@@ -218,7 +218,7 @@ class SATH_OT_reject_cr(bpy.types.Operator):
 
 
 class SATH_OT_diff(bpy.types.Operator):
-    """Tanlangan versiyaning ota bilan farqi вЂ” 3D da rang (yashil qo'shilgan, sariq o'zgargan)"""
+    """Tanlangan versiyaning ota bilan farqi — 3D da rang (yashil qo'shilgan, sariq o'zgargan)"""
 
     bl_idname = "sath.diff"
     bl_label = "Ota bilan farq (3D rang)"

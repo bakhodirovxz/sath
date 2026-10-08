@@ -1,4 +1,4 @@
-"""Simulyatsiya katalogi (server), forma pasport/modeldan, hisob (timer poll), natija, 3D suv sathi,
+"""Simulyatsiya katalogi (server), forma pasport/modeldan, hisob (fon vazifasi), natija, 3D suv sathi,
 xavfsizlik tekshiruvi."""
 
 from __future__ import annotations
@@ -183,7 +183,7 @@ def wait_job(meta: dict, job_id: int, on_done=None, title: str = "Simulyatsiya")
         bpy.context.scene.ges.sim_status = f"Xato: {e}"
         show_error(title, str(e))
 
-    task = TASKS.run(title, work, apply, error, key=f"sim.job.{job_id}")
+    task = TASKS.run(title, work, apply, error, key=f"sim.job.{job_id}", cancellable=False)  # bekor qilish status'da qotib qolardi
     ensure_pump()
     return task
 

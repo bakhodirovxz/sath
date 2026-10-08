@@ -19,14 +19,15 @@ def run(ctx):
     s = bpy.context.scene.ges
     bpy.context.window_manager.sath_secret.password = admin_password()
     assert bpy.ops.sath.connect() == {"FINISHED"}
+    from sath.core.tasks import TASKS
+
+    TASKS.drain(20)  # GUI da connect asinxron
     c = session.client()
     proj = c._json("POST", "/api/projects", {"name": f"GUI twin {os.getpid()}"})
     m = c.create_model(proj["id"], "gui-twin")
     s.project_id, s.model_id, s.model_name = proj["id"], m["id"], m["name"]
     s.hammer_close_s = 3.0
     job = c.create_sim(s.model_id, "hammer", None, ops_twin.hammer_params(s), kind="water_hammer")
-    from sath.core.tasks import TASKS
-
     ops_sim.wait_job(ops_twin.HAMMER_META, job["id"], lambda r: sim_anim.animate_hammer(bpy.context, r, ges_objects.by_role("penstock:1")))
     TASKS.drain(60)  # GUI da asinxron — drain natijani asosiy oqimda qo'llaydi
     assert s.sim_status.startswith("Tayyor"), s.sim_status

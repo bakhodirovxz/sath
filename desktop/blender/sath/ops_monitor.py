@@ -52,13 +52,17 @@ def _apply(d: dict, hours: float) -> None:
     s.sensors_index = min(sel, len(s.sensors) - 1)
     health_assets: list[dict] = []
     if d["twin_err"] is None:
-        tw, h = d["twin"], d["health"]
-        s.twin_head = flows.twin_head(tw)
-        props.fill(s.twin_rows, flows.twin_rows(tw))
-        props.fill(s.twin_safety, flows.twin_safety_rows(tw.get("safety") or []))
-        s.health_head = flows.health_head(h)
-        props.fill(s.health_rows, flows.health_rows(h))
-        health_assets = h.get("assets", [])
+        try:  # noto'g'ri shakldagi javob monitoringni to'xtatmasin
+            tw, h = d["twin"], d["health"]
+            s.twin_head = flows.twin_head(tw)
+            props.fill(s.twin_rows, flows.twin_rows(tw))
+            props.fill(s.twin_safety, flows.twin_safety_rows(tw.get("safety") or []))
+            s.health_head = flows.health_head(h)
+            props.fill(s.health_rows, flows.health_rows(h))
+            health_assets = h.get("assets", [])
+        except (KeyError, TypeError, AttributeError) as e:
+            health_assets = []
+            s.twin_head = f"Egizak: {e}"
     else:
         s.twin_head = f"Egizak: {d['twin_err']}"
     ifc.ALARM_STATE.restore()
@@ -99,7 +103,10 @@ def _tick():
             _apply(d, hours)
 
     def error(e):
-        bpy.context.scene.ges.monitor_status = f"Xato: {e}"
+        sc = bpy.context.scene.ges
+        if session.epoch() != ep or not sc.monitor_on:
+            return
+        sc.monitor_status = f"Xato: {e}"
 
     # K3: tarmoq ishchi oqimda; oldingi tik hali tugamagan bo'lsa bu tik o'tkazib yuboriladi (key)
     TASKS.run("Monitoring", lambda ctx: _fetch(pid, mid, hours), apply, error, key="monitor.tick", cancellable=False, quiet=True)

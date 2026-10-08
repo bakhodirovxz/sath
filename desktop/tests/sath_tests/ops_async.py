@@ -80,6 +80,17 @@ def run(ctx):
         assert time.perf_counter() - t0 < SLOW / 2, "safety_check bloklayapti"
         TASKS.drain(10)
         assert bpy.context.scene.ges.safety_head.startswith("100"), bpy.context.scene.ges.safety_head
+
+        # monitoring: noto'g'ri shakldagi egizak javobi monitoringni to'xtatmaydi
+        from sath import ops_monitor
+
+        s = bpy.context.scene.ges
+        s.monitor_on = True
+        ops_monitor._apply({"project_id": 7, "sensors": [], "twin": {}, "health": {"assets": []}, "twin_err": None,
+                            "level_sensor": None, "level_pts": None, "level_err": None}, 0.0)  # fmt: skip
+        assert s.twin_head.startswith("Egizak:"), s.twin_head
+        assert s.monitor_status, "monitoring davom etishi kerak"
+        s.monitor_on = False
     finally:
         TASKS.inline = True
         stop()
