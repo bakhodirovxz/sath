@@ -1743,7 +1743,7 @@ Fayllar: `desktop/blender/sath/props.py`, `ops_server.py`, `ifc.py`, `ges_object
 Qabul mezoni: yuklab → serverga → qaytib olgandan keyin egizak animatsiyasi ishlaydi (headless test).
 Bog'liqlik: yo'q. Eng shoshilinch desktop nosozligi.
 
-### K3 — Bloklovchi tarmoq chaqiruvlarini olib tashlash ✅ (e570f49)
+### K3 — Bloklovchi tarmoq chaqiruvlarini olib tashlash ✅ headless (1968e1c) — GUI qo'lda tekshiruvi kutilmoqda
 
 Muammo: addonda threading va modal operator umuman yo'q. `guard()` (`ops_server.py:15`) —
 oddiy try/except, `fn()` ni `execute()` ichida sinxron chaqiradi. `server_client.py:51` —
@@ -1852,7 +1852,7 @@ Fayllar: `server/ges_server/system/router.py`, `desktop/blender/sath/flows.py`,
 Qabul mezoni: hash mos kelmasa yangilanish rad etiladi (test).
 Bog'liqlik: yo'q.
 
-### K7 — Desktop ni CI ga kiritish ✅ (c406cc3)
+### K7 — Desktop ni CI ga kiritish ◐ (c406cc3) — GitHub da birinchi yashil ishga tushirish kutilmoqda
 
 Muammo: `ci.yml` da to'rtta ish bor (`server`, `web`, `docker`, `e2e`) — Blender addoni
 qurilmaydi ham, sinalmaydi ham. `blender-fork.yml` Blender ni kompilyatsiya qiladi va bitta
