@@ -6,13 +6,13 @@
 
 **Architecture:** Sof (bpy siz) `sath/core/tasks.py` `TaskManager` ishni daemon oqimda bajaradi va natijani navbat orqali asosiy oqimga qaytaradi. `sath/core/ui_tasks.py` uni Blender ga ulaydi: pompa timer, status bar progressi, bekor qilish operatori, `run_op()` yordamchisi. Operatorlar «ishchi qism (tarmoq, bpy siz) → asosiy oqim qismi (bpy)» ga ajratiladi. Fon rejimida (`blender -b`) vazifalar sinxron bajariladi — mavjud headless testlar o'zgarmaydi; asinxron yo'l alohida test bilan majburan sinaladi.
 
-**Tech Stack:** Blender 5.2.2 LTS (Python 3.13, bpy), Bonsai 0.8.5, stdlib (`threading`, `queue`, `urllib`, `http.server`); pytest (Python 3.10+, monorepo `.venv`); GitHub Actions `windows-2022`.
+**Tech Stack:** Blender 5.2.2 LTS (Python 3.13, bpy), Bonsai 0.9.0, stdlib (`threading`, `queue`, `urllib`, `http.server`); pytest (Python 3.10+, monorepo `.venv`); GitHub Actions `windows-2022`.
 
 **Spec:** `docs/superpowers/specs/2026-10-08-sath-foundation-design.md` (§3 async vazifa ishchisi, §7 K7, «Bosqichlar» P0–P1)
 
 ## Global Constraints
 
-- Blender **5.2.2** (`blender-5.2.2-windows-x64.zip`, sha256 `3849d17a682cba006075aaa3f3597ecb5c9c30ec31035b2e092c53e40679b535`), Bonsai **0.8.5** (sha256 `81c0cfc9a6204e13fdd4391daef6e91ed8033488fde69ca5933b3535f490514f`, `desktop/build/build_blender_bundle.py:94-95` dagi pin).
+- Blender **5.2.2** (`blender-5.2.2-windows-x64.zip`, sha256 `3849d17a682cba006075aaa3f3597ecb5c9c30ec31035b2e092c53e40679b535`), Bonsai **0.9.0** (eng so'nggi; sha256 `54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2e`, `desktop/build/build_blender_bundle.py:94-95` dagi pin — Task 0 da 0.8.5 dan yangilanadi). GitHub Actions eng so'nggi major versiyalar: `checkout@v7`, `setup-python@v7`, `setup-node@v7`, `cache@v6`, `upload-artifact@v7`.
 - `common/sath_common/*` — kanonik manba; nusxalar faqat `python desktop/build/sync_blender.py` bilan yangilanadi, qo'lda tahrirlanmaydi. CI `--check` qiladi.
 - Pytest Python **3.10** da ham ishlaydi (monorepo `.venv`) — 3.11+ sintaksis/kutubxona (`tomllib`, `ExceptionGroup`) sof modullarda ishlatilmaydi.
 - Ishchi oqim **hech qachon** `bpy` ga tegmaydi; bpy faqat asosiy oqimda (`on_done`/`on_error`/`apply`/`fail` callbacklarida).
@@ -51,6 +51,56 @@
 | `desktop/blender/sath/ops_server.py`, `ops_review.py`, `ops_sim.py`, `ops_twin.py`, `ops_monitor.py`, `update.py` (o'zgaradi) | operatorlarni `run_op`/`TASKS` ga ko'chirish |
 | `desktop/tests/sath_tests/tasks_async.py`, `fake_server.py`, `ops_async.py` (yangi) | headless asinxron testlar |
 | `desktop/tests/sath_tests/sim_hydro.py`, `sim_twin.py`, `gui_twin.py` (o'zgaradi) | `_poll_factory` → `wait_job` |
+
+---
+
+### Task 0: Bonsai 0.9.0 ga yangilash (eng so'nggi versiya)
+
+Foydalanuvchi talabi: barcha vositalarning eng so'nggi versiyasi. Blender 5.2.2 allaqachon eng so'nggi (download.blender.org da 5.2.x ichida eng yangisi); Bonsai 0.8.5 → 0.9.0.
+
+**Files:**
+- Modify: `desktop/build/build_blender_bundle.py:92-95` (`BONSAI_VERSION`, `BONSAI_SHA256`)
+- Modify: `desktop/blender/README.md` (Talablar: «Bonsai **0.9.0+**»)
+- Modify (faqat buzilgan bo'lsa): `desktop/blender/sath/ifc.py`, `ops_import.py`, `ges_objects.py` — Bonsai API o'zgarishlariga moslash
+
+**Interfaces:**
+- Produces: `~/Tools/bonsai-0.9.0-py313-win64.zip` (sha256 `54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2e`), lokal Blender 5.2 da o'rnatilgan Bonsai 0.9.0; boshqa vazifalar shu versiyaga tayanadi.
+
+- [ ] **Step 1: Arxiv mavjud va xeshi to'g'ri**
+
+Run: `sha256sum ~/Tools/bonsai-0.9.0-py313-win64.zip`
+Expected: `54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2e`
+
+- [ ] **Step 2: Pinni yangilang**
+
+```python
+BONSAI_VERSION = "0.9.0"
+BONSAI_SHA256 = "54c440ec7ee5b5bea3459a6ee117e2356378ea4fd01357b5530474236408bd2e"
+```
+
+- [ ] **Step 3: Lokal Blender 5.2 ga o'rnating (eski 0.8.5 ustidan)**
+
+```powershell
+& "$HOME\Toolslender-5.2lender.exe" -b --command extension install-file --repo user_default --enable "$HOME\Toolsonsai-0.9.0-py313-win64.zip"
+& "$HOME\Toolslender-5.2lender.exe" -b --python-expr "import bpy; bpy.ops.preferences.addon_enable(module='bl_ext.user_default.bonsai'); import addon_utils; m=[m for m in addon_utils.modules() if m.__name__.endswith('bonsai')][0]; print('BONSAI', m.bl_info.get('version') if hasattr(m,'bl_info') else 'ok'); import ifcopenshell; print('IFCOS', ifcopenshell.version)"
+```
+Expected: `IFCOS 0.9.0` (yoki 0.9.x) chiqadi, xatosiz.
+
+- [ ] **Step 4: To'liq headless to'plam**
+
+Run: `$env:GES_BLENDER="$HOME\Toolslender-5.2lender.exe"; .\desktop	estsun_blender_tests.ps1`
+Expected: `FAIL soni: 0`. Yiqilgan test bo'lsa — `superpowers:systematic-debugging` bilan sababini toping (odatda `bonsai.tool.*` yoki `ifcopenshell.api.*` imzo o'zgarishi), `ifc.py`/tegishli modulda tuzating, har tuzatishdan keyin to'plamni qayta ishlating. Bonsai ichki API ni faqat `ifc.py` orqali chaqiring (izolyatsiya).
+
+- [ ] **Step 5: Server tomoni (ifcopenshell) — o'zgarmaydi**
+
+Server `server/requirements.lock` dagi ifcopenshell alohida pin; uni yangilash bu reja doirasidan tashqarida (alohida «bog'liqliklarni yangilash» ishi). Faqat desktop Bonsai yangilanadi.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add desktop/build/build_blender_bundle.py desktop/blender/README.md desktop/blender/sath
+git commit -m "chore(deps): Bonsai 0.9.0 (eng so'nggi) — pin va sha256, headless to'plam o'tdi"
+```
 
 ---
 
@@ -190,7 +240,7 @@ git commit -m "test(K7): headless runner da [SKIP] protokoli — FreeCAD siz mas
 ```bash
 curl -s "https://extensions.blender.org/api/v1/extensions/?blender_version=5.2.2&platform=windows-x64" | python -c "import json,sys; print(next(e['version'] for e in json.load(sys.stdin)['data'] if e['id']=='bonsai'))"
 ```
-Expected: `0.8.5`. Agar boshqa versiya chiqsa — `ensure_bonsai` CI da yiqiladi. Bu holda ishni to'xtatib, foydalanuvchiga ayting: Bonsai pinini yangilash (yangi zip bilan butun headless to'plamni lokal sinab, `BONSAI_VERSION`/`BONSAI_SHA256` ni o'zgartirish) yoki pinlangan zip ni repo Release asseti sifatida joylash kerak — ikkalasi ham sizning qaroringiz.
+Expected: `0.9.0` (Task 0 dagi pin). Agar yangiroq versiya chiqsa — `ensure_bonsai` CI da yiqiladi. Bu holda ishni to'xtatib, foydalanuvchiga ayting: Bonsai pinini yangilash (yangi zip bilan butun headless to'plamni lokal sinab, `BONSAI_VERSION`/`BONSAI_SHA256` ni o'zgartirish) yoki pinlangan zip ni repo Release asseti sifatida joylash kerak — ikkalasi ham sizning qaroringiz.
 
 - [ ] **Step 2: `ci_blender_setup.py` ni yarating**
 
@@ -283,22 +333,22 @@ Expected: `FAIL soni: 0`, `SKIP: 3` (engine, objects, demo_plant).
 
 ```yaml
   desktop-blender:
-    # K7: Blender addoni headless testlari — Blender 5.2.2 + Bonsai 0.8.5 (sha256 pin), FreeCAD siz
+    # K7: Blender addoni headless testlari — Blender 5.2.2 + Bonsai 0.9.0 (sha256 pin), FreeCAD siz
     # (FreeCAD testlari [SKIP]; P2 da FreeCAD siz builder lar bilan almashadi). Server talab qiladigan
     # testlar (GES_TEST_SERVER) bu yerda ishlamaydi.
     runs-on: windows-2022
     needs: [server]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { lfs: true }  # addon wheel lari LFS da
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/Tools/blender-5.2.2-windows-x64.zip
-            ~/Tools/bonsai-0.8.5-py313-win64.zip
-          key: blender-5.2.2-bonsai-0.8.5-v1
+            ~/Tools/bonsai-0.9.0-py313-win64.zip
+          key: blender-5.2.2-bonsai-0.9.0-v1
       - run: python desktop/build/ci_blender_setup.py
       - run: python desktop/build/sync_blender.py --check
       - name: Headless testlar
@@ -307,9 +357,19 @@ Expected: `FAIL soni: 0`, `SKIP: 3` (engine, objects, demo_plant).
       - name: Addon zip
         shell: pwsh
         run: python desktop/build/build_blender_addon.py --blender $env:GES_BLENDER
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: sath-addon, path: desktop/dist/sath-*.zip, retention-days: 14 }
 ```
+
+- [ ] **Step 5b: Qolgan ishlardagi action larni eng so'nggi major ga ko'taring**
+
+`ci.yml` (va `.github/workflows/blender-fork.yml`) dagi barcha `actions/checkout@v4` → `@v7`, `actions/setup-python@v5` → `@v7`, `actions/setup-node@v4` → `@v7`, `actions/cache@v4` → `@v6`, `actions/upload-artifact@v4` → `@v7`:
+
+```bash
+sed -i -e 's#actions/checkout@v4#actions/checkout@v7#g' -e 's#actions/setup-python@v5#actions/setup-python@v7#g' -e 's#actions/setup-node@v4#actions/setup-node@v7#g' -e 's#actions/cache@v4#actions/cache@v6#g' -e 's#actions/upload-artifact@v4#actions/upload-artifact@v7#g' .github/workflows/ci.yml .github/workflows/blender-fork.yml
+grep -n "uses: actions/" .github/workflows/*.yml
+```
+Expected: faqat `@v7`/`@v6` qolgan. Har bir major ning release notes idagi buzuvchi o'zgarishlarni (`https://github.com/actions/<nom>/releases`) ko'rib chiqing — `with:` parametrlari nomi o'zgargan bo'lsa moslang.
 
 - [ ] **Step 6: `build_blender_addon.py` `--blender` argumentini qabul qiladimi — tekshiring**
 
@@ -322,8 +382,8 @@ Run: `python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'
 Expected: `ok`
 
 ```bash
-git add desktop/build/ci_blender_setup.py desktop/build/build_blender_addon.py .github/workflows/ci.yml
-git commit -m "ci(K7): desktop-blender ishi — Blender 5.2.2 + Bonsai sha256 pin, headless testlar, addon zip artefakt"
+git add desktop/build/ci_blender_setup.py desktop/build/build_blender_addon.py .github/workflows/ci.yml .github/workflows/blender-fork.yml
+git commit -m "ci(K7): desktop-blender ishi — Blender 5.2.2 + Bonsai 0.9.0 sha256 pin, headless testlar, addon zip artefakt; action lar eng so'nggi major"
 ```
 
 CI natijasini (birinchi push dan keyin) foydalanuvchiga ko'rsating; push qilishni foydalanuvchi so'raganda qiling.
