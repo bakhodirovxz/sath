@@ -11,6 +11,7 @@ Parametrlar mantiqiy (manba) tartibda — FreeCAD `PropertiesList` (alfavit) tar
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -240,6 +241,218 @@ _register(KindSpec(
     parts=_tailrace_parts,
     volume=lambda p: p["Length"] * ((p["Width"] + 2 * p["WallThickness"]) * (p["Depth"] + p["WallThickness"]) - p["Width"] * p["Depth"]),
     density=_concrete,
+))  # fmt: skip
+
+
+def penstock_path(length: float, inclination_deg: float, bend_radius: float, outlet_length: float) -> dict:
+    """Egri quvur o'qi (metr): kirish p0=(0,0,0) → qiya qism (u1) → yoy (R) → gorizontal +Y. Qaytaradi p0, p1 (yoy
+    boshi), pm (yoy o'rtasi), p2 (yoy oxiri), p3 (chiqish), u1, alpha (rad), l1. `physics.penstock_path` bilan bir xil."""
+    a = math.radians(inclination_deg)
+    l1 = max(length * 0.1, length - outlet_length - bend_radius * a)
+    u1 = (0.0, math.cos(a), -math.sin(a))
+    n1 = (0.0, math.sin(a), math.cos(a))
+    p1 = (0.0, u1[1] * l1, u1[2] * l1)
+    c = (0.0, p1[1] + n1[1] * bend_radius, p1[2] + n1[2] * bend_radius)
+    p2 = (0.0, c[1], c[2] - bend_radius)
+    k = math.hypot(n1[1], n1[2] + 1.0)
+    pm = (0.0, c[1] - n1[1] / k * bend_radius, c[2] - (n1[2] + 1.0) / k * bend_radius)
+    p3 = (0.0, p2[1] + outlet_length, p2[2])
+    return {"p0": (0.0, 0.0, 0.0), "p1": p1, "pm": pm, "p2": p2, "p3": p3, "u1": u1, "alpha": a, "l1": l1}
+
+
+# --- Bosimli quvur: to'g'ri (Z bo'ylab halqa silindr) yoki egri (qiya → tirsak → gorizontal +Y; halqa sweep) ---------
+
+
+def _penstock_axis(p: dict, tol: float, ro: float) -> tuple[list, list]:
+    """Egri quvur o'qi nuqtalari va urinmalari: p0, yoy (k = 0..m), p3."""
+    R = p["BendRadius"]
+    pts = penstock_path(p["Length"], p["Inclination"], R, p["OutletLength"])
+    a = pts["alpha"]
+    c = (pts["p1"][1] + math.sin(a) * R, pts["p1"][2] + math.cos(a) * R)  # yoy markazi (y, z)
+    m = max(2, math.ceil(geom.segments(R + ro, tol) * a / (2 * math.pi)))
+    path, tans = [pts["p0"]], [pts["u1"]]
+    for k in range(m + 1):
+        g = a - a * k / m  # markazdan nuqtaga yo'nalish (0, −sin g, −cos g)
+        path.append((0.0, c[0] - R * math.sin(g), c[1] - R * math.cos(g)))
+        tans.append((0.0, math.cos(g), -math.sin(g)))
+    path.append(pts["p3"])
+    tans.append((0.0, 1.0, 0.0))
+    return path, tans
+
+
+def _penstock_parts(p: dict, tol: float) -> list:
+    r, t, L = p["Diameter"] / 2, p["WallThickness"], p["Length"]
+    ro = r + t
+    if p["Inclination"] <= 0:
+        return [geom.revolve([(r, 0.0), (ro, 0.0), (ro, L), (r, L)], tol=tol)]
+    path, tans = _penstock_axis(p, tol, ro)
+    n = geom.segments(ro, tol)
+    return [geom.sweep(geom.circle(ro, n), path, tans, (1.0, 0.0, 0.0), hole=geom.circle(r, n))]
+
+
+def _penstock_volume(p: dict) -> float:
+    r, t, L = p["Diameter"] / 2, p["WallThickness"], p["Length"]
+    ring = math.pi * ((r + t) ** 2 - r * r)
+    if p["Inclination"] <= 0:
+        return ring * L
+    pts = penstock_path(L, p["Inclination"], p["BendRadius"], p["OutletLength"])
+    return ring * (pts["l1"] + p["BendRadius"] * pts["alpha"] + p["OutletLength"])
+
+
+def _penstock_check(p: dict) -> None:
+    if p["Inclination"] > 0 and p["BendRadius"] <= p["Diameter"] / 2 + p["WallThickness"]:
+        raise ValueError("Bosimli quvur: tirsak radiusi tashqi radiusdan katta bo'lsin")
+
+
+_register(KindSpec(
+    kind="GES_Penstock", label="Bosimli quvur", ifc_class="IfcPipeSegment", pset="Pset_GES_Penstock", role="penstock:",
+    color=(0.45, 0.52, 0.60),
+    params=(
+        _len("Length", "Uzunligi", 20), _len("Diameter", "Ichki diametri", 2.4), _len("WallThickness", "Devor qalinligi", 0.02),
+        _flt("Roughness", "G'adir-budirlik, mm (Darcy-Weisbach)", 0.1),
+        _enum("Material", "Material", ("Po'lat", "Temir-beton", "GRP")),
+        _flt("Inclination", "Qiyalik, ° (gorizontaldan pastga; 0 — to'g'ri)", 0),
+        _len("BendRadius", "Tirsak radiusi", 8), _len("OutletLength", "Gorizontal chiqish qismi uzunligi", 6),
+    ),
+    fields=(
+        _real("Diametr_m", "Diameter"), _real("Uzunlik_m", "Length"), _real("Gadirbudirlik_mm", "Roughness"),
+        _label("Material", "Material"), _real("Qiyalik_deg", "Inclination"), _real("TirsakRadiusi_m", "BendRadius"),
+        _real("ChiqishUzunligi_m", "OutletLength"),
+    ),
+    parts=_penstock_parts, volume=_penstock_volume, density=lambda p: DENSITY_PIPE[p["Material"]], check=_penstock_check,
+))  # fmt: skip
+
+
+# --- Turbina agregati: spiral kamera (tor) + val va korpus (bitta aylanish profili; fuse siz) ---------------------
+
+
+def _turbine_parts(p: dict, tol: float) -> list:
+    d, h = p["RunnerDiameter"], p["Height"]
+    spiral = geom.torus(0.7 * d, 0.2 * d, tol=tol)
+    body = geom.revolve(
+        [(0.0, 0.0), (0.12 * d, 0.0), (0.12 * d, 0.6 * h), (0.5 * d, 0.6 * h), (0.5 * d, h), (0.0, h)], tol=tol
+    )
+    return [spiral, body]
+
+
+def _turbine_volume(p: dict) -> float:
+    d, h = p["RunnerDiameter"], p["Height"]
+    return 2 * math.pi**2 * (0.7 * d) * (0.2 * d) ** 2 + math.pi * (0.12 * d) ** 2 * 0.6 * h + math.pi * (0.5 * d) ** 2 * 0.4 * h
+
+
+_register(KindSpec(
+    kind="GES_Turbine", label="Turbina agregati", ifc_class="IfcFlowMovingDevice", pset="Pset_GES_Turbine", role="unit:",
+    color=(0.22, 0.65, 0.72),
+    params=(
+        _enum("TurbineType", "Turi", ("Francis", "Kaplan", "Pelton", "Bulb")),
+        _flt("RatedPower", "Nominal quvvat, MW", 25), _flt("RatedHead", "Hisobiy napor, m", 45),
+        _flt("RatedFlow", "Hisobiy sarf, m3/s", 62), _flt("Efficiency", "Maksimal FIK, 0..1", 0.92),
+        _len("RunnerDiameter", "Ish g'ildiragi diametri", 3), _len("Height", "Agregat balandligi", 4),
+    ),
+    fields=(
+        _label("Turi", "TurbineType"), _real("Quvvat_MW", "RatedPower"), _real("Napor_m", "RatedHead"),
+        _real("Sarf_m3s", "RatedFlow"), _real("FIK", "Efficiency"),
+    ),
+    parts=_turbine_parts, volume=_turbine_volume,
+))  # fmt: skip
+
+
+# --- Generator: stator + 12 qovurg'a (bitta yulduzsimon profil cho'zilgan), qopqoq + qo'zg'atgich (aylanish), val --
+
+
+def _generator_parts(p: dict, tol: float) -> list:
+    d, h = p["StatorDiameter"], p["Height"]
+    r, w, x_out = d / 2, 0.025 * d, 0.56 * d  # qovurg'a: x ∈ [0.48d, 0.56d], y ∈ [−w, w]
+    xc, beta, step = math.sqrt(r * r - w * w), math.asin(w / r), 2 * math.pi / geom.segments(r, tol)
+    prof = []
+    for i in range(12):
+        c = math.radians(30 * i)
+        cs, sn = math.cos(c), math.sin(c)
+        for x, y in ((xc, -w), (x_out, -w), (x_out, w), (xc, w)):
+            prof.append((x * cs - y * sn, x * sn + y * cs, 0.0))
+        a0, a1 = c + beta, c + math.radians(30) - beta  # qovurg'alar orasidagi stator yoyi
+        m = max(1, math.ceil((a1 - a0) / step))
+        for k in range(1, m):
+            g = a0 + (a1 - a0) * k / m
+            prof.append((r * math.cos(g), r * math.sin(g), 0.0))
+    body = geom.extrude(prof, (0.0, 0.0, 0.7 * h))
+    cap = geom.revolve(
+        [(0.0, 0.7 * h), (0.35 * d, 0.7 * h), (0.2 * d, 0.9 * h), (0.15 * d, 0.9 * h), (0.15 * d, h), (0.0, h)], tol=tol
+    )
+    shaft = geom.cylinder(0.06 * d, 0.15 * h, base=(0.0, 0.0, -0.15 * h), tol=tol)
+    return [body, cap, shaft]
+
+
+def _generator_volume(p: dict) -> float:
+    d, h = p["StatorDiameter"], p["Height"]
+    r, w = d / 2, 0.025 * d
+    seg = w * math.sqrt(r * r - w * w) + r * r * math.asin(w / r)  # ∫_{−w}^{w} √(r² − y²) dy
+    rib_out = 0.08 * d * 0.05 * d - (seg - 2 * w * 0.48 * d)  # qovurg'aning stator tashqarisidagi yuzasi
+    stator = 0.7 * h * (math.pi * r * r + 12 * rib_out)
+    cap = math.pi * 0.2 * h / 3 * ((0.35 * d) ** 2 + 0.35 * d * 0.2 * d + (0.2 * d) ** 2)
+    return stator + cap + math.pi * (0.15 * d) ** 2 * 0.1 * h + math.pi * (0.06 * d) ** 2 * 0.15 * h
+
+
+_register(KindSpec(
+    kind="GES_Generator", label="Generator", ifc_class="IfcElectricGenerator", pset="Pset_GES_Generator", role="gen:",
+    color=(0.16, 0.45, 0.78),
+    params=(
+        _flt("RatedPower", "Nominal to'liq quvvat, MVA", 30), _flt("Voltage", "Stator kuchlanishi, kV", 10.5),
+        _flt("EfficiencyMax", "Nominal FIK, 0..1", 0.985), _flt("IronLossFrac", "Temir (doimiy) yo'qotish ulushi, 0..1", 0.4),
+        _int("Poles", "Qutblar soni", 24), _flt("Frequency", "Chastota, Hz", 50),
+        _len("StatorDiameter", "Stator diametri", 6), _len("Height", "Balandligi", 3.5),
+    ),
+    fields=(
+        _real("Quvvat_MVA", "RatedPower"), _real("Kuchlanish_kV", "Voltage"), _real("FIK", "EfficiencyMax"),
+        _real("TemirUlushi", "IronLossFrac"), _count("Qutblar", "Poles"), _real("Chastota_Hz", "Frequency"),
+        Field("Aylanish_rpm", "IfcReal", derive=lambda p: round(120.0 * p["Frequency"] / max(2, p["Poles"]), 2)),
+    ),
+    parts=_generator_parts, volume=_generator_volume,
+))  # fmt: skip
+
+
+# --- Chiqarish quvuri: konus (pastga kengayadi) + 90° tirsak (disk aylanishi) + to'g'ri burchakli diffuzor (loft) ---
+
+
+def _drafttube_parts(p: dict, tol: float) -> list:
+    d, hc = p["InletDiameter"], p["ConeHeight"]
+    bw, bh, L = p["OutletWidth"], p["OutletHeight"], p["DiffuserLength"]
+    R = 0.75 * d
+    cone = geom.cone(R, d / 2, hc, base=(0.0, 0.0, -hc), tol=tol)
+    # tirsak: konus tagidagi disk X o'qi atrofida (markaz (0, R, −hc)) 90° pastga; lokal (ρ, o'q) da disk o'qqa tegadi
+    mat = [[0.0, 0.0, 1.0, 0.0], [-1.0, 0.0, 0.0, R], [0.0, -1.0, 0.0, -hc], [0.0, 0.0, 0.0, 1.0]]
+    elbow = geom.revolve(geom.circle(R, geom.segments(R, tol), (R, 0.0)), math.pi / 2, tol=tol, matrix=mat)
+    y0, z0 = R, -hc - R
+
+    def rect(y: float, w: float, hh: float) -> list:
+        return [(-w / 2, y, z0 - hh / 2), (w / 2, y, z0 - hh / 2), (w / 2, y, z0 + hh / 2), (-w / 2, y, z0 + hh / 2)]
+
+    return [cone, elbow, geom.loft(rect(y0, 2 * R, 2 * R), rect(y0 + L, bw, bh))]
+
+
+def _drafttube_volume(p: dict) -> float:
+    d, hc = p["InletDiameter"], p["ConeHeight"]
+    bw, bh, L = p["OutletWidth"], p["OutletHeight"], p["DiffuserLength"]
+    R, r = 0.75 * d, d / 2
+    a1, a2, am = 4 * R * R, bw * bh, (2 * R + bw) / 2 * (2 * R + bh) / 2  # prismatoid
+    return math.pi * hc / 3 * (R * R + R * r + r * r) + math.pi**2 * R**3 / 2 + L / 6 * (a1 + 4 * am + a2)
+
+
+_register(KindSpec(
+    kind="GES_DraftTube", label="Chiqarish quvuri", ifc_class="IfcFlowSegment", pset="Pset_GES_DraftTube", role="draft:",
+    color=(0.20, 0.40, 0.70),
+    params=(
+        _len("InletDiameter", "Kirish diametri (ish g'ildiragi ostida)", 3), _len("ConeHeight", "Konus balandligi", 5),
+        _len("OutletWidth", "Chiqish kengligi", 8), _len("OutletHeight", "Chiqish balandligi", 4),
+        _len("DiffuserLength", "Diffuzor uzunligi (+Y)", 12),
+        _flt("SuctionHead", "So'rish balandligi H_s, m (ish g'ildiragi − quyi byef)", 2),
+    ),
+    fields=(
+        _real("KirishDiametr_m", "InletDiameter"), _real("KonusBalandligi_m", "ConeHeight"),
+        _real("ChiqishKenglik_m", "OutletWidth"), _real("ChiqishBalandlik_m", "OutletHeight"),
+        _real("DiffuzorUzunligi_m", "DiffuserLength"), _real("SorishBalandligi_m", "SuctionHead"),
+    ),
+    parts=_drafttube_parts, volume=_drafttube_volume,
 ))  # fmt: skip
 
 
