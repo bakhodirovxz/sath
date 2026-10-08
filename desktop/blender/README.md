@@ -11,6 +11,7 @@ dvigateli (Blender jarayoniga `import FreeCAD` bilan yuklanadi — `docs/spike-b
 - Bonsai **0.9.0+** extension (Edit → Preferences → Get Extensions → Bonsai)
 - FreeCAD **1.1.3 py313** (conda-forge): `micromamba create -p %USERPROFILE%\Tools\fc-py313 -c conda-forge "freecad=1.1.3=py313*"`
   (yo'l: addon sozlamalari «FreeCAD papkasi» yoki `GES_FC_HOME` env). Rasmiy installer (py3.11) faqat Blender 4.5 bilan mos.
+  Hozircha FreeCAD faqat GES obyektlari uchun kerak; P2 da olib tashlanadi.
 - DWG uchun LibreDWG `dwg2dxf` (`~\Tools\libredwg`) yoki ODA File Converter.
 
 ## Tayyor bundle (foydalanuvchi uchun)
@@ -58,10 +59,15 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
   - `ops_*.py` operatorlar · `ui.py` panellar/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
   - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`) — **`common/sath_common`
     nusxasi**, `wb/ges_objects.py` — workbench nusxasi (`python desktop/build/sync_blender.py`, CI `--check`)
-- Testlar: `pytest desktop/tests/test_sath_pure.py desktop/tests/test_sath_flows.py` (Blender siz, real server);
-  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 9 ta sinov, Bonsai + FreeCAD kerak).
+  - `core/` — `tasks.py` (fon vazifalari, bpy siz), `events.py` (hodisalar shinasi), `ui_tasks.py` (pompa, status bar
+    progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3)
+- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, client threading);
+  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 19 ta sinov, `GES_TEST_SERVER` bilan yana 4 ta server sinovi;
+  FreeCAD yo'q bo'lsa FreeCAD testlari `[SKIP]`; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
+  CI: `desktop-blender` ishi (windows-2022).
+- Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
 
-Sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
+Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
 
 ## Ma'lum cheklovlar
