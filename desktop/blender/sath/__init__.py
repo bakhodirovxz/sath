@@ -1,5 +1,5 @@
-"""Sath Blender addoni: server (versiyalar, taqriz, sim, monitoring), GES obyektlari (sof Python geometriya,
-FreeCAD siz), DXF/DWG import. IFC — Bonsai."""
+"""Sath Blender addoni: yadro (server, versiyalar, rolga sezgir UI, fon vazifalari) + modullar (sath/modules/:
+review, sim, scada, twin, io, bim; Sozlamalarda yoqiladi/o'chiriladi). IFC — Bonsai."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ except ImportError:  # pytest (Blender siz): faqat sof modullar import qilinadi
 
 MODULES: list = []
 if bpy is not None:
-    from . import prefs, props
+    from . import ops_server, prefs, props, ui
     from .core import host, ui_tasks
 
-    # P3: qolgan hammasi sath/modules/ da — host topadi va yoqadi (legacy — o'tish davri)
-    MODULES = [ui_tasks, prefs, props, host]
+    # Yadro: fon vazifalari, sozlamalar, Scene.ges, server/login/commit, yadro panellari va menyu; qolgani — modules/
+    MODULES = [ui_tasks, prefs, props, ops_server, ui, host]
 
 
 def register():

@@ -256,20 +256,29 @@ def _bundled_retry():
     assert host.record("flaky") is None
 
 
-def _legacy_pinned():
+def _core_only():
+    """Yadro (Server, Model, bildirishnomalar, menyu, update, status bar) modul emas — doim ro'yxatda."""
     from sath.core import host
 
-    assert host.is_enabled("legacy") and host.set_enabled("legacy", False) == [] and host.is_enabled("legacy")
-    assert hasattr(bpy.types, "SATH_PT_server") and _registered("commit") and _registered("connect")
-    # PINNED bog'liq modul kaskadda o'chmasligi kerak: soxta bog'liqlik, legacy vaqtincha pinsiz
+    assert host.record("legacy") is None
+    assert hasattr(bpy.types, "SATH_PT_server") and hasattr(bpy.types, "SATH_MT_main") and _registered("commit")
+    assert sorted(host.REG.records) == ["bim", "io", "review", "scada", "sim", "twin"]
+
+
+def _pinned_cascade():
+    """PINNED bog'liq modul kaskadda o'chmasligi kerak: soxta bog'liqlik (PINNED hozir bo'sh)."""
+    from sath.core import host
+
+    host.set_enabled("sim", True)
+    assert host.is_enabled("sim")
     real = host.REG.dependents
     host.PINNED = frozenset({"x_pinned"})
-    host.REG.dependents = lambda rid: ["x_pinned"] if rid == "legacy" else []
+    host.REG.dependents = lambda rid: ["x_pinned"] if rid == "sim" else []
     try:
-        assert host.pinned_dependents("legacy") == ["x_pinned"]
-        assert host.set_enabled("legacy", False) == [] and host.is_enabled("legacy")
+        assert host.pinned_dependents("sim") == ["x_pinned"]
+        assert host.set_enabled("sim", False) == [] and host.is_enabled("sim")
     finally:
-        host.REG.dependents, host.PINNED = real, frozenset({"legacy"})
+        host.REG.dependents, host.PINNED = real, frozenset()
 
 
 def _review_live():
@@ -403,7 +412,8 @@ def _bim_keeps_data():
 
 def run(ctx):
     _user_modules()
-    _legacy_pinned()
+    _core_only()
+    _pinned_cascade()
     _bundled_retry()
     _review_live()
     _scada_off()

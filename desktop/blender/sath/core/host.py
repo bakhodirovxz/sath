@@ -21,7 +21,7 @@ from .tasks import TASKS
 ROOT_PKG = __package__.rpartition(".")[0]  # "sath" (headless) yoki "bl_ext.user_default.sath"
 BUNDLED = Path(__file__).resolve().parents[1] / "modules"
 REG: registry.Registry | None = None
-PINNED: frozenset[str] = frozenset({"legacy"})  # o'tish davri: o'chirib bo'lmaydi (Task 13 da bo'shaydi)
+PINNED: frozenset[str] = frozenset()  # hozircha yo'q (mexanizm keyingi yadro-modullar uchun)
 _KEYS: list[bytes] = []  # ishonchli modul kalitlari — scan() to'ldiradi (prefs + env + yangilanish kaliti)
 _menus: list[tuple[str, Callable]] = []
 _offs: list[Callable[[], None]] = []
