@@ -6,6 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from .core import tokens
 from .shared.server_client import GesClient, ServerError
 
 
@@ -155,7 +156,7 @@ def notification_rows(client: GesClient) -> list[dict]:
 
 
 # ------------------------------------------------------------------ taqriz, issue, farq
-DIFF_COLORS = {"added": (0.25, 0.7, 0.35, 1.0), "changed": (0.9, 0.7, 0.2, 1.0)}
+DIFF_COLORS = {"added": tokens.rgba("diff-add"), "changed": tokens.rgba("diff-change")}  # = web (P4)
 STATUS_UZ = {
     "open": "Ochiq",
     "changes_requested": "O'zgartirish so'ralgan",
@@ -301,12 +302,21 @@ def safety_rows(res: dict) -> tuple[str, list[dict]]:
 
 
 # ------------------------------------------------------------------ monitoring (SCADA)
-ALARM_COLORS = {
-    "ok": (0.23, 0.66, 0.39, 1.0),
-    "low": (0.88, 0.4, 0.42, 1.0),
-    "high": (0.88, 0.4, 0.42, 1.0),
-    "stale": (0.42, 0.43, 0.46, 1.0),
-}
+# web MonitoringPanel.alarmHex / tokens.alarmStyle bilan bir xil (P4): normal — kulrang (rang faqat anomaliya
+# uchun, ISA-101), uzilgan — alarm-stale, alarm — sensor ustuvorligi rangi (priority, sukut medium).
+ALARM_STATES = ("ok", "low", "high", "stale", "lowlow", "highhigh", "roc", "deviation")
+ALARM_PRIORITIES = ("low", "medium", "high", "critical")
+
+
+def alarm_rgba(alarm: str | None, priority: str | None = None) -> tuple:
+    if alarm not in ALARM_STATES or alarm == "ok":
+        return tokens.rgba("text-muted")
+    if alarm == "stale":
+        return tokens.rgba("alarm-stale")
+    return tokens.rgba(f"alarm-{priority if priority in ALARM_PRIORITIES else 'medium'}")
+
+
+ALARM_COLORS = {a: alarm_rgba(a) for a in ALARM_STATES}  # ustuvorlik «medium» bo'yicha (testlar, eski chaqiruv)
 ALARM_UZ = {"ok": "normal", "low": "past", "high": "yuqori", "stale": "uzilgan"}
 
 
@@ -330,7 +340,7 @@ def sensor_rows(sensors: list[dict]) -> list[dict]:
 
 def alarm_colors(sensors: list[dict]) -> dict[str, tuple]:
     return {
-        s["element_guid"]: ALARM_COLORS.get(s.get("alarm"), (1.0, 1.0, 1.0, 1.0))
+        s["element_guid"]: alarm_rgba(s.get("alarm"), s.get("priority"))
         for s in sensors
         if s.get("element_guid") and s.get("enabled")
     }
@@ -349,11 +359,11 @@ def water_sensor_level(sensors: list[dict]) -> float | None:
 
 
 # ------------------------------------------------------------------ raqamli egizak, sog'liq, vaqt mashinasi
-HEALTH_COLORS = {
-    "yaxshi": (0.23, 0.66, 0.39, 1.0),
-    "qoniqarli": (0.85, 0.75, 0.25, 1.0),
-    "yomon": (0.9, 0.5, 0.2, 1.0),
-    "kritik": (0.85, 0.25, 0.25, 1.0),
+HEALTH_COLORS = {  # web MonitoringPanel: yaxshi — ok, qoniqarli — warn, yomon/kritik — danger (P4: tokenlar)
+    "yaxshi": tokens.rgba("ok"),
+    "qoniqarli": tokens.rgba("warn"),
+    "yomon": tokens.rgba("danger"),
+    "kritik": tokens.rgba("danger"),
 }
 
 

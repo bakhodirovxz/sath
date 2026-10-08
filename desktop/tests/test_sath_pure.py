@@ -303,3 +303,22 @@ def test_orphans_text_lists_lost_elements_by_name_and_guid():
     assert not any("[G010]" in x for x in lines) and any("yana 2 ta" in x for x in lines)
     assert any(x == "Bog'lanmagan: IfcPropertySet ×2" for x in lines)
     assert "qayta hisoblanadi" in lines[-1]
+
+
+def test_3d_colors_match_web_tokens():
+    """P4: 3D diff/alarm/sog'liq ranglari web bilan bir xil (tokens.ts → core/tokens.py, chiziqli)."""
+    from sath import flows
+    from sath.core import tokens
+
+    assert flows.DIFF_COLORS == {"added": tokens.rgba("diff-add"), "changed": tokens.rgba("diff-change")}
+    assert flows.alarm_rgba("high", "critical") == tokens.rgba("alarm-critical")
+    assert flows.alarm_rgba("lowlow") == tokens.rgba("alarm-medium")  # ustuvorlik yo'q — medium
+    assert flows.alarm_rgba("ok") == flows.alarm_rgba("nomalum") == tokens.rgba("text-muted")
+    assert flows.alarm_rgba("stale", "critical") == tokens.rgba("alarm-stale")
+    sensors = [{"element_guid": "G", "enabled": True, "alarm": "high", "priority": "low"}]
+    assert flows.alarm_colors(sensors) == {"G": tokens.rgba("alarm-low")}
+    assert flows.ALARM_COLORS["high"] == tokens.rgba("alarm-medium")
+    assert flows.HEALTH_COLORS == {
+        "yaxshi": tokens.rgba("ok"), "qoniqarli": tokens.rgba("warn"),
+        "yomon": tokens.rgba("danger"), "kritik": tokens.rgba("danger"),
+    }  # fmt: skip
