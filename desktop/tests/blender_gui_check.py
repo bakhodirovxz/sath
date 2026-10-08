@@ -2,6 +2,9 @@
 Blender yopiladi. Konsolda Python xatosi bo'lmasligi kerak.
 
   set SATH_PANELS_OPEN=1 && blender --python desktop/tests/blender_gui_check.py
+Haqiqiy profilga tegmaslik uchun vaqtinchalik BLENDER_USER_CONFIG/BLENDER_USER_DATAFILES bilan ishga tushiring
+(EXTENSIONS ni o'zgartirmang: Bonsai va Sath shu repodan topiladi), masalan:
+  set BLENDER_USER_CONFIG=%TEMP%\sath_cfg && set BLENDER_USER_DATAFILES=%TEMP%\sath_df && blender --python ...
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ sys.path.insert(0, str(HERE))
 os.environ["SATH_PANELS_OPEN"] = "1"
 import blender_headless  # noqa: E402
 
+bpy.context.preferences.use_preferences_save = False  # chiqishda haqiqiy userpref.blend qayta yozilmasin
 bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
 addon = blender_headless.load_addon()
 sys.path.insert(0, str(HERE / "sath_tests"))

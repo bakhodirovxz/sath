@@ -38,6 +38,22 @@ P0 = {
 BUNDLE_P0_MB = 2392  # Sath-0.3.0 bundle (ochilgan; FreeCAD 935 MB bilan) — P2 gacha
 
 
+def real_config_files(series: str = "5.2") -> list[Path]:
+    """Haqiqiy Blender profilining config papkasidagi fayllar (mtime qo'riqchisi uchun)."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", "")) / "Blender Foundation" / "Blender"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support" / "Blender"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "blender"
+    cfg = base / series / "config"
+    return sorted(cfg.glob("*")) if cfg.is_dir() else []
+
+
+def mtimes(files: list[Path]) -> dict[str, int]:
+    return {str(f): f.stat().st_mtime_ns for f in files if f.is_file()}
+
+
 def wall(cmd: list[str]) -> float:
     t = time.perf_counter()
     subprocess.run(cmd, check=True, capture_output=True)
@@ -72,6 +88,24 @@ def ok(cond: bool) -> str:
 
 
 def main() -> int:
+    before = mtimes(real_config_files())
+    with tempfile.TemporaryDirectory(prefix="sath-perf-profile-") as iso:
+        # Profil izolyatsiyasi: bim.load_project haqiqiy recent-ifc-projects.txt ga yozmasin. EXTENSIONS tegilmaydi
+        # (Bonsai odatiy repodan topilaveradi). Bola jarayonlar muhitni meros qiladi.
+        for k, d in (("CONFIG", "config"), ("DATAFILES", "datafiles")):
+            (Path(iso) / d).mkdir()
+            os.environ[f"BLENDER_USER_{k}"] = str(Path(iso) / d)
+        rc = _main()
+        for k in ("BLENDER_USER_CONFIG", "BLENDER_USER_DATAFILES"):
+            os.environ.pop(k, None)
+    after = mtimes(real_config_files())
+    if before != after:
+        print("[PERF-FAIL] haqiqiy Blender profili o'zgargan:", {k for k in after if before.get(k) != after[k]})
+        return 1
+    return rc
+
+
+def _main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--blender", type=Path, default=DEFAULT_BLENDER)
     ap.add_argument("--n", type=int, default=2000)

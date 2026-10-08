@@ -8,6 +8,12 @@ $tests = @(
     @("import_ops", ""), @("import_guid", ""), @("import_edges", ""), @("import_ezdxf", ""), @("import_ifc", "--bonsai"), @("import_fallback", ""), @("demo_plant", "--bonsai"), @("roundtrip_ges", "--bonsai"), @("undo_rep", "--bonsai"), @("undo_ifc", "--bonsai"), @("workspaces", ""), @("keymap", "--bonsai"), @("budgets", "")
 )
 if ($env:GES_TEST_SERVER) { $tests += ,@("e2e_server", "--bonsai"); $tests += ,@("commit_conflict", "--bonsai"); $tests += ,@("sim_hydro", "--bonsai"); $tests += ,@("sim_twin", "--bonsai") }  # real server bilan uchdan-uchiga
+# Profil izolyatsiyasi: haqiqiy %APPDATA%\Blender Foundation ga yozilmasin (recent-ifc-projects.txt va h.k.).
+# EXTENSIONS ataylab tegilmaydi: Bonsai odatiy extensions repodan topilaveradi.
+$iso = Join-Path ([System.IO.Path]::GetTempPath()) ("sath_tests_" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force (Join-Path $iso "config"), (Join-Path $iso "datafiles") | Out-Null
+$env:BLENDER_USER_CONFIG = Join-Path $iso "config"
+$env:BLENDER_USER_DATAFILES = Join-Path $iso "datafiles"
 $fails = 0; $skips = 0
 foreach ($t in $tests) {
     $out = & $blender -b --python $runner -- --test $t[0] $t[1] 2>&1 | Out-String
@@ -15,6 +21,7 @@ foreach ($t in $tests) {
     elseif ($out -match "\[SKIP\] $($t[0]):(.*)") { "[SKIP] $($t[0]):$($Matches[1].Trim())"; $skips++ }
     else { "[FAIL] $($t[0])"; $out | Select-String -Pattern "Error|assert" | ForEach-Object { "       " + $_.Line }; $fails++ }
 }
+Remove-Item -Recurse -Force $iso -ErrorAction SilentlyContinue
 "`nFAIL soni: $fails · SKIP: $skips"
 if ($fails -eq 0 -and $skips -gt 0 -and $env:SATH_REQUIRE_NO_SKIP -eq "1") { "SKIP taqiqlangan (SATH_REQUIRE_NO_SKIP=1)"; exit 1 }
 exit $fails
