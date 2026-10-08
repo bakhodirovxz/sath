@@ -1,0 +1,2075 @@
+{
+ "generator": {
+  "script": "desktop/tests/gen_fc_golden.py",
+  "freecad": "1.1.3",
+  "python": "3.13.15",
+  "date": "2026-10-08",
+  "units": "m, m2, m3"
+ },
+ "kinds": {
+  "GES_Dam": {
+   "label": "To'g'on",
+   "ifc_class": "IfcWall",
+   "color": [
+    0.72,
+    0.7,
+    0.66
+   ],
+   "schema": [
+    {
+     "name": "BaseElevation",
+     "label": "Tag belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "BaseWidth",
+     "label": "Asos kengligi",
+     "items": [],
+     "type": "length",
+     "default": 16.0
+    },
+    {
+     "name": "ConcreteClass",
+     "label": "Beton klassi (KMK 2.03.01)",
+     "items": [
+      "B15",
+      "B20",
+      "B25",
+      "B30",
+      "B35",
+      "B40"
+     ],
+     "type": "enum",
+     "default": "B20"
+    },
+    {
+     "name": "CrestElevation",
+     "label": "Gerbi belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "CrestWidth",
+     "label": "Gerbi kengligi",
+     "items": [],
+     "type": "length",
+     "default": 6.0
+    },
+    {
+     "name": "DamType",
+     "label": "Turi",
+     "items": [
+      "Gravitatsion",
+      "Arkali",
+      "Tuproq",
+      "Tosh-tuproq"
+     ],
+     "type": "enum",
+     "default": "Gravitatsion"
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 20.0
+    },
+    {
+     "name": "Length",
+     "label": "Gerbi uzunligi",
+     "items": [],
+     "type": "length",
+     "default": 60.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "BaseElevation": 0.0,
+      "BaseWidth": 16.0,
+      "ConcreteClass": "B20",
+      "CrestElevation": 0.0,
+      "CrestWidth": 6.0,
+      "DamType": "Gravitatsion",
+      "Height": 20.0,
+      "Length": 60.0
+     },
+     "volume_m3": 13200.0,
+     "area_m2": 4233.863375370596,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      16.0,
+      20.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcWall",
+     "psets": {
+      "Pset_GES_Dam": {
+       "Balandlik_m": 20.0,
+       "BetonKlassi": "B20",
+       "GerbBelgisi_m": 0.0,
+       "GerbKengligi_m": 6.0,
+       "TagBelgisi_m": 0.0,
+       "TagKengligi_m": 16.0,
+       "Turi": "Gravitatsion",
+       "Uzunlik_m": 60.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "BaseElevation": 838.0,
+      "BaseWidth": 46.4,
+      "ConcreteClass": "B20",
+      "CrestElevation": 896.0,
+      "CrestWidth": 6.0,
+      "DamType": "Gravitatsion",
+      "Height": 58.0,
+      "Length": 88.0
+     },
+     "volume_m3": 133724.79999999996,
+     "area_m2": 18459.78069641365,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      88.0,
+      46.4,
+      58.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcWall",
+     "psets": {
+      "Pset_GES_Dam": {
+       "Balandlik_m": 58.0,
+       "BetonKlassi": "B20",
+       "GerbBelgisi_m": 896.0,
+       "GerbKengligi_m": 6.0,
+       "TagBelgisi_m": 838.0,
+       "TagKengligi_m": 46.4,
+       "Turi": "Gravitatsion",
+       "Uzunlik_m": 88.0
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "BaseElevation": 820.0,
+      "BaseWidth": 24.0,
+      "ConcreteClass": "B30",
+      "CrestElevation": 850.0,
+      "CrestWidth": 8.0,
+      "DamType": "Arkali",
+      "Height": 30.0,
+      "Length": 100.0
+     },
+     "volume_m3": 48000.0,
+     "area_m2": 10369.66987850401,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      100.0,
+      24.0,
+      30.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcWall",
+     "psets": {
+      "Pset_GES_Dam": {
+       "Balandlik_m": 30.0,
+       "BetonKlassi": "B30",
+       "GerbBelgisi_m": 850.0,
+       "GerbKengligi_m": 8.0,
+       "TagBelgisi_m": 820.0,
+       "TagKengligi_m": 24.0,
+       "Turi": "Arkali",
+       "Uzunlik_m": 100.0
+      }
+     }
+    }
+   ]
+  },
+  "GES_Penstock": {
+   "label": "Bosimli quvur",
+   "ifc_class": "IfcPipeSegment",
+   "color": [
+    0.45,
+    0.52,
+    0.6
+   ],
+   "schema": [
+    {
+     "name": "BendRadius",
+     "label": "Tirsak radiusi",
+     "items": [],
+     "type": "length",
+     "default": 8.0
+    },
+    {
+     "name": "Diameter",
+     "label": "Ichki diametri",
+     "items": [],
+     "type": "length",
+     "default": 2.4
+    },
+    {
+     "name": "Inclination",
+     "label": "Qiyalik, ° (gorizontaldan pastga; 0 — to'g'ri)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi",
+     "items": [],
+     "type": "length",
+     "default": 20.0
+    },
+    {
+     "name": "Material",
+     "label": "Material",
+     "items": [
+      "Po'lat",
+      "Temir-beton",
+      "GRP"
+     ],
+     "type": "enum",
+     "default": "Po'lat"
+    },
+    {
+     "name": "OutletLength",
+     "label": "Gorizontal chiqish qismi uzunligi",
+     "items": [],
+     "type": "length",
+     "default": 6.0
+    },
+    {
+     "name": "Roughness",
+     "label": "G'adir-budirlik, mm (Darcy-Weisbach)",
+     "items": [],
+     "type": "float",
+     "default": 0.1
+    },
+    {
+     "name": "WallThickness",
+     "label": "Devor qalinligi",
+     "items": [],
+     "type": "length",
+     "default": 0.02
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "BendRadius": 8.0,
+      "Diameter": 2.4,
+      "Inclination": 0.0,
+      "Length": 20.0,
+      "Material": "Po'lat",
+      "OutletLength": 6.0,
+      "Roughness": 0.1,
+      "WallThickness": 0.02
+     },
+     "volume_m3": 3.0410616886749193,
+     "area_m2": 304.41027503635945,
+     "bbox_m": [
+      -1.22,
+      -1.22,
+      0.0,
+      1.22,
+      1.22,
+      20.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcPipeSegment",
+     "psets": {
+      "Pset_GES_Penstock": {
+       "ChiqishUzunligi_m": 6.0,
+       "Diametr_m": 2.4,
+       "Gadirbudirlik_mm": 0.1,
+       "Material": "Po'lat",
+       "Qiyalik_deg": 0.0,
+       "TirsakRadiusi_m": 8.0,
+       "Uzunlik_m": 20.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "BendRadius": 8.0,
+      "Diameter": 4.54,
+      "Inclination": 48.025,
+      "Length": 40.42,
+      "Material": "Po'lat",
+      "OutletLength": 6.0,
+      "Roughness": 0.1,
+      "WallThickness": 0.02
+     },
+     "volume_m3": 11.580865565298783,
+     "area_m2": 1158.6595830298818,
+     "bbox_m": [
+      -2.2900000001,
+      -1.7024700842913525,
+      -25.54348576666623,
+      2.2900000001,
+      30.48308874293029,
+      1.5315663916699775
+     ],
+     "solids": 1,
+     "ifc_class": "IfcPipeSegment",
+     "psets": {
+      "Pset_GES_Penstock": {
+       "ChiqishUzunligi_m": 6.0,
+       "Diametr_m": 4.54,
+       "Gadirbudirlik_mm": 0.1,
+       "Material": "Po'lat",
+       "Qiyalik_deg": 48.025,
+       "TirsakRadiusi_m": 8.0,
+       "Uzunlik_m": 40.42
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "BendRadius": 8.0,
+      "Diameter": 2.4,
+      "Inclination": 40.0,
+      "Length": 60.0,
+      "Material": "Po'lat",
+      "OutletLength": 6.0,
+      "Roughness": 0.1,
+      "WallThickness": 0.02
+     },
+     "volume_m3": 9.123185066024792,
+     "area_m2": 912.6226127713433,
+     "bbox_m": [
+      -1.2200000001,
+      -0.7842008838175778,
+      -34.21217212060392,
+      1.2200000001,
+      48.2303015262267,
+      0.9345742206051533
+     ],
+     "solids": 1,
+     "ifc_class": "IfcPipeSegment",
+     "psets": {
+      "Pset_GES_Penstock": {
+       "ChiqishUzunligi_m": 6.0,
+       "Diametr_m": 2.4,
+       "Gadirbudirlik_mm": 0.1,
+       "Material": "Po'lat",
+       "Qiyalik_deg": 40.0,
+       "TirsakRadiusi_m": 8.0,
+       "Uzunlik_m": 60.0
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "BendRadius": 8.0,
+      "Diameter": 3.2,
+      "Inclination": 0.0,
+      "Length": 35.0,
+      "Material": "GRP",
+      "OutletLength": 6.0,
+      "Roughness": 0.05,
+      "WallThickness": 0.03
+     },
+     "volume_m3": 10.65471148464981,
+     "area_m2": 710.9229396329179,
+     "bbox_m": [
+      -1.63,
+      -1.63,
+      0.0,
+      1.63,
+      1.63,
+      35.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcPipeSegment",
+     "psets": {
+      "Pset_GES_Penstock": {
+       "ChiqishUzunligi_m": 6.0,
+       "Diametr_m": 3.2,
+       "Gadirbudirlik_mm": 0.05,
+       "Material": "GRP",
+       "Qiyalik_deg": 0.0,
+       "TirsakRadiusi_m": 8.0,
+       "Uzunlik_m": 35.0
+      }
+     }
+    }
+   ]
+  },
+  "GES_Turbine": {
+   "label": "Turbina agregati",
+   "ifc_class": "IfcFlowMovingDevice",
+   "color": [
+    0.22,
+    0.65,
+    0.72
+   ],
+   "schema": [
+    {
+     "name": "Efficiency",
+     "label": "Maksimal FIK, 0..1",
+     "items": [],
+     "type": "float",
+     "default": 0.92
+    },
+    {
+     "name": "Height",
+     "label": "Agregat balandligi",
+     "items": [],
+     "type": "length",
+     "default": 4.0
+    },
+    {
+     "name": "RatedFlow",
+     "label": "Hisobiy sarf, m3/s",
+     "items": [],
+     "type": "float",
+     "default": 62.0
+    },
+    {
+     "name": "RatedHead",
+     "label": "Hisobiy napor, m",
+     "items": [],
+     "type": "float",
+     "default": 45.0
+    },
+    {
+     "name": "RatedPower",
+     "label": "Nominal quvvat, MW",
+     "items": [],
+     "type": "float",
+     "default": 25.0
+    },
+    {
+     "name": "RunnerDiameter",
+     "label": "Ish g'ildiragi diametri",
+     "items": [],
+     "type": "length",
+     "default": 3.0
+    },
+    {
+     "name": "TurbineType",
+     "label": "Turi",
+     "items": [
+      "Francis",
+      "Kaplan",
+      "Pelton",
+      "Bulb"
+     ],
+     "type": "enum",
+     "default": "Francis"
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "Efficiency": 0.92,
+      "Height": 4.0,
+      "RatedFlow": 62.0,
+      "RatedHead": 45.0,
+      "RatedPower": 25.0,
+      "RunnerDiameter": 3.0,
+      "TurbineType": "Francis"
+     },
+     "volume_m3": 27.209736386342936,
+     "area_m2": 84.38828996527862,
+     "bbox_m": [
+      -2.7000000000999997,
+      -2.7000000000999997,
+      -0.6000000001,
+      2.7000000000999997,
+      2.7000000000999997,
+      4.0
+     ],
+     "solids": 2,
+     "ifc_class": "IfcFlowMovingDevice",
+     "psets": {
+      "Pset_GES_Turbine": {
+       "FIK": 0.92,
+       "Napor_m": 45.0,
+       "Quvvat_MW": 25.0,
+       "Sarf_m3s": 62.0,
+       "Turi": "Francis"
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "Efficiency": 0.92,
+      "Height": 4.0,
+      "RatedFlow": 64.82,
+      "RatedHead": 42.8,
+      "RatedPower": 25.0,
+      "RunnerDiameter": 3.0,
+      "TurbineType": "Francis"
+     },
+     "volume_m3": 27.209736386342936,
+     "area_m2": 84.38828996527862,
+     "bbox_m": [
+      -2.7000000000999997,
+      -2.7000000000999997,
+      -0.6000000001,
+      2.7000000000999997,
+      2.7000000000999997,
+      4.0
+     ],
+     "solids": 2,
+     "ifc_class": "IfcFlowMovingDevice",
+     "psets": {
+      "Pset_GES_Turbine": {
+       "FIK": 0.92,
+       "Napor_m": 42.8,
+       "Quvvat_MW": 25.0,
+       "Sarf_m3s": 64.82,
+       "Turi": "Francis"
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "Efficiency": 0.92,
+      "Height": 6.0,
+      "RatedFlow": 62.0,
+      "RatedHead": 45.0,
+      "RatedPower": 40.0,
+      "RunnerDiameter": 4.5,
+      "TurbineType": "Kaplan"
+     },
+     "volume_m3": 91.8328603039074,
+     "area_m2": 189.87365242187684,
+     "bbox_m": [
+      -4.0500000001,
+      -4.0500000001,
+      -0.9000000000999999,
+      4.0500000001,
+      4.0500000001,
+      6.0
+     ],
+     "solids": 2,
+     "ifc_class": "IfcFlowMovingDevice",
+     "psets": {
+      "Pset_GES_Turbine": {
+       "FIK": 0.92,
+       "Napor_m": 45.0,
+       "Quvvat_MW": 40.0,
+       "Sarf_m3s": 62.0,
+       "Turi": "Kaplan"
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "Efficiency": 0.92,
+      "Height": 2.0,
+      "RatedFlow": 62.0,
+      "RatedHead": 45.0,
+      "RatedPower": 25.0,
+      "RunnerDiameter": 1.2,
+      "TurbineType": "Pelton"
+     },
+     "volume_m3": 1.9380134412362815,
+     "area_m2": 14.322459068149943,
+     "bbox_m": [
+      -1.0800000001,
+      -1.0800000001,
+      -0.2400000001,
+      1.0800000001,
+      1.0800000001,
+      2.0
+     ],
+     "solids": 2,
+     "ifc_class": "IfcFlowMovingDevice",
+     "psets": {
+      "Pset_GES_Turbine": {
+       "FIK": 0.92,
+       "Napor_m": 45.0,
+       "Quvvat_MW": 25.0,
+       "Sarf_m3s": 62.0,
+       "Turi": "Pelton"
+      }
+     }
+    }
+   ]
+  },
+  "GES_Spillway": {
+   "label": "Suv tashlagich",
+   "ifc_class": "IfcSlab",
+   "color": [
+    0.8,
+    0.8,
+    0.78
+   ],
+   "schema": [
+    {
+     "name": "CrestElevation",
+     "label": "Ostona belgisi, m",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "DischargeCoefficient",
+     "label": "Sarf koeffitsienti m (Q = m·b·√(2g)·H^1.5)",
+     "items": [],
+     "type": "float",
+     "default": 0.49
+    },
+    {
+     "name": "Gates",
+     "label": "Darvozalar soni",
+     "items": [],
+     "type": "int",
+     "default": 2
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi (oqim bo'ylab)",
+     "items": [],
+     "type": "length",
+     "default": 10.0
+    },
+    {
+     "name": "Thickness",
+     "label": "Qalinligi",
+     "items": [],
+     "type": "length",
+     "default": 1.0
+    },
+    {
+     "name": "Width",
+     "label": "Kengligi (oqimga ko'ndalang)",
+     "items": [],
+     "type": "length",
+     "default": 12.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "CrestElevation": 0.0,
+      "DischargeCoefficient": 0.49,
+      "Gates": 2,
+      "Length": 10.0,
+      "Thickness": 1.0,
+      "Width": 12.0
+     },
+     "volume_m3": 120.0,
+     "area_m2": 284.0,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      12.0,
+      10.0,
+      1.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcSlab",
+     "psets": {
+      "Pset_GES_Spillway": {
+       "Darvozalar": 2,
+       "Kenglik_m": 12.0,
+       "OstonaBelgisi_m": 0.0,
+       "SarfKoeff": 0.49
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "CrestElevation": 893.0,
+      "DischargeCoefficient": 0.49,
+      "Gates": 2,
+      "Length": 50.4,
+      "Thickness": 1.0,
+      "Width": 12.0
+     },
+     "volume_m3": 604.8,
+     "area_m2": 1334.4,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      12.0,
+      50.4,
+      1.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcSlab",
+     "psets": {
+      "Pset_GES_Spillway": {
+       "Darvozalar": 2,
+       "Kenglik_m": 12.0,
+       "OstonaBelgisi_m": 893.0,
+       "SarfKoeff": 0.49
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "CrestElevation": 0.0,
+      "DischargeCoefficient": 0.48,
+      "Gates": 3,
+      "Length": 30.0,
+      "Thickness": 1.5,
+      "Width": 20.0
+     },
+     "volume_m3": 900.0,
+     "area_m2": 1350.0,
+     "bbox_m": [
+      0.0,
+      0.0,
+      0.0,
+      20.0,
+      30.0,
+      1.5
+     ],
+     "solids": 1,
+     "ifc_class": "IfcSlab",
+     "psets": {
+      "Pset_GES_Spillway": {
+       "Darvozalar": 3,
+       "Kenglik_m": 20.0,
+       "OstonaBelgisi_m": 0.0,
+       "SarfKoeff": 0.48
+      }
+     }
+    }
+   ]
+  },
+  "GES_Powerhouse": {
+   "label": "Mashina zali",
+   "ifc_class": "IfcBuildingElementProxy",
+   "color": [
+    0.69,
+    0.63,
+    0.53
+   ],
+   "schema": [
+    {
+     "name": "ConcreteClass",
+     "label": "Beton klassi (karkas)",
+     "items": [
+      "B10",
+      "B15",
+      "B20",
+      "B25",
+      "B30",
+      "B35",
+      "B40",
+      "B45",
+      "B50",
+      "B60"
+     ],
+     "type": "enum",
+     "default": "B25"
+    },
+    {
+     "name": "FloorElevation",
+     "label": "Pol belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 18.0
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi (X)",
+     "items": [],
+     "type": "length",
+     "default": 40.0
+    },
+    {
+     "name": "Units",
+     "label": "Agregatlar soni",
+     "items": [],
+     "type": "int",
+     "default": 2
+    },
+    {
+     "name": "View",
+     "label": "Ko'rinish",
+     "items": [
+      "Yopiq",
+      "Kesim"
+     ],
+     "type": "enum",
+     "default": "Yopiq"
+    },
+    {
+     "name": "Width",
+     "label": "Kengligi (Y)",
+     "items": [],
+     "type": "length",
+     "default": 20.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "ConcreteClass": "B25",
+      "FloorElevation": 0.0,
+      "Height": 18.0,
+      "Length": 40.0,
+      "Units": 2,
+      "View": "Yopiq",
+      "Width": 20.0
+     },
+     "volume_m3": 15696.0,
+     "area_m2": 3865.742709106869,
+     "bbox_m": [
+      -20.0,
+      -10.0,
+      0.0,
+      20.0,
+      10.0,
+      21.24
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Powerhouse": {
+       "Agregatlar": 2,
+       "Balandlik_m": 18.0,
+       "BetonKlassi": "B25",
+       "Kenglik_m": 20.0,
+       "PolBelgisi_m": 0.0,
+       "Uzunlik_m": 40.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "ConcreteClass": "B25",
+      "FloorElevation": 850.0,
+      "Height": 22.0,
+      "Length": 44.0,
+      "Units": 2,
+      "View": "Kesim",
+      "Width": 36.0
+     },
+     "volume_m3": 2006.654879999995,
+     "area_m2": 6811.660256704491,
+     "bbox_m": [
+      -22.0,
+      -18.0,
+      0.0,
+      22.0,
+      18.000000000000004,
+      25.960000000000004
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Powerhouse": {
+       "Agregatlar": 2,
+       "Balandlik_m": 22.0,
+       "BetonKlassi": "B25",
+       "Kenglik_m": 36.0,
+       "PolBelgisi_m": 850.0,
+       "Uzunlik_m": 44.0
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "ConcreteClass": "B25",
+      "FloorElevation": 0.0,
+      "Height": 18.0,
+      "Length": 40.0,
+      "Units": 2,
+      "View": "Kesim",
+      "Width": 20.0
+     },
+     "volume_m3": 1115.574815999997,
+     "area_m2": 3813.268293471613,
+     "bbox_m": [
+      -20.0,
+      -10.0,
+      0.0,
+      20.0,
+      10.0,
+      21.240000000000002
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Powerhouse": {
+       "Agregatlar": 2,
+       "Balandlik_m": 18.0,
+       "BetonKlassi": "B25",
+       "Kenglik_m": 20.0,
+       "PolBelgisi_m": 0.0,
+       "Uzunlik_m": 40.0
+      }
+     }
+    }
+   ]
+  },
+  "GES_Transformer": {
+   "label": "Transformator",
+   "ifc_class": "IfcTransformer",
+   "color": [
+    0.73,
+    0.53,
+    0.15
+   ],
+   "schema": [
+    {
+     "name": "Cooling",
+     "label": "Sovitish turi (IEC 60076)",
+     "items": [
+      "ONAN",
+      "ONAF",
+      "OFAF",
+      "ODAF"
+     ],
+     "type": "enum",
+     "default": "ONAF"
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 5.0
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi",
+     "items": [],
+     "type": "length",
+     "default": 6.0
+    },
+    {
+     "name": "RatedPower",
+     "label": "Nominal quvvat, MVA",
+     "items": [],
+     "type": "float",
+     "default": 40.0
+    },
+    {
+     "name": "VoltageHV",
+     "label": "Yuqori kuchlanish, kV",
+     "items": [],
+     "type": "float",
+     "default": 110.0
+    },
+    {
+     "name": "VoltageLV",
+     "label": "Past kuchlanish, kV",
+     "items": [],
+     "type": "float",
+     "default": 10.5
+    },
+    {
+     "name": "Width",
+     "label": "Kengligi",
+     "items": [],
+     "type": "length",
+     "default": 4.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "Cooling": "ONAF",
+      "Height": 5.0,
+      "Length": 6.0,
+      "RatedPower": 40.0,
+      "VoltageHV": 110.0,
+      "VoltageLV": 10.5,
+      "Width": 4.0
+     },
+     "volume_m3": 74.05699111843079,
+     "area_m2": 161.28991118430775,
+     "bbox_m": [
+      -2.1,
+      -2.9,
+      0.0,
+      2.1,
+      2.9,
+      5.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcTransformer",
+     "psets": {
+      "Pset_GES_Transformer": {
+       "KuchlanishPast_kV": 10.5,
+       "KuchlanishYuqori_kV": 110.0,
+       "Quvvat_MVA": 40.0,
+       "Sovitish": "ONAF"
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "Cooling": "ONAF",
+      "Height": 5.0,
+      "Length": 6.0,
+      "RatedPower": 27.8,
+      "VoltageHV": 110.0,
+      "VoltageLV": 10.5,
+      "Width": 4.0
+     },
+     "volume_m3": 74.05699111843079,
+     "area_m2": 161.28991118430775,
+     "bbox_m": [
+      -2.1,
+      -2.9,
+      0.0,
+      2.1,
+      2.9,
+      5.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcTransformer",
+     "psets": {
+      "Pset_GES_Transformer": {
+       "KuchlanishPast_kV": 10.5,
+       "KuchlanishYuqori_kV": 110.0,
+       "Quvvat_MVA": 27.8,
+       "Sovitish": "ONAF"
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "Cooling": "ODAF",
+      "Height": 6.0,
+      "Length": 8.0,
+      "RatedPower": 63.0,
+      "VoltageHV": 110.0,
+      "VoltageLV": 10.5,
+      "Width": 5.0
+     },
+     "volume_m3": 148.93085834705775,
+     "area_m2": 257.4948667764616,
+     "bbox_m": [
+      -2.8,
+      -3.7,
+      0.0,
+      2.8,
+      3.7,
+      6.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcTransformer",
+     "psets": {
+      "Pset_GES_Transformer": {
+       "KuchlanishPast_kV": 10.5,
+       "KuchlanishYuqori_kV": 110.0,
+       "Quvvat_MVA": 63.0,
+       "Sovitish": "ODAF"
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "Cooling": "ONAF",
+      "Height": 2.5,
+      "Length": 3.0,
+      "RatedPower": 40.0,
+      "VoltageHV": 110.0,
+      "VoltageLV": 10.5,
+      "Width": 2.0
+     },
+     "volume_m3": 9.257123889803848,
+     "area_m2": 40.32247779607694,
+     "bbox_m": [
+      -1.05,
+      -1.45,
+      0.0,
+      1.05,
+      1.45,
+      2.5
+     ],
+     "solids": 1,
+     "ifc_class": "IfcTransformer",
+     "psets": {
+      "Pset_GES_Transformer": {
+       "KuchlanishPast_kV": 10.5,
+       "KuchlanishYuqori_kV": 110.0,
+       "Quvvat_MVA": 40.0,
+       "Sovitish": "ONAF"
+      }
+     }
+    }
+   ]
+  },
+  "GES_Intake": {
+   "label": "Suv qabul qilgich",
+   "ifc_class": "IfcBuildingElementProxy",
+   "color": [
+    0.49,
+    0.61,
+    0.71
+   ],
+   "schema": [
+    {
+     "name": "Depth",
+     "label": "Chuqurligi (Y)",
+     "items": [],
+     "type": "length",
+     "default": 8.0
+    },
+    {
+     "name": "DesignFlow",
+     "label": "Hisobiy sarf, m3/s",
+     "items": [],
+     "type": "float",
+     "default": 120.0
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 15.0
+    },
+    {
+     "name": "Openings",
+     "label": "Teshiklar soni",
+     "items": [],
+     "type": "int",
+     "default": 2
+    },
+    {
+     "name": "ScreenBarSpacing",
+     "label": "Panjara oralig'i, mm",
+     "items": [],
+     "type": "float",
+     "default": 100.0
+    },
+    {
+     "name": "SillElevation",
+     "label": "Ostona belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "Width",
+     "label": "Kengligi (X)",
+     "items": [],
+     "type": "length",
+     "default": 8.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "Depth": 8.0,
+      "DesignFlow": 120.0,
+      "Height": 15.0,
+      "Openings": 2,
+      "ScreenBarSpacing": 100.0,
+      "SillElevation": 0.0,
+      "Width": 8.0
+     },
+     "volume_m3": 903.57552,
+     "area_m2": 679.87404,
+     "bbox_m": [
+      -4.0,
+      -4.0,
+      0.0,
+      4.0,
+      4.0,
+      15.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Intake": {
+       "Balandlik_m": 15.0,
+       "HisobiySarf_m3s": 120.0,
+       "OstonaBelgisi_m": 0.0,
+       "PanjaraOraligi_mm": 100.0,
+       "Teshiklar": 2
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "Depth": 8.0,
+      "DesignFlow": 129.6,
+      "Height": 29.750000000000004,
+      "Openings": 2,
+      "ScreenBarSpacing": 100.0,
+      "SillElevation": 868.25,
+      "Width": 34.0
+     },
+     "volume_m3": 7616.388654000002,
+     "area_m2": 3234.27227,
+     "bbox_m": [
+      -17.0,
+      -4.0,
+      0.0,
+      17.0,
+      4.0,
+      29.750000000000004
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Intake": {
+       "Balandlik_m": 29.750000000000004,
+       "HisobiySarf_m3s": 129.6,
+       "OstonaBelgisi_m": 868.25,
+       "PanjaraOraligi_mm": 100.0,
+       "Teshiklar": 2
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "Depth": 8.0,
+      "DesignFlow": 120.0,
+      "Height": 15.0,
+      "Openings": 1,
+      "ScreenBarSpacing": 100.0,
+      "SillElevation": 0.0,
+      "Width": 8.0
+     },
+     "volume_m3": 903.57552,
+     "area_m2": 654.68454,
+     "bbox_m": [
+      -4.0,
+      -4.0,
+      0.0,
+      4.0,
+      4.0,
+      15.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Intake": {
+       "Balandlik_m": 15.0,
+       "HisobiySarf_m3s": 120.0,
+       "OstonaBelgisi_m": 0.0,
+       "PanjaraOraligi_mm": 100.0,
+       "Teshiklar": 1
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "Depth": 8.0,
+      "DesignFlow": 120.0,
+      "Height": 15.0,
+      "Openings": 4,
+      "ScreenBarSpacing": 80.0,
+      "SillElevation": 0.0,
+      "Width": 60.0
+     },
+     "volume_m3": 6776.8164,
+     "area_m2": 3261.9708,
+     "bbox_m": [
+      -30.0,
+      -4.0,
+      0.0,
+      30.0,
+      4.0,
+      15.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_Intake": {
+       "Balandlik_m": 15.0,
+       "HisobiySarf_m3s": 120.0,
+       "OstonaBelgisi_m": 0.0,
+       "PanjaraOraligi_mm": 80.0,
+       "Teshiklar": 4
+      }
+     }
+    }
+   ]
+  },
+  "GES_Generator": {
+   "label": "Generator",
+   "ifc_class": "IfcElectricGenerator",
+   "color": [
+    0.16,
+    0.45,
+    0.78
+   ],
+   "schema": [
+    {
+     "name": "EfficiencyMax",
+     "label": "Nominal FIK, 0..1",
+     "items": [],
+     "type": "float",
+     "default": 0.985
+    },
+    {
+     "name": "Frequency",
+     "label": "Chastota, Hz",
+     "items": [],
+     "type": "float",
+     "default": 50.0
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 3.5
+    },
+    {
+     "name": "IronLossFrac",
+     "label": "Temir (doimiy) yo'qotish ulushi, 0..1",
+     "items": [],
+     "type": "float",
+     "default": 0.4
+    },
+    {
+     "name": "Poles",
+     "label": "Qutblar soni",
+     "items": [],
+     "type": "int",
+     "default": 24
+    },
+    {
+     "name": "RatedPower",
+     "label": "Nominal to'liq quvvat, MVA",
+     "items": [],
+     "type": "float",
+     "default": 30.0
+    },
+    {
+     "name": "StatorDiameter",
+     "label": "Stator diametri",
+     "items": [],
+     "type": "length",
+     "default": 6.0
+    },
+    {
+     "name": "Voltage",
+     "label": "Stator kuchlanishi, kV",
+     "items": [],
+     "type": "float",
+     "default": 10.5
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "EfficiencyMax": 0.985,
+      "Frequency": 50.0,
+      "Height": 3.5,
+      "IronLossFrac": 0.4,
+      "Poles": 24,
+      "RatedPower": 30.0,
+      "StatorDiameter": 6.0,
+      "Voltage": 10.5
+     },
+     "volume_m3": 79.69827308362893,
+     "area_m2": 132.37272744822965,
+     "bbox_m": [
+      -3.36,
+      -3.36,
+      -0.525,
+      3.36,
+      3.36,
+      3.5
+     ],
+     "solids": 1,
+     "ifc_class": "IfcElectricGenerator",
+     "psets": {
+      "Pset_GES_Generator": {
+       "Aylanish_rpm": 250.0,
+       "Chastota_Hz": 50.0,
+       "FIK": 0.985,
+       "Kuchlanish_kV": 10.5,
+       "Qutblar": 24,
+       "Quvvat_MVA": 30.0,
+       "TemirUlushi": 0.4
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "EfficiencyMax": 0.985,
+      "Frequency": 50.0,
+      "Height": 3.5,
+      "IronLossFrac": 0.4,
+      "Poles": 48,
+      "RatedPower": 27.8,
+      "StatorDiameter": 6.0,
+      "Voltage": 10.5
+     },
+     "volume_m3": 79.69827308362893,
+     "area_m2": 132.37272744822965,
+     "bbox_m": [
+      -3.36,
+      -3.36,
+      -0.525,
+      3.36,
+      3.36,
+      3.5
+     ],
+     "solids": 1,
+     "ifc_class": "IfcElectricGenerator",
+     "psets": {
+      "Pset_GES_Generator": {
+       "Aylanish_rpm": 125.0,
+       "Chastota_Hz": 50.0,
+       "FIK": 0.985,
+       "Kuchlanish_kV": 10.5,
+       "Qutblar": 48,
+       "Quvvat_MVA": 27.8,
+       "TemirUlushi": 0.4
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "EfficiencyMax": 0.985,
+      "Frequency": 60.0,
+      "Height": 5.0,
+      "IronLossFrac": 0.4,
+      "Poles": 32,
+      "RatedPower": 30.0,
+      "StatorDiameter": 9.0,
+      "Voltage": 10.5
+     },
+     "volume_m3": 256.1730206259549,
+     "area_m2": 289.78993501985576,
+     "bbox_m": [
+      -5.04,
+      -5.04,
+      -0.75,
+      5.04,
+      5.04,
+      5.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcElectricGenerator",
+     "psets": {
+      "Pset_GES_Generator": {
+       "Aylanish_rpm": 225.0,
+       "Chastota_Hz": 60.0,
+       "FIK": 0.985,
+       "Kuchlanish_kV": 10.5,
+       "Qutblar": 32,
+       "Quvvat_MVA": 30.0,
+       "TemirUlushi": 0.4
+      }
+     }
+    }
+   ]
+  },
+  "GES_DraftTube": {
+   "label": "Chiqarish quvuri",
+   "ifc_class": "IfcFlowSegment",
+   "color": [
+    0.2,
+    0.4,
+    0.7
+   ],
+   "schema": [
+    {
+     "name": "ConeHeight",
+     "label": "Konus balandligi",
+     "items": [],
+     "type": "length",
+     "default": 5.0
+    },
+    {
+     "name": "DiffuserLength",
+     "label": "Diffuzor uzunligi (+Y)",
+     "items": [],
+     "type": "length",
+     "default": 12.0
+    },
+    {
+     "name": "InletDiameter",
+     "label": "Kirish diametri (ish g'ildiragi ostida)",
+     "items": [],
+     "type": "length",
+     "default": 3.0
+    },
+    {
+     "name": "OutletHeight",
+     "label": "Chiqish balandligi",
+     "items": [],
+     "type": "length",
+     "default": 4.0
+    },
+    {
+     "name": "OutletWidth",
+     "label": "Chiqish kengligi",
+     "items": [],
+     "type": "length",
+     "default": 8.0
+    },
+    {
+     "name": "SuctionHead",
+     "label": "So'rish balandligi H_s, m (ish g'ildiragi − quyi byef)",
+     "items": [],
+     "type": "float",
+     "default": 2.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "ConeHeight": 5.0,
+      "DiffuserLength": 12.0,
+      "InletDiameter": 3.0,
+      "OutletHeight": 4.0,
+      "OutletWidth": 8.0,
+      "SuctionHead": 2.0
+     },
+     "volume_m3": 429.17010045764744,
+     "area_m2": 469.6717275688368,
+     "bbox_m": [
+      -4.0000000001,
+      -2.25,
+      -9.5000000001,
+      4.0000000001,
+      14.2500000001,
+      -9.094947017729283e-16
+     ],
+     "solids": 3,
+     "ifc_class": "IfcFlowSegment",
+     "psets": {
+      "Pset_GES_DraftTube": {
+       "ChiqishBalandlik_m": 4.0,
+       "ChiqishKenglik_m": 8.0,
+       "DiffuzorUzunligi_m": 12.0,
+       "KirishDiametr_m": 3.0,
+       "KonusBalandligi_m": 5.0,
+       "SorishBalandligi_m": 2.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "ConeHeight": 5.0,
+      "DiffuserLength": 12.0,
+      "InletDiameter": 3.0,
+      "OutletHeight": 4.0,
+      "OutletWidth": 8.0,
+      "SuctionHead": 0.0
+     },
+     "volume_m3": 429.17010045764744,
+     "area_m2": 469.6717275688368,
+     "bbox_m": [
+      -4.0000000001,
+      -2.25,
+      -9.5000000001,
+      4.0000000001,
+      14.2500000001,
+      -9.094947017729283e-16
+     ],
+     "solids": 3,
+     "ifc_class": "IfcFlowSegment",
+     "psets": {
+      "Pset_GES_DraftTube": {
+       "ChiqishBalandlik_m": 4.0,
+       "ChiqishKenglik_m": 8.0,
+       "DiffuzorUzunligi_m": 12.0,
+       "KirishDiametr_m": 3.0,
+       "KonusBalandligi_m": 5.0,
+       "SorishBalandligi_m": 0.0
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "ConeHeight": 7.0,
+      "DiffuserLength": 18.0,
+      "InletDiameter": 4.5,
+      "OutletHeight": 5.0,
+      "OutletWidth": 11.0,
+      "SuctionHead": 2.0
+     },
+     "volume_m3": 1293.3581747375947,
+     "area_m2": 994.3754673860213,
+     "bbox_m": [
+      -5.5000000001,
+      -3.3750000001,
+      -13.7500000001,
+      5.5000000001,
+      21.375000000100002,
+      0.0
+     ],
+     "solids": 3,
+     "ifc_class": "IfcFlowSegment",
+     "psets": {
+      "Pset_GES_DraftTube": {
+       "ChiqishBalandlik_m": 5.0,
+       "ChiqishKenglik_m": 11.0,
+       "DiffuzorUzunligi_m": 18.0,
+       "KirishDiametr_m": 4.5,
+       "KonusBalandligi_m": 7.0,
+       "SorishBalandligi_m": 2.0
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "ConeHeight": 3.0,
+      "DiffuserLength": 6.0,
+      "InletDiameter": 2.0,
+      "OutletHeight": 3.0,
+      "OutletWidth": 3.0,
+      "SuctionHead": 2.0
+     },
+     "volume_m3": 85.57752253138982,
+     "area_m2": 160.44090556616715,
+     "bbox_m": [
+      -1.5000000001,
+      -1.5,
+      -6.0000000001,
+      1.5000000001,
+      7.5000000001,
+      0.0
+     ],
+     "solids": 3,
+     "ifc_class": "IfcFlowSegment",
+     "psets": {
+      "Pset_GES_DraftTube": {
+       "ChiqishBalandlik_m": 3.0,
+       "ChiqishKenglik_m": 3.0,
+       "DiffuzorUzunligi_m": 6.0,
+       "KirishDiametr_m": 2.0,
+       "KonusBalandligi_m": 3.0,
+       "SorishBalandligi_m": 2.0
+      }
+     }
+    }
+   ]
+  },
+  "GES_ControlRoom": {
+   "label": "Boshqaruv xonasi",
+   "ifc_class": "IfcBuildingElementProxy",
+   "color": [
+    0.82,
+    0.82,
+    0.86
+   ],
+   "schema": [
+    {
+     "name": "FloorElevation",
+     "label": "Pol belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "Height",
+     "label": "Balandligi",
+     "items": [],
+     "type": "length",
+     "default": 4.0
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi (X)",
+     "items": [],
+     "type": "length",
+     "default": 12.0
+    },
+    {
+     "name": "Operators",
+     "label": "Dispetcherlar soni",
+     "items": [],
+     "type": "int",
+     "default": 2
+    },
+    {
+     "name": "ScadaChannels",
+     "label": "SCADA kanallari soni",
+     "items": [],
+     "type": "int",
+     "default": 256
+    },
+    {
+     "name": "Width",
+     "label": "Kengligi (Y)",
+     "items": [],
+     "type": "length",
+     "default": 8.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "FloorElevation": 0.0,
+      "Height": 4.0,
+      "Length": 12.0,
+      "Operators": 2,
+      "ScadaChannels": 256,
+      "Width": 8.0
+     },
+     "volume_m3": 370.19328,
+     "area_m2": 370.2172,
+     "bbox_m": [
+      -6.0,
+      -4.0,
+      0.0,
+      6.0,
+      4.0,
+      4.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_ControlRoom": {
+       "Balandlik_m": 4.0,
+       "Dispetcherlar": 2,
+       "Kenglik_m": 8.0,
+       "PolBelgisi_m": 0.0,
+       "SCADA_Kanallar": 256,
+       "Uzunlik_m": 12.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "FloorElevation": 860.0,
+      "Height": 4.0,
+      "Length": 12.0,
+      "Operators": 2,
+      "ScadaChannels": 256,
+      "Width": 8.0
+     },
+     "volume_m3": 370.19328,
+     "area_m2": 370.2172,
+     "bbox_m": [
+      -6.0,
+      -4.0,
+      0.0,
+      6.0,
+      4.0,
+      4.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_ControlRoom": {
+       "Balandlik_m": 4.0,
+       "Dispetcherlar": 2,
+       "Kenglik_m": 8.0,
+       "PolBelgisi_m": 860.0,
+       "SCADA_Kanallar": 256,
+       "Uzunlik_m": 12.0
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "FloorElevation": 10.0,
+      "Height": 5.0,
+      "Length": 20.0,
+      "Operators": 4,
+      "ScadaChannels": 256,
+      "Width": 10.0
+     },
+     "volume_m3": 964.036,
+     "area_m2": 736.4635,
+     "bbox_m": [
+      -10.0,
+      -5.0,
+      0.0,
+      10.0,
+      5.0,
+      5.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_ControlRoom": {
+       "Balandlik_m": 5.0,
+       "Dispetcherlar": 4,
+       "Kenglik_m": 10.0,
+       "PolBelgisi_m": 10.0,
+       "SCADA_Kanallar": 256,
+       "Uzunlik_m": 20.0
+      }
+     }
+    },
+    {
+     "id": "x2",
+     "params": {
+      "FloorElevation": 0.0,
+      "Height": 3.0,
+      "Length": 6.0,
+      "Operators": 2,
+      "ScadaChannels": 256,
+      "Width": 4.0
+     },
+     "volume_m3": 69.41448,
+     "area_m2": 112.9077,
+     "bbox_m": [
+      -3.0,
+      -2.0,
+      0.0,
+      3.0,
+      2.0,
+      3.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcBuildingElementProxy",
+     "psets": {
+      "Pset_GES_ControlRoom": {
+       "Balandlik_m": 3.0,
+       "Dispetcherlar": 2,
+       "Kenglik_m": 4.0,
+       "PolBelgisi_m": 0.0,
+       "SCADA_Kanallar": 256,
+       "Uzunlik_m": 6.0
+      }
+     }
+    }
+   ]
+  },
+  "GES_Tailrace": {
+   "label": "Daryo oqimi kanali",
+   "ifc_class": "IfcCivilElement",
+   "color": [
+    0.62,
+    0.62,
+    0.6
+   ],
+   "schema": [
+    {
+     "name": "BedElevation",
+     "label": "Tag belgisi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "BedSlope",
+     "label": "Tag nishabi S",
+     "items": [],
+     "type": "float",
+     "default": 0.001
+    },
+    {
+     "name": "Depth",
+     "label": "Devor balandligi",
+     "items": [],
+     "type": "length",
+     "default": 6.0
+    },
+    {
+     "name": "DesignFlow",
+     "label": "Hisobiy sarf (barcha agregatlar), m3/s",
+     "items": [],
+     "type": "float",
+     "default": 100.0
+    },
+    {
+     "name": "DesignTailwater",
+     "label": "Hisobiy quyi byef sathi, m (abs)",
+     "items": [],
+     "type": "float",
+     "default": 0.0
+    },
+    {
+     "name": "Length",
+     "label": "Uzunligi (Y)",
+     "items": [],
+     "type": "length",
+     "default": 40.0
+    },
+    {
+     "name": "Manning",
+     "label": "Manning g'adir-budirligi n",
+     "items": [],
+     "type": "float",
+     "default": 0.03
+    },
+    {
+     "name": "WallThickness",
+     "label": "Devor/tag qalinligi",
+     "items": [],
+     "type": "length",
+     "default": 0.8
+    },
+    {
+     "name": "Width",
+     "label": "Kanal kengligi (X)",
+     "items": [],
+     "type": "length",
+     "default": 20.0
+    }
+   ],
+   "cases": [
+    {
+     "id": "default",
+     "params": {
+      "BedElevation": 0.0,
+      "BedSlope": 0.001,
+      "Depth": 6.0,
+      "DesignFlow": 100.0,
+      "DesignTailwater": 0.0,
+      "Length": 40.0,
+      "Manning": 0.03,
+      "WallThickness": 0.8,
+      "Width": 20.0
+     },
+     "volume_m3": 1075.1999999999998,
+     "area_m2": 2805.76,
+     "bbox_m": [
+      -10.8,
+      0.0,
+      -0.8,
+      10.8,
+      40.0,
+      6.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcCivilElement",
+     "psets": {
+      "Pset_GES_Tailrace": {
+       "Chuqurlik_m": 6.0,
+       "HisobiyQuyiByef_m": 0.0,
+       "HisobiySarf_m3s": 100.0,
+       "Kenglik_m": 20.0,
+       "Manning_n": 0.03,
+       "Nishab": 0.001,
+       "TagBelgisi_m": 0.0,
+       "Uzunlik_m": 40.0
+      }
+     }
+    },
+    {
+     "id": "demo",
+     "params": {
+      "BedElevation": 838.0,
+      "BedSlope": 0.001,
+      "Depth": 11.0,
+      "DesignFlow": 129.6,
+      "DesignTailwater": 848.0,
+      "Length": 40.0,
+      "Manning": 0.03,
+      "WallThickness": 0.8,
+      "Width": 38.0
+     },
+     "volume_m3": 1971.2000000000014,
+     "area_m2": 5090.56,
+     "bbox_m": [
+      -19.8,
+      0.0,
+      -0.8,
+      19.8,
+      40.0,
+      11.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcCivilElement",
+     "psets": {
+      "Pset_GES_Tailrace": {
+       "Chuqurlik_m": 11.0,
+       "HisobiyQuyiByef_m": 848.0,
+       "HisobiySarf_m3s": 129.6,
+       "Kenglik_m": 38.0,
+       "Manning_n": 0.03,
+       "Nishab": 0.001,
+       "TagBelgisi_m": 838.0,
+       "Uzunlik_m": 40.0
+      }
+     }
+    },
+    {
+     "id": "x1",
+     "params": {
+      "BedElevation": 0.0,
+      "BedSlope": 0.001,
+      "Depth": 4.0,
+      "DesignFlow": 100.0,
+      "DesignTailwater": 0.0,
+      "Length": 25.0,
+      "Manning": 0.03,
+      "WallThickness": 0.5,
+      "Width": 10.0
+     },
+     "volume_m3": 237.50000000000003,
+     "area_m2": 994.0,
+     "bbox_m": [
+      -5.5,
+      0.0,
+      -0.5,
+      5.5,
+      25.0,
+      4.0
+     ],
+     "solids": 1,
+     "ifc_class": "IfcCivilElement",
+     "psets": {
+      "Pset_GES_Tailrace": {
+       "Chuqurlik_m": 4.0,
+       "HisobiyQuyiByef_m": 0.0,
+       "HisobiySarf_m3s": 100.0,
+       "Kenglik_m": 10.0,
+       "Manning_n": 0.03,
+       "Nishab": 0.001,
+       "TagBelgisi_m": 0.0,
+       "Uzunlik_m": 25.0
+      }
+     }
+    }
+   ]
+  }
+ }
+}
