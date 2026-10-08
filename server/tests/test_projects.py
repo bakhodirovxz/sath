@@ -79,3 +79,19 @@ def test_delete_project_admin_only(client, users):
     assert client.delete(f"/api/projects/{pid}", headers=users["approver"]).status_code == 403
     assert client.delete(f"/api/projects/{pid}", headers=users["admin"]).status_code == 204
     assert client.get(f"/api/projects/{pid}", headers=users["admin"]).status_code == 404
+
+
+def test_project_permissions_follow_role(client, users):
+    """Desktop P3 (FEAT-ROLE): ProjectOut.permissions = sorted(role_permissions(my_role)) — ro'yxatda ham,
+    bitta loyihada ham; admin — tasdiqlovchi ruxsatlari."""
+    from ges_server.auth.deps import role_permissions
+    from ges_server.orm import Role
+
+    pid = users["project_id"]
+    for name in ("viewer", "engineer", "approver", "admin"):
+        expected = sorted(role_permissions(Role.approver if name == "admin" else Role(name)))
+        listed = next(p for p in client.get("/api/projects", headers=users[name]).json() if p["id"] == pid)
+        one = client.get(f"/api/projects/{pid}", headers=users[name]).json()
+        assert listed["permissions"] == expected == one["permissions"], name
+    viewer = client.get(f"/api/projects/{pid}", headers=users["viewer"]).json()["permissions"]
+    assert "scada.read" in viewer and "model.write" not in viewer and "sim.run" not in viewer

@@ -9,7 +9,15 @@ from sqlalchemy import func
 
 from .. import audit
 from ..auth import sessions
-from ..auth.deps import DB, AdminUser, CurrentUser, get_project_role, has_role, require_project_role
+from ..auth.deps import (
+    DB,
+    AdminUser,
+    CurrentUser,
+    get_project_role,
+    has_role,
+    require_project_role,
+    role_permissions,
+)
 from ..downloads import content_disposition
 from ..models import crs as crs_mod
 from ..orm import Model, Project, ProjectDocument, ProjectMember, Role, User
@@ -50,6 +58,7 @@ class ProjectOut(BaseModel):
     naming_template: str = ""
     naming_required: bool = False
     crs: dict | None = None  # G3: {epsg, name, origin_e, origin_n, origin_h, rotation_deg}
+    permissions: list[str] = Field(default_factory=list)  # desktop P3: rolga sezgir UI (auth/deps ROLE_PERMISSIONS)
 
     model_config = {"from_attributes": True}
 
@@ -71,12 +80,15 @@ ApproverProject = Annotated[Project, Depends(require_project_role(Role.approver)
 
 
 def _out(db, project: Project, user: User, role: Role | None = None, model_count: int | None = None) -> ProjectOut:
+    if model_count is None:  # bitta loyiha: rol shu yerda aniqlanadi (ro'yxat uni agregat so'rov bilan beradi)
+        role = get_project_role(db, project.id, user)
     return ProjectOut(
         id=project.id,
         name=project.name,
         description=project.description,
         location=project.location,
-        my_role=role if model_count is not None else get_project_role(db, project.id, user),
+        my_role=role,
+        permissions=sorted(role_permissions(role)),
         model_count=model_count if model_count is not None else sum(1 for m in project.models if m.deleted_at is None),
         ids_required=bool(project.ids_required),
         naming_template=project.naming_template or "",
