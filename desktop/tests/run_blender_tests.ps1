@@ -4,7 +4,7 @@ $blender = if ($env:GES_BLENDER) { $env:GES_BLENDER } else { "$env:USERPROFILE\T
 $runner = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "blender_headless.py"
 $tests = @(
     @("smoke", ""), @("tasks_async", ""), @("secret_ops", ""), @("engine", ""), @("ifc_bridge", "--bonsai"), @("objects", "--bonsai"),
-    @("server_ops", ""), @("review_ops", "--bonsai"), @("sim_ops", ""), @("monitor_ops", "--bonsai"),
+    @("server_ops", ""), @("ops_async", "--bonsai"), @("review_ops", "--bonsai"), @("sim_ops", ""), @("monitor_ops", "--bonsai"),
     @("import_ops", ""), @("import_guid", ""), @("import_edges", ""), @("import_ezdxf", ""), @("import_ifc", "--bonsai"), @("import_fallback", ""), @("demo_plant", "--bonsai"), @("undo_rep", "--bonsai")
 )
 if ($env:GES_TEST_SERVER) { $tests += ,@("e2e_server", "--bonsai"); $tests += ,@("commit_conflict", "--bonsai"); $tests += ,@("sim_hydro", "--bonsai"); $tests += ,@("sim_twin", "--bonsai") }  # real server bilan uchdan-uchiga

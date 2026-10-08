@@ -216,4 +216,7 @@ def download_and_verify(client, pkg: dict, dest_dir: Path, public_key: str = "",
     except OSError as e:
         part.unlink(missing_ok=True)
         raise UpdateError(f"Yuklab olishda xato: {e}") from None
+    except BaseException:
+        part.unlink(missing_ok=True)  # K3: bekor qilish (TransferCancelled/Cancelled) ham .part qoldirmaydi
+        raise
     return final

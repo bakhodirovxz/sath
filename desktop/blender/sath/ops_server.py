@@ -8,6 +8,7 @@ import webbrowser
 import bpy
 
 from . import flows, ifc, props, session, update, viewpoint
+from .core.ui_tasks import run_op
 from .prefs import prefs
 from .shared.server_client import ServerError
 
@@ -33,27 +34,30 @@ class SATH_OT_connect(bpy.types.Operator):
     bl_label = "Ulanish"
 
     def execute(self, context):
-        p, s = prefs(), context.scene.ges
-        sec = props.secret(context)
+        p, sec = prefs(), props.secret(context)
+        server, username, password, otp = p.server, p.username, sec.password, sec.otp
+        sec.password = ""  # CODE-05: parol/MFA kodi xotirada qolmaydi — ish boshlanishidan oldin tozalanadi
+        sec.otp = ""
 
-        def do():
-            try:
-                u = session.login(p.server, p.username, sec.password, sec.otp)
-            finally:  # CODE-05: xato bo'lsa ham parol/MFA kodi xotirada qolmaydi
-                sec.password = ""
-                sec.otp = ""
-            s.status = f"{u['username']} sifatida kirildi"
-            pkg = flows.newer_package(session.client(), flows.ADDON_VERSION)
+        def work(ctx):
+            c, u = session.connect_client(server, username, password, otp)
+            pkg = flows.newer_package(c, flows.ADDON_VERSION)
+            note = flows.check_update(c, flows.ADDON_VERSION) if pkg else None
+            return c, u, pkg, note, flows.unread_summary(c), flows.project_rows(c)
+
+        def apply(res):
+            c, u, pkg, note, unread, rows = res
+            session.set_session(c, u)
+            session.remember(server, username)
+            s = bpy.context.scene.ges
+            s.status = f"{u['username']} sifatida kirildi" + (f" · {unread}" if unread else "")
             s.update_version = pkg["version"] if pkg else ""
-            if pkg:
-                self.report({"WARNING"}, flows.check_update(session.client(), flows.ADDON_VERSION) or "")
-            n = flows.unread_summary(session.client())
-            if n:
-                s.status += f" · {n}"
-            props.fill(s.projects, flows.project_rows(session.client()))
+            if note:
+                s.status += f" · {note}"
+            props.fill(s.projects, rows)
             s.projects_index = 0 if len(s.projects) else -1  # update → modellar
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        return run_op(self, "Ulanish", work, apply, key="server.connect")
 
 
 class SATH_OT_download_update(bpy.types.Operator):
@@ -68,35 +72,34 @@ class SATH_OT_download_update(bpy.types.Operator):
         return session.is_logged_in()
 
     def execute(self, context):
-        def do():
-            # SEC-03: paket brauzerda ochilmaydi — addon o'zi yuklab, hajm/sha256/imzoni tekshiradi;
-            # faqat tekshiruvdan o'tgan fayl papkasi ochiladi (o'rnatishni foydalanuvchi boshlaydi)
+        kind, pubkey = self.kind, prefs().update_public_key
+        dest_dir = flows.cache_dir() / "updates"
+
+        def work(ctx):
+            # SEC-03: paket brauzerda ochilmaydi — addon o'zi yuklab, hajm/sha256/imzoni tekshiradi
             client = session.client()
             latest = update.latest(client)
             if not latest:
                 raise RuntimeError("Serverda desktop paketi yo'q")
-            pkg = next((f for f in latest.get("files", []) if f["kind"] == self.kind), None)
+            pkg = next((f for f in latest.get("files", []) if f["kind"] == kind), None)
             if pkg is None:
-                raise RuntimeError(f"Serverda {self.kind} paketi yo'q")
-            wm = context.window_manager
-            wm.progress_begin(0, 100)
+                raise RuntimeError(f"Serverda {kind} paketi yo'q")
+
+            def prog(got, total):
+                ctx.check()
+                ctx.progress(got / total if total else None, f"{got / 2**20:.0f} MB")
+
             try:
-                path = update.download_and_verify(
-                    client,
-                    pkg,
-                    flows.cache_dir() / "updates",
-                    prefs().update_public_key,
-                    progress=lambda got, total: wm.progress_update(int(got * 100 / total) if total else 0),
-                )
+                return update.download_and_verify(client, pkg, dest_dir, pubkey, progress=prog)
             except update.UpdateError as e:
                 raise RuntimeError(str(e)) from None
-            finally:
-                wm.progress_end()
-            bpy.ops.wm.path_open(filepath=str(path.parent))
-            signed = "imzo ✓" if prefs().update_public_key.strip() else "imzo tekshirilmadi (kalit sozlanmagan)"
-            self.report({"INFO"}, f"Tekshirildi (hajm, sha256 ✓, {signed}): {path} — o'rnatish uchun ishga tushiring")
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        def apply(path):
+            bpy.ops.wm.path_open(filepath=str(path.parent))
+            signed = "imzo ✓" if pubkey.strip() else "imzo tekshirilmadi (kalit sozlanmagan)"
+            bpy.context.scene.ges.status = f"Tekshirildi (hajm, sha256 ✓, {signed}): {path.name} — o'rnatish uchun ishga tushiring"
+
+        return run_op(self, "Yangilanish", work, apply, key="server.update")
 
 
 class SATH_OT_logout(bpy.types.Operator):
@@ -190,25 +193,29 @@ class SATH_OT_open_version(bpy.types.Operator):
         p = _sel(s.projects, s.projects_index)
         m = _sel(s.models, s.models_index)
         v = _sel(s.versions, s.versions_index)
-
         info = {
-            "project_id": p.item_id, "model_id": m.item_id, "version_id": v.item_id,
+            "project_id": p.item_id if p else 0, "model_id": m.item_id, "version_id": v.item_id,
             "version_number": v.number, "model_name": m.name,
-            "status": f"{p.name} — {m.name} v{v.number} ochildi",
+            "status": f"{p.name if p else ''} — {m.name} v{v.number} ochildi",
         }  # fmt: skip
-        snap = props.snapshot(s)  # Bonsai fresh session sahnani almashtiradi
+        model, version = {"id": m.item_id}, {"id": v.item_id, "number": v.number}
 
-        def do():
-            path = flows.download_version(
-                session.client(), {"id": m.item_id}, {"id": v.item_id, "number": v.number}
-            )
+        def work(ctx):
+            return flows.download_version(
+                session.client(), model, version,
+                progress=lambda got, total: ctx.progress(got / total if total else None, f"{got / 2**20:.1f} MB"),
+                cancelled=lambda: ctx.cancelled,
+            )  # fmt: skip
+
+        def apply(path):
+            snap = props.snapshot(bpy.context.scene.ges)  # Bonsai fresh session sahnani almashtiradi
             if ifc.load(path):
                 props.restore(bpy.context.scene.ges, snap)
             sc = bpy.context.scene.ges
             for k, val in info.items():
                 setattr(sc, k, val)
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        return run_op(self, f"v{v.number} ni ochish", work, apply, key="server.open")
 
 
 class SATH_OT_pull_head(bpy.types.Operator):
@@ -227,28 +234,31 @@ class SATH_OT_pull_head(bpy.types.Operator):
 
         s = context.scene.ges
         model_id, head_id = s.model_id, s.head_conflict_id
-        snap = props.snapshot(s)
+        backup = None
+        if ifc.file() is not None:  # lokal o'zgarishlar yo'qolmasin (bpy — asosiy oqimda, ishdan oldin)
+            backup = ifc.save(flows.cache_dir() / f"lokal_m{model_id}_{time.strftime('%Y%m%d_%H%M%S')}.ifc")
 
-        def do():
+        def work(ctx):
             c = session.client()
             versions = c.versions(model_id)
             head = next((v for v in versions if v["id"] == head_id), None) if head_id else None
             head = head or max(versions, key=lambda v: v["number"])
-            backup = None
-            if ifc.file() is not None:  # lokal o'zgarishlar yo'qolmasin
-                backup = ifc.save(flows.cache_dir() / f"lokal_m{model_id}_{time.strftime('%Y%m%d_%H%M%S')}.ifc")
-            path = flows.download_version(c, {"id": model_id}, {"id": head["id"], "number": head["number"]})
+            path = flows.download_version(
+                c, {"id": model_id}, {"id": head["id"], "number": head["number"]}, cancelled=lambda: ctx.cancelled
+            )
+            return head, path
+
+        def apply(res):
+            head, path = res
+            snap = props.snapshot(bpy.context.scene.ges)
             if ifc.load(path):
                 props.restore(bpy.context.scene.ges, snap)
             sc = bpy.context.scene.ges
             sc.version_id, sc.version_number, sc.head_conflict_id = head["id"], head["number"], -1
             sc.status = f"v{head['number']} ochildi" + (f"; lokal nusxa: {backup}" if backup else "")
-            self.report({"INFO"}, sc.status)
+            bpy.ops.sath.refresh_versions()
 
-        if not guard(self, do):
-            return {"CANCELLED"}
-        bpy.ops.sath.refresh_versions()
-        return {"FINISHED"}
+        return run_op(self, "Eng oxirgi versiya", work, apply, key="server.open")
 
 
 def unassigned(context) -> list[str]:
@@ -316,10 +326,9 @@ class SATH_OT_commit(bpy.types.Operator):
 
     def execute(self, context):
         s = context.scene.ges
+        from . import ges_objects
 
-        def do():
-            from . import ges_objects
-
+        try:  # bpy qismi (IFC ga yozish) — asosiy oqimda, yuborishdan oldin
             ges_objects.flush_pending()  # kechiktirilgan qayta qurishlar IFC ga kirsin
             if self.assign_missing:
                 from .ops_import import assign_imported
@@ -327,34 +336,34 @@ class SATH_OT_commit(bpy.types.Operator):
                 assign_imported([bpy.data.objects[n] for n in unassigned(context) if n in bpy.data.objects])
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
-            try:
-                r = flows.commit(
-                    session.client(),
-                    s.model_id,
-                    path,
-                    s.commit_message.strip(),
-                    s.version_id or None,
-                    s.submit_after_commit,
-                )
-            except ServerError as e:
-                head = flows.head_conflict(e)
-                if head is None:
-                    raise
-                # VCS-01: ota versiya eskirgan — jimgina «vilka» qilinmaydi; foydalanuvchi eng oxirgisini oladi
-                s.head_conflict_id = head
-                s.status = flows.conflict_text(e)
-                raise ServerError(e.status, s.status) from None
-            s.head_conflict_id = -1
-            v = r["version"]
-            s.version_id, s.version_number = v["id"], v["number"]
-            s.status = f"v{v['number']} yuklandi" + (" va tasdiqqa yuborildi" if r["cr"] else "")
-            s.commit_message = ""
-            self.report({"INFO"}, s.status)
-
-        if not guard(self, do):
+        except RuntimeError as e:
+            self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
-        bpy.ops.sath.refresh_versions()
-        return {"FINISHED"}
+        model_id, message, parent, submit = s.model_id, s.commit_message.strip(), s.version_id or None, s.submit_after_commit
+
+        def work(ctx):
+            return flows.commit(session.client(), model_id, path, message, parent, submit)
+
+        def apply(r):
+            sc = bpy.context.scene.ges
+            sc.head_conflict_id = -1
+            v = r["version"]
+            sc.version_id, sc.version_number = v["id"], v["number"]
+            sc.status = f"v{v['number']} yuklandi" + (" va tasdiqqa yuborildi" if r["cr"] else "")
+            sc.commit_message = ""
+            bpy.ops.sath.refresh_versions()
+
+        def fail(e):
+            head = flows.head_conflict(e) if isinstance(e, ServerError) else None
+            if head is None:
+                return None
+            # VCS-01: ota versiya eskirgan — jimgina «vilka» qilinmaydi; foydalanuvchi eng oxirgisini oladi
+            sc = bpy.context.scene.ges
+            sc.head_conflict_id = head
+            sc.status = flows.conflict_text(e)
+            return sc.status
+
+        return run_op(self, "Commit", work, apply, key="server.commit", fail=fail)
 
 
 class SATH_OT_submit(bpy.types.Operator):

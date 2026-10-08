@@ -62,9 +62,9 @@ def version_rows(client: GesClient, model_id: int) -> list[dict]:
     return rows
 
 
-def download_version(client: GesClient, model: dict, version: dict) -> Path:
+def download_version(client: GesClient, model: dict, version: dict, progress=None, cancelled=None) -> Path:
     dest = cache_dir() / f"m{model['id']}_v{version['number']}.ifc"
-    client.download_version(version["id"], dest)
+    client.download_version(version["id"], dest, progress=progress, cancelled=cancelled)
     return dest
 
 
