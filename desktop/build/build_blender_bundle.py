@@ -189,8 +189,9 @@ def precompile() -> None:
     if py is None:
         raise SystemExit("stage da Blender Python i topilmadi")
     dirs = [blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath",
-            STAGE / "portable" / "extensions"]  # fmt: skip
-    run([py, "-I", "-m", "compileall", "-q", "-j", "0", "--invalidation-mode", "checked-hash", *dirs])
+            STAGE / "portable" / "extensions", STAGE / "portable" / "scripts"]  # fmt: skip
+    # -f: mavjud timestamp-based .pyc (install-file paytida yozilgan) ham checked-hash ga qayta yoziladi
+    run([py, "-I", "-m", "compileall", "-q", "-f", "-j", "0", "--invalidation-mode", "checked-hash", *dirs])
 
 
 def stage_mb() -> int:

@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping
 REGISTER_MS = 150.0  # Sath import + register jami (modullar bilan)
 COLD_START_RATIO = 1.2  # sovuq start: Blender+Bonsai+Sath / Blender+Bonsai
 IDLE_RSS_DELTA_MB = 50.0  # bo'sh sahnada Sath RSS ortishi (Bonsai ustiga)
+BUNDLE_MAX_MB = 1750  # ochilgan bundle stage: joriy hajm (1 MB = 2**20) 50 MB gacha yuqoriga yaxlitlanib + 50 MB zaxira
 HEAVY_MODULES = ("numpy", "ifcopenshell", "ezdxf", "assimp_py")  # faqat funksiya ichida import qilinadi
 
 
@@ -27,6 +28,16 @@ def register_line(import_ms: float, core: Mapping[str, float], modules: Mapping[
     if modules:
         line += " [modullar: " + ", ".join(f"{k} {v:.1f}" for k, v in modules.items()) + "]"
     return line
+
+
+def check_bundle(size_mb: float | None, has_freecad: bool) -> list[str]:
+    """Bundle: FreeCAD (935 MB) olib tashlangan va hajm BUNDLE_MAX_MB dan oshmagan (P0: 2392 MB)."""
+    bad = []
+    if has_freecad:
+        bad.append("bundle da freecad/ bor")
+    if size_mb is None or size_mb > BUNDLE_MAX_MB:
+        bad.append(f"bundle hajmi {size_mb} MB (byudjet <= {BUNDLE_MAX_MB})")
+    return bad
 
 
 def check(*, register_ms: float | None, cold_ratio: float | None, rss_delta_mb: float | None,

@@ -51,6 +51,29 @@ def env() -> dict:
     return {k: v for k, v in os.environ.items() if not k.startswith("BLENDER_USER_")}  # portable/ dan ustun
 
 
+def pyc_flags(path: Path) -> int:
+    return int.from_bytes(path.read_bytes()[4:8], "little")  # PEP 552: 3 = checked-hash, 0 = timestamp
+
+
+def pyc_problems(stage: Path, tpl_dir: Path | None) -> list[str]:
+    """Sath template, sath extension va sath_boot .pyc lari checked-hash bo'lishi shart (zip/installer vaqtni
+    saqlamasa ham birinchi ishga tushishda qayta kompilyatsiya bo'lmasin)."""
+    out = []
+    groups = {
+        "sath extension": list((stage / "portable" / "extensions" / "user_default" / "sath").rglob("*.pyc")),
+        "template": list((tpl_dir / "__pycache__").glob("*.pyc")) if tpl_dir is not None else [],
+        "sath_boot": list((stage / "portable" / "scripts").rglob("*.pyc")),
+    }
+    for label, files in groups.items():
+        if not files:
+            out.append(f".pyc yo'q: {label}")
+            continue
+        bad = [f.name for f in files if pyc_flags(f) != 3]
+        if bad:
+            out.append(f"{label}: checked-hash emas ({len(bad)}/{len(files)}): {bad[:3]}")
+    return out
+
+
 def stage_mb(stage: Path) -> int:
     return sum(f.stat().st_size for f in stage.rglob("*") if f.is_file()) // 2**20
 
@@ -80,6 +103,7 @@ def main() -> int:
     nsi = (ROOT / "desktop" / "build" / "nsis" / "sath.nsi").read_text(encoding="utf-8")
     if "--app-template" in nsi:  # --app-template addon/tema prefs ni tashlaydi; sath_boot.py o'zi o'tkazadi
         problems.append("sath.nsi da --app-template bor")
+    problems += pyc_problems(a.stage, tpl_dir)
     if problems:
         print(chr(10).join("  - " + p for p in problems))
         print("[BUNDLE-FAIL]")

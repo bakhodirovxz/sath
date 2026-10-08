@@ -32,6 +32,9 @@ for sc in bpy.data.scenes:
     sc.unit_settings.length_unit = "METERS"
 tags = sorted(w["sath_ws"] for w in bpy.data.workspaces if w.get("sath_ws"))
 print("WORKSPACES:", tags, flush=True)
+EXPECTED = ["BIM", "Compare", "SCADA", "Simulation"]  # = sorted(workspaces.ORDER); ilgak hech narsa qurmasa ham yiqiladi
+if tags != EXPECTED:
+    raise SystemExit(f"Sath ish joylari qurilmadi: {tags} != {EXPECTED}")
 if TEMPLATE_DIR is not None:
     out = TEMPLATE_DIR / "startup.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(out), copy=True)
@@ -64,5 +67,5 @@ if TEMPLATE_DIR is not None:  # diskdagi startup.blend: Sath ish joylari faylnin
     bpy.ops.wm.open_mainfile(filepath=str(TEMPLATE_DIR / "startup.blend"))
     disk = sorted(w["sath_ws"] for w in bpy.data.workspaces if w.get("sath_ws"))
     print("STARTUP-DISK:", disk, flush=True)
-    if disk != tags:
-        raise SystemExit(f"startup.blend da Sath ish joylari yo'q: {disk} != {tags}")
+    if disk != EXPECTED:
+        raise SystemExit(f"startup.blend da Sath ish joylari yo'q: {disk} != {EXPECTED}")

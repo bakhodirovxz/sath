@@ -172,11 +172,13 @@ _chain_gen = [0]  # avlod: yangi zanjir, fayl yuklash (load_pre) yoki unregister
 
 
 _origin: list = [None]  # zanjir boshlanishidagi ish joyi nomi (yangi zanjir o'rtadagi holatni «avvalgi» deb olmasin)
+_final: list = [None]  # birinchi zanjirning `final` i (o'rniga final siz zanjir kelsa ham BIM ga qaytiladi)
 
 
 def cancel_chain() -> None:
     _chain_gen[0] += 1
     _origin[0] = None
+    _final[0] = None
 
 
 def _reorder_chain(names, final) -> None:
@@ -193,11 +195,25 @@ def _reorder_chain(names, final) -> None:
         return
     if _origin[0] is None:  # o'rtadagi zanjir almashtirilsa — birinchi zanjir boshlagan ish joyi saqlanadi
         _origin[0] = wm.windows[0].workspace.name if wm.windows[0].workspace is not None else None
+    if final is not None:
+        _final[0] = final  # final siz zanjir (reset) oldingi final ni bekor qilmaydi
     before = _origin[0]
+    final = _final[0]
     queue = list(names)  # pop() oxiridan oladi — teskari tartib
     state = {"want": None, "tries": 0}
 
     def step():
+        try:
+            nxt = _step()
+        except BaseException:
+            if gen == _chain_gen[0]:
+                _origin[0] = _final[0] = None  # reorder_to_front va h.k. xato bersa ham holat tozalanadi
+            raise
+        if nxt is None and gen == _chain_gen[0]:
+            _origin[0] = _final[0] = None  # barcha tugash yo'llari (oyna yo'q, bo'sh navbat)
+        return nxt
+
+    def _step():
         if gen != _chain_gen[0]:
             return None  # bekor qilindi / almashtirildi
         cwm = bpy.context.window_manager
@@ -210,7 +226,6 @@ def _reorder_chain(names, final) -> None:
                 if end is not None:
                     win.workspace = end
                 CHAIN_DONE[0] = True
-                _origin[0] = None
                 return None
             state["want"], state["tries"] = queue.pop(), 0
             ws = bpy.data.workspaces.get(state["want"])

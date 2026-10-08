@@ -36,6 +36,36 @@ P0 = {
     "rss_ifc_mb": 598.32,
 }  # fmt: skip
 BUNDLE_P0_MB = 2392  # Sath-0.3.0 bundle (ochilgan; FreeCAD 935 MB bilan) — P2 gacha
+FREECAD_MB = 935  # P0 bundle dagi freecad/ (P2 da to'liq olib tashlangan)
+
+
+def bundle_breakdown(stage: Path) -> dict[str, int]:
+    """Stage hajmi (bayt) toifalar bo'yicha: Blender (qolgani), Bonsai, Sath (extension + template + boot), libredwg
+    asboblari, .pyc (Sath/Bonsai/template/boot uchun oldindan kompilyatsiya)."""
+    ver = next((d for d in stage.iterdir() if d.is_dir() and d.name.replace(".", "").isdigit()), None)
+    tpl = ver / "scripts" / "startup" / "bl_app_templates_system" / "Sath" if ver else stage / "_yoq"
+    groups = {
+        "Bonsai": [stage / "portable" / "extensions" / "user_default" / "bonsai"],
+        "Sath": [stage / "portable" / "extensions" / "user_default" / "sath", tpl, stage / "portable" / "scripts"],
+        "libredwg": [stage / "tools"],
+    }
+    out = {"Blender": 0, "Bonsai": 0, "Sath": 0, "libredwg": 0, ".pyc": 0}
+    total = 0
+    for f in stage.rglob("*"):
+        if not f.is_file():
+            continue
+        n = f.stat().st_size
+        total += n
+        compiled = f.suffix == ".pyc" and any(r in f.parents for g in ("Bonsai", "Sath") for r in groups[g])
+        if compiled:
+            out[".pyc"] += n
+            continue
+        for g, roots in groups.items():
+            if any(r in f.parents for r in roots):
+                out[g] += n
+                break
+    out["Blender"] = total - sum(v for k, v in out.items() if k != "Blender")
+    return out
 
 
 def real_config_files(series: str = "5.2") -> list[Path]:
@@ -112,6 +142,9 @@ def _main() -> int:
     ap.add_argument("--bundle", type=Path, default=None, help="bundle stage papkasi (hajm, FreeCAD yo'qligi)")
     ap.add_argument("--check", action="store_true", help="byudjet buzilsa exit 1")
     a = ap.parse_args()
+    if a.bundle is not None and not (a.bundle / "blender.exe").is_file():
+        print(f"[PERF-FAIL] --bundle {a.bundle}: blender.exe yo'q (stage yo'li noto'g'ri)")
+        return 2
     exe = a.blender
     quit_ = "; bpy.ops.wm.quit_blender()"
     vanilla = [wall([str(exe), *BLENDER, "--python-expr", "import bpy" + quit_]) for _ in range(REPEAT)]
@@ -154,15 +187,30 @@ def _main() -> int:
         ("Sath RSS ortishi (Bonsai ustiga)", f"<= {budget.IDLE_RSS_DELTA_MB:.0f} MB", f"{rss_delta} MB",
          ok(rss_delta <= budget.IDLE_RSS_DELTA_MB)),
     ]  # fmt: skip
+    size_md: list[str] = []
     if a.bundle:
         size = sum(f.stat().st_size for f in a.bundle.rglob("*") if f.is_file()) // 2**20
         no_fc = not (a.bundle / "freecad").exists()
-        rows.append(("Bundle hajmi (ochilgan stage)", f"{BUNDLE_P0_MB} MB (FreeCAD 935 MB bilan)",
-                     f"{size} MB (−{BUNDLE_P0_MB - size} MB)"))  # fmt: skip
-        budgets.append(("Bundle FreeCAD siz (~0.9 GB kichik)", "freecad/ yo'q", "yo'q" if no_fc else "bor",
-                        ok(no_fc)))  # fmt: skip
-        if not no_fc:
-            bad.append("bundle da freecad/ bor")
+        bd = {k: round(v / 2**20) for k, v in bundle_breakdown(a.bundle).items()}
+        rows.append(("Bundle hajmi (ochilgan stage)", f"{BUNDLE_P0_MB} MB (FreeCAD {FREECAD_MB} MB bilan)",
+                     f"{size} MB (sof o'zgarish P0 ga nisbatan −{BUNDLE_P0_MB - size} MB)"))  # fmt: skip
+        budgets.append(("Bundle FreeCAD siz (−935 MB)", "freecad/ yo'q", "yo'q" if no_fc else "bor", ok(no_fc)))
+        budgets.append(("Bundle hajmi", f"<= {budget.BUNDLE_MAX_MB} MB", f"{size} MB",
+                        ok(size <= budget.BUNDLE_MAX_MB)))  # fmt: skip
+        bad += budget.check_bundle(size, not no_fc)
+        size_md = [
+            "## Bundle hajmi (ochilgan stage)",
+            "",
+            f"FreeCAD olib tashlanishi **{FREECAD_MB} MB** tejadi; P0 ({BUNDLE_P0_MB} MB) ga nisbatan sof o'zgarish "
+            f"**−{BUNDLE_P0_MB - size} MB** ({size} MB). Qolgan o'sish FreeCAD tejamidan keyin: Bonsai 0.9.0 va oldindan "
+            "kompilyatsiya qilingan `.pyc` fayllar (ular «FreeCAD tejami» taqqosiga kirmaydi).",
+            "",
+            "| Toifa | MB |",
+            "|---|---|",
+            *[f"| {k} | {v} |" for k, v in bd.items()],
+            f"| **Jami** | **{size}** |",
+            "",
+        ]
     md = [
         "# Desktop (Blender) unumdorligi — o'lchov va byudjetlar",
         "",
@@ -182,8 +230,9 @@ def _main() -> int:
         "Eslatma (issiq va sovuq register): byudjet `< 150 ms` **issiq** register ga tegishli (`__pycache__` bor, "
         "oddiy qayta ishga tushish). `__pycache__` tozalangan birinchi ishga tushishda (extension o'rnatilgandan "
         "keyin) register ~260–310 ms (2026-10-09 o'lchovi: 265 / 276 / 307 ms; import ~115–155, host ~140) — "
-        "bu bir martalik .pyc kompilyatsiyasi, byudjet unga qo'llanmaydi; bundle da .pyc ni oldindan "
-        "kompilyatsiya qilish alohida ish.",
+        "bu bir martalik .pyc kompilyatsiyasi, byudjet unga qo'llanmaydi. Bundle da .pyc oldindan "
+        "kompilyatsiya qilingan (checked-hash, `compileall -f`): zip/installer fayl vaqtini o'zgartirsa ham "
+        "birinchi ishga tushishda qayta kompilyatsiya yo'q (`bundle_check` tekshiradi).",
         "",
         "| O'lchov | P0 | Hozir |",
         "|---|---|---|",
@@ -195,6 +244,7 @@ def _main() -> int:
         "|---|---|---|---|",
         *[f"| {k} | {c} | {v} | {s} |" for k, c, v, s in budgets],
         "",
+        *size_md,
         "Xulosa: " + ("barcha byudjetlar bajarildi." if not bad else "buzilgan — " + "; ".join(bad) + "."),
         "",
     ]

@@ -30,6 +30,9 @@ def test_check_reports_each_violation():
     bad = budget.check(register_ms=150.0, cold_ratio=1.3, rss_delta_mb=60.0, heavy=["numpy"])
     assert len(bad) == 4
     assert len(budget.check(register_ms=None, cold_ratio=None, rss_delta_mb=None, heavy=[])) == 3
+    assert budget.check_bundle(budget.BUNDLE_MAX_MB, False) == []
+    assert len(budget.check_bundle(budget.BUNDLE_MAX_MB + 1, True)) == 2
+    assert len(budget.check_bundle(None, False)) == 1
 
 
 def test_ges_kinds_imports_without_numpy():
