@@ -38,7 +38,8 @@ Section "Sath" SEC_MAIN
   ; extension lar va boot skripti HAR DOIM almashadi (olib tashlangan modullar qolib ketmasin)
   RMDir /r "$INSTDIR\portable\extensions\user_default\sath"
   RMDir /r "$INSTDIR\portable\extensions\user_default\bonsai"
-  ; Bonsai kodi va bog'liqliklari .local da (extension wheels\ dan Blender keyingi ishga tushishda o'zi qayta quradi)
+  ; Bonsai kodi va bog'liqliklari .local da: eskisi o'chiriladi, stage dagi to'liq .local pastda nusxalanadi
+  ; (qayta qurish yo'q; .cache mos kelmasa Blender faqat ~0.1 s qayta skanerlaydi, uchinchi tomon wheels qayta sinxronlanadi)
   RMDir /r "$INSTDIR\portable\extensions\.local"
   RMDir /r "$INSTDIR\portable\extensions\.cache"
   ; portable\scripts foydalanuvchiniki (presetlar, addonlar, app template): faqat Sath fayllari almashadi

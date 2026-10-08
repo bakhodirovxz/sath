@@ -33,7 +33,7 @@ Eslatma (issiq va sovuq register): byudjet `< 150 ms` **issiq** register ga tegi
 
 ## Bundle hajmi (ochilgan stage)
 
-FreeCAD olib tashlanishi **935 MB** tejadi; P0 (2392 MB) ga nisbatan sof o'zgarish **−755 MB** (1637 MB). Qolgan o'sish FreeCAD tejamidan keyin: Bonsai 0.9.0 va oldindan kompilyatsiya qilingan `.pyc` fayllar (ular «FreeCAD tejami» taqqosiga kirmaydi).
+FreeCAD olib tashlanishi **935 MB** tejadi; P0 (2392 MB) ga nisbatan sof o'zgarish **−755 MB** (1637 MB). Qolgan o'sish (taxminiy: P0 uchun toifalar bo'yicha o'lchov yo'q) Bonsai 0.9.0 va oldindan kompilyatsiya qilingan `.pyc` fayllar bilan bog'liq (ular «FreeCAD tejami» taqqosiga kirmaydi).
 
 | Toifa | MB |
 |---|---|
