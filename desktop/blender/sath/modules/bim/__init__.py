@@ -5,6 +5,8 @@ yuklangan bo'lsa, yoqilganda GES turlari IFC psetlaridan tiklanadi (bir martalik
 
 from __future__ import annotations
 
+import sys
+
 import bpy
 
 from ... import demo_plant, ges_objects, ifc
@@ -79,7 +81,8 @@ def register(api):
     api.register_classes("bim", [SATH_PT_objects])
     api.ui.main_menu("bim", _menu)
     try:
-        loaded = ifc.file() is not None
+        # Bonsai hali yuklanmagan bo'lsa IFC ham ochiq emas: `import bonsai.tool` (ifcopenshell, numpy) register ni sekinlashtirmasin
+        loaded = "bonsai.tool" in sys.modules and ifc.file() is not None
     except Exception:  # noqa: BLE001 — cheklangan kontekst (Blender ishga tushishi): sahna yo'q, IFC hali ochilmagan
         loaded = False
     if loaded and not bpy.app.timers.is_registered(restore_after_enable):

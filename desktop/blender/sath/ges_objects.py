@@ -13,14 +13,17 @@ obyekt geometriyasini parametrlardan quradi. Belgi IFC da ham saqlanadi (Pset_Sa
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import bpy
-import numpy as np
 
 from . import ifc
 from .core import events, ui_tasks
 from .core.ifc_ops import IfcOperator, SathOpError
 from .shared import ges_kinds
+
+if TYPE_CHECKING:
+    import numpy as np
 
 KIND_ITEMS = [(k, s.label, "") for k, s in ges_kinds.KINDS.items()]
 KIND_LABEL = {k: s.label for k, s in ges_kinds.KINDS.items()}
@@ -203,6 +206,7 @@ def _fill_schema(obj, kind: str, values: dict | None = None) -> None:
 
 def set_mesh(me, verts: np.ndarray, faces: np.ndarray) -> None:
     """(V float64, F int64 uchburchak) → bpy Mesh, numpy foreach_set bilan (from_pydata Python ro'yxatlarisiz)."""
+    import numpy as np  # dangasa: register da numpy yuklanmaydi (spec §5)
     if faces.ndim != 2 or faces.shape[1] != 3:
         raise ValueError(f"set_mesh: yuzlar (N, 3) uchburchak bo'lishi kerak, berilgan shakl {faces.shape}")
     me.clear_geometry()

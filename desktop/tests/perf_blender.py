@@ -95,6 +95,16 @@ def main() -> None:
         return argv[argv.index(name) + 1] if name in argv else default
 
     n = int(opt("--n", "2000"))
+    if "--budget" in argv:  # spec §5: register vaqti va register da yangi yuklangan og'ir modullar
+        if "--bonsai" in argv:
+            enable_bonsai()
+        before = set(sys.modules)
+        ms = register_sath()
+        from sath.core import budget
+
+        heavy = budget.heavy_loaded(set(sys.modules) - before)
+        print("BUDGET " + json.dumps({"register_ms": ms, "heavy": heavy}), flush=True)
+        return
     if "--gen" in argv:  # alohida jarayon: IFC yaratish (RSS ni ifloslamasin)
         synthetic_ifc(n, Path(opt("--gen")))
         return

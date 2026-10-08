@@ -10,12 +10,24 @@ Parametrlar mantiqiy (manba) tartibda — FreeCAD `PropertiesList` (alfavit) tar
 
 from __future__ import annotations
 
+import importlib
 import json
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import geom
+
+class _LazyGeom:
+    """`geom` (numpy) birinchi geometriya chaqiruvida import qilinadi: Blender register (ges_objects →
+    ges_kinds) numpy siz o'tadi (spec §5 byudjeti). Sxema, psetlar va miqdorlar numpy siz ishlaydi."""
+
+    def __getattr__(self, name: str):
+        mod = importlib.import_module(".geom", __package__)
+        globals()["geom"] = mod
+        return getattr(mod, name)
+
+
+geom = _LazyGeom()
 
 SCHEMA_VERSION = 1
 PARAMETRIC_PSET = "Pset_SathParametric"
@@ -665,12 +677,13 @@ def geometric_params(kind: str) -> frozenset[str]:
     return frozenset(p.name for p in spec(kind).params if p.geometric)
 
 
-def build_parts(kind: str, params: dict | None = None, tol: float = geom.TOL) -> list:
-    """Har biri yopiq qobiq bo'lgan qismlar ([geom.Mesh]); tegib turgan qismlar birlashtirilmaydi (boolean yo'q)."""
-    return spec(kind).parts(validate(kind, params), tol)
+def build_parts(kind: str, params: dict | None = None, tol: float | None = None) -> list:
+    """Har biri yopiq qobiq bo'lgan qismlar ([geom.Mesh]); tegib turgan qismlar birlashtirilmaydi (boolean yo'q).
+    tol=None — geom.TOL (chord tolerance, 5 mm)."""
+    return spec(kind).parts(validate(kind, params), geom.TOL if tol is None else tol)
 
 
-def build(kind: str, params: dict | None = None, tol: float = geom.TOL) -> geom.Mesh:
+def build(kind: str, params: dict | None = None, tol: float | None = None) -> geom.Mesh:
     """Bitta mesh (V float64 metr, F int64 uchburchak) — Blender ga `foreach_set` bilan uzatiladi."""
     return geom.merge(*build_parts(kind, params, tol))
 
