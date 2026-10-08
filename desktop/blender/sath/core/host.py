@@ -21,7 +21,7 @@ from .tasks import TASKS
 ROOT_PKG = __package__.rpartition(".")[0]  # "sath" (headless) yoki "bl_ext.user_default.sath"
 BUNDLED = Path(__file__).resolve().parents[1] / "modules"
 REG: registry.Registry | None = None
-PINNED: frozenset[str] = frozenset()  # o'chirib bo'lmaydigan (Task 6: legacy)
+PINNED: frozenset[str] = frozenset({"legacy"})  # o'tish davri: o'chirib bo'lmaydi (Task 13 da bo'shaydi)
 _KEYS: list[bytes] = []  # ishonchli modul kalitlari — scan() to'ldiradi (prefs + env + yangilanish kaliti)
 _menus: list[tuple[str, Callable]] = []
 _offs: list[Callable[[], None]] = []
@@ -100,10 +100,17 @@ def scan() -> None:
     _redraw()
 
 
+def pinned_dependents(mod_id: str) -> list[str]:
+    """mod_id o'chirilsa kaskadda o'chadigan, lekin o'chirib bo'lmaydigan (PINNED) modullar."""
+    return [d for d in REG.dependents(mod_id) if d in PINNED] if REG is not None else []
+
+
 def set_enabled(mod_id: str, on: bool) -> list[str]:
     """Jonli yoqish/o'chirish (bog'liqliklar bilan kaskad). Qaytaradi: holati o'zgargan modullar.
     O'chirilganlarning fon vazifalari _stop_tasks (Registry on_teardown) orqali bekor qilinadi."""
     if REG is None or mod_id not in REG.records or mod_id in PINNED:
+        return []
+    if not on and pinned_dependents(mod_id):  # kaskad PINNED modulni ham o'chirardi
         return []
     changed = REG.enable(mod_id) if on else REG.disable(mod_id)
     _save_states({**dict.fromkeys(changed, on), mod_id: on})
@@ -124,6 +131,9 @@ class SATH_OT_module_toggle(bpy.types.Operator):
         if rec is None or self.module_id in PINNED:
             return {"CANCELLED"}
         on = not wanted(rec.manifest)
+        if not on and (pin := pinned_dependents(self.module_id)):
+            self.report({"WARNING"}, f"{rec.manifest.name} ni o'chirib bo'lmaydi: {', '.join(pin)} unga bog'liq va o'chirilmaydi")
+            return {"CANCELLED"}
         changed = set_enabled(self.module_id, on)
         if on and rec.state != "enabled":
             self.report({"ERROR"}, f"{rec.manifest.name}: yuklanmadi — sababi modullar ro'yxatida")

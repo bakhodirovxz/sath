@@ -10,22 +10,11 @@ except ImportError:  # pytest (Blender siz): faqat sof modullar import qilinadi
 
 MODULES: list = []
 if bpy is not None:
-    from . import (
-        demo_plant,
-        ges_objects,
-        ops_import,
-        ops_monitor,
-        ops_review,
-        ops_server,
-        ops_sim,
-        ops_twin,
-        prefs,
-        props,
-        ui,
-    )
+    from . import prefs, props
     from .core import host, ui_tasks
 
-    MODULES = [ui_tasks, prefs, props, ges_objects, ops_server, ops_review, ops_sim, ops_twin, demo_plant, ops_monitor, ops_import, ui, host]
+    # P3: qolgan hammasi sath/modules/ da — host topadi va yoqadi (legacy — o'tish davri)
+    MODULES = [ui_tasks, prefs, props, host]
 
 
 def register():

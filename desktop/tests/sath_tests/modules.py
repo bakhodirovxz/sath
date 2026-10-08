@@ -253,6 +253,23 @@ def _bundled_retry():
     assert host.record("flaky") is None
 
 
+def _legacy_pinned():
+    from sath.core import host
+
+    assert host.is_enabled("legacy") and host.set_enabled("legacy", False) == [] and host.is_enabled("legacy")
+    assert hasattr(bpy.types, "SATH_PT_server") and _registered("commit") and _registered("connect")
+    # PINNED bog'liq modul kaskadda o'chmasligi kerak: soxta bog'liqlik, legacy vaqtincha pinsiz
+    real = host.REG.dependents
+    host.PINNED = frozenset({"x_pinned"})
+    host.REG.dependents = lambda rid: ["x_pinned"] if rid == "legacy" else []
+    try:
+        assert host.pinned_dependents("legacy") == ["x_pinned"]
+        assert host.set_enabled("legacy", False) == [] and host.is_enabled("legacy")
+    finally:
+        host.REG.dependents, host.PINNED = real, frozenset({"legacy"})
+
+
 def run(ctx):
     _user_modules()
+    _legacy_pinned()
     _bundled_retry()

@@ -560,3 +560,16 @@ def test_discover_permission_errors_become_entries(tmp_path, monkeypatch, where)
     assert [m.id for m in found] == ["review"]
     label = "u (foydalanuvchi)" if where == "root" else "ext (foydalanuvchi)"
     assert "ruxsat yo'q" in dict(errors)[label]
+
+
+def test_bundled_manifests_valid():
+    """Bundle dagi har modul manifesti yaroqli, bog'liqliklari yechiladi, ko'rinish ruxsatlari serverda bor."""
+    from sath.shared.permissions import ALL
+
+    found, errors = registry.discover(ROOT / "desktop" / "blender" / "sath" / "modules")
+    assert errors == []
+    ordered, bad = registry.resolve(found)
+    assert bad == {} and len(ordered) == len(found) >= 1
+    for m in found:
+        assert set(m.visible_if_any) <= ALL, m.id
+        assert set(m.workspaces) <= {"BIM", "Compare", "Simulation", "SCADA"}, m.id
