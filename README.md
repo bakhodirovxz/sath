@@ -7,7 +7,7 @@ versiyalash va rol orqali tasdiqlash. Server = "BIM uchun GitHub": fayllar, vers
 |---|---|---|---|
 | Server (API, versiyalar, tasdiqlash, simulyatsiya, monitoring) | `server/` | Python 3.10+, FastAPI, SQLAlchemy, IfcOpenShell, ifcdiff | ishlaydi, 57 test |
 | Web klient (ko'rish, taqriz, simulyatsiya, CFD, monitoring) | `web/` | React, TypeScript, Vite, ThatOpen (Three.js) | ishlaydi |
-| Desktop klient (to'liq CAD) | `desktop/` + fork `../Sath-FreeCAD` | FreeCAD 1.1.3 forki (o'z brending, installer) + GES workbench | ishlaydi (installer sinalgan) |
+| Desktop klient (3D, IFC, GES) | `desktop/blender/` | Blender 5.2 LTS extension `sath` + Bonsai 0.9.0 (IFC); GES geometriyasi sof Python (`ges_kinds`, numpy) | headless 21/21 sinalgan; GUI va installer P2 dan keyin qayta sinalmagan |
 | Simulyatsiya kutubxonasi | `sim/` | Python (`ges_sim`), OpenFOAM (Docker) | suv ombori/quvur/turbina, 15 simulyatsiya moduli, CFD — 51 test |
 | SCADA gateway | `deploy/gateway/` | Python (Modbus TCP, OPC UA, CSV) | ishlaydi |
 | O'rnatish | `deploy/` | Docker Compose (+ postgres, cfd profillari) | ishlaydi |
@@ -58,9 +58,9 @@ versiyalash va rol orqali tasdiqlash. Server = "BIM uchun GitHub": fayllar, vers
   og'ish alarmlari), 3D da jonli suv sathi, simulyatsiya jonli holatdan, **aktivlar** (ish soatlari, ishga tushishlar,
   texnik xizmat), **vaqt mashinasi** (istalgan vaqtdagi holat).
 - **Issue almashinuvi**: BCF 2.1 eksport/import; **saqlangan ko'rinishlar**; **email** bildirishnomalar (SMTP).
-- **Desktop (Sath = FreeCAD forki)**: o'z nomi/ikonkasi/splash i, NSIS installer va portable zip, serverga ulanish,
-  modelni ochish, commit, tasdiqlash so'rovlari (qarorlar), issue lar, simulyatsiya (natija + 3D suv sathi), bildirishnomalar,
-  GES parametrik obyektlari (to'g'on, quvur, turbina, suv tashlagich), qora tema + CAD navigatsiya, yangilanish tekshiruvi.
+- **Desktop (Blender 5.2 extension `sath`, FreeCAD siz)**: serverga ulanish, modelni ochish, commit, tasdiqlash so'rovlari (qarorlar),
+  issue lar, simulyatsiya (natija + 3D suv sathi), SCADA monitoring, GES parametrik obyektlari (11 tur, sof Python geometriya,
+  qayta ochilganda tiklanadi; undo headless sinalgan), yangilanish tekshiruvi. Bundle/installer P2 dan keyin qayta sinalmagan.
 - **Sinovlar**: pytest (server, sim, desktop), vitest, Playwright e2e (login → model → tasdiqlash → tekshiruv → dispetcher), CI, Docker.
 
 Qo'llanmalar: [docs/qollanma.md](docs/qollanma.md) (foydalanuvchi), [docs/admin.md](docs/admin.md) (administrator), [docs/plan.md](docs/plan.md) (reja va holat).
@@ -95,7 +95,7 @@ Namunaviy model: `docs/samples/namuna_ges_v1.ifc` / `_v2.ifc` (`docs/samples/mak
 ```
 server/ges_server/   auth/ projects/ models/ review/ sim/ — FastAPI routerlar, orm.py, audit.py
 web/src/             viewer/ (ThatOpen o'rami, buyruqlar) ui/ pages/ api/
-desktop/blender/sath Blender 5.2 addon (asosiy desktop); desktop/GesWorkbench — arxivlangan FreeCAD workbench (tag `archive/freecad-legacy`)
+desktop/blender/sath — Blender 5.2 addon (asosiy desktop); desktop/GesWorkbench — olib tashlangan, `archive/freecad-legacy` tegida
 sim/ges_sim/         reservoir.py penstock.py turbine.py scenario.py
 deploy/              Dockerfile docker-compose.yml .env.example backup.sh
 ```
