@@ -120,33 +120,90 @@ def assign_class(obj, ifc_class: str, psets: dict[str, dict] | None = None):
     return e
 
 
+_warned_batch = False
+
+
+def _has_ref(value, ids: set[int]) -> bool:
+    import ifcopenshell
+
+    if isinstance(value, ifcopenshell.entity_instance):
+        return value.id() in ids
+    if isinstance(value, (tuple, list)):
+        return any(_has_ref(v, ids) for v in value)
+    return False
+
+
+def _has_any_ref(value) -> bool:
+    import ifcopenshell
+
+    if isinstance(value, ifcopenshell.entity_instance):
+        return True
+    if isinstance(value, (tuple, list)):
+        return any(_has_any_ref(v) for v in value)
+    return False
+
+
 @contextlib.contextmanager
-def _cheap_batch_delete():
-    """ifcopenshell 0.9.0: tranzaksiya ichida katta ko'pburchakli to'rni o'chirish kvadratik (har bir yuz uchun
-    inverslar butun Faces ro'yxatini qayta serializatsiya qiladi — 30 ming yuzda soatlar). Batch rejimida inverslarni
-    yig'maymiz: o'chirilayotgan to'r butunlay ketadi, tirik bog'lanishlar esa add_representation da qayta yoziladi."""
+def _linear_batch_delete():
+    """ifcopenshell 0.9.0: tranzaksiya ichidagi batch o'chirish har bir yuz uchun butun Faces ro'yxatini qayta
+    serializatsiya qiladi (kvadratik; 30 ming yuzda soatlar). Bu yerda batch yozuvi chiziqli: o'chirilgan har bir
+    element uchun (1) o'z oldinga havolalari va (2) tirik (o'chirilmaydigan) havola qiluvchilarning atributlari
+    unbatch da BIR marta yoziladi — rollback (Ctrl+Z) hamma elementni qayta yaratgach ularni qayta bog'laydi.
+    Faqat ifcopenshell 0.9.x va faqat faol IFC fayl tranzaksiyasi uchun."""
+    global _warned_batch
     try:
+        import ifcopenshell
         from ifcopenshell.file import Transaction
-    except ImportError:
+
+        ok = ifcopenshell.version.startswith("0.9.") and all(
+            hasattr(Transaction, a) for a in ("store_delete", "unbatch", "serialise_value", "serialise_entity_instance")
+        )
+    except (ImportError, AttributeError):
+        ok = False
+    if not ok:
+        if not _warned_batch:
+            _warned_batch = True
+            print("sath: ifcopenshell 0.9.x emas — tez batch o'chirish yoqilmadi (katta mesh sekin bo'lishi mumkin)")
         yield
         return
-    original = Transaction.store_delete
+    f = file()
+    orig_delete, orig_unbatch = Transaction.store_delete, Transaction.unbatch
 
     def store_delete(self, element):
-        if not self.is_batched:
-            return original(self, element)
+        if not self.is_batched or self.file is not f:
+            return orig_delete(self, element)
         self.batch_delete_ids.add(element.id())
         self.operations.append({"action": "delete", "inverses": {}, "value": self.serialise_entity_instance(element)})
 
-    Transaction.store_delete = store_delete
+    def unbatch(self):
+        if self.file is f and self.is_batched and self.batch_delete_ids:
+            ids = set(self.batch_delete_ids)
+            inv: dict = {}
+            survivors: dict = {}
+            for i in ids:
+                el = self.file.by_id(i)
+                fwd = [(k, self.serialise_value(el, el[k])) for k in range(len(el)) if _has_any_ref(el[k])]
+                if fwd:
+                    inv[i] = fwd
+                for r in self.file.get_inverse(el):
+                    if r.id() not in ids:
+                        survivors[r.id()] = r
+            for rid, r in survivors.items():
+                refs = [(k, self.serialise_value(r, r[k])) for k in range(len(r)) if _has_ref(r[k], ids)]
+                if refs:
+                    inv[rid] = refs
+            self.batch_inverses = [inv] if inv else []
+        return orig_unbatch(self)
+
+    Transaction.store_delete, Transaction.unbatch = store_delete, unbatch
     try:
         yield
     finally:
-        Transaction.store_delete = original
+        Transaction.store_delete, Transaction.unbatch = orig_delete, orig_unbatch
 
 
 def update_representation(obj) -> None:
-    with _cheap_batch_delete():
+    with _linear_batch_delete():
         bpy.ops.bim.update_representation(obj=obj.name)
 
 

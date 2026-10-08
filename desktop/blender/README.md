@@ -63,3 +63,9 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 
 Sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
+
+## Ma'lum cheklovlar
+
+- ifcopenshell 0.9.0 (Bonsai 0.9.0): katta (30 ming+ yuz) meshni Bonsai ning o'zining «Update Representation» tugmasi bilan
+  yangilash tranzaksiya ichida kvadratik sekin (soatlar). Sath o'z `ifc.update_representation` ida buni chiziqli
+  yozuv bilan aylanib o'tadi (Ctrl+Z to'liq ishlaydi); Bonsai ning native tugmasi uchun yechim yo'q (upstream).
