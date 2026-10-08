@@ -31,6 +31,14 @@ def test_common_copies_byte_identical_to_canonical():
 from sath import flows, viewpoint  # noqa: E402
 
 
+def test_orphans_text():
+    assert flows.orphans_text([]) == ""
+    items = [{"class": "IfcPropertySet"}, {"class": "IfcWall"}, {"class": "IfcPropertySet"}]
+    assert flows.orphans_text(items) == "Yetim IFC entitylar: 3 (IfcPropertySet ×2, IfcWall ×1)"
+    many = [{"class": c} for c in ("A", "B", "C", "D", "D")]
+    assert flows.orphans_text(many) == "Yetim IFC entitylar: 5 (D ×2, A ×1, B ×1 … (+1))"
+
+
 def test_viewpoint_from_view_ifc_space_metres():
     vp = viewpoint.from_view(
         position=(10.0, 20.0, 5.0), direction=(0.0, 1.0, 0.0), distance=4.0, is_ortho=False, guids=["a"]

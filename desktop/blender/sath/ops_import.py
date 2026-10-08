@@ -10,6 +10,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from . import cad_read, converters, flows, ifc
+from .core.ifc_ops import IfcOperator, SathOpError
 from .shared import cad_common
 
 
@@ -233,11 +234,12 @@ def _import_mesh_native(context, path: Path, report: list | None, assign_ifc: bo
     return len([o for o in created if o.type == "MESH"])
 
 
-class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
-    """DWG/DXF chizmani ochish (ezdxf, qatlamlar collection sifatida)"""
+class SATH_OT_import_dxf(IfcOperator, bpy.types.Operator, ImportHelper):
+    """DWG/DXF chizmani ochish (ezdxf, qatlamlar collection sifatida; import va IFC ga aylantirish — bitta undo qadami)"""
 
     bl_idname = "sath.import_dxf"
     bl_label = "DWG/DXF import"
+    bl_options = {"REGISTER", "UNDO"}
     filename_ext = ".dxf"
     filter_glob: bpy.props.StringProperty(default="*.dxf;*.dwg", options={"HIDDEN"})
     prepare: bpy.props.BoolProperty(name="Tekislash (bloklar, o'lchamlar, shtrix)", default=True)
@@ -248,24 +250,28 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
-    def execute(self, context):
+    @property
+    def sath_needs_project(self):
+        return bool(self.assign_ifc)  # IFC ga aylantirilmasa loyiha yaratilmaydi
+
+    def _execute(self, context):
         warnings: list[str] = []
         try:
             n = import_dxf(context, Path(self.filepath), self.prepare, self.unit, warnings, assign_ifc=self.assign_ifc)
         except Exception as e:  # noqa: BLE001
-            self.report({"ERROR"}, f"Import xatosi: {e}")
-            return {"CANCELLED"}
+            raise SathOpError(f"Import xatosi: {e}") from e
         for w in warnings:
             self.report({"WARNING"}, w)
         self.report({"INFO"}, f"{n} obyekt import qilindi")
         return {"FINISHED"}
 
 
-class SATH_OT_import_mesh(bpy.types.Operator, ImportHelper):
-    """FBX/3DS/OBJ/LWO/X/DAE mesh import (assimp)"""
+class SATH_OT_import_mesh(IfcOperator, bpy.types.Operator, ImportHelper):
+    """FBX/3DS/OBJ/LWO/X/DAE mesh import (assimp; import va IFC ga aylantirish — bitta undo qadami)"""
 
     bl_idname = "sath.import_mesh"
     bl_label = "Mesh import (assimp)"
+    bl_options = {"REGISTER", "UNDO"}
     filename_ext = ".fbx"
     filter_glob: bpy.props.StringProperty(
         default="*.fbx;*.3ds;*.obj;*.lwo;*.x;*.dae;*.blend", options={"HIDDEN"}
@@ -278,19 +284,36 @@ class SATH_OT_import_mesh(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
-    def execute(self, context):
+    @property
+    def sath_needs_project(self):
+        return bool(self.assign_ifc)  # IFC ga aylantirilmasa loyiha yaratilmaydi
+
+    def _execute(self, context):
         warnings: list[str] = []
         try:
             n = import_mesh(context, Path(self.filepath), self.unit, self.axis, warnings, self.assign_ifc)
         except ImportError as e:
-            self.report({"ERROR"}, str(e) or "assimp-py o'rnatilmagan (extension wheel)")
-            return {"CANCELLED"}
+            raise SathOpError(str(e) or "assimp-py o'rnatilmagan (extension wheel)") from e
         except Exception as e:  # noqa: BLE001
-            self.report({"ERROR"}, f"Import xatosi: {e}")
-            return {"CANCELLED"}
+            raise SathOpError(f"Import xatosi: {e}") from e
         for w in warnings:
             self.report({"WARNING"}, w)
         self.report({"INFO"}, f"{n} mesh import qilindi")
+        return {"FINISHED"}
+
+
+class SATH_OT_assign_ifc(IfcOperator, bpy.types.Operator):
+    """Nomlari berilgan mesh obyektlarni IFC elementga aylantirish (bitta undo qadami)"""
+
+    bl_idname = "sath.assign_ifc"
+    bl_label = "IFC ga qo'shish"
+    bl_options = {"REGISTER", "UNDO"}
+    names: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    def _execute(self, context):
+        objs = [bpy.data.objects[n] for n in self.names.split(";") if n in bpy.data.objects]
+        n = assign_imported(objs)
+        self.report({"INFO"}, f"{n} obyekt IFC ga qo'shildi")
         return {"FINISHED"}
 
 
@@ -299,7 +322,7 @@ def _menu_import(self, context):
     self.layout.operator("sath.import_mesh", text="Sath: Mesh (assimp)")
 
 
-CLASSES = (SATH_OT_import_dxf, SATH_OT_import_mesh)
+CLASSES = (SATH_OT_import_dxf, SATH_OT_import_mesh, SATH_OT_assign_ifc)
 
 
 def register():

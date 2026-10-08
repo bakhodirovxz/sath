@@ -129,6 +129,22 @@ def assign_class(obj, ifc_class: str, psets: dict[str, dict] | None = None):
     return e
 
 
+def discard_entity(obj) -> None:
+    """obj ning IFC elementini (representation, psetlar bilan) o'chiradi va Bonsai xaritasidan uzadi; elementi yo'q
+    yoki Bonsai yoqilmagan — hech narsa. ges_objects.add() xatosida (yetim element qolmasin); IfcOperator ichida
+    chaqirilsa o'sha tranzaksiyaga yoziladi."""
+    try:
+        e = entity(obj)
+    except RuntimeError:  # Bonsai yo'q
+        return
+    if e is None:
+        return
+    import ifcopenshell.api.root
+
+    _tool().Ifc.unlink(element=e)
+    ifcopenshell.api.root.remove_product(file(), product=e)
+
+
 _warned_batch = False
 
 
@@ -237,6 +253,77 @@ def _linear_batch_delete():
 def update_representation(obj) -> None:
     with _linear_batch_delete():
         bpy.ops.bim.update_representation(obj=obj.name)
+
+
+def _alive(o) -> bool:
+    try:
+        return o is not None and bpy.data.objects.get(o.name) is o
+    except ReferenceError:  # o'chirilgan obyekt (Bonsai xaritasi eskirgan)
+        return False
+
+
+def orphans() -> list[dict]:
+    """K4: yetim IFC entitylar (commit oldidan; Ctrl+Z dan keyin bo'lmasligi kerak): (1) Blender obyekti yo'q Sath/GES
+    elementlari (Pset_SathParametric yoki Pset_GES_* bor; boshqa elementlarga tegilmaydi — Bonsai ularni
+    yuklamagan bo'lishi mumkin), (2) hech narsaga bog'lanmagan IfcPropertySet, (3) RelatedObjects bo'sh
+    IfcRelDefinesByProperties, (4) hech narsaga kirmagan IfcShapeRepresentation. [{"id","class","name","reason"}]."""
+    import ifcopenshell.util.element as ue
+
+    f = file()
+    if f is None:
+        return []
+    tool = _tool()
+    out: list[dict] = []
+
+    def add(e, reason: str) -> None:
+        out.append({"id": e.id(), "class": e.is_a(), "name": getattr(e, "Name", None) or "", "reason": reason})
+
+    for e in f.by_type("IfcElement"):
+        if _alive(tool.Ifc.get_object(e)):
+            continue
+        names = ue.get_psets(e)
+        if "Pset_SathParametric" in names or any(n.startswith("Pset_GES_") for n in names):
+            add(e, "Blender obyekti yo'q")
+    for ps in f.by_type("IfcPropertySet"):
+        if f.get_total_inverses(ps) == 0:
+            add(ps, "hech narsaga bog'lanmagan")
+    for rel in f.by_type("IfcRelDefinesByProperties"):
+        if not rel.RelatedObjects:
+            add(rel, "bo'sh bog'lanish")
+    for rep in f.by_type("IfcShapeRepresentation"):
+        if f.get_total_inverses(rep) == 0:
+            add(rep, "hech qaysi shaklga kirmagan")
+    return out
+
+
+def purge_orphans() -> int:
+    """orphans() ni o'chiradi (sath.purge_orphans — IfcOperator ichida, undo bilan). 3 o'tish: element o'chirilganda
+    uning pset/representation lari ham yetim bo'lib qolishi mumkin."""
+    import ifcopenshell.api.geometry
+    import ifcopenshell.api.root
+    import ifcopenshell.util.element as ue
+
+    f = file()
+    n = 0
+    for _ in range(3):
+        items = orphans()
+        if not items:
+            break
+        for it in items:
+            try:
+                e = f.by_id(it["id"])
+            except RuntimeError:
+                continue  # oldingi o'chirish bilan ketgan
+            if e.is_a("IfcElement"):
+                ifcopenshell.api.root.remove_product(f, product=e)
+            elif e.is_a("IfcShapeRepresentation"):
+                ifcopenshell.api.geometry.remove_representation(f, representation=e)
+            elif e.is_a("IfcRelDefinesByProperties"):
+                f.remove(e)
+            else:
+                ue.remove_deep2(f, e)
+            n += 1
+    return n
 
 
 def sync_placement(obj) -> None:

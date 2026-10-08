@@ -294,6 +294,13 @@ class SATH_OT_commit(bpy.types.Operator):
         options={"SKIP_SAVE"},
     )
     unassigned_note: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    purge_orphans: bpy.props.BoolProperty(
+        name="Yetim IFC entitylarni o'chirish",
+        description="Blender obyekti yo'q GES elementlari va bog'lanmagan pset/representation commit ga kirmasin",
+        default=False,  # Bonsai yuklamagan GES elementi jimgina o'chmasin — foydalanuvchi ro'yxatni ko'rib tanlaydi
+        options={"SKIP_SAVE"},
+    )
+    orphan_note: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -311,6 +318,7 @@ class SATH_OT_commit(bpy.types.Operator):
             s.project_id = p.item_id if p else 0
         # CAD-01: IFC ga kirmagan obyektlar commit ga tushmaydi — dialogda ogohlantiramiz (davom / bekor qilish)
         self.unassigned_note = flows.unassigned_text(unassigned(context))
+        self.orphan_note = flows.orphans_text(ifc.orphans())  # K4: yetim IFC entitylar (commit ga kiradi)
         return context.window_manager.invoke_props_dialog(self, width=480)
 
     def draw(self, context):
@@ -324,20 +332,25 @@ class SATH_OT_commit(bpy.types.Operator):
             box.label(text=self.unassigned_note, icon="ERROR")
             box.label(text="Ular yangi versiyaga kirmaydi. Davom etish — OK, to'xtatish — Bekor.")
             box.prop(self, "assign_missing")
+        if self.orphan_note:
+            box = self.layout.box()
+            box.label(text=self.orphan_note, icon="ORPHAN_DATA")
+            box.prop(self, "purge_orphans")
 
     def execute(self, context):
         if TASKS.running("server.commit"):  # ikkinchi bosish commit_m{id}.ifc ni yuklash o'rtasida qayta yozmasin
             self.report({"WARNING"}, "Commit: allaqachon bajarilmoqda")
             return {"CANCELLED"}
         s = context.scene.ges
-        from . import ges_objects
-
         try:  # bpy qismi (IFC ga yozish) — asosiy oqimda, yuborishdan oldin
-            ges_objects.flush_pending()  # kechiktirilgan qayta qurishlar IFC ga kirsin
-            if self.assign_missing:
-                from .ops_import import assign_imported
-
-                assign_imported([bpy.data.objects[n] for n in unassigned(context) if n in bpy.data.objects])
+            # K4: kechiktirilgan/sinxronlanmagan GES o'zgarishlari IFC ga (har biri o'z undo qadami). Xato bo'lsa
+            # commit to'xtaydi — eskirgan IFC serverga ketmasin (sabab operator xabarida/holat qatorida).
+            if bpy.ops.sath.sync_ifc() != {"FINISHED"}:
+                raise RuntimeError("GES o'zgarishlarini IFC ga yozib bo'lmadi («IFC ga qo'llash» xabarini ko'ring)")
+            if self.assign_missing and bpy.ops.sath.assign_ifc(names=";".join(unassigned(context))) != {"FINISHED"}:
+                raise RuntimeError("IFC ga kirmagan obyektlarni qo'shib bo'lmadi")
+            if self.purge_orphans and ifc.orphans() and bpy.ops.sath.purge_orphans() != {"FINISHED"}:
+                raise RuntimeError("Yetim IFC entitylarni o'chirib bo'lmadi")
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
         except RuntimeError as e:

@@ -15,6 +15,7 @@ import math
 import bpy
 
 from . import ges_objects, ifc, physics, water
+from .core.ifc_ops import IfcOperator
 
 RHO_G = 9806.65
 TAILWATER = -2.0
@@ -188,21 +189,17 @@ def frame_view(context) -> None:
             sp.clip_end = max(sp.clip_end, 5000.0)
 
 
-class SATH_OT_build_demo_plant(bpy.types.Operator):
+class SATH_OT_build_demo_plant(IfcOperator, bpy.types.Operator):
     """Rasmdagi GES (9 komponent) egizagini qurish: to'g'on, suv qabul, egri bosh quvurlar, turbina+generator,
-    chiqarish quvuri, kanal, zal, transformatorlar, boshqaruv xonasi, tashlama; IFC + Pset_GES_*"""
+    chiqarish quvuri, kanal, zal, transformatorlar, boshqaruv xonasi, tashlama; IFC + Pset_GES_* (bitta undo qadami)"""
 
     bl_idname = "sath.build_demo_plant"
     bl_label = "Namuna GES qurish"
     bl_options = {"REGISTER", "UNDO"}
 
-    def execute(self, context):
+    def _execute(self, context):
         s = context.scene.ges
-        try:
-            out = build(context, s.demo_head, s.demo_units, s.demo_unit_mw, s.hydro_zero)
-        except Exception as e:  # noqa: BLE001
-            self.report({"ERROR"}, f"Qurish xatosi: {e}")
-            return {"CANCELLED"}
+        out = build(context, s.demo_head, s.demo_units, s.demo_unit_mw, s.hydro_zero)
         frame_view(context)
         s.twin_note = f"{len(out)} obyekt: {s.demo_units} agregat, H = {s.demo_head:.0f} m"
         self.report({"INFO"}, s.twin_note)

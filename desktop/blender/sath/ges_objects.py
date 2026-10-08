@@ -1,6 +1,7 @@
 """GES parametrik obyektlari Blender da: parametrlar obyektda (Object.ges), sxema va geometriya — sof Python
 `shared/ges_kinds` (+ `shared/geom`, numpy; FreeCAD siz), IFC element + Pset_GES_* Bonsai da. Mesh Blender ga
-numpy massivlari bilan (`foreach_set`) uzatiladi. Parametr o'zgarsa mesh va psetlar qayta quriladi."""
+numpy massivlari bilan (`foreach_set`) uzatiladi. K4: parametr o'zgarsa FAQAT mesh qayta quriladi va `ifc_dirty`
+belgilanadi; IFC ga (representation, psetlar) `sath.sync_ifc` yozadi — IfcOperator ichida, bitta undo qadami."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import numpy as np
 
 from . import ifc
 from .core import events, ui_tasks
+from .core.ifc_ops import IfcOperator, SathOpError
 from .shared import ges_kinds
 
 KIND_ITEMS = [(k, s.label, "") for k, s in ges_kinds.KINDS.items()]
@@ -27,16 +29,20 @@ DEBOUNCE = 0.15
 
 
 def flush_pending():
-    """Kechiktirilgan qayta qurish: parametrni sudrab o'zgartirganda har qadamda emas, to'planib bir marta."""
-    names = list(_pending)
+    """Kechiktirilgan mesh qayta qurish (timer yoki darhol): FAQAT mesh — IFC ga yozish `sath.sync_ifc` da (K4: timer
+    ichida bpy.ops/IFC tranzaksiyasi yo'q). Xatolar holat qatori va popup da (avval print ga yutilardi)."""
+    names = sorted(_pending)
     _pending.clear()
+    errors = []
     for n in names:
         obj = bpy.data.objects.get(n)
         if obj is not None and obj.ges.kind:
             try:
-                rebuild(obj)
+                rebuild_mesh(obj)
             except Exception as e:  # noqa: BLE001 — bitta obyekt xatosi qolganini to'xtatmasin
-                print("sath: qayta qurish xatosi", n, e)
+                errors.append(f"{n}: {e}")
+    if errors:
+        ui_tasks.show_error("GES qayta qurish", "; ".join(errors))
     return None
 
 
@@ -44,12 +50,18 @@ def _changed(self, context):
     obj = self.id_data
     if getattr(obj, "ges", None) is None or not obj.ges.kind or obj.ges.busy:
         return
-    if bpy.app.background:  # testlar: darhol
-        rebuild(obj)
-        return
+    obj.ges.ifc_dirty = True
     _pending.add(obj.name)
+    if bpy.app.background:  # testlar: darhol
+        flush_pending()
+        return
     if not bpy.app.timers.is_registered(flush_pending):
         bpy.app.timers.register(flush_pending, first_interval=DEBOUNCE)
+
+
+def _role_changed(self, context):
+    if self.kind and not self.busy:
+        self.ifc_dirty = True  # rol Pset_SathParametric da — keyingi sync_ifc yozadi
 
 
 class GesParam(bpy.types.PropertyGroup):
@@ -65,7 +77,10 @@ class GesParam(bpy.types.PropertyGroup):
 class GesObject(bpy.types.PropertyGroup):
     kind: bpy.props.StringProperty()
     busy: bpy.props.BoolProperty(default=False)
-    role: bpy.props.StringProperty(description="Egizakdagi roli: unit:1, gen:1, draft:1, penstock:1, dam, tailrace…")
+    role: bpy.props.StringProperty(
+        description="Egizakdagi roli: unit:1, gen:1, draft:1, penstock:1, dam, tailrace…", update=_role_changed
+    )
+    ifc_dirty: bpy.props.BoolProperty(default=False, description="Parametrlar IFC ga yozilmagan (sath.sync_ifc)")
     params: bpy.props.CollectionProperty(type=GesParam)
 
 
@@ -82,7 +97,7 @@ def params_dict(obj) -> dict:
 
 
 def set_params(obj, **values) -> None:
-    """Bir nechta parametrni bir yo'la o'rnatib, bir marta qayta qurish (har birida rebuild emas)."""
+    """Bir nechta parametrni bir yo'la o'rnatib, mesh ni bir marta qayta qurish (har birida emas); IFC ga — sync_ifc."""
     g = obj.ges
     g.busy = True
     try:
@@ -98,7 +113,8 @@ def set_params(obj, **values) -> None:
                 p.value_float = float(v)
     finally:
         g.busy = False
-    rebuild(obj)
+    rebuild_mesh(obj)
+    g.ifc_dirty = True
 
 
 def by_role(role: str):
@@ -168,12 +184,33 @@ def write_ifc(obj) -> None:
     else:
         ifc.update_representation(obj)
     ifc.write_psets(e, ps, text=("Params",))
+    g.ifc_dirty = False
 
 
 def rebuild(obj) -> None:
     """Mesh (ges_kinds) + IFC (representation, psetlar)."""
     rebuild_mesh(obj)
     write_ifc(obj)
+
+
+def dirty_objects() -> list:
+    return [o for o in by_kind_all() if o.ges.ifc_dirty]
+
+
+def sync_ifc(objs=None) -> int:
+    """IFC bilan sinxronlanmagan (yoki berilgan) GES obyektlarini IFC ga yozadi. IfcOperator ichida chaqiriladi
+    (sath.sync_ifc, sath.rebuild_object, commit) — bitta undo qadami. Avval HAMMA mesh parametrlardan qayta quriladi
+    (kechikkan timer ham shu yerda): yaroqsiz parametr bo'lsa IFC ga hech narsa yozilmaydi (SathOpError)."""
+    todo = dirty_objects() if objs is None else list(objs)
+    _pending.difference_update(o.name for o in todo)
+    for o in todo:
+        try:
+            rebuild_mesh(o)
+        except ValueError as e:
+            raise SathOpError(f"{o.name}: {e}") from e
+    for o in todo:
+        write_ifc(o)
+    return len(todo)
 
 
 def default_role(kind: str) -> str:
@@ -204,10 +241,26 @@ def add(context, kind: str, name: str | None = None, role: str = "", **params):
         obj.ges.role = role or default_role(kind)
         rebuild(obj)
     except Exception:
-        bpy.data.objects.remove(obj)
-        bpy.data.meshes.remove(me)
+        _discard(obj, me)
         raise
     return obj
+
+
+def _discard(obj, me) -> None:
+    """add() xatosi: Blender obyekti, mesh(lar) va — assign_class ulgurgan bo'lsa — IFC element ham o'chiriladi
+    (yetim qolmaydi). IfcOperator ichida bu o'chirish ham o'sha tranzaksiyaga yoziladi."""
+    meshes = [me, obj.data]  # Bonsai assign_class mesh ni almashtirishi (eskisini o'chirishi) mumkin
+    try:
+        ifc.discard_entity(obj)
+    except Exception as e:  # noqa: BLE001 — asl xato yo'qolmasin; IFC qoldig'i — orphans()/purge
+        print("sath: add() xatosidan keyin IFC elementini o'chirib bo'lmadi:", e)
+    bpy.data.objects.remove(obj)
+    for m in meshes:
+        try:
+            if m is not None and m.users == 0:
+                bpy.data.meshes.remove(m)
+        except ReferenceError:  # allaqachon o'chirilgan (Bonsai yoki ro'yxatda takror)
+            pass
 
 
 @dataclass
@@ -302,20 +355,19 @@ class SATH_OT_restore_ges(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class SATH_OT_add_object(bpy.types.Operator):
-    """GES obyekti qo'shish (sof Python geometriya, IFC element + Pset_GES_*)"""
+class SATH_OT_add_object(IfcOperator, bpy.types.Operator):
+    """GES obyekti qo'shish (sof Python geometriya, IFC element + Pset_GES_*; bitta undo qadami)"""
 
     bl_idname = "sath.add_object"
     bl_label = "GES obyekti"
     bl_options = {"REGISTER", "UNDO"}
     kind: bpy.props.EnumProperty(name="Turi", items=KIND_ITEMS)
 
-    def execute(self, context):
+    def _execute(self, context):
         try:
             obj = add(context, self.kind)
-        except Exception as e:  # noqa: BLE001
-            self.report({"ERROR"}, f"Obyekt yaratilmadi: {e}")
-            return {"CANCELLED"}
+        except ValueError as e:  # yaroqsiz parametr — kutilgan xato
+            raise SathOpError(f"Obyekt yaratilmadi: {e}") from e
         for o in context.view_layer.objects:
             o.select_set(o is obj)
         context.view_layer.objects.active = obj
@@ -323,19 +375,45 @@ class SATH_OT_add_object(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class SATH_OT_rebuild_object(bpy.types.Operator):
-    """Tanlangan GES obyektlarini qayta hisoblash"""
+class SATH_OT_rebuild_object(IfcOperator, bpy.types.Operator):
+    """Tanlangan GES obyektlarini qayta hisoblash va IFC ga yozish"""
 
     bl_idname = "sath.rebuild_object"
     bl_label = "Qayta qurish"
+    bl_options = {"REGISTER", "UNDO"}
 
-    def execute(self, context):
-        n = 0
-        for o in context.view_layer.objects:
-            if o.select_get() and o.ges.kind:
-                rebuild(o)
-                n += 1
-        self.report({"INFO"}, f"{n} obyekt qayta qurildi")
+    def _execute(self, context):
+        objs = [o for o in context.view_layer.objects if o.select_get() and o.ges.kind]
+        sync_ifc(objs)  # mesh + IFC; yaroqsiz parametr — SathOpError (op.report, traceback siz)
+        self.report({"INFO"}, f"{len(objs)} obyekt qayta qurildi")
+        return {"FINISHED"}
+
+
+class SATH_OT_sync_ifc(IfcOperator, bpy.types.Operator):
+    """Parametrlari o'zgargan GES obyektlarini IFC ga yozish (representation, Pset_GES_*, Pset_SathParametric)"""
+
+    bl_idname = "sath.sync_ifc"
+    bl_label = "IFC ga qo'llash"
+    bl_options = {"REGISTER", "UNDO"}
+    sath_needs_project = False
+
+    def _execute(self, context):
+        n = sync_ifc()
+        self.report({"INFO"}, f"{n} obyekt IFC ga yozildi" if n else "IFC sinxron")
+        return {"FINISHED"}
+
+
+class SATH_OT_purge_orphans(IfcOperator, bpy.types.Operator):
+    """IFC dagi yetim entitylarni o'chirish (Blender obyekti yo'q GES elementlari, bog'lanmagan pset/representation)"""
+
+    bl_idname = "sath.purge_orphans"
+    bl_label = "Yetim IFC entitylarni o'chirish"
+    bl_options = {"REGISTER", "UNDO"}
+    sath_needs_project = False
+
+    def _execute(self, context):
+        n = ifc.purge_orphans()
+        self.report({"INFO"}, f"{n} yetim entity o'chirildi")
         return {"FINISHED"}
 
 
@@ -358,6 +436,11 @@ class SATH_PT_objects(bpy.types.Panel):
         grid = lay.grid_flow(columns=2, align=True)
         for k, label, _ in KIND_ITEMS:
             grid.operator("sath.add_object", text=label).kind = k
+        n_dirty = len(dirty_objects())
+        if n_dirty:
+            row = lay.row(align=True)
+            row.label(text=f"{n_dirty} obyekt IFC bilan sinxronlanmagan", icon="ERROR")
+            row.operator("sath.sync_ifc", text="IFC ga qo'llash", icon="EXPORT")
         lay.operator("sath.restore_ges", icon="FILE_REFRESH")
         obj = context.active_object
         if obj is None or not obj.ges.kind:
@@ -375,7 +458,16 @@ class SATH_PT_objects(bpy.types.Panel):
         box.operator("sath.rebuild_object", icon="FILE_REFRESH")
 
 
-CLASSES = (GesParam, GesObject, SATH_OT_add_object, SATH_OT_rebuild_object, SATH_OT_restore_ges, SATH_PT_objects)
+CLASSES = (
+    GesParam,
+    GesObject,
+    SATH_OT_add_object,
+    SATH_OT_rebuild_object,
+    SATH_OT_sync_ifc,
+    SATH_OT_purge_orphans,
+    SATH_OT_restore_ges,
+    SATH_PT_objects,
+)
 
 
 _off_loaded = None

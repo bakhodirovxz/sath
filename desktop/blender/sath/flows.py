@@ -474,3 +474,15 @@ def head_conflict(err: ServerError) -> int | None:
 def conflict_text(err: ServerError) -> str:
     base = str(getattr(err, "message", "") or "Model yangilangan — avval yangilang")
     return f"{base}. «Eng oxirgi versiyani yuklab olish» → o'zgarishlarni qayta kiritib commit qiling"
+
+
+def orphans_text(items: list[dict], limit: int = 3) -> str:
+    """K4: commit dialogi uchun — «Yetim IFC entitylar: 3 (IfcPropertySet ×2, IfcWall ×1)»; bo'sh — ""."""
+    if not items:
+        return ""
+    counts: dict[str, int] = {}
+    for it in items:
+        counts[it["class"]] = counts.get(it["class"], 0) + 1
+    parts = [f"{c} ×{n}" for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    head = ", ".join(parts[:limit]) + (f" … (+{len(parts) - limit})" if len(parts) > limit else "")
+    return f"Yetim IFC entitylar: {len(items)} ({head})"
