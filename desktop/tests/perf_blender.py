@@ -88,6 +88,19 @@ def register_sath() -> float:
     return round((time.perf_counter() - t) * 1000, 1)
 
 
+TEMPLATE_WS = Path(__file__).resolve().parents[2] / "desktop" / "blender" / "template" / "Sath" / "workspaces.py"
+
+
+def template_workspaces():
+    """App template ish joylari moduli (Blender uni template sifatida yuklaydi; o'lchovda — fayldan)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("sath_template_workspaces", TEMPLATE_WS)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 
@@ -108,9 +121,18 @@ def main() -> None:
     if "--gen" in argv:  # alohida jarayon: IFC yaratish (RSS ni ifloslamasin)
         synthetic_ifc(n, Path(opt("--gen")))
         return
-    if "--cold" in argv:  # sovuq start: Bonsai + Sath, keyin chiqish
+    if "--ws" in argv:  # Sath ish joylari (app template ilgagi ishi) — factory startup ustida
+        ws = template_workspaces()
+        t = time.perf_counter()
+        rep = ws.ensure(bpy.context)
+        ms = round((time.perf_counter() - t) * 1000, 2)
+        assert rep["created"] == list(ws.ORDER), rep
+        print("WS " + json.dumps({"ensure_ms": ms}), flush=True)
+        return
+    if "--cold" in argv:  # sovuq start: Bonsai + Sath + ish joylari (bundle startidagi ish), keyin chiqish
         enable_bonsai()
         register_sath()
+        template_workspaces().ensure(bpy.context)
         return
     out: dict = {"rss_blender_mb": rss_mb()}
     enable_bonsai()
