@@ -53,6 +53,9 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 - **Uchinchi tomon modullari:** «Uchinchi tomon modullari» ni yoqing, nashriyotchining ochiq kalitini «Modul kalitlari»
   ga yozing, modul papkasini `<Blender config>/sath_modules/<id>/` ga qo'ying. Faqat imzolangan modul yuklanadi:
   `python desktop/build/sign_module.py --new-key kalit.txt`, `python desktop/build/sign_module.py <papka> --key kalit.txt`.
+  Kalit «Modul kalitlari» dan olib tashlansa uning modullari darhol (qayta skanerlashsiz) o'chadi va ro'yxatdan
+  chiqadi. `SATH_MODULE_PUBLIC_KEYS` muhit o'zgaruvchisidagi kalitlar doim ishonchli — ularni Sozlamalardan bekor
+  qilib bo'lmaydi (faqat muhitdan olib tashlash).
 - **Rollar:** panel va tugmalar loyihadagi ruxsatga qarab — ko'ruvchi commit/simulyatsiyani ko'rmaydi, kulrang
   tugma ustida sababi («Ruxsat yo'q: cr.approve»). Haqiqiy tekshiruv serverda.
 

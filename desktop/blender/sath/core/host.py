@@ -22,7 +22,8 @@ ROOT_PKG = __package__.rpartition(".")[0]  # "sath" (headless) yoki "bl_ext.user
 BUNDLED = Path(__file__).resolve().parents[1] / "modules"
 REG: registry.Registry | None = None
 PINNED: frozenset[str] = frozenset()  # hozircha yo'q (mexanizm keyingi yadro-modullar uchun)
-_KEYS: list[bytes] = []  # ishonchli modul kalitlari — scan() to'ldiradi (prefs + env + yangilanish kaliti)
+_KEYS: list[bytes] = []  # ishonchli modul kalitlari — scan() to'ldiradi (prefs + env + yangilanish kaliti); prefs dagi
+# kalit maydonlari o'zgarsa (update=) scan() qayta ishlaydi — kaliti olib tashlangan modul darhol o'chadi
 _menus: list[tuple[str, Callable]] = []
 _offs: list[Callable[[], None]] = []
 
@@ -105,11 +106,12 @@ def pinned_dependents(mod_id: str) -> list[str]:
     return [d for d in REG.dependents(mod_id) if d in PINNED] if REG is not None else []
 
 
-def disable_blocker(mod_id: str) -> str:
+def disable_blocker(mod_id: str, errors: list[str] | None = None) -> str:
     """mod_id o'chirilsa (kaskadda — unga bog'liq yoqilganlari ham) rad etish sababi yoki "". Modul o'zi aytadi:
     ixtiyoriy `disable_blocker(api) -> str | None` (masalan bim: IFC ga yozilmagan GES obyektlari bor). Faqat
     foydalanuvchi o'chirishida (set_enabled, module_toggle) so'raladi — addon o'chirilishi/qayta skaner rad etilmaydi.
-    Ilgak yiqilsa — o'chirish to'silmaydi (xato logda): buzuq ilgak modulni abadiy qulflab qo'ymasin."""
+    Ilgak yiqilsa — o'chirish to'silmaydi (xato logda, modul id si `errors` ga): buzuq ilgak modulni abadiy qulflab
+    qo'ymasin; module_toggle buni foydalanuvchiga ogohlantirish bilan aytadi."""
     if REG is None or mod_id not in REG.records:
         return ""
     for rid in [*REG.dependents(mod_id), mod_id]:
@@ -122,19 +124,22 @@ def disable_blocker(mod_id: str) -> str:
         except Exception:  # noqa: BLE001
             print(f"[sath] «{rid}» moduli disable_blocker xatosi:", flush=True)
             traceback.print_exc()
+            if errors is not None:
+                errors.append(rid)
             continue
         if why:
             return str(why)
     return ""
 
 
-def set_enabled(mod_id: str, on: bool) -> list[str]:
+def set_enabled(mod_id: str, on: bool, *, check: bool = True) -> list[str]:
     """Jonli yoqish/o'chirish (bog'liqliklar bilan kaskad). Qaytaradi: holati o'zgargan modullar.
     O'chirilganlarning fon vazifalari _stop_tasks (Registry on_teardown) orqali bekor qilinadi.
-    O'chirish rad etilsa (PINNED bog'liq yoki modulning disable_blocker sababi) — [] va hech narsa o'zgarmaydi."""
+    O'chirish rad etilsa (PINNED bog'liq yoki modulning disable_blocker sababi) — [] va hech narsa o'zgarmaydi.
+    check=False — chaqiruvchi (module_toggle) disable_blocker ni allaqachon so'ragan (ilgak ikki marta chaqirilmasin)."""
     if REG is None or mod_id not in REG.records or mod_id in PINNED:
         return []
-    if not on and (pinned_dependents(mod_id) or disable_blocker(mod_id)):  # kaskad PINNED modulni ham o'chirardi
+    if not on and (pinned_dependents(mod_id) or (check and disable_blocker(mod_id))):  # kaskad PINNED modulni ham o'chirardi
         return []
     changed = REG.enable(mod_id) if on else REG.disable(mod_id)
     _save_states({**dict.fromkeys(changed, on), mod_id: on})
@@ -158,13 +163,16 @@ class SATH_OT_module_toggle(bpy.types.Operator):
         if not on and (pin := pinned_dependents(self.module_id)):
             self.report({"WARNING"}, f"{rec.manifest.name} ni o'chirib bo'lmaydi: {', '.join(pin)} unga bog'liq va o'chirilmaydi")
             return {"CANCELLED"}
-        if not on and (why := disable_blocker(self.module_id)):
+        hook_errors: list[str] = []
+        if not on and (why := disable_blocker(self.module_id, hook_errors)):
             self.report({"WARNING"}, why)
             return {"CANCELLED"}
-        changed = set_enabled(self.module_id, on)
+        changed = set_enabled(self.module_id, on, check=False)
         if on and rec.state != "enabled":
             self.report({"ERROR"}, f"{rec.manifest.name}: yuklanmadi — sababi modullar ro'yxatida")
             return {"CANCELLED"}
+        for rid in hook_errors:  # ilgak yiqildi — o'chirish to'silmadi, lekin jimgina emas
+            self.report({"WARNING"}, f"{rid}: o'chirish tekshiruvi xato berdi — baribir o'chirildi")
         others = [REG.records[i].manifest.name for i in changed if i != self.module_id]
         if others:
             self.report({"INFO"}, ("Birga yoqildi: " if on else "Birga o'chirildi: ") + ", ".join(others))
@@ -229,6 +237,8 @@ def draw_prefs(layout) -> None:
     col.prop(p, "allow_user_modules")
     if p.allow_user_modules:
         col.prop(p, "module_public_keys")
+        col.label(text="Kalit olib tashlansa uning modullari darhol o'chadi; SATH_MODULE_PUBLIC_KEYS (muhit) dagi "
+                       "kalitlar doim ishonchli", icon="INFO")  # fmt: skip
         d = user_dir()
         col.label(text=f"Papka: {d}" if d else "Papka: aniqlanmadi")
         col.operator("sath.modules_rescan", icon="FILE_REFRESH")

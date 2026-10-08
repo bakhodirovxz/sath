@@ -573,3 +573,60 @@ def test_bundled_manifests_valid():
     for m in found:
         assert set(m.visible_if_any) <= ALL, m.id
         assert set(m.workspaces) <= {"BIM", "Compare", "Simulation", "SCADA"}, m.id
+
+
+# ---------- yakuniy ko'rib chiqish (P3) ----------
+
+
+def test_start_records_why_dependency_blocked():
+    """Minor 6: kerakli, lekin bog'liqligi yoqilmagan modul jimgina o'tkazilmaydi — sabab Sozlamalarda."""
+    f = Fake()
+    for mid in ("sim", "twin"):
+        f.make(mid)
+    f.make("bad", fail=True)
+    reg = _reg(f, [_m("sim"), _m("twin", ["sim", "bad"]), _m("bad")])
+    reg.start(lambda m: m.id != "sim")
+    twin = reg.records["twin"]
+    assert twin.state == "disabled" and twin.error == "bog'liqlik yoqilmagan: sim, bad"
+    assert reg.enable("sim") == ["sim"] and reg.records["sim"].error == ""
+
+
+def test_disabled_user_module_is_reimported_on_enable():
+    """Important 1: o'chirilgan foydalanuvchi modulining kesh nusxasi qayta ishlatilmaydi — yoqish yana import_module
+    (host: imzo + joriy kalitlar bilan xavfsiz yuklovchi) orqali; birinchi tomon moduli keshda qoladi."""
+    f = Fake()
+    for mid in ("a", "u"):
+        f.make(mid)
+    imports: list[str] = []
+
+    def imp(m):
+        imports.append(m.id)
+        return f.modules[m.id]
+
+    reg = Registry(import_module=imp, register_class=f.register_class, unregister_class=f.unregister_class,
+                   log=f.errors.append)  # fmt: skip
+    reg.api = SimpleNamespace(register_classes=reg.add_classes, on_unregister=reg.add_cleanup)
+    reg.load([_m("a"), _m("u", origin="user")])
+    reg.start(lambda m: True)
+    reg.disable("a")
+    reg.disable("u")
+    assert reg.records["u"].module is None and reg.records["a"].module is f.modules["a"]
+    reg.enable("a")
+    reg.enable("u")
+    assert imports == ["a", "u", "u"]
+
+
+def test_signed_message_has_domain_tag(tmp_path):
+    """Minor 10: imzolangan xabar `"type": "sath-module"` domen tegini o'z ichiga oladi; tegsiz (eski) imzo rad etiladi."""
+    import json
+
+    d = _signed(tmp_path, "ext_tag")
+    m = _user_manifest(d)
+    msg = registry.module_message(d, m)
+    assert json.loads(msg)["type"] == "sath-module"
+    payload = json.loads(msg)
+    del payload["type"]
+    old = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    (d / registry.SIGNATURE).write_text(base64.b64encode(sign_module.sign(SEED, old)).decode() + "\n", encoding="ascii")
+    with pytest.raises(ManifestError, match="imzo noto'g'ri"):
+        registry.verify_signature(d, m, KEYS)

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "desktop" / "blender"))
 from sath import session  # noqa: E402
 from sath.core import perms  # noqa: E402
 from sath.core.tasks import TASKS  # noqa: E402
+from sath.shared.server_client import ServerError  # noqa: E402
 
 
 def _ctx(rows=(), project_id=0, index=-1):
@@ -82,11 +83,32 @@ def test_missing_row_is_fetched_once(logged_in):
     assert perms.role(ctx) == "engineer" and c.calls == [42]
 
 
-def test_fetch_error_means_no_permissions(logged_in):
-    c = logged_in(FakeClient(exc=RuntimeError("403")))
+@pytest.mark.parametrize("status", [403, 404])
+def test_fetch_403_404_means_no_permissions_and_is_cached(logged_in, monkeypatch, status):
+    c = logged_in(FakeClient(exc=ServerError(status, "yo'q")))
     ctx = _ctx([], project_id=7)
+    redraws = []
+    monkeypatch.setattr(perms, "_redraw", lambda: redraws.append(1))
     assert not perms.can("project.read", ctx) and not perms.can("project.read", ctx)
-    assert c.calls == [7]
+    monkeypatch.setattr(perms.time, "monotonic", lambda: 1e12)  # vaqt o'tsa ham qayta so'ralmaydi
+    assert not perms.can("project.read", ctx)
+    assert c.calls == [7] and redraws == [1]
+
+
+@pytest.mark.parametrize("exc", [ServerError(0, "ulanib bo'lmadi"), ServerError(502, "gateway"), RuntimeError("?")])
+def test_transient_fetch_error_is_not_cached_and_retried_later(logged_in, monkeypatch, exc):
+    c = logged_in(FakeClient(exc=exc))
+    ctx = _ctx([], project_id=7)
+    now = [1000.0]
+    redraws = []
+    monkeypatch.setattr(perms.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(perms, "_redraw", lambda: redraws.append(1))
+    assert not perms.can("project.read", ctx)
+    assert not perms.can("project.read", ctx)  # RETRY_S ichida — so'rov yog'ilmaydi
+    assert c.calls == [7] and redraws == [1] and 7 not in perms._fetched
+    now[0] += perms.RETRY_S
+    c.exc, c.reply = None, {"my_role": "viewer", "permissions": ["project.read"]}
+    assert perms.can("project.read", ctx) and c.calls == [7, 7]  # tarmoq tiklandi — qayta urinishda keldi
 
 
 def test_require_and_poll_reason(logged_in):

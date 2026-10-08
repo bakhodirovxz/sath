@@ -48,5 +48,7 @@ def register(api):
 
 
 def unregister(api):
-    bpy.context.scene.ges.monitor_on = False
+    for sc in getattr(bpy.data, "scenes", ()):  # faqat faol sahna emas (cheklangan kontekstda — hech biri)
+        sc.ges.monitor_on = False
+        sc.ges.monitor_status = ""
     ifc.ALARM_STATE.restore()  # o'chirilgan monitoringning 3D ranglari qolmasin

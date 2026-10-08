@@ -5,7 +5,9 @@ o'zgartirilgan modul yuklanmaydi. Keyingi vazifalar birinchi tomon modullari va 
 from __future__ import annotations
 
 import base64
+import contextlib
 import importlib
+import io
 import json
 import os
 import shutil
@@ -129,6 +131,9 @@ def _user_modules():
         if mid != "unsigned":
             sign_module.sign_module(d, seed)
     p = prefs()
+    env_keys = os.environ.pop("SATH_MODULE_PUBLIC_KEYS", None)  # muhit kalitlari bekor qilinmaydi — testda bo'lmasin
+    old_update_key = p.update_public_key
+    p.update_public_key = ""
     os.environ["SATH_USER_MODULES"] = str(tmp)
     p.module_public_keys = base64.b64encode(sign_module.public_key(seed)).decode()
     p.allow_user_modules = True  # update callback skanerlaydi; quyidagi scan — aniq bo'lishi uchun
@@ -147,7 +152,8 @@ def _user_modules():
         props.restore_scene(s, snap)
         assert s.sath_hello.count == 1
         events.publish("project.changed", project_id=1)
-        assert rec.module.HITS == [{"project_id": 1}]
+        mod = rec.module
+        assert mod.HITS == [{"project_id": 1}]
         assert "hello" in [m for m, _ in host._menus]
 
         # bitta modulning menyusi yiqilsa — qolganlari chiziladi
@@ -188,11 +194,12 @@ def _user_modules():
         assert not hasattr(bpy.types, "SATH_PT_hello_test") and not _registered("hello_test")
         assert not hasattr(bpy.types.Scene, "sath_hello") and "hello" not in [m for m, _ in host._menus]
         events.publish("project.changed", project_id=2)
-        assert rec.module.HITS == [{"project_id": 1}]  # obuna bekor bo'ldi
+        assert mod.HITS == [{"project_id": 1}]  # obuna bekor bo'ldi
+        assert rec.module is None  # kesh nusxa tashlandi — qayta yoqish yana xavfsiz yuklovchi (imzo + kalitlar) orqali
         assert json.loads(p.module_states)["hello"] is False
 
         assert bpy.ops.sath.module_toggle(module_id="hello") == {"FINISHED"}
-        assert host.is_enabled("hello") and _registered("hello_test")
+        assert host.is_enabled("hello") and _registered("hello_test") and rec.module is not mod
         assert s.sath_hello.count == 1  # sahnadagi ma'lumot o'chirib-yoqishdan omon qoldi
 
         (tmp / "hello" / "__init__.py").write_text(HELLO_PY + "\n# o'zgartirildi\n", encoding="utf-8")
@@ -211,10 +218,24 @@ def _user_modules():
         host.scan()
         rec3 = host.record("hello")
         assert rec3 is not rec2 and rec3.module.VERSION_MARK == 3 and rec2.state == "disabled"
+
+        # Important 1: nashriyotchi kaliti Sozlamalardan olib tashlansa — Rescan siz darhol o'chadi (update= -> scan)
+        key = p.module_public_keys
+        p.module_public_keys = ""
+        assert host.record("hello") is None and not _registered("hello_test"), host.REG.broken
+        assert not hasattr(bpy.types.Scene, "sath_hello") and "_sath_user_hello" not in sys.modules
+        assert any(label.startswith("hello") and "kalit" in msg for label, msg in host.REG.broken), host.REG.broken
+        p.module_public_keys = key  # ishonch qaytdi — modul yana (tekshirilib) yuklanadi
+        rec4 = host.record("hello")
+        assert rec4 is not None and rec4.state == "enabled" and _registered("hello_test"), host.REG.broken
     finally:
         p.allow_user_modules = False
         host.scan()
         os.environ.pop("SATH_USER_MODULES", None)
+        if env_keys is not None:
+            os.environ["SATH_MODULE_PUBLIC_KEYS"] = env_keys
+        p.update_public_key = old_update_key
+        p.module_public_keys = ""
         p.module_states = "{}"
         shutil.rmtree(tmp, ignore_errors=True)
     assert host.record("broken") is None and host.REG.broken == []
@@ -380,6 +401,115 @@ def _commit_without_bim():
     assert fake.msgs == ["Yetim entitylarni o'chirish uchun «GES obyektlari (BIM)» modulini yoqing"], fake.msgs
 
 
+def _commit_without_io():
+    """Minor 5: io o'chiq + «IFC ga kirmagan mesh larni qo'shish» belgisi — commit CANCELLED, io ni yoqishni so'raydi;
+    sath.assign_ifc (va uning argumenti unassigned()) chaqirilmaydi."""
+    from types import SimpleNamespace
+
+    from sath import ops_server
+    from sath.core import host
+
+    assert host.set_enabled("io", False) == ["io"]
+    fake = SimpleNamespace(assign_missing=True, purge_orphans=False, msgs=[])
+    fake.report = lambda kind, msg: fake.msgs.append(msg)
+    asked: list = []
+    real = ops_server.unassigned
+    ops_server.unassigned = lambda context: asked.append(1) or ["X"]
+    try:
+        assert ops_server.SATH_OT_commit.execute(fake, bpy.context) == {"CANCELLED"}
+    finally:
+        ops_server.unassigned = real
+        assert host.set_enabled("io", True) == ["io"]
+    assert fake.msgs == ["IFC ga qo'shish uchun «Import» (io) moduli yoqilmagan"] and asked == [], fake.msgs
+
+
+def _toggle_hook_error():
+    """Minor 8: disable_blocker ilgagi yiqilsa — o'chirish to'silmaydi, lekin module_toggle ogohlantiradi."""
+    from types import SimpleNamespace
+
+    from sath.core import host
+
+    mod = host.record("io").module
+    mod.disable_blocker = lambda api: 1 / 0
+    fake = SimpleNamespace(module_id="io", msgs=[])
+    fake.report = lambda kind, msg: fake.msgs.append((next(iter(kind)), msg))
+    try:
+        assert host.SATH_OT_module_toggle.execute(fake, bpy.context) == {"FINISHED"}
+    finally:
+        del mod.disable_blocker
+    assert not host.is_enabled("io")
+    assert fake.msgs == [("WARNING", "io: o'chirish tekshiruvi xato berdi — baribir o'chirildi")], fake.msgs
+    assert host.set_enabled("io", True) == ["io"]
+
+
+def _restore_without_modules():
+    """Minor 3: review/sim o'chiq — props.restore (open_version/pull_head) issue/CR/sim turi indekslarini qaytarganda
+    ro'yxatda yo'q operatorlar chaqirilmaydi (avval har safar AttributeError traceback i chiqardi)."""
+    from sath import props, session
+    from sath.core import host
+
+    s = bpy.context.scene.ges
+    off = host.set_enabled("review", False) + host.set_enabled("sim", False)
+    assert set(off) == {"review", "sim", "twin"}, off
+    session.set_session(object(), {"username": "test"})
+    row = [{"item_id": 1, "name": "a"}, {"item_id": 2, "name": "b"}]
+    snap = {"issues": row, "issues_index": 1, "crs": row, "crs_index": 1, "sim_kinds": row, "sim_kind_index": 1}
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            props.restore(s, snap)
+        for cb in (props._on_issue, props._on_cr, props._on_sim_kind):
+            cb(s, bpy.context)  # himoya bo'lmasa — AttributeError (operator ro'yxatda yo'q)
+    finally:
+        session.logout()
+        for coll in ("issues", "crs", "sim_kinds"):
+            getattr(s, coll).clear()
+        for mid in ("review", "sim", "twin"):
+            host.set_enabled(mid, True)
+    assert "Traceback" not in err.getvalue() and "AttributeError" not in err.getvalue(), err.getvalue()
+
+
+def _scada_all_scenes():
+    """Minor 9: scada o'chsa monitoring barcha sahnalarda to'xtaydi, holat qatori tozalanadi."""
+    from sath.core import host
+
+    extra = bpy.data.scenes.new("sath_test_ikkinchi")
+    try:
+        for sc in bpy.data.scenes:
+            sc.ges.monitor_on, sc.ges.monitor_status = True, "5 sensor"
+        off = host.set_enabled("scada", False)
+        assert "scada" in off, off
+        assert all(not sc.ges.monitor_on and sc.ges.monitor_status == "" for sc in bpy.data.scenes)
+        for mid in reversed(off):
+            host.set_enabled(mid, True)
+    finally:
+        bpy.data.scenes.remove(extra)
+
+
+def _bim_enable_restores_kinds():
+    """Important 2: IFC bim o'chiq paytda yuklansa (ifc.loaded obunasi yo'q) — bim yoqilganda bir martalik timer GES
+    turlarini IFC psetlaridan tiklaydi. Fon rejimida timer ishlamaydi — callback qo'lda chaqiriladi."""
+    from sath import ifc
+    from sath.core import host
+
+    def kinds():
+        return sorted({o.ges.kind for o in bpy.data.objects if o.ges.kind})
+
+    before = kinds()
+    assert before, "namuna IFC da GES obyektlari bo'lishi kerak"
+    off = host.set_enabled("bim", False)
+    assert off and off[-1] == "bim", off
+    ifc.load(ROOT / "docs" / "samples" / "namuna_ges_v1.ifc")  # bim o'chiq: yangi obyektlarda Object.ges ma'lumoti yo'q
+    for mid in reversed(off):
+        assert host.set_enabled(mid, True) == [mid]
+    mod = host.record("bim").module
+    assert bpy.app.timers.is_registered(mod.restore_after_enable)
+    bpy.app.timers.unregister(mod.restore_after_enable)
+    mod.restore_after_enable()
+    assert kinds() == before, (before, kinds())
+    assert bpy.context.scene.ges.status.startswith("BIM yoqildi — GES:"), bpy.context.scene.ges.status
+
+
 def _bim_keeps_data():
     """Review Focus 5: bim o'chib-yonsa GES obyekt parametrlari saqlanadi; sim/twin birga o'chadi.
     IFC ga yozilmagan obyekt bo'lsa — o'chirish rad etiladi (modul yoqiq qoladi, sabab foydalanuvchiga)."""
@@ -404,6 +534,7 @@ def _bim_keeps_data():
     assert not hasattr(bpy.types.Object, "ges") and not hasattr(bpy.types, "SATH_PT_objects") and not _registered("add_object")
     assert not _registered("sync_ifc") and not _registered("build_demo_plant")
     _commit_without_bim()
+    _commit_without_io()
     for mid in reversed(off):
         assert host.set_enabled(mid, True) == [mid]
     assert bpy.data.objects[name].ges.kind == "GES_Dam" and hasattr(bpy.types, "SATH_PT_objects")
@@ -419,5 +550,9 @@ def run(ctx):
     _scada_off()
     _twin_cascade()
     _io_live()
+    _toggle_hook_error()
+    _restore_without_modules()
+    _scada_all_scenes()
     _bim_keeps_data()
     _viewer_hides()
+    _bim_enable_restores_kinds()

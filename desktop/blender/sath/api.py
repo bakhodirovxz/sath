@@ -149,7 +149,8 @@ class props:
     @staticmethod
     def scene_group(mod_id: str, cls: type) -> str:
         """Modul holati: Scene.sath_<mod_id> (PointerProperty); props.snapshot_scene/restore_scene ga avtomatik
-        kiradi (Bonsai yangi sessiyasidan omon qoladi). Qaytaradi: atribut nomi."""
+        kiradi (Bonsai yangi sessiyasidan omon qoladi) — faqat skalyar xususiyatlar (STRING/INT/FLOAT/BOOLEAN/ENUM;
+        massiv, kolleksiya va ichki PointerProperty saqlanmaydi). Qaytaradi: atribut nomi."""
         _main_thread()
         attr = f"sath_{mod_id}"
         _host.REG.add_classes(mod_id, [cls])

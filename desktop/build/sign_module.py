@@ -3,7 +3,8 @@
   python desktop/build/sign_module.py --new-key kalit.txt          # yangi maxfiy kalit + ochiq kalitni chiqaradi
   python desktop/build/sign_module.py <modul_papkasi> --key kalit.txt
 
-Imzolangan xabar — sath.core.registry.module_message (fayllar sha256 + id + version). Ochiq kalit (base64) ilovada
+Imzolangan xabar — sath.core.registry.module_message (fayllar sha256 + id + version + domen tegi
+"type": "sath-module"). Ochiq kalit (base64) ilovada
 Sozlamalar → Sath → «Modul kalitlari» ga yoziladi. Maxfiy kalit faylini repo ga qo'shmang.
 """
 

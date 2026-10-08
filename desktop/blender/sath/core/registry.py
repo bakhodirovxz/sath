@@ -183,14 +183,18 @@ def _snapshot(path: Path) -> dict[str, bytes]:
     return files
 
 
+MESSAGE_TYPE = "sath-module"  # domen tegi: modul imzosi boshqa Ed25519 xabari (masalan yangilanish paketi) sifatida o'tmasin
+
+
 def _message(files: dict[str, bytes], manifest: Manifest) -> bytes:
     digests = {rel: hashlib.sha256(b).hexdigest() for rel, b in files.items() if rel != SIGNATURE}
-    payload = {"files": digests, "id": manifest.id, "version": manifest.version}
+    payload = {"files": digests, "id": manifest.id, "type": MESSAGE_TYPE, "version": manifest.version}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
 
 
 def module_message(path: Path, manifest: Manifest) -> bytes:
-    """Imzolanadigan kanonik xabar: papkadagi har fayl sha256 (imzo faylidan tashqari) + id + version.
+    """Imzolanadigan kanonik xabar: papkadagi har fayl sha256 (imzo faylidan tashqari) + id + version + domen tegi
+    `"type": "sath-module"`.
     Bayt-kod/symlink bo'lsa ManifestError (imzolashdan oldin __pycache__ ni o'chiring)."""
     return _message(_snapshot(path), manifest)
 
@@ -498,10 +502,16 @@ class Registry:
         self.broken = [*errors, *bad.items()]
 
     def start(self, wanted: Callable[[Manifest], bool]) -> None:
-        """Yoqilishi kerak bo'lgan o'chiq modullarni tartib bilan yoqadi; bog'liqligi yoqilmagani o'tkazib yuboriladi.
-        Yiqilgan (failed) modul bu yerda qayta urinilmaydi — faqat foydalanuvchi qayta yoqsa."""
+        """Yoqilishi kerak bo'lgan o'chiq modullarni tartib bilan yoqadi; bog'liqligi yoqilmagani o'tkazib yuboriladi
+        (sababi rec.error da — Sozlamalarda ko'rinadi). Yiqilgan (failed) modul bu yerda qayta urinilmaydi — faqat
+        foydalanuvchi qayta yoqsa."""
         for rid, rec in self.records.items():
-            if rec.state == "disabled" and wanted(rec.manifest) and all(self.is_enabled(r) for r in rec.manifest.requires):
+            if rec.state != "disabled" or not wanted(rec.manifest):
+                continue
+            off = [r for r in rec.manifest.requires if not self.is_enabled(r)]
+            if off:
+                rec.error = f"bog'liqlik yoqilmagan: {', '.join(off)}"
+            else:
                 self._enable_one(rid)
 
     def stop(self) -> None:
@@ -604,6 +614,8 @@ class Registry:
                 self._current = None
         self._teardown(rec)
         rec.state = "disabled"
+        if rec.manifest.origin == "user":  # qayta yoqish yana xavfsiz yuklovchi (imzo + joriy kalitlar) orqali
+            rec.module = None
 
     def _teardown(self, rec: Record) -> None:
         if self._on_teardown is not None:

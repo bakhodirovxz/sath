@@ -74,4 +74,5 @@ def register(api):
 
 def unregister(api):
     ifc.DIFF_STATE.restore()  # o'chirilgan modulning 3D ranglari qolmasin
-    bpy.context.scene.ges.diff_note = ""
+    for sc in getattr(bpy.data, "scenes", ()):
+        sc.ges.diff_note = ""

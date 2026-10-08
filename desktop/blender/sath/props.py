@@ -21,18 +21,25 @@ def _on_model(self, context):
         bpy.ops.sath.refresh_versions()
 
 
+def _module_on(mod_id: str) -> bool:
+    """P3: operator modulniki — modul o'chiq bo'lsa u ro'yxatda yo'q (restore/open_version da xato chiqmasin)."""
+    from .core import host  # dangasa: core.host -> props sikli bo'lmasin
+
+    return host.is_enabled(mod_id)
+
+
 def _on_issue(self, context):
-    if session.is_logged_in():
+    if session.is_logged_in() and _module_on("review"):
         bpy.ops.sath.show_issue()
 
 
 def _on_cr(self, context):
-    if session.is_logged_in():
+    if session.is_logged_in() and _module_on("review"):
         bpy.ops.sath.show_cr()
 
 
 def _on_sim_kind(self, context):
-    if bpy.ops.sath.sim_pick.poll():
+    if _module_on("sim") and bpy.ops.sath.sim_pick.poll():
         bpy.ops.sath.sim_pick()
 
 

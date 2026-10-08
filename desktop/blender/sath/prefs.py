@@ -10,6 +10,8 @@ PKG = __package__  # "bl_ext.user_default.sath" yoki headless da "sath"
 
 
 def _on_allow_user(self, context):
+    """Ruxsat yoki ishonchli kalitlar o'zgardi — qayta skaner: kaliti olib tashlangan modul darhol o'chadi va
+    ro'yxatdan chiqadi (kalitlar faqat scan() da yangilanadi)."""
     from .core import host
 
     host.scan()
@@ -25,7 +27,8 @@ class GesPrefs(bpy.types.AddonPreferences):
     update_public_key: bpy.props.StringProperty(
         name="Yangilanish kaliti",
         default=os.environ.get("SATH_UPDATE_PUBLIC_KEY", ""),
-        description="Paket imzosini tekshirish uchun ochiq kalit (base64, administrator beradi)",
+        description="Paket imzosini tekshirish uchun ochiq kalit (base64, administrator beradi); modullar uchun ham ishonchli",
+        update=_on_allow_user,
     )
     # P3: uchinchi tomon modullari — faqat ishonchli kalit bilan imzolanganlari (yangilanish kaliti ham ishonchli)
     allow_user_modules: bpy.props.BoolProperty(
@@ -37,7 +40,10 @@ class GesPrefs(bpy.types.AddonPreferences):
     module_public_keys: bpy.props.StringProperty(
         name="Modul kalitlari",
         default=os.environ.get("SATH_MODULE_PUBLIC_KEYS", ""),
-        description="Ishonchli modul nashriyotchilarining Ed25519 ochiq kalitlari (base64, vergul bilan)",
+        description="Ishonchli modul nashriyotchilarining Ed25519 ochiq kalitlari (base64, vergul bilan). Kalit olib "
+        "tashlansa uning modullari darhol o'chadi. SATH_MODULE_PUBLIC_KEYS muhit o'zgaruvchisidagi kalitlar doim "
+        "ishonchli — bu yerdan bekor qilinmaydi",
+        update=_on_allow_user,
     )
     module_states: bpy.props.StringProperty(default="{}", options={"HIDDEN"})  # {"review": false, …}
 

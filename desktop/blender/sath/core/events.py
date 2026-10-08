@@ -2,6 +2,10 @@
 
 Mavzular: session.login {user}, session.logout {}, project.changed {project_id}, ifc.loaded {path}, scada.snapshot {data},
 task.done|task.failed|task.cancelled {id, key, title}.
+
+project.changed — loyihalar ro'yxatida tanlov o'zgarganda (projects_index update, kirilgan holatda); props.restore()
+ham projects_index ni qayta o'rnatadi, shuning uchun Bonsai yangi sessiyasidan keyingi tiklashda (open_version,
+pull_head) ham — o'sha loyiha bilan — keladi: obunachi takroriy hodisaga chidamli bo'lsin.
 """
 
 from __future__ import annotations

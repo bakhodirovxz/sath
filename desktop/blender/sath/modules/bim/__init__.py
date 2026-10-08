@@ -1,12 +1,13 @@
 """BIM moduli: parametrik GES obyektlari (Object.ges, IFC + Pset_GES_*), «Namuna GES». O'chirilganda Object.ges
 ro'yxatdan chiqadi, lekin obyektlardagi ma'lumot saqlanadi (qayta yoqilganda qaytadi). IFC ga yozilmagan GES
-obyekti bo'lsa modulni o'chirish rad etiladi (disable_blocker) — avval «IFC ga qo'llash»."""
+obyekti bo'lsa modulni o'chirish rad etiladi (disable_blocker) — avval «IFC ga qo'llash». bim o'chiq paytda IFC
+yuklangan bo'lsa, yoqilganda GES turlari IFC psetlaridan tiklanadi (bir martalik timer — restore_after_enable)."""
 
 from __future__ import annotations
 
 import bpy
 
-from ... import demo_plant, ges_objects
+from ... import demo_plant, ges_objects, ifc
 from ...core.panels import SathPanel
 
 
@@ -60,10 +61,29 @@ def _menu(layout, context):
     layout.operator_menu_enum("sath.add_object", "kind", text="GES obyekti")
 
 
+def restore_after_enable():
+    """Bir martalik timer: bim o'chiq paytda yuklangan IFC (ifc.loaded obunasi yo'q edi) obyektlariga GES turi,
+    roli va parametrlari psetlardan qaytadi (IFC ga yozilmagan o'zgarishli obyektlar tegilmaydi). register() cheklangan
+    kontekstda ishlashi mumkin — shuning uchun timer orqali."""
+    if ifc.file() is None or not hasattr(bpy.types.Object, "ges"):
+        return None
+    rep = ges_objects.restore_from_ifc(skip_dirty=True)
+    sc = getattr(bpy.context, "scene", None)
+    if sc is not None and (rep.restored or rep.inferred or rep.unknown or rep.skipped):
+        sc.ges.status = "BIM yoqildi — " + rep.text()
+    return None
+
+
 def register(api):
     api.adopt("bim", ges_objects, demo_plant)
     api.register_classes("bim", [SATH_PT_objects])
     api.ui.main_menu("bim", _menu)
+    try:
+        loaded = ifc.file() is not None
+    except Exception:  # noqa: BLE001 — cheklangan kontekst (Blender ishga tushishi): sahna yo'q, IFC hali ochilmagan
+        loaded = False
+    if loaded and not bpy.app.timers.is_registered(restore_after_enable):
+        bpy.app.timers.register(restore_after_enable, first_interval=0.0)
 
 
 def _unsynced() -> list:
@@ -84,6 +104,8 @@ def unregister(api):
     """Registry avval shuni, keyin teardown ni (ges_objects.unregister -> del Object.ges) chaqiradi — Object.ges hali bor.
     Foydalanuvchi o'chirishi disable_blocker bilan himoyalangan; bu yerga IFC ga yozilmagan obyekt bilan faqat addon
     o'chirilganda yoki qayta skanerda kelinadi."""
+    if bpy.app.timers.is_registered(restore_after_enable):
+        bpy.app.timers.unregister(restore_after_enable)
     if bpy.app.timers.is_registered(ges_objects.flush_pending):
         bpy.app.timers.unregister(ges_objects.flush_pending)
     ges_objects.flush_pending()  # kechiktirilgan mesh qayta qurishlar yakunlansin (timer Object.ges siz yiqilmasin)

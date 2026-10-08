@@ -1,6 +1,7 @@
 """Rolga sezgir UI (spec §2): faol loyihadagi ruxsatlar. Manba — server `ProjectOut.permissions` (loyiha qatorining
 `perms` maydoni); bo'sh bo'lsa (eski server) `shared/permissions.py` — server ROLE_PERMISSIONS ko'zgusi. Loyiha
-ro'yxatda bo'lmasa (masalan skript s.project_id ni o'zi qo'ygan) — bir marta fonda `GET /api/projects/{id}`.
+ro'yxatda bo'lmasa (masalan skript s.project_id ni o'zi qo'ygan) — fonda `GET /api/projects/{id}`: javob yoki 403/404
+(loyihada roli yo'q) keshlanadi; tarmoq/server xatosi keshlanmaydi — RETRY_S dan keyin qayta so'raladi.
 Haqiqiy tekshiruv baribir serverda; bu faqat UI: panel yashiriladi, operator sababi bilan kulrang.
 
 Faol loyiha: ochiq model loyihasi (`scene.ges.project_id`), bo'lmasa ro'yxatda tanlangani. bpy siz import qilinadi.
@@ -8,6 +9,7 @@ Faol loyiha: ochiq model loyihasi (`scene.ges.project_id`), bo'lmasa ro'yxatda t
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 
 from ..shared.permissions import role_permissions
@@ -15,7 +17,10 @@ from ..shared.permissions import role_permissions
 _memo: dict[tuple[str, str], frozenset[str]] = {}
 _fetched: dict[int, tuple[str, frozenset[str]]] = {}
 _pending: set[int] = set()
+_retry_at: dict[int, float] = {}  # vaqtinchalik xato: shu vaqtgacha (monotonic) qayta so'ralmaydi
 _NONE: tuple[str, frozenset[str]] = ("", frozenset())
+RETRY_S = 5.0  # tarmoq xatosidan keyin qayta urinish oralig'i (har chizishda so'rov yog'ilmasin)
+_FINAL = (403, 404)  # loyihada roli yo'q / loyiha yo'q — javob shu, keshlanadi
 
 
 def resolve(role: str | None, server_perms: Iterable[str] | None) -> frozenset[str]:
@@ -29,6 +34,7 @@ def clear() -> None:
     """Sessiya almashganda (session.login/logout): so'rab olingan loyihalar unutiladi."""
     _fetched.clear()
     _pending.clear()
+    _retry_at.clear()
 
 
 def _ges(context):
@@ -54,7 +60,7 @@ def _entry(s, pid: int) -> tuple[str, frozenset[str]] | None:
         if hit is None:
             hit = _memo[key] = resolve(row.state or None, row.perms.split() if row.perms else None)
         return row.state, hit
-    if pid not in _fetched:
+    if pid not in _fetched and time.monotonic() >= _retry_at.get(pid, 0.0):
         _fetch(pid)
     return _fetched.get(pid)
 
@@ -117,10 +123,14 @@ def _fetch(pid: int) -> None:
             _fetched[pid] = (d.get("my_role") or "", resolve(d.get("my_role"), d.get("permissions")))
             _redraw()
 
-    def failed(_e: BaseException) -> None:
+    def failed(e: BaseException) -> None:
         _pending.discard(pid)
         if same_session():
-            _fetched[pid] = _NONE  # 403/404: loyihada roli yo'q
+            if getattr(e, "status", None) in _FINAL:
+                _fetched[pid] = _NONE  # loyihada roli yo'q — qayta so'ralmaydi
+            else:  # tarmoq (ServerError status 0) yoki server xatosi: keshlanmaydi, keyingi chizishda qayta urinish
+                _retry_at[pid] = time.monotonic() + RETRY_S
+            _redraw()
 
     TASKS.run("Ruxsatlar", lambda ctx: client.project(pid), done, failed, key=f"perms.{pid}", quiet=True, cancellable=False)
     if not TASKS.inline:
