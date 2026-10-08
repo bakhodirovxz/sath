@@ -16,14 +16,18 @@ $oldCfg = $env:BLENDER_USER_CONFIG; $oldData = $env:BLENDER_USER_DATAFILES
 $env:BLENDER_USER_CONFIG = Join-Path $iso "config"
 $env:BLENDER_USER_DATAFILES = Join-Path $iso "datafiles"
 $fails = 0; $skips = 0
-foreach ($t in $tests) {
-    $out = & $blender -b --python $runner -- --test $t[0] $t[1] 2>&1 | Out-String
-    if ($out -match "\[OK\] $($t[0])") { "[OK]   $($t[0])" }
-    elseif ($out -match "\[SKIP\] $($t[0]):(.*)") { "[SKIP] $($t[0]):$($Matches[1].Trim())"; $skips++ }
-    else { "[FAIL] $($t[0])"; $out | Select-String -Pattern "Error|assert" | ForEach-Object { "       " + $_.Line }; $fails++ }
+try {
+    foreach ($t in $tests) {
+        $out = & $blender -b --python $runner -- --test $t[0] $t[1] 2>&1 | Out-String
+        if ($out -match "\[OK\] $($t[0])") { "[OK]   $($t[0])" }
+        elseif ($out -match "\[SKIP\] $($t[0]):(.*)") { "[SKIP] $($t[0]):$($Matches[1].Trim())"; $skips++ }
+        else { "[FAIL] $($t[0])"; $out | Select-String -Pattern "Error|assert" | ForEach-Object { "       " + $_.Line }; $fails++ }
+    }
 }
-Remove-Item -Recurse -Force $iso -ErrorAction SilentlyContinue
-$env:BLENDER_USER_CONFIG = $oldCfg; $env:BLENDER_USER_DATAFILES = $oldData
+finally {  # Ctrl+C / to'xtatuvchi xatoda ham vaqtinchalik papka o'chadi va muhit tiklanadi
+    Remove-Item -Recurse -Force $iso -ErrorAction SilentlyContinue
+    $env:BLENDER_USER_CONFIG = $oldCfg; $env:BLENDER_USER_DATAFILES = $oldData
+}
 "`nFAIL soni: $fails · SKIP: $skips"
 if ($fails -eq 0 -and $skips -gt 0 -and $env:SATH_REQUIRE_NO_SKIP -eq "1") { "SKIP taqiqlangan (SATH_REQUIRE_NO_SKIP=1)"; exit 1 }
 exit $fails

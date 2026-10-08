@@ -17,6 +17,11 @@ from pathlib import Path
 
 import bpy
 
+if not os.environ.get("BLENDER_USER_CONFIG"):  # haqiqiy profilga yozilishini oldini olish
+    print("[GUI-REFUSED] BLENDER_USER_CONFIG o'rnatilmagan: vaqtinchalik BLENDER_USER_CONFIG/DATAFILES bilan "
+          "ishga tushiring (haqiqiy Blender profiliga yozilmasligi uchun)", flush=True)
+    os._exit(2)
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 os.environ["SATH_PANELS_OPEN"] = "1"
