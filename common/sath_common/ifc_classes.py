@@ -1,4 +1,4 @@
-"""IFC sxemalaridagi konkret IfcProduct sinflari (G1) — desktop (FreeCAD/Blender) da ifcopenshell bo'lmasa ham
+"""IFC sxemalaridagi konkret IfcProduct sinflari (G1) — desktop (Blender) da ifcopenshell bo'lmasa ham
 sinf nomini tekshirish uchun. Generatsiya: server/ges_server/models/ifc_schema.element_classes (ifcopenshell).
 Qayta generatsiya: python desktop/build/gen_ifc_classes.py (common/sath_common ga yozadi, keyin sync_blender.py)"""
 
@@ -370,5 +370,6 @@ def check_class(name: str, schema: str = "IFC4") -> str:
 
 
 def from_freecad_type(ifc_type: str, schema: str = "IFC4") -> str:
-    """FreeCAD IfcType («Pipe Segment») → «IfcPipeSegment», sxemaga nisbatan tekshirilgan."""
+    """Bo'shliqli IFC tur yorlig'i («Pipe Segment», eski modellarda uchraydi) → «IfcPipeSegment», sxemaga nisbatan
+    tekshirilgan. Nomi server API muvofiqligi uchun saqlangan."""
     return check_class("Ifc" + (ifc_type or "").replace(" ", ""), schema)

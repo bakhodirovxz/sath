@@ -1,6 +1,6 @@
-"""DXF ni FreeCAD uchun «tekislash» — chizma AutoCAD/DWG viewer dagidek ko'rinsin.
+"""DXF ni import uchun «tekislash» (Blender addoni, server web importi) — chizma AutoCAD/DWG viewer dagidek ko'rinsin.
 
-FreeCAD 1.1 DXF importeri faqat oddiy geometriyani (LINE/ARC/CIRCLE/ELLIPSE/SPLINE/POLYLINE/3DFACE) ishonchli
+Oddiy DXF importerlari faqat sodda geometriyani (LINE/ARC/CIRCLE/ELLIPSE/SPLINE/POLYLINE/3DFACE) ishonchli
 o'qiydi: o'lchamlar (DIMENSION) qayta hisoblanib noto'g'ri («0.01 m») chiqadi, blok ichidagi matnlar noto'g'ri
 joyga tushadi, LEADER/MULTILEADER/HATCH/SOLID/ATTRIB umuman o'qilmaydi, MTEXT formatlash kodlari bilan chiqadi.
 Shuning uchun importdan oldin ezdxf bilan (sof Python, paket ichida) hammasini AutoCAD dagi ko'rinishiga mos
@@ -11,10 +11,10 @@ oddiy chiziqlarga aylantiramiz:
   * MTEXT → satrlar (TEXT), TEXT/ATTRIB → harf konturlari (LWPOLYLINE, «TXTEXP» kabi; shrift Windows/ezdxf)
   * HATCH → shtrix chiziqlari (naqsh bo'yicha), to'ldirilgan (solid) → chegara + zich shtrix
   * SOLID/TRACE → yopiq kontur;  OLE2FRAME/IMAGE/VIEWPORT/WIPEOUT/POINT → tashlab yuboriladi
-  * Rang: BYBLOCK → INSERT rangi, BYLAYER qoladi (FreeCAD qatlam rangidan oladi)
+  * Rang: BYBLOCK → INSERT rangi, BYLAYER qoladi (importer qatlam rangidan oladi)
 
-Natija — vaqtinchalik DXF; FreeCAD uni «birlashtirilgan shakllar» rejimida (qatlam+rang bo'yicha bitta
-obyekt) ochadi — tez va ranglar saqlanadi.  ezdxf topilmasa (vendor papkasi yo'q) asl fayl qaytariladi.
+Natija — vaqtinchalik DXF (yoki xotiradagi hujjat); importer uni qatlam+rang bo'yicha guruhlab ochadi — tez va
+ranglar saqlanadi.  ezdxf topilmasa (vendor papkasi yo'q) asl fayl qaytariladi.
 
 Kanonik manba: common/sath_common/dxf_prepare.py; nusxalar desktop/build/sync_blender.py bilan yangilanadi (qo'lda tahrirlamang).
 """
@@ -127,7 +127,7 @@ def _explode_all(msp, log: dict) -> None:
             try:
                 e.explode()  # INSERT uchun ATTRIB lar TEXT bo'lib chiqadi
                 _count(log, t)
-            except Exception:  # noqa: BLE001 — portlamasa tashlab yuboramiz (FreeCAD ham o'qimasdi)
+            except Exception:  # noqa: BLE001 — portlamasa tashlab yuboramiz (importerlar ham o'qimaydi)
                 _delete(msp, e)
                 _count(log, "skip_" + t)
 
@@ -229,7 +229,7 @@ def _solids(msp, log: dict) -> None:
 
 def _upright(msp, log: dict) -> None:
     """Teskari OCS (extrusion 0,0,-1 — AutoCAD MIRROR dan qolgan) yoy/aylana/polilinyalarni oddiy holatga
-    keltiradi: FreeCAD importeri ularni X bo'yicha noto'g'ri (aksincha) joylashtiradi."""
+    keltiradi: ko'p importerlar ularni X bo'yicha noto'g'ri (aksincha) joylashtiradi."""
     from ezdxf.upright import upright
 
     for e in list(msp):

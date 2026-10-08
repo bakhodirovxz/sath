@@ -80,7 +80,7 @@ def generator_efficiency(p_mw: float, rated_mva: float, eta_max: float = 0.985, 
 
 
 def penstock_path(length: float, inclination_deg: float, bend_radius: float, outlet_length: float) -> dict:
-    """Metrda: p0, p1, pm, p2, p3 (tuple), u1, alpha (rad), l1 — FreeCAD tomonidagi bilan bir xil."""
+    """Metrda: p0, p1, pm, p2, p3 (tuple), u1, alpha (rad), l1 — `shared/ges_kinds.penstock_path` bilan bir xil."""
     a = math.radians(inclination_deg)
     arc = bend_radius * a
     l1 = max(length * 0.1, length - outlet_length - arc)

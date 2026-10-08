@@ -1,4 +1,4 @@
-"""CAD import umumiy yordamchilari — server (web import), Blender addoni va FreeCAD workbench uchun bitta kod.
+"""CAD import umumiy yordamchilari — server (web import) va Blender addoni uchun bitta kod.
 
 * `detect_units_and_axis(path)` — fayl birligi va yuqori o'q: DXF `$INSUNITS`, FBX `GlobalSettings`
   (`UnitScaleFactor`, `UpAxis`), glTF (spetsifikatsiya: metr, Y-up), 3MF/STEP (mm). Aniqlanmasa `uncertain=True`
@@ -9,7 +9,7 @@
   qayta importda o'qish (CAD-07).
 * `classify_name` — obyekt nomi bo'yicha GES turi / IFC sinfi.
 
-Sof Python (bpy, FreeCAD, numpy siz); ezdxf faqat DXF funksiyalarida (argument sifatida entity keladi).
+Sof Python (bpy, numpy siz); ezdxf faqat DXF funksiyalarida (argument sifatida entity keladi).
 Kanonik manba: common/sath_common/cad_common.py; nusxalar desktop/build/sync_blender.py bilan yangilanadi (qo'lda tahrirlamang).
 """
 

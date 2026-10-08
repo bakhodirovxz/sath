@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-# assimp o'qiy oladigan, lekin trimesh/FreeCAD o'zi o'qimaydigan formatlar
+# assimp o'qiy oladigan, lekin trimesh o'zi o'qimaydigan formatlar
 ASSIMP_EXTS = {
     ".fbx",
     ".3ds",
