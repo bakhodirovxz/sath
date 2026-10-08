@@ -2,7 +2,6 @@
 (rotor aylanishi), transformator (issiqlik rangi), zilzila (siljish) — timeline keyframelari."""
 
 import os
-import time
 
 import bpy
 from creds import admin_password
@@ -14,11 +13,11 @@ def _fcurves(obj):
     return sim_anim._fcurves(obj)
 
 
-def _wait(poll, s, secs=90):
-    for _ in range(int(secs / 0.5)):
-        if poll() is None:
-            break
-        time.sleep(0.5)
+def _wait(start, s, secs=90):
+    from sath.core.tasks import TASKS
+
+    start()
+    TASKS.drain(secs)
     assert s.sim_status.startswith("Tayyor"), s.sim_status
 
 
@@ -48,7 +47,7 @@ def run(ctx):
     params = ops_sim.hydro_params(c, s.version_id, s)
     assert params["model_zero_elevation_m"] == 850.0, params["model_zero_elevation_m"]
     job = c.create_sim(s.model_id, "hydro", s.version_id, params, kind="hydro")
-    _wait(ops_sim._poll_factory(ops_sim.HYDRO_META, job["id"], lambda r: sim_anim.animate_hydro(bpy.context, r, params, zero_m=850.0)), s)
+    _wait(lambda: ops_sim.wait_job(ops_sim.HYDRO_META, job["id"], lambda r: sim_anim.animate_hydro(bpy.context, r, params, zero_m=850.0)), s)
     assert bpy.context.scene.frame_end == 20
     tw = bpy.data.objects["GES_QuyiByef"]
     fc = [f for f in _fcurves(tw) if f.data_path == "location"]
@@ -68,7 +67,7 @@ def run(ctx):
     hp = ops_twin.hammer_params(s)
     assert hp["length_m"] > 30 and 20 < hp["head_m"] < 50 and hp["material"] == "steel", (hp["head_m"], hp["material"], hp["flow_m3s"])  # napor joriy suv tekisliklaridan
     job = c.create_sim(s.model_id, "hammer", s.version_id, hp, kind="water_hammer")
-    _wait(ops_sim._poll_factory(ops_twin.HAMMER_META, job["id"], lambda r: sim_anim.animate_hammer(bpy.context, r, ges_objects.by_role("penstock:1"))), s)
+    _wait(lambda: ops_sim.wait_job(ops_twin.HAMMER_META, job["id"], lambda r: sim_anim.animate_hammer(bpy.context, r, ges_objects.by_role("penstock:1"))), s)
     markers = [o for o in bpy.data.objects if o.name.startswith("GES_Bosim.")]
     assert len(markers) == 21, len(markers)
     assert bpy.context.scene.frame_end >= 30, bpy.context.scene.frame_end
@@ -86,7 +85,7 @@ def run(ctx):
     gp = ops_twin.governor_params(s)
     assert 0.5 <= gp["tw"] <= 4.0, gp
     job = c.create_sim(s.model_id, "gov", s.version_id, gp, kind="governor")
-    _wait(ops_sim._poll_factory(ops_twin.GOV_META, job["id"], lambda r: sim_anim.animate_governor(bpy.context, r)), s)
+    _wait(lambda: ops_sim.wait_job(ops_twin.GOV_META, job["id"], lambda r: sim_anim.animate_governor(bpy.context, r)), s)
     gen = ges_objects.by_role("gen:1")
     rfc = [f for f in _fcurves(gen) if f.data_path == "rotation_euler"]
     assert rfc and len(rfc[0].keyframe_points) == bpy.context.scene.frame_end, "aylanish keyframelari yo'q"
@@ -102,7 +101,7 @@ def run(ctx):
     tp = ops_twin.transformer_params(s)
     assert abs(tp["rated_mva"] - 27.8) < 0.11 and tp["cooling"] == "ONAF", tp
     job = c.create_sim(s.model_id, "tr", s.version_id, tp, kind="transformer")
-    _wait(ops_sim._poll_factory(ops_twin.TR_META, job["id"], lambda r: sim_anim.animate_transformer(bpy.context, r)), s)
+    _wait(lambda: ops_sim.wait_job(ops_twin.TR_META, job["id"], lambda r: sim_anim.animate_transformer(bpy.context, r)), s)
     tf = ges_objects.by_role("transformer:1")
     cfc = [f for f in _fcurves(tf) if f.data_path == "color"]
     assert cfc and len(cfc[0].keyframe_points) == bpy.context.scene.frame_end >= 40
@@ -118,7 +117,7 @@ def run(ctx):
     dam = ges_objects.by_role("dam")
     x0 = float(dam.location.x)
     job = c.create_sim(s.model_id, "seis", s.version_id, sp, kind="seismic")
-    _wait(ops_sim._poll_factory(ops_twin.SEIS_META, job["id"], lambda r: sim_anim.animate_seismic(bpy.context, r, scale=20.0)), s)
+    _wait(lambda: ops_sim.wait_job(ops_twin.SEIS_META, job["id"], lambda r: sim_anim.animate_seismic(bpy.context, r, scale=20.0)), s)
     assert bpy.context.scene.frame_end == 16 * 24
     lfc = [f for f in _fcurves(dam) if f.data_path == "location"]
     assert lfc and len(lfc[0].keyframe_points) == 384, len(lfc[0].keyframe_points) if lfc else "to'g'on siljish keyframelari yo'q"

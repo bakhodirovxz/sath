@@ -1,7 +1,6 @@
 """Real server: to'g'on + turbina + suv tashlagich → commit → hydro simulyatsiya → Blender timeline animatsiyasi."""
 
 import os
-import time
 
 import bpy
 from creds import admin_password
@@ -9,6 +8,7 @@ from creds import admin_password
 
 def run(ctx):
     from sath import ges_objects, ops_sim, prefs, session, sim_anim
+    from sath.core.tasks import TASKS
 
     url = os.environ.get("GES_TEST_SERVER", "http://127.0.0.1:8000")
     p = prefs.prefs()
@@ -33,11 +33,8 @@ def run(ctx):
     assert params["reservoir"].get("spillway") and params.get("spillway_guid"), params["reservoir"]
     assert params["inflow_m3s"] == {"constant": 150.0, "steps": 30}
     job = c.create_sim(s.model_id, "hydro test", s.version_id, params, kind="hydro")
-    poll = ops_sim._poll_factory(ops_sim.HYDRO_META, job["id"], lambda r: sim_anim.animate_hydro(bpy.context, r, params))
-    for _ in range(60):
-        if poll() is None:
-            break
-        time.sleep(0.5)
+    ops_sim.wait_job(ops_sim.HYDRO_META, job["id"], lambda r: sim_anim.animate_hydro(bpy.context, r, params))
+    TASKS.drain(120)
     assert s.sim_status.startswith("Tayyor"), s.sim_status
     assert bpy.context.scene.frame_end == 30
     plane = bpy.data.objects["GES_SuvSathi"]

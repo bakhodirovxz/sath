@@ -161,10 +161,13 @@ class _TwinSim(bpy.types.Operator):
         s.sim_job_id = job["id"]
         s.sim_status = "Hisoblanmoqda…"
 
-        def done(result: dict):
-            s.twin_note = self.animate(bpy.context, result, s)
+        animate = self.animate
 
-        bpy.app.timers.register(ops_sim._poll_factory(self.meta, job["id"], done), first_interval=0.6)
+        def done(result: dict):
+            sc = bpy.context.scene.ges  # eski `s` havolasi IFC qayta yuklangandan keyin yaroqsiz bo'lishi mumkin
+            sc.twin_note = animate(bpy.context, result, sc)
+
+        ops_sim.wait_job(self.meta, job["id"], done, title=f"{self.title} (egizak)")
         return {"FINISHED"}
 
 

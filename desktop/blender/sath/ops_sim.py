@@ -6,7 +6,10 @@ from __future__ import annotations
 import bpy
 
 from . import flows, props, session, sim_anim, water
-from .ops_server import _sel, guard
+from .core import ui_tasks
+from .core.tasks import TASKS
+from .core.ui_tasks import ensure_pump, run_op, show_error
+from .ops_server import _sel
 from .shared.server_client import ServerError
 
 _catalog: dict = {}
@@ -26,27 +29,21 @@ class SATH_OT_sim_catalog(bpy.types.Operator):
     bl_label = "Katalogni yuklash"
 
     def execute(self, context):
-        s = context.scene.ges
-
-        def do():
+        def apply(cat):
             global _catalog
-            _catalog = session.client().sim_catalog()
+            _catalog = cat
+            s = bpy.context.scene.ges
             groups = _catalog.get("groups", {})
             rows = [
-                {
-                    "item_id": i,
-                    "name": k["title"],
-                    "col2": groups.get(k["group"], k["group"]),
-                    "col4": k.get("description", ""),
-                    "guid": k["id"],
-                }
+                {"item_id": i, "name": k["title"], "col2": groups.get(k["group"], k["group"]),
+                 "col4": k.get("description", ""), "guid": k["id"]}
                 for i, k in enumerate(_catalog["kinds"])
                 if not k.get("custom_ui")
-            ]
+            ]  # fmt: skip
             props.fill(s.sim_kinds, rows)
             s.sim_kind_index = 0 if rows else -1  # update → sim_pick
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        return run_op(self, "Sim katalogi", lambda ctx: session.client().sim_catalog(), apply, key="sim.catalog")
 
 
 class SATH_OT_sim_pick(bpy.types.Operator):
@@ -137,32 +134,58 @@ def _raw(s) -> dict:
     return out
 
 
-def _poll_factory(kind: dict, job_id: int, on_done=None):
-    def poll():
-        s = bpy.context.scene.ges
-        try:
-            j = session.client().sim_job(job_id)
-        except (ServerError, RuntimeError) as e:
-            s.sim_status = f"Xato: {e}"
-            return None
-        if j["status"] == "done":
-            result = session.client().sim_result(job_id)
-            rows, level = flows.sim_result_rows(kind, result)
-            props.fill(s.sim_results, rows)
-            s.sim_water_level = level if level is not None else -1e9
-            s.sim_status = "Tayyor"
-            if on_done is not None:
-                try:
-                    on_done(result)
-                except Exception as e:  # noqa: BLE001 — animatsiya xatosi natijani yo'qotmasin
-                    s.sim_status = f"Tayyor (animatsiya xatosi: {e})"
-            return None
-        if j["status"] == "failed":
-            s.sim_status = f"Xato: {j.get('error') or 'hisob xatosi'}"
-            return None
-        return 0.6
+POLL_S = 0.6
 
-    return poll
+
+def wait_job(meta: dict, job_id: int, on_done=None, title: str = "Simulyatsiya"):
+    """Sim ishini ishchi oqimda kutadi (K3; avval timer ichida bloklovchi so'rov edi); natija asosiy oqimda.
+    TASKS.run run_op dan tashqarida — epoch himoyasi shu yerda: model almashgan bo'lsa natija sahnaga yozilmaydi."""
+    ep = session.epoch()
+
+    def work(ctx):
+        c = session.client()
+        while True:
+            j = c.sim_job(job_id)
+            if j["status"] == "done":
+                return {"ok": True, "result": c.sim_result(job_id)}
+            if j["status"] == "failed":
+                return {"ok": False, "error": j.get("error") or "hisob xatosi"}
+            ctx.progress(None, j["status"])
+            ctx.sleep(POLL_S)
+
+    def stale() -> bool:
+        if session.epoch() == ep:
+            return False
+        ui_tasks.status("Simulyatsiya: natija eskirdi (model almashdi)")
+        return True
+
+    def apply(res):
+        if stale():
+            return
+        s = bpy.context.scene.ges
+        if not res["ok"]:
+            s.sim_status = f"Xato: {res['error']}"
+            return
+        result = res["result"]
+        rows, level = flows.sim_result_rows(meta, result)
+        props.fill(s.sim_results, rows)
+        s.sim_water_level = level if level is not None else -1e9
+        s.sim_status = "Tayyor"
+        if on_done is not None:
+            try:
+                on_done(result)
+            except Exception as e:  # noqa: BLE001 — animatsiya xatosi natijani yo'qotmasin
+                s.sim_status = f"Tayyor (animatsiya xatosi: {e})"
+
+    def error(e):
+        if stale():
+            return
+        bpy.context.scene.ges.sim_status = f"Xato: {e}"
+        show_error(title, str(e))
+
+    task = TASKS.run(title, work, apply, error, key=f"sim.job.{job_id}")
+    ensure_pump()
+    return task
 
 
 class SATH_OT_sim_run(bpy.types.Operator):
@@ -190,7 +213,7 @@ class SATH_OT_sim_run(bpy.types.Operator):
             return {"CANCELLED"}
         s.sim_job_id = job["id"]
         s.sim_status = "Hisoblanmoqda…"
-        bpy.app.timers.register(_poll_factory(k, job["id"]), first_interval=0.6)
+        wait_job(k, job["id"], title=k["title"])
         return {"FINISHED"}
 
 
@@ -285,10 +308,11 @@ class SATH_OT_sim_hydro(bpy.types.Operator):
         s.sim_status = "Hisoblanmoqda…"
 
         def done(result: dict):
-            n = sim_anim.animate_hydro(bpy.context, result, params, zero_m=float(s.hydro_zero))
-            s.hydro_note = f"{n} kun → {n} kadr: Space bilan ijro (suv sathi, agregatlar rangi)"
+            sc = bpy.context.scene.ges
+            n = sim_anim.animate_hydro(bpy.context, result, params, zero_m=float(sc.hydro_zero))
+            sc.hydro_note = f"{n} kun → {n} kadr: Space bilan ijro (suv sathi, agregatlar rangi)"
 
-        bpy.app.timers.register(_poll_factory(HYDRO_META, job["id"], done), first_interval=0.6)
+        wait_job(HYDRO_META, job["id"], done)
         return {"FINISHED"}
 
 
@@ -332,14 +356,18 @@ class SATH_OT_safety_check(bpy.types.Operator):
         if not s.model_id:
             self.report({"ERROR"}, "Avval modelni oching")
             return {"CANCELLED"}
+        model_id, version_id = s.model_id, s.version_id or None
 
-        def do():
-            res = session.client().safety_check(s.model_id, s.version_id or None)
+        def apply(res):
+            sc = bpy.context.scene.ges
             head, rows = flows.safety_rows(res)
-            s.safety_head = head
-            props.fill(s.safety_rows, rows)
+            sc.safety_head = head
+            props.fill(sc.safety_rows, rows)
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        return run_op(
+            self, "Xavfsizlik tekshiruvi", lambda ctx: session.client().safety_check(model_id, version_id), apply,
+            key="sim.safety",
+        )  # fmt: skip
 
 
 CLASSES = (

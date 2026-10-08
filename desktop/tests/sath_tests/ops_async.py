@@ -34,7 +34,7 @@ def run(ctx):
         ("GET", "/api/models/3/versions"): js([{"id": 11, "number": 1, "state": "wip", "message": "", "author_username": "a"}]),
         ("GET", "/api/versions/11/file"): lambda: (time.sleep(SLOW), (200, ifc_bytes))[1],
         ("GET", "/api/versions/11/diff"): slow({"added": [], "changed": [], "deleted": [], "summary": {"added": 0, "changed": 0, "deleted": 0}}),
-        ("POST", "/api/models/3/sim/safety-check"): slow({"scenarios": [], "ok": True}),
+        ("POST", "/api/models/3/sim/safety-check"): slow({"score": 100, "verdict": "yaxshi", "counts": {"ok": 0, "warn": 0, "fail": 0, "skip": 0}, "rows": []}),
     })  # fmt: skip
     TASKS.inline = False
     try:
@@ -60,6 +60,26 @@ def run(ctx):
         TASKS.drain(20)
         s = bpy.context.scene.ges
         assert s.version_id == 11 and "v1 ochildi" in s.status, s.status
+
+        s = bpy.context.scene.ges
+        t0 = time.perf_counter()
+        assert bpy.ops.sath.diff() == {"FINISHED"}
+        assert time.perf_counter() - t0 < SLOW / 2, "diff bloklayapti"
+        try:  # Review Focus 1: takror bosish rad etiladi
+            bpy.ops.sath.diff()
+        except RuntimeError:
+            pass  # -b da WARNING report RuntimeError emas; CANCELLED qaytishi kifoya
+        assert sum(1 for t in TASKS.active() if t.key == "review.diff") == 1
+        TASKS.drain(10)
+        assert "v1:" in bpy.context.scene.ges.diff_note, bpy.context.scene.ges.diff_note
+
+        s = bpy.context.scene.ges
+        s.model_id = 3
+        t0 = time.perf_counter()
+        assert bpy.ops.sath.safety_check() == {"FINISHED"}
+        assert time.perf_counter() - t0 < SLOW / 2, "safety_check bloklayapti"
+        TASKS.drain(10)
+        assert bpy.context.scene.ges.safety_head.startswith("100"), bpy.context.scene.ges.safety_head
     finally:
         TASKS.inline = True
         stop()

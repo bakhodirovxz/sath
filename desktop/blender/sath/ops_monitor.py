@@ -8,10 +8,83 @@ from datetime import datetime, timedelta, timezone
 import bpy
 
 from . import flows, ifc, props, session, water
+from .core.tasks import TASKS
+from .core.ui_tasks import ensure_pump
 from .ops_server import _sel
 from .shared.server_client import ServerError
 
 INTERVAL = 5.0
+
+
+def _fetch(project_id: int, model_id: int, hours: float) -> dict:
+    """Ishchi oqim (bpy siz): sensorlar, egizak, sog'liq, vaqt mashinasi uchun sath tarixi."""
+    c = session.client()
+    if not project_id:
+        project_id = c.model(model_id)["project_id"]
+    out: dict = {"project_id": project_id, "sensors": c.sensors(project_id, model_id), "twin": None, "health": None,
+                 "twin_err": None, "level_sensor": None, "level_pts": None, "level_err": None}  # fmt: skip
+    try:
+        out["twin"] = c.twin(project_id)
+        out["health"] = c.plant_health(project_id)
+    except (ServerError, RuntimeError, KeyError, TypeError) as e:
+        out["twin_err"] = str(e)
+    if hours > 0:
+        ls = next((x for x in out["sensors"] if x.get("kind") == "level" and x.get("enabled")), None)
+        out["level_sensor"] = ls
+        if ls is not None:
+            try:
+                out["level_pts"] = c.readings(ls["id"], hours=hours + 1)
+            except ServerError as e:
+                out["level_err"] = str(e)
+    return out
+
+
+def _apply(d: dict, hours: float) -> None:
+    s = bpy.context.scene.ges
+    if not s.monitor_on:
+        return
+    s.project_id = d["project_id"]
+    sensors = d["sensors"]
+    alarms = [x for x in sensors if x.get("enabled") and x.get("alarm") != "ok"]
+    s.monitor_status = f"{len(sensors)} sensor · {len(alarms)} alarm · yangilanish {INTERVAL:.0f} s"
+    sel = s.sensors_index
+    props.fill(s.sensors, flows.sensor_rows(sensors))
+    s.sensors_index = min(sel, len(s.sensors) - 1)
+    health_assets: list[dict] = []
+    if d["twin_err"] is None:
+        tw, h = d["twin"], d["health"]
+        s.twin_head = flows.twin_head(tw)
+        props.fill(s.twin_rows, flows.twin_rows(tw))
+        props.fill(s.twin_safety, flows.twin_safety_rows(tw.get("safety") or []))
+        s.health_head = flows.health_head(h)
+        props.fill(s.health_rows, flows.health_rows(h))
+        health_assets = h.get("assets", [])
+    else:
+        s.twin_head = f"Egizak: {d['twin_err']}"
+    ifc.ALARM_STATE.restore()
+    if s.monitor_color:
+        colors = flows.health_colors(health_assets) if s.monitor_color_mode == "health" else flows.alarm_colors(sensors)
+        ifc.ALARM_STATE.paint(colors)
+    if s.monitor_water:
+        lvl = flows.water_sensor_level(sensors) if hours <= 0 else _level_from(d, hours)
+        if lvl is not None:
+            water.place_water_plane(bpy.context, lvl)
+
+
+def _level_from(d: dict, hours_ago: float) -> float | None:
+    """Vaqt mashinasi: sath sensori tarixidan N soat oldingi qiymat."""
+    s = bpy.context.scene.ges
+    ls = d["level_sensor"]
+    if ls is None:
+        s.time_note = "sath sensori yo'q"
+        return None
+    if d["level_err"] is not None:
+        s.time_note = f"tarix xatosi: {d['level_err']}"
+        return None
+    ts = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+    v = flows.reading_at(d["level_pts"] or [], ts)
+    s.time_note = f"{hours_ago:.1f} soat oldin: {'—' if v is None else f'{v:.2f} m'} ({ls['name']})"
+    return v
 
 
 def _tick():
@@ -19,58 +92,19 @@ def _tick():
     if not s.monitor_on or not session.is_logged_in():
         ifc.ALARM_STATE.restore()
         return None
-    try:
-        sensors = session.client().sensors(s.project_id, s.model_id)
-    except (ServerError, RuntimeError) as e:
-        s.monitor_status = f"Xato: {e}"
-        return INTERVAL
-    alarms = [x for x in sensors if x.get("enabled") and x.get("alarm") != "ok"]
-    s.monitor_status = f"{len(sensors)} sensor · {len(alarms)} alarm · yangilanish {INTERVAL:.0f} s"
-    sel = s.sensors_index
-    props.fill(s.sensors, flows.sensor_rows(sensors))
-    s.sensors_index = min(sel, len(s.sensors) - 1)
-    # egizak va sog'liq (xato bo'lsa panel bo'sh qoladi, monitoring to'xtamaydi)
-    health_assets: list[dict] = []
-    try:
-        tw = session.client().twin(s.project_id)
-        s.twin_head = flows.twin_head(tw)
-        props.fill(s.twin_rows, flows.twin_rows(tw))
-        props.fill(s.twin_safety, flows.twin_safety_rows(tw.get("safety") or []))
-        h = session.client().plant_health(s.project_id)
-        s.health_head = flows.health_head(h)
-        props.fill(s.health_rows, flows.health_rows(h))
-        health_assets = h.get("assets", [])
-    except (ServerError, RuntimeError, KeyError, TypeError) as e:
-        s.twin_head = f"Egizak: {e}"
-    if s.monitor_color:
-        colors = flows.health_colors(health_assets) if s.monitor_color_mode == "health" else flows.alarm_colors(sensors)
-        ifc.ALARM_STATE.restore()
-        ifc.ALARM_STATE.paint(colors)
-    else:
-        ifc.ALARM_STATE.restore()
-    if s.monitor_water:
-        lvl = flows.water_sensor_level(sensors) if s.time_hours <= 0 else _level_at(sensors, s.time_hours)
-        if lvl is not None:
-            water.place_water_plane(bpy.context, lvl)
+    pid, mid, hours, ep = s.project_id, s.model_id, s.time_hours, session.epoch()
+
+    def apply(d):
+        if session.epoch() == ep:
+            _apply(d, hours)
+
+    def error(e):
+        bpy.context.scene.ges.monitor_status = f"Xato: {e}"
+
+    # K3: tarmoq ishchi oqimda; oldingi tik hali tugamagan bo'lsa bu tik o'tkazib yuboriladi (key)
+    TASKS.run("Monitoring", lambda ctx: _fetch(pid, mid, hours), apply, error, key="monitor.tick", cancellable=False, quiet=True)
+    ensure_pump()
     return INTERVAL
-
-
-def _level_at(sensors: list[dict], hours_ago: float) -> float | None:
-    """Vaqt mashinasi: sath sensori tarixidan N soat oldingi qiymat."""
-    s = bpy.context.scene.ges
-    lvl_sensor = next((x for x in sensors if x.get("kind") == "level" and x.get("enabled")), None)
-    if lvl_sensor is None:
-        s.time_note = "sath sensori yo'q"
-        return None
-    ts = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
-    try:
-        pts = session.client().readings(lvl_sensor["id"], hours=hours_ago + 1)
-    except ServerError as e:
-        s.time_note = f"tarix xatosi: {e}"
-        return None
-    v = flows.reading_at(pts, ts)
-    s.time_note = f"{hours_ago:.1f} soat oldin: {'—' if v is None else f'{v:.2f} m'} ({lvl_sensor['name']})"
-    return v
 
 
 class SATH_OT_monitor_toggle(bpy.types.Operator):
@@ -87,8 +121,6 @@ class SATH_OT_monitor_toggle(bpy.types.Operator):
         s = context.scene.ges
         s.monitor_on = not s.monitor_on
         if s.monitor_on:
-            if not s.project_id:
-                s.project_id = session.client().model(s.model_id)["project_id"]
             if not bpy.app.timers.is_registered(_tick):
                 bpy.app.timers.register(_tick, first_interval=0.0)
         else:

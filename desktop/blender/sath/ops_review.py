@@ -5,12 +5,13 @@ from __future__ import annotations
 import bpy
 
 from . import flows, ifc, props, session, viewpoint
+from .core.ui_tasks import run_op
 from .ops_server import _sel, guard
 
 
 def _need_model(op, s) -> bool:
     if not s.model_id:
-        op.report({"ERROR"}, "Avval serverdagi modelni oching (Model → Ochish)")
+        op.report({"ERROR"}, "Avval serverdagi modelni oching (Model в†’ Ochish)")
         return False
     return True
 
@@ -25,7 +26,7 @@ class SATH_OT_refresh_issues(bpy.types.Operator):
             return {"CANCELLED"}
         ok = guard(self, lambda: props.fill(s.issues, flows.issue_rows(session.client(), s.model_id)))
         if ok and len(s.issues) and not (0 <= s.issues_index < len(s.issues)):
-            s.issues_index = 0  # update → show_issue
+            s.issues_index = 0  # update в†’ show_issue
         return {"FINISHED"} if ok else {"CANCELLED"}
 
 
@@ -87,7 +88,7 @@ class SATH_OT_comment_issue(bpy.types.Operator):
 
 
 class SATH_OT_new_issue(bpy.types.Operator):
-    """Yangi issue — joriy ko'rinish (kamera, tanlangan elementlar) bilan"""
+    """Yangi issue вЂ” joriy ko'rinish (kamera, tanlangan elementlar) bilan"""
 
     bl_idname = "sath.new_issue"
     bl_label = "Yangi issue"
@@ -127,7 +128,7 @@ class SATH_OT_refresh_crs(bpy.types.Operator):
             props.fill(s.crs, flows.cr_rows(session.client(), s.model_id))
             s.my_role = flows.model_role(session.client(), s.model_id) or ""
             if len(s.crs) and not (0 <= s.crs_index < len(s.crs)):
-                s.crs_index = 0  # update → show_cr
+                s.crs_index = 0  # update в†’ show_cr
 
         return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
 
@@ -217,7 +218,7 @@ class SATH_OT_reject_cr(bpy.types.Operator):
 
 
 class SATH_OT_diff(bpy.types.Operator):
-    """Tanlangan versiyaning ota bilan farqi — 3D da rang (yashil qo'shilgan, sariq o'zgargan)"""
+    """Tanlangan versiyaning ota bilan farqi вЂ” 3D da rang (yashil qo'shilgan, sariq o'zgargan)"""
 
     bl_idname = "sath.diff"
     bl_label = "Ota bilan farq (3D rang)"
@@ -230,16 +231,17 @@ class SATH_OT_diff(bpy.types.Operator):
     def execute(self, context):
         s = context.scene.ges
         v = _sel(s.versions, s.versions_index)
+        vid, vnum = v.item_id, v.number
 
-        def do():
-            d = session.client().diff(v.item_id)
+        def apply(d):
+            sc = bpy.context.scene.ges
             ifc.DIFF_STATE.restore()
             colors, text = flows.diff_colors(d)
             n = ifc.DIFF_STATE.paint(colors)
-            note = "" if s.version_id == v.item_id else "(diqqat: boshqa versiya ochiq) "
-            s.diff_note = f"{note}v{v.number}: {text}. 3D da {n} obyekt bo'yaldi."
+            note = "" if sc.version_id == vid else "(diqqat: boshqa versiya ochiq) "
+            sc.diff_note = f"{note}v{vnum}: {text}. 3D da {n} obyekt bo'yaldi."
 
-        return {"FINISHED"} if guard(self, do) else {"CANCELLED"}
+        return run_op(self, f"v{vnum} farqi", lambda ctx: session.client().diff(vid), apply, key="review.diff")
 
 
 class SATH_OT_clear_diff(bpy.types.Operator):

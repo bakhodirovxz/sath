@@ -1,7 +1,6 @@
 """GUI ko'rinish: namuna GES + gidrozarba markerlari (server bor bo'lsa) — skrinshot uchun; animatsiya tozalanmaydi."""
 
 import os
-import time
 
 import bpy
 from creds import admin_password
@@ -26,11 +25,10 @@ def run(ctx):
     s.project_id, s.model_id, s.model_name = proj["id"], m["id"], m["name"]
     s.hammer_close_s = 3.0
     job = c.create_sim(s.model_id, "hammer", None, ops_twin.hammer_params(s), kind="water_hammer")
-    poll = ops_sim._poll_factory(ops_twin.HAMMER_META, job["id"], lambda r: sim_anim.animate_hammer(bpy.context, r, ges_objects.by_role("penstock:1")))
-    for _ in range(120):
-        if poll() is None:
-            break
-        time.sleep(0.5)
+    from sath.core.tasks import TASKS
+
+    ops_sim.wait_job(ops_twin.HAMMER_META, job["id"], lambda r: sim_anim.animate_hammer(bpy.context, r, ges_objects.by_role("penstock:1")))
+    TASKS.drain(60)  # GUI da asinxron — drain natijani asosiy oqimda qo'llaydi
     assert s.sim_status.startswith("Tayyor"), s.sim_status
     bpy.context.scene.frame_set(max(2, bpy.context.scene.frame_end // 3))
 
