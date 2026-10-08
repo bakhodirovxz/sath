@@ -188,10 +188,13 @@ def precompile() -> None:
     py = next((blender_ver_dir() / "python" / "bin").glob("python*.exe"), None)
     if py is None:
         raise SystemExit("stage da Blender Python i topilmadi")
+    ext = STAGE / "portable" / "extensions"
     dirs = [blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath",
-            STAGE / "portable" / "extensions", STAGE / "portable" / "scripts"]  # fmt: skip
-    # -f: mavjud timestamp-based .pyc (install-file paytida yozilgan) ham checked-hash ga qayta yoziladi
+            ext / "user_default", STAGE / "portable" / "scripts"]  # fmt: skip
+    # -f: mavjud timestamp-based .pyc (install-file paytida yozilgan) ham qayta yoziladi
     run([py, "-I", "-m", "compileall", "-q", "-f", "-j", "0", "--invalidation-mode", "checked-hash", *dirs])
+    # .local — uchinchi tomon bog'liqliklari (o'zgarmas): unchecked-hash, har importda manba o'qilmaydi/hash qilinmaydi
+    run([py, "-I", "-m", "compileall", "-q", "-f", "-j", "0", "--invalidation-mode", "unchecked-hash", ext / ".local"])
 
 
 def stage_mb() -> int:
@@ -207,7 +210,13 @@ def check_stage() -> None:
     missing = [n for n in need if not (tpl / n).exists()]
     if missing:
         raise SystemExit(f"Sath template da yo'q: {missing}")
-    print(f"stage: {stage_mb()} MB (FreeCAD siz)", flush=True)
+    sys.path.insert(0, str(ADDON.parent))
+    from sath.core import budget  # noqa: E402
+
+    mb = stage_mb()
+    if mb > budget.BUNDLE_MAX_MB:
+        raise SystemExit(f"stage {mb} MB > BUNDLE_MAX_MB {budget.BUNDLE_MAX_MB}")
+    print(f"stage: {mb} MB (FreeCAD siz, byudjet <= {budget.BUNDLE_MAX_MB})", flush=True)
 
 
 def copy_libredwg() -> bool:

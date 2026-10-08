@@ -52,7 +52,8 @@ def env() -> dict:
 
 
 def pyc_flags(path: Path) -> int:
-    return int.from_bytes(path.read_bytes()[4:8], "little")  # PEP 552: 3 = checked-hash, 0 = timestamp
+    with path.open("rb") as fh:
+        return int.from_bytes(fh.read(8)[4:8], "little")  # PEP 552: 3 = checked-hash, 1 = unchecked-hash, 0 = timestamp
 
 
 def pyc_problems(stage: Path, tpl_dir: Path | None) -> list[str]:
@@ -63,14 +64,16 @@ def pyc_problems(stage: Path, tpl_dir: Path | None) -> list[str]:
         "sath extension": list((stage / "portable" / "extensions" / "user_default" / "sath").rglob("*.pyc")),
         "template": list((tpl_dir / "__pycache__").glob("*.pyc")) if tpl_dir is not None else [],
         "sath_boot": list((stage / "portable" / "scripts").rglob("*.pyc")),
+        ".local": list((stage / "portable" / "extensions" / ".local").rglob("*.pyc")),
     }
     for label, files in groups.items():
+        want = 1 if label == ".local" else 3  # .local — unchecked-hash (1), qolgani checked-hash (3)
         if not files:
             out.append(f".pyc yo'q: {label}")
             continue
-        bad = [f.name for f in files if pyc_flags(f) != 3]
+        bad = [f.name for f in files if pyc_flags(f) != want]
         if bad:
-            out.append(f"{label}: checked-hash emas ({len(bad)}/{len(files)}): {bad[:3]}")
+            out.append(f"{label}: .pyc flags != {want} ({len(bad)}/{len(files)}): {bad[:3]}")
     return out
 
 
@@ -104,6 +107,11 @@ def main() -> int:
     if "--app-template" in nsi:  # --app-template addon/tema prefs ni tashlaydi; sath_boot.py o'zi o'tkazadi
         problems.append("sath.nsi da --app-template bor")
     problems += pyc_problems(a.stage, tpl_dir)
+    from sath.core import budget
+
+    mb = stage_mb(a.stage)
+    if mb > budget.BUNDLE_MAX_MB:
+        problems.append(f"stage hajmi {mb} MB > BUNDLE_MAX_MB {budget.BUNDLE_MAX_MB}")
     if problems:
         print(chr(10).join("  - " + p for p in problems))
         print("[BUNDLE-FAIL]")

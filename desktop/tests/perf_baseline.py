@@ -203,8 +203,9 @@ def _main() -> int:
             "## Bundle hajmi (ochilgan stage)",
             "",
             f"FreeCAD olib tashlanishi **{FREECAD_MB} MB** tejadi; P0 ({BUNDLE_P0_MB} MB) ga nisbatan sof o'zgarish "
-            f"**−{BUNDLE_P0_MB - size} MB** ({size} MB). Qolgan o'sish FreeCAD tejamidan keyin: Bonsai 0.9.0 va oldindan "
-            "kompilyatsiya qilingan `.pyc` fayllar (ular «FreeCAD tejami» taqqosiga kirmaydi).",
+            f"**−{BUNDLE_P0_MB - size} MB** ({size} MB). Qolgan o'sish (taxminiy: P0 uchun toifalar bo'yicha "
+            "o'lchov yo'q) Bonsai 0.9.0 va oldindan kompilyatsiya qilingan `.pyc` fayllar bilan bog'liq (ular «FreeCAD "
+            "tejami» taqqosiga kirmaydi). Quyidagi toifalar — joriy stage ning o'lchovi.",
             "",
             "| Toifa | MB |",
             "|---|---|",
