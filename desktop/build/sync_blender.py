@@ -21,7 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "common" / "sath_common"
 DST = ROOT / "desktop" / "blender" / "sath" / "shared"
-FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py", "cad_common.py"]
+CORE_FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py", "cad_common.py"]
+FILES = CORE_FILES + ["geom.py"]  # geom (P2) — sof numpy geometriya; faqat addon nusxasi (legacy workbench ga emas)
 # sim/ges_sim dagi sof (faqat math) modullar — server bilan bir xil formula (SIM-01)
 SIM_SRC = ROOT / "sim" / "ges_sim"
 SIM_FILES = ["cavitation.py"]
@@ -31,7 +32,7 @@ WB_DST = ROOT / "desktop" / "blender" / "sath" / "wb"
 SERVER_DST = ROOT / "server" / "ges_server" / "models"
 # Addondan tashqari nusxalar: papka → fayllar (manba SRC)
 EXTRA: dict[Path, list[str]] = {
-    WB_SRC: FILES,
+    WB_SRC: CORE_FILES,
     SERVER_DST: ["dxf_prepare.py", "assimp_load.py", "cad_common.py"],
 }
 INIT = '"""common/sath_common dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'
