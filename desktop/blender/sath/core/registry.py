@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import hashlib
 import importlib
 import importlib.abc
@@ -69,6 +70,7 @@ class Manifest:
     category: str = "Sath"
     default_enabled: bool = True
     order: int = 100
+    digest: str = ""  # uchinchi tomon: imzolangan xabar sha256 (discover) — kod o'zgarsa manifest ham boshqa bo'ladi
 
 
 def parse_range(spec: str) -> list[tuple[str, tuple[int, int]]]:
@@ -193,10 +195,13 @@ def module_message(path: Path, manifest: Manifest) -> bytes:
     return _message(_snapshot(path), manifest)
 
 
-def _verified_snapshot(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> dict[str, bytes]:
+_NO_KEYS = "ishonchli kalit yo'q — Sozlamalar → Sath → «Modul kalitlari»"
+
+
+def _verify(files: dict[str, bytes], manifest: Manifest, trusted_keys: list[bytes]) -> bytes:
+    """Nusxa (files) imzosini tekshiradi; qaytaradi: imzolangan kanonik xabar."""
     if not trusted_keys:
-        raise ManifestError("ishonchli kalit yo'q — Sozlamalar → Sath → «Modul kalitlari»")
-    files = _snapshot(path)
+        raise ManifestError(_NO_KEYS)
     if SIGNATURE not in files:
         raise ManifestError(f"imzolanmagan ({SIGNATURE} yo'q)")
     try:
@@ -206,11 +211,39 @@ def _verified_snapshot(path: Path, manifest: Manifest, trusted_keys: list[bytes]
     msg = _message(files, manifest)
     if not any(ed25519_verify(k, msg, sig) for k in trusted_keys):
         raise ManifestError("imzo noto'g'ri yoki kalit ishonchli emas — modul o'zgartirilgan bo'lishi mumkin")
-    return files
+    return msg
+
+
+def _snapshot_manifest(files: dict[str, bytes], path: Path) -> Manifest:
+    """Manifest aynan imzo tekshiriladigan nusxadan (diskdan alohida o'qilmaydi)."""
+    try:
+        text = files[MANIFEST].decode("utf-8-sig")
+    except (KeyError, UnicodeDecodeError):
+        raise ManifestError(f"{MANIFEST} o'qilmadi") from None
+    return parse_manifest(text, path, "user")
+
+
+def _verified_snapshot(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> tuple[dict[str, bytes], bytes]:
+    if not trusted_keys:  # kalitsiz papkani o'qib o'tirmaymiz
+        raise ManifestError(_NO_KEYS)
+    files = _snapshot(path)
+    return files, _verify(files, manifest, trusted_keys)
+
+
+def _discover_user(path: Path, trusted_keys: list[bytes]) -> Manifest:
+    """Uchinchi tomon modulini bir marta o'qilgan nusxadan tekshiradi; digest — imzolangan xabar sha256."""
+    if not trusted_keys:
+        raise ManifestError(_NO_KEYS)
+    files = _snapshot(path)
+    m = _snapshot_manifest(files, path)
+    if "__init__.py" not in files:
+        raise ManifestError("__init__.py yo'q")
+    msg = _verify(files, m, trusted_keys)
+    return dataclasses.replace(m, digest=hashlib.sha256(msg).hexdigest())
 
 
 def verify_signature(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> None:
-    _verified_snapshot(path, manifest, trusted_keys)
+    _verified_snapshot(path, manifest, list(trusted_keys))
 
 
 # ---------- uchinchi tomon modulini xavfsiz import ----------
@@ -258,8 +291,8 @@ class _UserModuleFinder(importlib.abc.MetaPathFinder):
         spec = importlib.util.spec_from_loader(fullname, _SnapshotLoader(origin, files[rel]), origin=origin,
                                                is_package=is_pkg)  # fmt: skip
         spec.has_location = True  # __file__ o'rnatilsin
-        if is_pkg:
-            spec.submodule_search_locations = [str(Path(origin).parent)]
+        if is_pkg:  # bo'sh: __path__ bo'yicha boshqa finder (PathFinder) diskdan qidira olmasin
+            spec.submodule_search_locations = []
         return spec
 
 
@@ -283,14 +316,13 @@ def load_user_module(manifest: Manifest, trusted_keys: Iterable[bytes]) -> Modul
     qayta tekshiriladi (discover dan keyingi almashtirish — TOCTOU — yopiladi), manifest discover dagisi bilan bir xil
     bo'lishi shart; kod va barcha submodullar aynan shu tekshirilgan baytlardan bajariladi, bayt-kod o'qilmaydi va
     __pycache__ yozilmaydi. Nom: `_sath_user_<id>` (paket; ichida `from . import x` ishlaydi). Xato — ManifestError
-    yoki modulning o'z istisnosi; bunda sys.modules tozalanadi (tuzatilgach qayta yuklash mumkin)."""
-    files = _verified_snapshot(manifest.path, manifest, list(trusted_keys))
-    try:
-        text = files[MANIFEST].decode("utf-8-sig")
-    except (KeyError, UnicodeDecodeError):
-        raise ManifestError(f"{MANIFEST} o'qilmadi") from None
-    if parse_manifest(text, manifest.path, "user") != manifest:
-        raise ManifestError("manifest topilgandan keyin o'zgargan — qayta skanerlang")
+    yoki modulning o'z istisnosi; bunda sys.modules tozalanadi (tuzatilgach qayta yuklash mumkin).
+    manifest.digest (discover to'ldiradi) bo'lsa — kod ham aynan topilgandagi bo'lishi shart (qayta imzolangan yangi
+    versiya eski yozuv nomidan yuklanmaydi; qayta skanerlash kerak)."""
+    files, msg = _verified_snapshot(manifest.path, manifest, list(trusted_keys))
+    current = dataclasses.replace(_snapshot_manifest(files, manifest.path), digest=manifest.digest)
+    if current != manifest or (manifest.digest and hashlib.sha256(msg).hexdigest() != manifest.digest):
+        raise ManifestError("modul topilgandan keyin o'zgargan — qayta skanerlang")
     if "__init__.py" not in files:
         raise ManifestError("__init__.py yo'q")
     name = user_module_name(manifest.id)
@@ -330,23 +362,26 @@ def discover(bundled: Path, user: Path | None = None, trusted_keys: Iterable[byt
     found: list[Manifest] = []
     errors: list[tuple[str, str]] = []
     for origin, root in (("bundled", bundled), ("user", user)):
-        if root is None or not root.is_dir():
+        if root is None:
             continue
         try:
+            if not root.is_dir():
+                continue
             dirs = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
         except OSError as e:  # masalan foydalanuvchi papkasiga ruxsat yo'q — topilgan birinchi tomon modullari qolsin
             errors.append((root.name if origin == "bundled" else f"{root.name} (foydalanuvchi)", f"papka o'qilmadi: {e}"))
             continue
         for d in dirs:
-            if not (d / MANIFEST).is_file():
-                continue
             label = d.name if origin == "bundled" else f"{d.name} (foydalanuvchi)"
             try:
-                m = parse_manifest((d / MANIFEST).read_text(encoding="utf-8-sig"), d, origin)
-                if not (d / "__init__.py").is_file():
-                    raise ManifestError("__init__.py yo'q")
-                if origin == "user":
-                    verify_signature(d, m, keys)
+                if not (d / MANIFEST).is_file():
+                    continue
+                if origin == "user":  # manifest va kod — imzo tekshirilgan bitta nusxadan
+                    m = _discover_user(d, keys)
+                else:
+                    m = parse_manifest((d / MANIFEST).read_text(encoding="utf-8-sig"), d, origin)
+                    if not (d / "__init__.py").is_file():
+                        raise ManifestError("__init__.py yo'q")
                 if any(x.id == m.id for x in found):
                     raise ManifestError(f"id «{m.id}» band (birinchi tomon moduli)")
                 found.append(m)
@@ -438,8 +473,10 @@ class Registry:
     register_class / unregister_class (bpy.utils ...), log(matn)."""
 
     def __init__(self, *, import_module: Callable[[Manifest], Any], register_class: Callable[[type], None],
-                 unregister_class: Callable[[type], None], log: Callable[[str], None] = print) -> None:  # fmt: skip
+                 unregister_class: Callable[[type], None], log: Callable[[str], None] = print,
+                 on_teardown: Callable[[str], None] | None = None) -> None:  # fmt: skip
         self._import = import_module
+        self._on_teardown = on_teardown  # modul to'xtaganda (o'chirildi / register yiqildi) — masalan fon vazifalari
         self._register_class = register_class
         self._unregister_class = unregister_class
         self._log = log
@@ -569,6 +606,11 @@ class Registry:
         rec.state = "disabled"
 
     def _teardown(self, rec: Record) -> None:
+        if self._on_teardown is not None:
+            try:
+                self._on_teardown(rec.manifest.id)
+            except (Exception, SystemExit):
+                self._log(f"[sath] «{rec.manifest.id}» to'xtatish ilgagida xato:\n{traceback.format_exc()}")
         while rec.undo:
             fn = rec.undo.pop()
             try:

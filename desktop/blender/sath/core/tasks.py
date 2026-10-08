@@ -191,14 +191,19 @@ class TaskManager:
         for t in self._active:
             t.cancel()
 
-    def cancel_prefix(self, prefix: str) -> int:
+    def cancel_prefix(self, prefix: str, *, drop: bool = False) -> int:
         """Kaliti `prefix` bilan boshlanadigan vazifalarni bekor qiladi (modul o'chirilganda: `<mod_id>.`).
-        cancellable=False ham — modul kodi endi ro'yxatda emas, natijasi qo'llanmasligi kerak. Qaytaradi: nechta.
-        Diqqat: bekor qilingan vazifaning on_cancel() i keyin pump() da baribir chaqiriladi — o'chirilgan modul
-        yopilmalari ishlamasligi uchun xost (core/host.py) bu vazifalarni `dropped` deb belgilashi kerak."""
+        cancellable=False ham — modul kodi endi ro'yxatda emas, natijasi qo'llanmasligi kerak. Qaytaradi: nechta
+        yangi bekor qilindi. drop=True (core/host.py — modul o'chirilganda): bu vazifalar (oldin bekor qilinganlari
+        ham) `dropped` — pump() ularning on_cancel/on_done/on_error va on_finished ini chaqirmaydi (o'chirilgan modul
+        yopilmalari ishlamaydi); ishchi tugaguncha active() da qoladi."""
         n = 0
         for t in self._active:
-            if t.key is not None and t.key.startswith(prefix) and not t.cancelled:
+            if t.key is None or not t.key.startswith(prefix):
+                continue
+            if drop:
+                t.dropped = True
+            if not t.cancelled:
                 t.cancel()
                 n += 1
         return n

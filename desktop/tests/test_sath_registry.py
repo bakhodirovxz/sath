@@ -478,3 +478,85 @@ def test_sys_exit_in_module_is_isolated():
     assert reg.records["x"].state == "failed" and "SystemExit" in reg.records["x"].error
     assert reg.disable("y") == ["y"] and reg.records["y"].state == "disabled"
     assert any("SystemExit" in e for e in f.errors)
+
+
+# ---------- Task 5: qayta skaner, teardown ilgagi, manifest nusxadan, __path__ ----------
+
+
+def test_teardown_hook_runs_on_disable_and_failed_register():
+    f = Fake()
+    f.make("a")
+    f.make("b", fail=True)
+    seen: list[str] = []
+    reg = Registry(import_module=lambda m: f.modules[m.id], register_class=f.register_class,
+                   unregister_class=f.unregister_class, log=f.errors.append, on_teardown=seen.append)  # fmt: skip
+    reg.api = SimpleNamespace(register_classes=reg.add_classes, on_unregister=reg.add_cleanup)
+    reg.load([_m("a"), _m("b")])
+    reg.start(lambda m: True)
+    assert seen == ["b"]
+    reg.disable("a")
+    assert seen == ["b", "a"]
+    reg.disable("a")  # allaqachon o'chiq — ilgak qayta chaqirilmaydi
+    assert seen == ["b", "a"]
+
+
+def test_user_manifest_is_parsed_from_verified_snapshot(tmp_path, monkeypatch):
+    d = _signed(tmp_path, "ext")
+    real = Path.read_text
+
+    def read_text(self, *a, **k):
+        if self.name == registry.MANIFEST and self.parent == d:
+            raise AssertionError("manifest diskdan alohida o'qildi")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert [m.id for m in found] == ["ext"] and errors == []
+    assert len(found[0].digest) == 64
+
+
+def test_resigned_changed_code_gives_new_manifest_and_stale_load_is_rejected(tmp_path, unload):
+    d = _signed(tmp_path, "ext_dg", {"__init__.py": "WHO = 1\n"})
+    (old,), _ = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    (d / "__init__.py").write_text("WHO = 2\n", encoding="utf-8")
+    sign_module.sign_module(d, SEED)
+    (new,), errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert errors == [] and new != old and new.digest != old.digest  # Registry.load yangi yozuv ochadi
+    unload("ext_dg")
+    with pytest.raises(ManifestError, match="o'zgargan"):
+        registry.load_user_module(old, KEYS)  # imzo to'g'ri, lekin topilgandagi kod emas
+    assert registry.load_user_module(new, KEYS).WHO == 2
+
+
+def test_user_package_path_is_empty(tmp_path, unload):
+    d = _signed(tmp_path, "ext_pp", {"__init__.py": "from .pkg import sub\n", "pkg/__init__.py": "",
+                                     "pkg/sub.py": "X = 1\n"})  # fmt: skip
+    unload("ext_pp")
+    mod = registry.load_user_module(_user_manifest(d), KEYS)
+    assert mod.__path__ == [] and sys.modules[mod.__name__ + ".pkg"].__path__ == []  # PathFinder ga tushmaydi
+    assert mod.pkg.sub.X == 1
+
+
+@pytest.mark.parametrize("where", ["root", "manifest"])
+def test_discover_permission_errors_become_entries(tmp_path, monkeypatch, where):
+    bundled, user = tmp_path / "b", tmp_path / "u"
+    _write(bundled, "review")
+    _signed(tmp_path, "ext")
+    real_is_dir, real_is_file = Path.is_dir, Path.is_file
+
+    def is_dir(self):
+        if where == "root" and self == user:
+            raise PermissionError("ruxsat yo'q")
+        return real_is_dir(self)
+
+    def is_file(self):
+        if where == "manifest" and self == user / "ext" / registry.MANIFEST:
+            raise PermissionError("ruxsat yo'q")
+        return real_is_file(self)
+
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    found, errors = registry.discover(bundled, user, KEYS)
+    assert [m.id for m in found] == ["review"]
+    label = "u (foydalanuvchi)" if where == "root" else "ext (foydalanuvchi)"
+    assert "ruxsat yo'q" in dict(errors)[label]

@@ -79,7 +79,11 @@ def module_enabled(mod_id: str) -> bool:
 
 
 class events:
-    publish = staticmethod(_events.publish)
+    @staticmethod
+    def publish(topic: str, **payload) -> None:
+        """Obunachilar bpy ga tegadi — faqat asosiy oqimdan (ishchi oqim natijani on_done orqali qaytarsin)."""
+        _main_thread()
+        _events.publish(topic, **payload)
 
     @staticmethod
     def subscribe(topic: str, fn: Callable[[dict], None], *, owner: str | None = None) -> Callable[[], None]:

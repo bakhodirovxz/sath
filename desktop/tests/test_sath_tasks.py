@@ -216,6 +216,23 @@ def test_cancel_prefix_cancels_only_module_tasks():
     tm.drain(5)
 
 
+def test_cancel_prefix_drop_neutralises_callbacks():
+    """Modul o'chirilganda: vazifa bekor + dropped — on_cancel/on_done/on_finished chaqirilmaydi (oldin bekor
+    qilingani ham), boshqa modul vazifasi tegilmaydi."""
+    tm = TaskManager()
+    calls = []
+    tm.on_finished = lambda task, outcome: calls.append(("fin", task.title))
+    a = tm.run("a", lambda ctx: ctx.sleep(5), on_cancel=lambda: calls.append("a"), key="review.diff")
+    b = tm.run("b", lambda ctx: ctx.sleep(5), on_cancel=lambda: calls.append("b"), key="review.list")
+    b.cancel()  # foydalanuvchi X bosgan — on_cancel hali navbatda
+    c = tm.run("c", lambda ctx: ctx.sleep(5), on_cancel=lambda: calls.append("c"), key="reviewx.list")
+    assert tm.cancel_prefix("review.", drop=True) == 1
+    assert a.cancelled and a.dropped and b.dropped and not c.cancelled and not c.dropped
+    c.cancel()
+    tm.drain(5)
+    assert calls == ["c", ("fin", "c")] and tm.active() == []
+
+
 def test_on_finished_reports_outcome():
     tm = TaskManager()
     seen = []
