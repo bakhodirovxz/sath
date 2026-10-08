@@ -24,8 +24,8 @@ jobs:
       # SATH_SIGN_CERT_PASSWORD berilsa blender.exe/sath.exe signtool bilan imzolanadi; bo'lmasa qadam o'tkaziladi
       HAS_SIGN_CERT: ${{ secrets.SATH_SIGN_CERT_PFX_B64 != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
 
       - name: Disk va vositalar
@@ -98,7 +98,7 @@ jobs:
           "ARTIFACT=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
           Get-Item "D:\$name.zip" | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB)}}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT }}
           path: D:\${{ env.ARTIFACT }}.zip
