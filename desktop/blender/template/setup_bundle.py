@@ -40,8 +40,7 @@ if TEMPLATE_DIR is not None:
 # read_homefile(use_factory_startup=True) prefs ni ham zavod holatiga qaytaradi — sozlamalar shundan KEYIN.
 # startup.blend extension lar yoqilmasdan SAQLANADI (yoqish ish joylarini zavod holatiga qaytaradi/Bonsai o'z
 # «BIM» ini qo'shadi); Bonsai ning should_setup_workspace i o'chiriladi (Sath BIM bilan to'qnashmasin).
-p = bpy.context.preferences
-p.app_template = "Sath"
+p = bpy.context.preferences  # app_template userpref ga yozilmaydi — Sath ga sath_boot.py o'tkazadi
 p.view.show_developer_ui = False
 p.view.show_splash = True
 p.filepaths.use_relative_paths = True
@@ -55,5 +54,15 @@ if TEMPLATE_DIR is not None:
     bpy.ops.script.execute_preset(filepath=str(theme), menu_idname="USERPREF_MT_interface_theme_presets")
     p.themes[0].filepath = ""  # build mashinasi yo'li userpref da qolmasin
     print("THEME:", theme.name, flush=True)
+cfg = Path(bpy.utils.user_resource("CONFIG")).resolve()
+portable = (Path(bpy.app.binary_path).parent / "portable").resolve()
+if portable not in cfg.parents:  # BLENDER_USER_CONFIG va h.k. — prefs bundle dan tashqariga yozilmasin
+    raise SystemExit(f"prefs portable/ ga yozilmaydi: {cfg} (kutilgan: {portable})")
 bpy.ops.wm.save_userpref()
-print("USERPREF:", bpy.utils.user_resource("CONFIG"), "app_template=", p.app_template, flush=True)
+print("USERPREF:", cfg, flush=True)
+if TEMPLATE_DIR is not None:  # diskdagi startup.blend: Sath ish joylari faylning o'zida bormi (xotiradagi emas)
+    bpy.ops.wm.open_mainfile(filepath=str(TEMPLATE_DIR / "startup.blend"))
+    disk = sorted(w["sath_ws"] for w in bpy.data.workspaces if w.get("sath_ws"))
+    print("STARTUP-DISK:", disk, flush=True)
+    if disk != tags:
+        raise SystemExit(f"startup.blend da Sath ish joylari yo'q: {disk} != {tags}")

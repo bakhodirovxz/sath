@@ -36,10 +36,17 @@ def main() -> int:
     if sys.platform == "win32" and not appdata:
         print("[GUI-FAIL] APPDATA yo'q — haqiqiy profilni himoya qilib bo'lmaydi")
         return 1
+    root = a.bundle if a.bundle else a.blender.parent  # versiya papkasi (masalan 5.2) blender.exe yonida
     series = BLENDER_SERIES
-    if a.bundle and a.bundle.is_dir():
-        series = next((d.name for d in a.bundle.iterdir() if d.is_dir() and re.fullmatch(r"\d+\.\d+", d.name)), series)
-    real = Path(appdata or Path.home()) / "Blender Foundation" / "Blender" / series / "config" / "userpref.blend"
+    if root.is_dir():
+        series = next((d.name for d in sorted(root.iterdir()) if d.is_dir() and re.fullmatch(r"\d+\.\d+", d.name)), series)
+    if sys.platform == "win32":
+        base = Path(appdata) / "Blender Foundation" / "Blender"
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support" / "Blender"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "blender"
+    real = base / series / "config" / "userpref.blend"
     before = real.stat().st_mtime_ns if real.is_file() else None
     if a.bundle:  # bundle: faqat o'zining portable/ i; hech qanday BLENDER_USER_* o'rnatilmaydi
         for k in [k for k in env if k.startswith("BLENDER_USER_")]:

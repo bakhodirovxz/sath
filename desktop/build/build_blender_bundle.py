@@ -61,6 +61,12 @@ def run(cmd: list, **kw) -> subprocess.CompletedProcess:
     return subprocess.run([str(c) for c in cmd], check=True, **kw)
 
 
+def clean_env() -> dict:
+    """Stage Blender i uchun: BLENDER_USER_* Blender da portable/ dan ustun — prefs/extension lar bundle dan
+    tashqariga (hatto haqiqiy profilga) yozilmasin."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("BLENDER_USER_")}
+
+
 def build_addon_zip(blender: Path) -> Path:
     run([sys.executable, BUILD / "sync_blender.py"])
     DIST.mkdir(exist_ok=True)
@@ -159,6 +165,7 @@ def blender_ver_dir() -> Path:
 def install_template(ver: str) -> Path:
     run([sys.executable, TEMPLATE / "make_splash.py", "--version", ver, "--out", TEMPLATE / "Sath"])
     dst = blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath"
+    shutil.rmtree(dst, ignore_errors=True)  # shablondan olib tashlangan/qayta nomlangan fayllar qolmasin
     shutil.copytree(TEMPLATE / "Sath", dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
     return dst
 
@@ -167,12 +174,23 @@ def install_extensions(bonsai_zip: Path, sath_zip: Path) -> None:
     (STAGE / "portable").mkdir(exist_ok=True)  # Blender 4.2+: portable prefs/extensions shu papkada
     for z in (bonsai_zip, sath_zip):
         run([STAGE / "blender.exe", "-b", "--command", "extension", "install-file",
-             "--repo", "user_default", "--enable", z])  # fmt: skip
+             "--repo", "user_default", "--enable", z], env=clean_env())  # fmt: skip
 
 
 def setup_prefs(template_dir: Path) -> None:
-    run([STAGE / "blender.exe", "-b", "--app-template", "Sath", "--python",
-         TEMPLATE / "setup_bundle.py", "--", template_dir])  # fmt: skip
+    run([STAGE / "blender.exe", "-b", "--python-exit-code", "1", "--app-template", "Sath", "--python",
+         TEMPLATE / "setup_bundle.py", "--", template_dir], env=clean_env())  # fmt: skip
+
+
+def precompile() -> None:
+    """Sath template, sath va Bonsai uchun .pyc oldindan (sovuq birinchi ishga tushish tezroq). Stage Blender ning
+    o'z Python i (teg mos); checked-hash — fayl vaqtiga bog'liq emas (zip/installer vaqtni saqlamasa ham yaroqli)."""
+    py = next((blender_ver_dir() / "python" / "bin").glob("python*.exe"), None)
+    if py is None:
+        raise SystemExit("stage da Blender Python i topilmadi")
+    dirs = [blender_ver_dir() / "scripts" / "startup" / "bl_app_templates_system" / "Sath",
+            STAGE / "portable" / "extensions"]  # fmt: skip
+    run([py, "-I", "-m", "compileall", "-q", "-j", "0", "--invalidation-mode", "checked-hash", *dirs])
 
 
 def stage_mb() -> int:
@@ -281,6 +299,7 @@ def main() -> int:
     shutil.rmtree(STAGE / "freecad", ignore_errors=True)  # eski stage (--keep-stage) dagi FreeCAD
     copy_libredwg()
     write_readme(ver)
+    precompile()
     write_build_info(ver)
     check_stage()
     if not a.no_zip:

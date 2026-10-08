@@ -132,6 +132,7 @@ def ensure(context, *, rebuild: bool = False, activate: bool = True) -> dict:
         if tag in have or base is None:
             continue
         ws = base.copy()
+        ws.use_fake_user = True  # nusxa 0 foydalanuvchili — faylga YOZILMAYDI (startup.blend/loyihalar Sath ish joylarisiz qolardi)
         ws.name = tag
         ws[TAG] = tag
         if TODO in ws:
@@ -170,8 +171,12 @@ _CHAIN_STEP_S = 0.05
 _chain_gen = [0]  # avlod: yangi zanjir, fayl yuklash (load_pre) yoki unregister eskisini to'xtatadi
 
 
+_origin: list = [None]  # zanjir boshlanishidagi ish joyi nomi (yangi zanjir o'rtadagi holatni «avvalgi» deb olmasin)
+
+
 def cancel_chain() -> None:
     _chain_gen[0] += 1
+    _origin[0] = None
 
 
 def _reorder_chain(names, final) -> None:
@@ -186,7 +191,9 @@ def _reorder_chain(names, final) -> None:
     wm = bpy.context.window_manager
     if wm is None or not wm.windows:
         return
-    before = wm.windows[0].workspace.name if wm.windows[0].workspace is not None else None
+    if _origin[0] is None:  # o'rtadagi zanjir almashtirilsa — birinchi zanjir boshlagan ish joyi saqlanadi
+        _origin[0] = wm.windows[0].workspace.name if wm.windows[0].workspace is not None else None
+    before = _origin[0]
     queue = list(names)  # pop() oxiridan oladi — teskari tartib
     state = {"want": None, "tries": 0}
 
@@ -203,6 +210,7 @@ def _reorder_chain(names, final) -> None:
                 if end is not None:
                     win.workspace = end
                 CHAIN_DONE[0] = True
+                _origin[0] = None
                 return None
             state["want"], state["tries"] = queue.pop(), 0
             ws = bpy.data.workspaces.get(state["want"])

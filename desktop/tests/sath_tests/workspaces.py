@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 from pathlib import Path
 
 import bpy
@@ -72,6 +73,17 @@ def run(ctx):
         rep = W.ensure(bpy.context)
         assert rep == {"created": [], "removed": [], "kept": []}, rep  # idempotent
         assert bpy.ops.sath.reset_workspaces(rebuild=True) == {"FINISHED"}
+        tags = _check(W, dev=False)
+        assert not [w.name for w in bpy.data.workspaces if ".0" in w.name], "rebuild takrorlangan nom qoldirdi"
+
+        # saqlash -> qayta ochish: Sath ish joylari faylda qoladi (nusxa ID foydalanuvchisiz yozilmasdi)
+        with tempfile.TemporaryDirectory() as tmp:
+            f = str(Path(tmp) / "ws.blend")
+            bpy.ops.wm.save_as_mainfile(filepath=f)
+            bpy.ops.wm.open_mainfile(filepath=f)
+            reopened = W.tagged(bpy.data)
+            assert sorted(reopened) == sorted(W.ORDER), sorted(reopened)
+            bpy.ops.wm.read_homefile(use_factory_startup=True)  # tmp o'chirilishidan oldin fayldan chiqamiz
         tags = _check(W, dev=False)
 
         rec = {m: host.record(m).manifest for m in ("bim", "scada", "sim", "twin", "review", "io")}

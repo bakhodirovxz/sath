@@ -17,7 +17,6 @@ BrandingText "Sath ${VERSION} — gidroelektrostansiya BIM"
 !define MUI_UNICON "${ICON}"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Sath.exe"
-!define MUI_FINISHPAGE_RUN_PARAMETERS "--app-template Sath"
 !define MUI_FINISHPAGE_RUN_TEXT "Sath ni ishga tushirish"
 
 !insertmacro MUI_PAGE_WELCOME
@@ -46,9 +45,9 @@ Section "Sath" SEC_MAIN
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Sath" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Sath" "NoRepair" 1
   CreateDirectory "$SMPROGRAMS\Sath"
-  CreateShortcut "$SMPROGRAMS\Sath\Sath.lnk" "$INSTDIR\Sath.exe" "--app-template Sath" "$INSTDIR\Sath.exe" 0
+  CreateShortcut "$SMPROGRAMS\Sath\Sath.lnk" "$INSTDIR\Sath.exe" "" "$INSTDIR\Sath.exe" 0
   CreateShortcut "$SMPROGRAMS\Sath\Sath ni o'chirish.lnk" "$INSTDIR\Uninstall-Sath.exe"
-  CreateShortcut "$DESKTOP\Sath.lnk" "$INSTDIR\Sath.exe" "--app-template Sath" "$INSTDIR\Sath.exe" 0
+  CreateShortcut "$DESKTOP\Sath.lnk" "$INSTDIR\Sath.exe" "" "$INSTDIR\Sath.exe" 0
 SectionEnd
 
 Section "Uninstall"
