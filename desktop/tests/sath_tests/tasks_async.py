@@ -11,6 +11,7 @@ def run(ctx):
     from sath import session
     from sath.core import ui_tasks
     from sath.core.tasks import TASKS
+    from sath.shared.server_client import ServerError, TransferCancelled
 
     assert TASKS.inline is True  # -b da default sinxron (boshqa headless testlar uchun)
     TASKS.inline = False
@@ -53,6 +54,33 @@ def run(ctx):
         assert bpy.app.timers.is_registered(ui_tasks._pump)
         TASKS.drain(5)
 
+        # 4b) load_pre: fayl yuklash epoch ni oshiradi
+        e0 = session.epoch()
+        bpy.ops.wm.read_homefile(app_template="")
+        assert session.epoch() > e0
+
+        # 4c) async: epoch o'zgargach xato ko'rsatilmaydi va fail chaqirilmaydi
+        called = []
+
+        def late_fail(c):
+            time.sleep(0.2)
+            raise RuntimeError("eski xato")
+
+        ui_tasks.run_op(Op(), "Eski", late_fail, fail=lambda e: called.append(e) or "x")
+        session.bump_epoch()
+        TASKS.drain(5)
+        assert called == [] and "eskirdi" in bpy.context.scene.ges.status
+
+        # 4d) async: TransferCancelled jim
+        bpy.context.scene.ges.status = ""
+
+        def cancelled(c):
+            raise TransferCancelled()
+
+        ui_tasks.run_op(Op(), "Bekor", cancelled)
+        TASKS.drain(5)
+        assert bpy.context.scene.ges.status == ""
+
         # 5) unregister uzoq vazifada osilmaydi (bekor qilinadi)
         ui_tasks.run_op(Op(), "juda uzun", lambda c: [c.sleep(1) for _ in range(60)])
         t0 = time.perf_counter()
@@ -60,5 +88,25 @@ def run(ctx):
         assert time.perf_counter() - t0 < 1.0
         TASKS.drain(5)
         ui_tasks.register()
+
+        # 6) inline yo'l: xato → op.report(ERROR) + CANCELLED (ValueError ham, fail matni ishlatiladi)
+        TASKS.inline = True
+        seen.clear()
+
+        def bad(exc):
+            def w(c):
+                raise exc
+
+            return w
+
+        assert ui_tasks.run_op(Op(), "I", bad(ServerError(500, "boom"))) == {"CANCELLED"}
+        assert seen["report"][0] == {"ERROR"} and "boom" in seen["report"][1]
+        assert ui_tasks.run_op(Op(), "I", bad(ValueError("qiymat"))) == {"CANCELLED"}
+        assert "qiymat" in seen["report"][1]
+        assert ui_tasks.run_op(Op(), "I", bad(RuntimeError("x")), fail=lambda e: "maxsus") == {"CANCELLED"}
+        assert seen["report"][1] == "maxsus"
+        seen.clear()
+        assert ui_tasks.run_op(Op(), "I", bad(TransferCancelled())) == {"CANCELLED"} and "report" not in seen
+        assert ui_tasks.run_op(Op(), "I", lambda c: 1) == {"FINISHED"}
     finally:
         TASKS.inline = True

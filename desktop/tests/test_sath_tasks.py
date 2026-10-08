@@ -133,3 +133,16 @@ def test_cancelled_exception_is_silent():
     tm.run("c", work)
     tm.drain(5)
     assert got == []
+
+
+def test_reset_clears_active_and_queue_without_callbacks():
+    tm = TaskManager()
+    called = []
+    tm.run("u", lambda c: c.sleep(5), called.append, key="k")
+    assert tm.running("k")
+    tm.reset()
+    assert not tm.running("k") and tm.active() == []
+    assert tm.run("u2", lambda c: 1, called.append, key="k") is not None  # kalit bo'shadi
+    tm.drain(5)
+    tm.pump()
+    assert called == [1]

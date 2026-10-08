@@ -13,6 +13,7 @@ from .. import session
 from ..shared.server_client import ServerError, TransferCancelled
 from .tasks import TASKS, Task, TaskContext
 
+_DEFAULT_ON_ERROR = TASKS.on_error_default
 PUMP_INTERVAL = 0.1
 EXPECTED: tuple[type[BaseException], ...] = (ServerError, RuntimeError)
 MAX_SHOWN = 3
@@ -47,8 +48,13 @@ def show_error(title: str, msg: str) -> None:
         for line in msg.splitlines()[:8]:
             self.layout.label(text=line)
 
-    with bpy.context.temp_override(window=wm.windows[0]):
-        wm.popup_menu(draw, title=title, icon="ERROR")
+    try:
+        with bpy.context.temp_override(window=wm.windows[0]):
+            wm.popup_menu(draw, title=title, icon="ERROR")
+    except Exception:
+        import traceback
+
+        traceback.print_exc()  # popup ixtiyoriy — holat qatori va konsol allaqachon yozilgan
 
 
 def _default_error(task: Task, exc: BaseException) -> None:
@@ -57,6 +63,13 @@ def _default_error(task: Task, exc: BaseException) -> None:
 
         traceback.print_exception(type(exc), exc, exc.__traceback__)
     show_error(task.title, _msg(exc))
+
+
+def _print_unexpected(e: BaseException) -> None:
+    if not isinstance(e, EXPECTED):
+        import traceback
+
+        traceback.print_exception(type(e), e, e.__traceback__)
 
 
 def _redraw_statusbar() -> None:
@@ -112,13 +125,20 @@ def run_op(
     def error(e: BaseException) -> None:
         if isinstance(e, TransferCancelled):
             return
+        if session.epoch() != ep:
+            status(f"{title}: natija eskirdi (sessiya yoki model almashdi) — qayta bajaring")
+            return
+        _print_unexpected(e)
         msg = (fail(e) if fail is not None else None) or _msg(e)
         show_error(title, msg)
 
     if TASKS.inline:
         try:
             TASKS.run(title, work, done, key=key)
-        except EXPECTED as e:
+        except TransferCancelled:
+            return {"CANCELLED"}
+        except Exception as e:
+            _print_unexpected(e)
             op.report({"ERROR"}, (fail(e) if fail is not None else None) or _msg(e))
             return {"CANCELLED"}
         return {"FINISHED"}
@@ -148,13 +168,22 @@ class SATH_OT_task_cancel(bpy.types.Operator):
 
     bl_idname = "sath.task_cancel"
     bl_label = "Bekor qilish"
+    bl_options = {"INTERNAL"}
     task_id: bpy.props.IntProperty()
 
     def execute(self, context):
         return {"FINISHED"} if TASKS.cancel(self.task_id) else {"CANCELLED"}
 
 
+@bpy.app.handlers.persistent
+def _on_load_pre(*_args):
+    """Fayl ochish/Ctrl+N (ifc.load dan tashqari ham): eski model uchun boshlangan natijalar tashlansin."""
+    session.bump_epoch()
+
+
 def register():
+    if _on_load_pre not in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.append(_on_load_pre)
     TASKS.inline = bpy.app.background
     TASKS.on_error_default = _default_error
     bpy.utils.register_class(SATH_OT_task_cancel)
@@ -162,7 +191,10 @@ def register():
 
 
 def unregister():
-    TASKS.cancel_all()
+    TASKS.reset()
+    TASKS.on_error_default = _DEFAULT_ON_ERROR
+    if _on_load_pre in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.remove(_on_load_pre)
     bpy.types.STATUSBAR_HT_header.remove(draw_tasks)
     if bpy.app.timers.is_registered(_pump):
         bpy.app.timers.unregister(_pump)

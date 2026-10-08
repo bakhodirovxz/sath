@@ -157,6 +157,17 @@ class TaskManager:
         for t in self._active:
             t.cancel()
 
+    def reset(self) -> None:
+        """O'chirish yo'li (addon unregister): hammasini bekor qiladi, ro'yxatni tozalaydi, navbatdagi natijalarni
+        callbacksiz tashlaydi — qayta yoqilganda kalitlar bloklanib qolmaydi."""
+        self.cancel_all()
+        self._active.clear()
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                return
+
     def drain(self, timeout: float = 30.0) -> None:
         """Barcha vazifalar tugaguncha pompalaydi (headless testlar: -b da timerlar ishlamaydi)."""
         deadline = time.monotonic() + timeout
