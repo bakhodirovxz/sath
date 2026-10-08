@@ -85,11 +85,15 @@ def load_handler(_):
 @persistent
 def resubscribe(_):
     _subscribe()  # fayl yuklanganda msgbus obunalari tozalanadi
+    if not bpy.app.background:
+        _retry_left[0] = _RETRIES  # Simulation faol holda saqlangan fayl ham Graph editor oladi
+        if not bpy.app.timers.is_registered(_retry):
+            bpy.app.timers.register(_retry, first_interval=_RETRY_S)
 
 
 class SATH_OT_reset_workspaces(bpy.types.Operator):
-    """Sath ish joylarini (BIM, Compare, Simulation, SCADA) tiklash va keraksiz Blender ish joylarini olib
-    tashlash"""
+    """Sath ish joylarini (BIM, Compare, Simulation, SCADA) tiklash va zavod ish joylarini (Shading, Rendering,
+    Sculpting, ...) O'CHIRISH"""
 
     bl_idname = "sath.reset_workspaces"
     bl_label = "Ish joylarini tiklash"
@@ -101,8 +105,11 @@ class SATH_OT_reset_workspaces(bpy.types.Operator):
         default=False,
     )
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
     def execute(self, context):
-        rep = workspaces.ensure(context, rebuild=self.rebuild)
+        rep = workspaces.ensure(context, rebuild=self.rebuild, activate=False)
         parts = []
         if rep["created"]:
             parts.append("yaratildi: " + ", ".join(rep["created"]))

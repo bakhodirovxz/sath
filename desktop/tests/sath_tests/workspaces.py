@@ -67,6 +67,7 @@ def run(ctx):
         view.show_developer_ui = False
         bpy.ops.wm.read_homefile(use_factory_startup=True)  # load_factory_startup_post → template ilgagi
         _check(W, dev=False)
+        assert len(_areas(bpy.data.workspaces["Layout"], "VIEW_3D")) == 1  # asos Layout buzilmagan
         assert bpy.context.scene.view_settings.view_transform == "Standard"
         rep = W.ensure(bpy.context)
         assert rep == {"created": [], "removed": [], "kept": []}, rep  # idempotent

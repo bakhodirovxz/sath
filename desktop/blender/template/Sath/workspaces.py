@@ -154,16 +154,81 @@ def ensure(context, *, rebuild: bool = False, activate: bool = True) -> dict:
     if drop:
         report["removed"] = sorted(w.name for w in drop)
         data.batch_remove(ids=drop)
-    order = [have[t] for t in ORDER if t in have] + [data.workspaces[n] for n in KEEP if n in data.workspaces]
-    for ws in reversed(order):
-        with context.temp_override(window=win, workspace=ws):
-            bpy.ops.workspace.reorder_to_front()  # {'INTERFACE'} qaytaradi — bu normal
+    order = [have[t].name for t in ORDER if t in have] + [n for n in KEEP if n in data.workspaces]
+    if bpy.app.background:
+        _reorder_now(context, win, order)  # oynasiz — natija ko'rinmaydi, lekin xato ham bermaydi
+    else:
+        _reorder_chain(order, "BIM" if activate and "BIM" in have else None)
     if activate and "BIM" in have:
         # oyna qayta olinadi: startup ilgagida context.window None bo'lishi mumkin, yuqoridagi win eskirgan bo'lsa
         cwm = bpy.context.window_manager
         target = bpy.context.window or (cwm.windows[0] if cwm is not None and cwm.windows else win)
         target.workspace = have["BIM"]
     return report
+
+
+def _reorder_now(context, win, names) -> None:
+    import bpy
+
+    for n in reversed(names):
+        ws = bpy.data.workspaces.get(n)
+        if ws is not None:
+            with context.temp_override(window=win, workspace=ws):
+                bpy.ops.workspace.reorder_to_front()  # {'INTERFACE'} qaytaradi — bu normal
+
+
+CHAIN_DONE = [False]  # GUI sinovi: tab tartibi zanjiri tugadimi
+_CHAIN_STEP_S = 0.05
+
+
+def _reorder_chain(names, final) -> None:
+    """Tab tartibi: workspace.reorder_to_front oynada FAOL ish joyini ko'chiradi (temp_override(workspace=)
+    e'tiborga olinmaydi), Window.workspace esa keyingi siklda qo'llanadi — shuning uchun taymer zanjiri:
+    teskari tartibda har ish joyini faol qilib, keyingi taktda oldinga suramiz; oxirida `final` (yoki avvalgisi)."""
+    import bpy
+
+    CHAIN_DONE[0] = False
+    wm = bpy.context.window_manager
+    if wm is None or not wm.windows:
+        return
+    before = wm.windows[0].workspace.name if wm.windows[0].workspace is not None else None
+    queue = list(names)  # pop() oxiridan oladi — teskari tartib
+    state = {"want": None, "tries": 0}
+
+    def step():
+        cwm = bpy.context.window_manager
+        if cwm is None or not cwm.windows:
+            return None
+        win = cwm.windows[0]
+        if state["want"] is None:
+            if not queue:
+                end = bpy.data.workspaces.get(final or before or "")
+                if end is not None:
+                    win.workspace = end
+                CHAIN_DONE[0] = True
+                return None
+            state["want"], state["tries"] = queue.pop(), 0
+            ws = bpy.data.workspaces.get(state["want"])
+            if ws is None:
+                state["want"] = None
+                return _CHAIN_STEP_S
+            win.workspace = ws
+            return _CHAIN_STEP_S
+        if win.workspace is None or win.workspace.name != state["want"]:
+            state["tries"] += 1  # almashish hali qo'llanmagan yoki boshqa taymer (BIM faollash) aralashdi
+            if state["tries"] > 20:
+                state["want"] = None
+                return _CHAIN_STEP_S
+            ws = bpy.data.workspaces.get(state["want"])
+            if ws is not None:
+                win.workspace = ws
+            return _CHAIN_STEP_S
+        with bpy.context.temp_override(window=win):
+            bpy.ops.workspace.reorder_to_front()
+        state["want"] = None
+        return _CHAIN_STEP_S
+
+    bpy.app.timers.register(step, first_interval=_CHAIN_STEP_S, persistent=True)
 
 
 def finish(win) -> bool:
@@ -180,6 +245,8 @@ def finish(win) -> bool:
         if len(v) >= 2:
             min(v, key=lambda a: a.y).ui_type = "FCURVES"  # pastki (split dagi yangi) area → Graph editor
         if not _areas(screen, "GRAPH_EDITOR"):
-            return False  # hali qo'llanmadi — keyingi o'tishda yana urinadi
+            if len(v) >= 2:
+                return False  # hali qo'llanmadi — keyingi o'tishda yana urinadi
+            # ikkita 3D yo'q (foydalanuvchi o'zgartirgan) va Graph ham yo'q — qayta urinishning foydasi yo'q
     del ws[TODO]
     return True
