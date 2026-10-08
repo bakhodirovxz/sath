@@ -22,6 +22,7 @@ from . import props as _props
 from . import session
 from .core import events as _events
 from .core import host as _host
+from .core import keys as _keys
 from .core import perms as _perms
 from .core.panels import SathPanel, cur, draw_list
 from .core.registry import API_VERSION
@@ -134,14 +135,11 @@ class ui:
     def keymap(mod_id: str, idname: str, key: str, *, ctrl=False, shift=False, alt=False, km_name="3D View",
                space_type="VIEW_3D", **properties):  # fmt: skip
         _main_thread()
-        kc = bpy.context.window_manager.keyconfigs.addon
-        if kc is None:  # fon rejimi
-            return None
-        km = kc.keymaps.new(name=km_name, space_type=space_type)
-        kmi = km.keymap_items.new(idname, key, "PRESS", ctrl=ctrl, shift=shift, alt=alt)
-        for k, v in properties.items():
-            setattr(kmi.properties, k, v)
-        _host.REG.add_cleanup(mod_id, lambda: km.keymap_items.remove(kmi))
+        _host.REG.owner(mod_id)
+        kmi, off = _keys.add(mod_id, idname, key, km_name=km_name, space_type=space_type,
+                             ctrl=ctrl, shift=shift, alt=alt, **properties)  # fmt: skip
+        if kmi is not None:
+            _host.REG.add_cleanup(mod_id, off)
         return kmi
 
 

@@ -7,7 +7,7 @@ import os
 import bpy
 
 from . import session
-from .core import host, perms
+from .core import host, keys, perms
 from .core.panels import cur, draw_list
 
 
@@ -139,17 +139,16 @@ def _menu_header(self, context):
     self.layout.menu("SATH_MT_main")
 
 
-_keymaps: list = []
+_keymap_offs: list = []
 
 
 def _register_keymap():
-    kc = bpy.context.window_manager.keyconfigs.addon
-    if kc is None:  # headless
-        return
-    km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
-    kmi = km.keymap_items.new("wm.call_menu", "G", "PRESS", ctrl=True, shift=True)
-    kmi.properties.name = "SATH_MT_main"
-    _keymaps.append((km, kmi))
+    """Ctrl+Shift+G → «Sath» menyusi: «3D View» va «Object Mode» da. Rejim keymapi 3D View dan oldin ishlaydi,
+    u yerdagi standart collection.objects_add_active ni ataylab yopamiz (core/keys.ALLOWED)."""
+    for km_name, space in (("3D View", "VIEW_3D"), ("Object Mode", "EMPTY")):
+        _kmi, off = keys.add("core", "wm.call_menu", "G", km_name=km_name, space_type=space,
+                             ctrl=True, shift=True, name="SATH_MT_main")  # fmt: skip
+        _keymap_offs.append(off)
 
 
 CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_notifications]
@@ -169,9 +168,9 @@ def register():
 
 
 def unregister():
-    for km, kmi in _keymaps:
-        km.keymap_items.remove(kmi)
-    _keymaps.clear()
+    for off in reversed(_keymap_offs):
+        off()
+    _keymap_offs.clear()
     bpy.types.VIEW3D_MT_editor_menus.remove(_menu_header)
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)

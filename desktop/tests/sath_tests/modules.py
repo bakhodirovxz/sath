@@ -49,6 +49,7 @@ def register(api):
     api.register_classes("hello", [SATH_OT_hello_test, SATH_PT_hello_test])
     api.events.subscribe("project.changed", HITS.append, owner="hello")
     api.ui.main_menu("hello", lambda layout, context: layout.operator("sath.hello_test"))
+    api.ui.keymap("hello", "sath.hello_test", "F12", ctrl=True, shift=True, alt=True)
 '''
 
 BROKEN_PY = '''import bpy
@@ -146,6 +147,8 @@ def _user_modules():
         assert rec.module.__name__ == "_sath_user_hello"  # faqat xavfsiz yuklovchi orqali
         pt = bpy.types.SATH_PT_hello_test
         assert pt.bl_category == "Sath" and pt.bl_order == 900 and _registered("hello_test")
+        from sath.core import keys
+        assert any(o == "hello" and k.idname == "sath.hello_test" for o, _km, k in keys.ITEMS), keys.ITEMS
         assert bpy.ops.sath.hello_test() == {"FINISHED"} and s.sath_hello.count == 1
         snap = props.snapshot_scene(s)
         s.sath_hello.count = 7
@@ -191,6 +194,7 @@ def _user_modules():
             assert gone == []  # o'chirilgan modul yopilmasi (on_cancel) chaqirilmadi
         finally:
             TASKS.inline = True
+        assert not any(o == "hello" for o, _km, _k in keys.ITEMS), keys.ITEMS  # api.ui.keymap tozalandi
         assert not hasattr(bpy.types, "SATH_PT_hello_test") and not _registered("hello_test")
         assert not hasattr(bpy.types.Scene, "sath_hello") and "hello" not in [m for m, _ in host._menus]
         events.publish("project.changed", project_id=2)
