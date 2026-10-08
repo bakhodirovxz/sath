@@ -202,3 +202,30 @@ def test_on_cancel_not_called_after_reset():
     time.sleep(0.2)  # ishchi Cancelled bilan tugab navbatga yozadi
     tm.pump()
     assert calls == [] and t.dropped
+
+
+def test_cancel_prefix_cancels_only_module_tasks():
+    tm = TaskManager()
+    ev = threading.Event()
+    a = tm.run("a", lambda ctx: ev.wait(5), key="review.diff")
+    b = tm.run("b", lambda ctx: ev.wait(5), key="sim.catalog", cancellable=False)
+    c = tm.run("c", lambda ctx: ev.wait(5), key="server.open")
+    assert tm.cancel_prefix("review.") == 1 and a.cancelled and not c.cancelled
+    assert tm.cancel_prefix("sim.") == 1 and b.cancelled  # modul o'chirilganda cancellable=False ham
+    ev.set()
+    tm.drain(5)
+
+
+def test_on_finished_reports_outcome():
+    tm = TaskManager()
+    seen = []
+    tm.on_finished = lambda task, outcome: seen.append((task.title, outcome))
+    tm.run("ok", lambda ctx: 1)
+    tm.run("xato", lambda ctx: 1 / 0, on_error=lambda e: None)
+    t = tm.run("bekor", lambda ctx: ctx.sleep(5))
+    t.cancel()
+    tm.drain(5)
+    assert sorted(seen) == [("bekor", "cancelled"), ("ok", "done"), ("xato", "failed")]
+    tm.inline = True
+    tm.run("inline", lambda ctx: 2)
+    assert seen[-1] == ("inline", "done")

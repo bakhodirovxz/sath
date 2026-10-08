@@ -74,6 +74,7 @@ class TaskManager:
         self.on_error_default: Callable[[Task, BaseException], None] = _print_error
         self._q: queue.SimpleQueue = queue.SimpleQueue()
         self._active: list[Task] = []
+        self.on_finished: Callable[[Task, str], None] | None = None  # task.* hodisalari (ui_tasks ulaydi)
 
     def run(
         self,
@@ -99,14 +100,18 @@ class TaskManager:
             except Cancelled:
                 if on_cancel is not None:
                     on_cancel()
+                self._finished(task, "cancelled")
                 return task
             except Exception as e:
                 if on_error is None:
+                    self._finished(task, "failed")
                     raise
                 on_error(e)
+                self._finished(task, "failed")
                 return task
             if on_done is not None:
                 on_done(result)
+            self._finished(task, "done")
             return task
         self._active.append(task)
         threading.Thread(
@@ -135,11 +140,17 @@ class TaskManager:
                 self._active.remove(task)
             if task.dropped:
                 continue
+            if task.cancelled or isinstance(exc, Cancelled):
+                outcome = "cancelled"
+            elif exc is not None:
+                outcome = "failed"
+            else:
+                outcome = "done"
             try:
-                if task.cancelled or isinstance(exc, Cancelled):
+                if outcome == "cancelled":
                     if on_cancel is not None:
                         on_cancel()
-                elif exc is not None:
+                elif outcome == "failed":
                     if on_error is not None:
                         on_error(exc)
                     else:
@@ -148,6 +159,15 @@ class TaskManager:
                     on_done(result)
             except Exception as cb_exc:  # noqa: BLE001 — bitta callback xatosi pompani to'xtatmasin
                 self.on_error_default(task, cb_exc)
+            self._finished(task, outcome)
+
+    def _finished(self, task: Task, outcome: str) -> None:
+        if self.on_finished is None:
+            return
+        try:
+            self.on_finished(task, outcome)
+        except Exception as e:  # noqa: BLE001 — hodisa obunachisi pompani to'xtatmasin
+            self.on_error_default(task, e)
 
     def running(self, key: str) -> bool:
         """Bekor qilingan vazifa hisoblanmaydi: X bosilgach shu kalit bilan darhol qayta boshlash mumkin (eski ishchi
@@ -168,6 +188,16 @@ class TaskManager:
     def cancel_all(self) -> None:
         for t in self._active:
             t.cancel()
+
+    def cancel_prefix(self, prefix: str) -> int:
+        """Kaliti `prefix` bilan boshlanadigan vazifalarni bekor qiladi (modul o'chirilganda: `<mod_id>.`).
+        cancellable=False ham — modul kodi endi ro'yxatda emas, natijasi qo'llanmasligi kerak. Qaytaradi: nechta."""
+        n = 0
+        for t in self._active:
+            if t.key is not None and t.key.startswith(prefix) and not t.cancelled:
+                t.cancel()
+                n += 1
+        return n
 
     def reset(self) -> None:
         """O'chirish yo'li (addon unregister): hammasini bekor qiladi, ro'yxatni tozalaydi, navbatdagi natijalarni
