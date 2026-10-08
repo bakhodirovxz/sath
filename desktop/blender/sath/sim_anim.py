@@ -31,6 +31,25 @@ WHITE = (1.0, 1.0, 1.0, 1.0)
 LOW = (0.2, 0.45, 0.9, 1.0)
 SIM_COLL = "GES_Sim"
 BASE_LOC = "sath_base_loc"
+ROLE_KIND = {s.role: k for k, s in ges_objects.ges_kinds.KINDS.items()}  # "dam" → GES_Dam, "unit:" → GES_Turbine
+
+
+class TwinBindingError(RuntimeError):
+    """Egizak bog'lanmadi: modelda shu turdagi obyekt bor, lekin animatsiya uchun kerakli rol topilmadi (K2 — avval
+    `if o is not None` bilan jim o'tkazib yuborilardi)."""
+
+
+def _bound(role: str | None, kind: str, owner: str = ""):
+    """Rol bo'yicha obyekt. Modelda `kind` turidagi obyekt bor-u, rol topilmasa — TwinBindingError; bu turdagi obyekt
+    umuman yo'q bo'lsa — None (masalan transformatorsiz model)."""
+    o = ges_objects.by_role(role) if role else None
+    if o is None and ges_objects.by_kind(kind):
+        who = f"«{owner}» uchun " if owner else ""
+        raise TwinBindingError(
+            f"Egizak: {who}'{role or '?'}' roli topilmadi, lekin modelda {ges_objects.KIND_LABEL[kind]} bor — "
+            "rollar tiklanmagan (Sath → GES obyektlari → «IFC dan tiklash»)"
+        )
+    return o
 
 
 def _mix(a, b, t):
@@ -146,7 +165,7 @@ def animate_hydro(context, result: dict, params: dict, zero_m: float = 0.0, fps:
         for i in range(n):
             plane.location.z = float(s["level"][i]) - zero_m
             plane.keyframe_insert(data_path="location", index=2, frame=i + 1)
-    tailrace = ges_objects.by_role("tailrace")
+    tailrace = _bound("tailrace", "GES_Tailrace")
     tw = _tailwater_series(result, tailrace, zero_m)
     if tw is not None:
         tp = water.place_tailwater_plane(context, tw[0])
@@ -158,15 +177,18 @@ def animate_hydro(context, result: dict, params: dict, zero_m: float = 0.0, fps:
     units = params.get("units") or []
     unit_series = result.get("units") or []
     for k, u in enumerate(units):
-        obj = ifc.object_for_guid(u.get("guid", "")) if u.get("guid") else None
-        if obj is None or k >= len(unit_series):
+        if k >= len(unit_series):
             continue
+        g = u.get("guid") or ""
+        obj = ifc.object_for_guid(g) if g else None
+        if obj is None:
+            raise TwinBindingError(f"Egizak: agregat «{u.get('name') or k + 1}» (GUID {g or '—'}) modelda topilmadi")
         obj.animation_data_clear()
         rated = float(u.get("rated_power_mw") or 0) or 1.0
         idx = _role_index(obj)
-        gen = ges_objects.by_role(f"gen:{idx}") if idx else None
-        tf = ges_objects.by_role(f"transformer:{idx}") if idx else None
-        draft = ges_objects.by_role(f"draft:{idx}") if idx else None
+        gen = _bound(f"gen:{idx}" if idx else None, "GES_Generator", obj.name)
+        tf = _bound(f"transformer:{idx}" if idx else None, "GES_Transformer", obj.name)
+        draft = _bound(f"draft:{idx}" if idx else None, "GES_DraftTube", obj.name)
         for o in (gen, tf, draft):
             if o is not None:
                 o.animation_data_clear()
@@ -282,7 +304,7 @@ def animate_governor(context, result: dict, fps: int = 24, limit: int = 600) -> 
             g.keyframe_insert(data_path="rotation_euler", index=2, frame=fr)
             _key_color(g, c, fr)
             k = _role_index(g)
-            u = ges_objects.by_role(f"unit:{k}") if k else None
+            u = _bound(f"unit:{k}" if k else None, "GES_Turbine", g.name)
             if u is not None:
                 u.rotation_euler.z = theta[g.name]
                 u.keyframe_insert(data_path="rotation_euler", index=2, frame=fr)
@@ -344,7 +366,12 @@ def animate_seismic(context, result: dict, scale: float = 20.0, fps: int = 24, d
             continue
         sa, T = float(st.get("sa_g", 0.0)), float(st.get("period_s", 0.3))
         c = ON if sa < 0.2 else WARN if sa < 0.4 else BAD
-        for o in _objects_for(roles):
+        objs = _objects_for(roles)
+        if not objs:
+            if any(ges_objects.by_kind(ROLE_KIND[r]) for r in roles if r in ROLE_KIND):
+                raise TwinBindingError(f"Egizak: «{st.get('name', '')}» uchun rollar ({', '.join(roles)}) topilmadi")
+            continue
+        for o in objs:
             _remember(o)
             o.animation_data_clear()
             bx, by, bz = o[BASE_LOC]

@@ -91,8 +91,9 @@ def object_for_guid(g: str):
         return None
 
 
-def write_psets(e, psets: dict[str, dict]) -> None:
-    """{pset: {name: value}} → IfcPropertySet lar (mavjud bo'lsa yangilanadi)."""
+def write_psets(e, psets: dict[str, dict], text: tuple[str, ...] = ()) -> None:
+    """{pset: {name: value}} → IfcPropertySet lar (mavjud bo'lsa yangilanadi). `text` dagi nomlar IfcText bo'lib
+    yoziladi — IfcLabel 255 belgi bilan cheklangan (K2: Pset_SathParametric.Params JSON)."""
     import ifcopenshell.api.pset as api
     import ifcopenshell.util.element as ue
 
@@ -103,7 +104,8 @@ def write_psets(e, psets: dict[str, dict]) -> None:
             ps = f.by_id(existing[name]["id"])
         else:
             ps = api.add_pset(f, product=e, name=name)
-        api.edit_pset(f, pset=ps, properties=values)
+        props = {k: (f.create_entity("IfcText", v) if k in text and isinstance(v, str) else v) for k, v in values.items()}
+        api.edit_pset(f, pset=ps, properties=props)
 
 
 def _activate(obj) -> None:

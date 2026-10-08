@@ -184,6 +184,8 @@ def wait_job(meta: dict, job_id: int, on_done=None, title: str = "Simulyatsiya")
         if on_done is not None:
             try:
                 on_done(result)
+            except sim_anim.TwinBindingError as e:  # K2: rol bog'lanmadi — natija bor, egizak sababi aniq
+                s.sim_status = f"Tayyor, lekin egizak bog'lanmadi: {e}"
             except Exception as e:  # noqa: BLE001 — animatsiya xatosi natijani yo'qotmasin
                 s.sim_status = f"Tayyor (animatsiya xatosi: {e})"
 

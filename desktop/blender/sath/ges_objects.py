@@ -5,11 +5,13 @@ numpy massivlari bilan (`foreach_set`) uzatiladi. Parametr o'zgarsa mesh va pset
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 
 import bpy
 import numpy as np
 
 from . import ifc
+from .core import events, ui_tasks
 from .shared import ges_kinds
 
 KIND_ITEMS = [(k, s.label, "") for k, s in ges_kinds.KINDS.items()]
@@ -155,15 +157,17 @@ def rebuild_mesh(obj) -> None:
 
 
 def write_ifc(obj) -> None:
-    """IFC element (yo'q bo'lsa assign_class) yoki representation + Pset_GES_* yangilash."""
+    """IFC element (yo'q bo'lsa assign_class) yoki representation + Pset_GES_* + Pset_SathParametric (K2: tur, rol,
+    barcha parametrlar — qayta ochilganda to'liq tiklanadi)."""
     g = obj.ges
-    ps = ges_kinds.psets(g.kind, params_dict(obj))
+    p = params_dict(obj)
+    ps = {**ges_kinds.psets(g.kind, p), **ges_kinds.parametric_pset(g.kind, g.role, p)}
     e = ifc.entity(obj)
     if e is None:
-        ifc.assign_class(obj, ges_kinds.spec(g.kind).ifc_class, ps)
+        e = ifc.assign_class(obj, ges_kinds.spec(g.kind).ifc_class)
     else:
         ifc.update_representation(obj)
-        ifc.write_psets(e, ps)
+    ifc.write_psets(e, ps, text=("Params",))
 
 
 def rebuild(obj) -> None:
@@ -172,8 +176,22 @@ def rebuild(obj) -> None:
     write_ifc(obj)
 
 
+def default_role(kind: str) -> str:
+    """Rol berilmagan qo'lda qo'shilgan obyekt uchun: yagona tur — o'z roli (band bo'lmasa), indeksli tur (unit:, gen:, …) —
+    birinchi bo'sh raqam (demo_plant sxemasi). Band bo'lsa — "" (egizak bog'lamaydi, lekin jim ham emas)."""
+    role = ges_kinds.spec(kind).role
+    taken = {o.ges.role for o in by_kind_all() if o.ges.role}
+    if not role.endswith(":"):
+        return "" if role in taken else role
+    n = 1
+    while f"{role}{n}" in taken:
+        n += 1
+    return f"{role}{n}"
+
+
 def add(context, kind: str, name: str | None = None, role: str = "", **params):
-    """GES obyekti: parametrlar darhol beriladi (keyin set_params bilan qayta qurish shart emas)."""
+    """GES obyekti: parametrlar darhol beriladi (keyin set_params bilan qayta qurish shart emas). `role` berilmasa —
+    turning birinchi bo'sh roli (`default_role`)."""
     s = ges_kinds.spec(kind)
     ges_kinds.validate(kind, params)  # avval tekshiruv: yaroqsiz parametrda data-block yaratilmaydi
     ifc.ensure_project()  # GUI da create_project sahnani qayta quradi (obyekt havolasi eskiradi)
@@ -183,13 +201,98 @@ def add(context, kind: str, name: str | None = None, role: str = "", **params):
         context.scene.collection.objects.link(obj)
         obj.color = (*s.color, 1.0)
         _fill_schema(obj, kind, params)
-        obj.ges.role = role
+        obj.ges.role = role or default_role(kind)
         rebuild(obj)
     except Exception:
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(me)
         raise
     return obj
+
+
+@dataclass
+class RestoreReport:
+    restored: list[str] = field(default_factory=list)  # Pset_SathParametric dan (to'liq)
+    inferred: list[str] = field(default_factory=list)  # Pset_GES_* dan (geometriya parametrlari qisman, rol taxminiy)
+    unknown: list[tuple[str, str]] = field(default_factory=list)  # (obyekt, sabab)
+    warnings: list[str] = field(default_factory=list)
+
+    def text(self) -> str:
+        s = f"GES: {len(self.restored)} tiklandi, {len(self.inferred)} taxminiy, {len(self.unknown)} noma'lum"
+        if self.unknown:
+            s += " — " + "; ".join(f"{n}: {why}" for n, why in self.unknown[:3])
+        return s
+
+
+LAST_REPORT = RestoreReport()
+
+
+def _set_role(obj, role: str) -> None:
+    g = obj.ges
+    g.busy = True  # K4: rol o'zgarishi «ifc_dirty» qo'ymasin (tiklash IFC ni o'zgartirmaydi)
+    try:
+        g.role = role
+    finally:
+        g.busy = False
+
+
+def restore_from_ifc() -> RestoreReport:
+    """K2: IFC elementli obyektlar → obj.ges (kind, role, params) Pset_SathParametric dan, bo'lmasa Pset_GES_* dan
+    (rollar X bo'yicha). Mesh qayta QURILMAYDI — GUID va geometriya IFC dagidek qoladi; tanilmaganlar hisobotda."""
+    import ifcopenshell.util.element as ue
+
+    global LAST_REPORT
+    rep = RestoreReport()
+    guess = []
+    for obj in list(bpy.data.objects):
+        if obj.type != "MESH" or getattr(obj, "ges", None) is None:
+            continue
+        e = ifc.entity(obj)
+        if e is None:
+            continue
+        try:
+            r = ges_kinds.from_psets(ue.get_psets(e))
+        except ges_kinds.UnknownKind as err:
+            rep.unknown.append((obj.name, str(err)))
+            continue
+        if r is None:
+            continue
+        _fill_schema(obj, r.kind, r.params)
+        _set_role(obj, r.role)
+        obj.color = (*ges_kinds.spec(r.kind).color, 1.0)
+        rep.warnings += [f"{obj.name}: {w}" for w in r.warnings]
+        if r.source == "parametric":
+            rep.restored.append(obj.name)
+        else:
+            rep.inferred.append(obj.name)
+            guess.append((obj.name, r.kind, obj.matrix_world.translation.x))
+    if guess:
+        taken = {o.ges.role for o in by_kind_all() if o.ges.role}
+        for name, role in ges_kinds.infer_roles(guess).items():
+            if role not in taken:
+                _set_role(bpy.data.objects[name], role)
+    LAST_REPORT = rep
+    return rep
+
+
+def _on_ifc_loaded(payload: dict) -> None:
+    rep = restore_from_ifc()
+    if rep.unknown or rep.warnings:
+        ui_tasks.show_error("GES tiklash", rep.text() + ("; " + "; ".join(rep.warnings[:3]) if rep.warnings else ""))
+    elif rep.restored or rep.inferred:
+        ui_tasks.status(rep.text())
+
+
+class SATH_OT_restore_ges(bpy.types.Operator):
+    """GES obyektlarining tur, rol va parametrlarini IFC psetlaridan qayta tiklash (mesh o'zgarmaydi)"""
+
+    bl_idname = "sath.restore_ges"
+    bl_label = "IFC dan tiklash"
+
+    def execute(self, context):
+        rep = restore_from_ifc()
+        self.report({"WARNING"} if rep.unknown else {"INFO"}, rep.text())
+        return {"FINISHED"}
 
 
 class SATH_OT_add_object(bpy.types.Operator):
@@ -248,6 +351,7 @@ class SATH_PT_objects(bpy.types.Panel):
         grid = lay.grid_flow(columns=2, align=True)
         for k, label, _ in KIND_ITEMS:
             grid.operator("sath.add_object", text=label).kind = k
+        lay.operator("sath.restore_ges", icon="FILE_REFRESH")
         obj = context.active_object
         if obj is None or not obj.ges.kind:
             return
@@ -264,18 +368,27 @@ class SATH_PT_objects(bpy.types.Panel):
         box.operator("sath.rebuild_object", icon="FILE_REFRESH")
 
 
-CLASSES = (GesParam, GesObject, SATH_OT_add_object, SATH_OT_rebuild_object, SATH_PT_objects)
+CLASSES = (GesParam, GesObject, SATH_OT_add_object, SATH_OT_rebuild_object, SATH_OT_restore_ges, SATH_PT_objects)
+
+
+_off_loaded = None
 
 
 def register():
+    global _off_loaded
     if os.environ.get("SATH_PANELS_OPEN"):  # GUI sinovi (ui.py bilan bir xil)
         SATH_PT_objects.bl_category = "Item"
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Object.ges = bpy.props.PointerProperty(type=GesObject)
+    _off_loaded = events.subscribe("ifc.loaded", _on_ifc_loaded)
 
 
 def unregister():
+    global _off_loaded
+    if _off_loaded is not None:
+        _off_loaded()
+        _off_loaded = None
     del bpy.types.Object.ges
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)
