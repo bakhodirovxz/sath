@@ -136,6 +136,8 @@ def _fill_schema(obj, kind: str, values: dict | None = None) -> None:
 
 def set_mesh(me, verts: np.ndarray, faces: np.ndarray) -> None:
     """(V float64, F int64 uchburchak) → bpy Mesh, numpy foreach_set bilan (from_pydata Python ro'yxatlarisiz)."""
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"set_mesh: yuzlar (N, 3) uchburchak bo'lishi kerak, berilgan shakl {faces.shape}")
     me.clear_geometry()
     me.vertices.add(len(verts))
     me.vertices.foreach_set("co", np.ascontiguousarray(verts, dtype=np.float32).ravel())
@@ -172,15 +174,21 @@ def rebuild(obj) -> None:
 
 def add(context, kind: str, name: str | None = None, role: str = "", **params):
     """GES obyekti: parametrlar darhol beriladi (keyin set_params bilan qayta qurish shart emas)."""
-    ifc.ensure_project()  # avval: GUI da create_project sahnani qayta quradi (obyekt havolasi eskiradi)
     s = ges_kinds.spec(kind)
+    ges_kinds.validate(kind, params)  # avval tekshiruv: yaroqsiz parametrda data-block yaratilmaydi
+    ifc.ensure_project()  # GUI da create_project sahnani qayta quradi (obyekt havolasi eskiradi)
     me = bpy.data.meshes.new(kind)
     obj = bpy.data.objects.new(name or s.label, me)
-    context.scene.collection.objects.link(obj)
-    obj.color = (*s.color, 1.0)
-    _fill_schema(obj, kind, params)
-    obj.ges.role = role
-    rebuild(obj)
+    try:
+        context.scene.collection.objects.link(obj)
+        obj.color = (*s.color, 1.0)
+        _fill_schema(obj, kind, params)
+        obj.ges.role = role
+        rebuild(obj)
+    except Exception:
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(me)
+        raise
     return obj
 
 

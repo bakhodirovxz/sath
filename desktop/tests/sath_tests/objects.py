@@ -30,3 +30,12 @@ def run(ctx):
     assert ue.get_psets(ifc.entity(dam))["Pset_GES_Dam"]["Turi"] == "Arkali"
     assert bpy.ops.sath.add_object(kind="GES_Turbine") == {"FINISHED"}
     assert sum(1 for o in bpy.data.objects if o.ges.kind == "GES_Turbine") == 2
+    # yaroqsiz parametr: ValueError va sahnada yetim obyekt/mesh qolmaydi
+    n_obj, n_me = len(bpy.data.objects), len(bpy.data.meshes)
+    try:
+        ges_objects.add(bpy.context, "GES_Dam", Height=0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Height=0 ValueError bermadi")
+    assert (len(bpy.data.objects), len(bpy.data.meshes)) == (n_obj, n_me), "yetim obyekt/mesh qoldi"
