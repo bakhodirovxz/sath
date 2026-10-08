@@ -16,3 +16,11 @@ def run(ctx):
         raise AssertionError("client() login siz RuntimeError berishi kerak")
     except RuntimeError:
         pass
+
+    from sath import api
+    from sath.core import host
+
+    assert api.API_VERSION == (1, 0) and host.REG is not None and host.REG.broken == []
+    from sath import props
+
+    assert "perms" in props.GesListItem.bl_rna.properties

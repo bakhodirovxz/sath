@@ -10,6 +10,10 @@ from . import session
 def _on_project(self, context):
     if session.is_logged_in():
         bpy.ops.sath.refresh_models()
+        from .core import events
+
+        i = self.projects_index
+        events.publish("project.changed", project_id=self.projects[i].item_id if 0 <= i < len(self.projects) else 0)
 
 
 def _on_model(self, context):
@@ -47,6 +51,7 @@ class GesListItem(bpy.types.PropertyGroup):
     guid: bpy.props.StringProperty()
     state: bpy.props.StringProperty()
     number: bpy.props.IntProperty()
+    perms: bpy.props.StringProperty()  # loyiha qatori: server ruxsatlari (bo'sh — eski server, rol zaxirasi)
 
 
 class GesSimField(bpy.types.PropertyGroup):
@@ -183,7 +188,7 @@ def secret(context=None) -> GesSecret:
 CLASSES = (GesListItem, GesSimField, GesScene, GesSecret)
 
 
-LIST_FIELDS = ("item_id", "name", "col2", "col3", "col4", "guid", "state", "number")
+LIST_FIELDS = ("item_id", "name", "col2", "col3", "col4", "guid", "state", "number", "perms")
 
 
 def snapshot(s) -> dict:
@@ -228,6 +233,43 @@ def restore(s, snap: dict) -> None:
             setattr(s, name, v)
     for name, v in idx.items():
         setattr(s, name, v)
+
+
+GROUPS: dict[str, str] = {}  # Scene atributi → modul id (api.props.scene_group)
+
+
+def _scalars(g) -> dict:
+    return {
+        p.identifier: getattr(g, p.identifier)
+        for p in g.bl_rna.properties
+        if p.identifier not in ("rna_type", "name")
+        and p.type in ("STRING", "INT", "FLOAT", "BOOLEAN", "ENUM")
+        and not getattr(p, "is_array", False)
+        and not getattr(p, "is_enum_flag", False)
+    }
+
+
+def snapshot_scene(scene) -> dict:
+    """Scene.ges + modul guruhlari (Bonsai yangi sessiyasi — read_homefile — dan oldin)."""
+    out = {"ges": snapshot(scene.ges)}
+    for attr in GROUPS:
+        g = getattr(scene, attr, None)
+        if g is not None:
+            out[attr] = _scalars(g)
+    return out
+
+
+def restore_scene(scene, snap: dict) -> None:
+    restore(scene.ges, snap.get("ges", {}))
+    for attr, vals in snap.items():
+        g = getattr(scene, attr, None) if attr in GROUPS else None
+        if g is None:
+            continue
+        for k, v in vals.items():
+            try:
+                setattr(g, k, v)
+            except (AttributeError, TypeError, ValueError):
+                pass
 
 
 def fill(coll, rows: list[dict]) -> None:

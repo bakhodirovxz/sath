@@ -11,6 +11,7 @@ import bpy
 
 from .. import session
 from ..shared.server_client import ServerError, TransferCancelled
+from . import events
 from .tasks import TASKS, Task, TaskContext
 
 _DEFAULT_ON_ERROR = TASKS.on_error_default
@@ -63,6 +64,10 @@ def _default_error(task: Task, exc: BaseException) -> None:
 
         traceback.print_exception(type(exc), exc, exc.__traceback__)
     show_error(task.title, _msg(exc))
+
+
+def _task_finished(task: Task, outcome: str) -> None:
+    events.publish(f"task.{outcome}", id=task.id, key=task.key or "", title=task.title)
 
 
 def _print_unexpected(e: BaseException) -> None:
@@ -191,6 +196,7 @@ def register():
         bpy.app.handlers.load_pre.append(_on_load_pre)
     TASKS.inline = bpy.app.background
     TASKS.on_error_default = _default_error
+    TASKS.on_finished = _task_finished
     bpy.utils.register_class(SATH_OT_task_cancel)
     bpy.types.STATUSBAR_HT_header.prepend(draw_tasks)
 
@@ -198,6 +204,7 @@ def register():
 def unregister():
     TASKS.reset()
     TASKS.on_error_default = _DEFAULT_ON_ERROR
+    TASKS.on_finished = None
     if _on_load_pre in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_on_load_pre)
     bpy.types.STATUSBAR_HT_header.remove(draw_tasks)

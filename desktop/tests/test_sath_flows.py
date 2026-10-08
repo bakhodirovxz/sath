@@ -59,6 +59,8 @@ def test_rows_and_commit_roundtrip(client, tmp_path):
     projects = flows.project_rows(client)
     assert projects and projects[0]["name"]
     pid = next(p["item_id"] for p in projects if p["name"] == "Flows GES")
+    row = next(p for p in projects if p["name"] == "Flows GES")
+    assert {"model.write", "cr.approve"} <= set(row["perms"].split())  # admin — tasdiqlovchi ruxsatlari (P3)
     m = client.create_model(pid, "flows-test")
     ifc_path = tmp_path / "a.ifc"
     make_ifc(ifc_path)

@@ -23,9 +23,9 @@ if bpy is not None:
         props,
         ui,
     )
-    from .core import ui_tasks
+    from .core import host, ui_tasks
 
-    MODULES = [ui_tasks, prefs, props, ges_objects, ops_server, ops_review, ops_sim, ops_twin, demo_plant, ops_monitor, ops_import, ui]
+    MODULES = [ui_tasks, prefs, props, ges_objects, ops_server, ops_review, ops_sim, ops_twin, demo_plant, ops_monitor, ops_import, ui, host]
 
 
 def register():

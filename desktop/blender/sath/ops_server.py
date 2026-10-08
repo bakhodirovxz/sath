@@ -8,6 +8,7 @@ import webbrowser
 import bpy
 
 from . import flows, ifc, props, session, update, viewpoint
+from .core import perms
 from .core.tasks import TASKS
 from .core.ui_tasks import run_op
 from .prefs import prefs
@@ -165,6 +166,12 @@ class SATH_OT_create_model(bpy.types.Operator):
     bl_idname = "sath.create_model"
     bl_label = "Yangi model"
 
+    @classmethod
+    def poll(cls, context):
+        s = context.scene.ges
+        p = _sel(s.projects, s.projects_index)
+        return session.is_logged_in() and p is not None and perms.poll(cls, "model.write", context, project_id=p.item_id)
+
     def execute(self, context):
         s = context.scene.ges
         p = _sel(s.projects, s.projects_index)
@@ -209,9 +216,9 @@ class SATH_OT_open_version(bpy.types.Operator):
             )  # fmt: skip
 
         def apply(path):
-            snap = props.snapshot(bpy.context.scene.ges)  # Bonsai fresh session sahnani almashtiradi
+            snap = props.snapshot_scene(bpy.context.scene)  # Bonsai fresh session sahnani almashtiradi
             if ifc.load(path):
-                props.restore(bpy.context.scene.ges, snap)
+                props.restore_scene(bpy.context.scene, snap)
             sc = bpy.context.scene.ges
             for k, val in info.items():
                 setattr(sc, k, val)
@@ -251,9 +258,9 @@ class SATH_OT_pull_head(bpy.types.Operator):
 
         def apply(res):
             head, path = res
-            snap = props.snapshot(bpy.context.scene.ges)
+            snap = props.snapshot_scene(bpy.context.scene)
             if ifc.load(path):
-                props.restore(bpy.context.scene.ges, snap)
+                props.restore_scene(bpy.context.scene, snap)
             sc = bpy.context.scene.ges
             sc.version_id, sc.version_number, sc.head_conflict_id = head["id"], head["number"], -1
             sc.status = f"v{head['number']} ochildi" + (f"; lokal nusxa: {backup}" if backup else "")
@@ -304,7 +311,7 @@ class SATH_OT_commit(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.is_logged_in() and ifc.file() is not None
+        return session.is_logged_in() and ifc.file() is not None and perms.poll(cls, "model.write", context)
 
     def invoke(self, context, event):
         s = context.scene.ges
@@ -395,7 +402,7 @@ class SATH_OT_submit(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         s = context.scene.ges
-        return session.is_logged_in() and bool(s.model_id and s.version_id)
+        return session.is_logged_in() and bool(s.model_id and s.version_id) and perms.poll(cls, "cr.create", context)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)

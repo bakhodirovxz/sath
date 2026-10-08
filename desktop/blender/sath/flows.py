@@ -33,9 +33,10 @@ def _dt(s: str | None) -> str:
 
 def project_rows(client: GesClient) -> list[dict]:
     return [
-        {"item_id": p["id"], "name": p["name"], "state": p.get("my_role") or ""}
+        {"item_id": p["id"], "name": p["name"], "state": p.get("my_role") or "",
+         "perms": " ".join(p.get("permissions") or [])}
         for p in client.projects()
-    ]
+    ]  # fmt: skip
 
 
 def model_rows(client: GesClient, project_id: int) -> list[dict]:

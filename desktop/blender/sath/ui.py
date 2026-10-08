@@ -7,6 +7,8 @@ import os
 import bpy
 
 from . import session
+from .core import host, perms
+from .core.panels import cur, draw_list
 
 
 class GesPanel:
@@ -26,19 +28,8 @@ class SATH_UL_simple(bpy.types.UIList):
                 row.label(text=c)
 
 
-def _list(layout, s, coll, idx, rows=4, refresh_op=None):
-    """UIList + yangilash tugmasi."""
-    row = layout.row()
-    row.template_list("SATH_UL_simple", coll, s, coll, s, idx, rows=rows)
-    if refresh_op:
-        row.operator(refresh_op, text="", icon="FILE_REFRESH")
-
-
-def _cur(coll, idx):
-    return coll[idx] if 0 <= idx < len(coll) else None
-
-
 class SATH_PT_server(GesPanel, bpy.types.Panel):
+    bl_order = 0
     bl_label = "Server"
 
     def draw(self, context):
@@ -68,6 +59,7 @@ class SATH_PT_server(GesPanel, bpy.types.Panel):
 
 
 class SATH_PT_model(GesPanel, bpy.types.Panel):
+    bl_order = 1
     bl_label = "Model"
 
     @classmethod
@@ -78,23 +70,25 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
         s = context.scene.ges
         lay = self.layout
         lay.label(text="Loyihalar")
-        _list(lay, s, "projects", "projects_index", 3, "sath.refresh_projects")
+        draw_list(lay, s, "projects", "projects_index", 3, "sath.refresh_projects")
         lay.label(text="Modellar")
-        _list(lay, s, "models", "models_index", 3, "sath.refresh_models")
+        draw_list(lay, s, "models", "models_index", 3, "sath.refresh_models")
         row = lay.row(align=True)
         row.prop(s, "new_model_name", text="")
         row.operator("sath.create_model", text="", icon="ADD")
         lay.label(text="Versiyalar")
-        _list(lay, s, "versions", "versions_index", 4, "sath.refresh_versions")
+        draw_list(lay, s, "versions", "versions_index", 4, "sath.refresh_versions")
         row = lay.row(align=True)
         row.operator("sath.open_version", icon="IMPORT")
-        row.operator("sath.commit", icon="EXPORT")
+        if perms.can("model.write", context):  # spec §2: viewer da commit ko'rinmaydi
+            row.operator("sath.commit", icon="EXPORT")
         if s.head_conflict_id >= 0:  # VCS-01: commit 409 — model serverda yangilangan
             box = lay.box()
             box.label(text="Model serverda yangilangan — commit qabul qilinmadi", icon="ERROR")
             box.operator("sath.pull_head", icon="IMPORT")
         row = lay.row(align=True)
-        row.operator("sath.submit", icon="CHECKMARK")
+        if perms.can("cr.create", context):
+            row.operator("sath.submit", icon="CHECKMARK")
         row.operator("sath.open_web", icon="URL")
         if s.model_id:
             lay.label(text=f"Ochiq: {s.model_name} v{s.version_number}", icon="FILE_TICK")
@@ -121,7 +115,7 @@ class SATH_PT_review(GesPanel, bpy.types.Panel):
 
         box = lay.box()
         box.label(text="Issue lar", icon="ERROR")
-        _list(box, s, "issues", "issues_index", 4, "sath.refresh_issues")
+        draw_list(box, s, "issues", "issues_index", 4, "sath.refresh_issues")
         for line in s.issue_detail.splitlines()[:8]:
             box.label(text=line)
         row = box.row(align=True)
@@ -134,10 +128,10 @@ class SATH_PT_review(GesPanel, bpy.types.Panel):
         box = lay.box()
         role = f" · {s.my_role}" if s.my_role else ""
         box.label(text=f"Tasdiqlash so'rovlari{role}", icon="CHECKMARK")
-        _list(box, s, "crs", "crs_index", 4, "sath.refresh_crs")
+        draw_list(box, s, "crs", "crs_index", 4, "sath.refresh_crs")
         for line in s.cr_detail.splitlines()[:8]:
             box.label(text=line)
-        cr = _cur(s.crs, s.crs_index)
+        cr = cur(s.crs, s.crs_index)
         approver = s.my_role == "approver"
         st = cr.col4 if cr else ""
         open_ = st in ("open", "changes_requested", "approved")
@@ -206,8 +200,8 @@ class SATH_PT_sim(GesPanel, bpy.types.Panel):
         row = lay.row(align=True)
         row.operator("sath.sim_catalog", icon="FILE_REFRESH")
         row.operator("sath.safety_check", icon="CHECKMARK")
-        _list(lay, s, "sim_kinds", "sim_kind_index", 4)
-        k = _cur(s.sim_kinds, s.sim_kind_index)
+        draw_list(lay, s, "sim_kinds", "sim_kind_index", 4)
+        k = cur(s.sim_kinds, s.sim_kind_index)
         if k and k.col4:
             lay.label(text=k.col4[:90])
         for f in s.sim_fields:
@@ -261,7 +255,7 @@ class SATH_PT_monitor(GesPanel, bpy.types.Panel):
         lay.prop(s, "monitor_water")
         if s.monitor_status:
             lay.label(text=s.monitor_status, icon="INFO")
-        _list(lay, s, "sensors", "sensors_index", 5)
+        draw_list(lay, s, "sensors", "sensors_index", 5)
         row = lay.row(align=True)
         row.operator("sath.show_sensor", icon="RESTRICT_SELECT_OFF")
         row.operator("sath.open_web", text="Webda (HMI)", icon="URL").tab = "mon"
@@ -294,7 +288,7 @@ class SATH_PT_twin(GesPanel, bpy.types.Panel):
                 box.label(text=f"{r.name}: {r.col2}", icon="CHECKMARK" if r.state == "ok" else "ERROR")
         box = lay.box()
         box.label(text=s.health_head or "Sog'liq indeksi", icon="HEART")
-        _list(box, s, "health_rows", "health_index", 4)
+        draw_list(box, s, "health_rows", "health_index", 4)
         box.operator("sath.show_asset", icon="RESTRICT_SELECT_OFF")
         box = lay.box()
         box.label(text="Vaqt mashinasi", icon="TIME")
@@ -315,6 +309,7 @@ class SATH_PT_import(GesPanel, bpy.types.Panel):
 
 
 class SATH_PT_notifications(GesPanel, bpy.types.Panel):
+    bl_order = 1000
     bl_label = "Bildirishnomalar"
     bl_options = {"DEFAULT_CLOSED"}
 
@@ -325,8 +320,8 @@ class SATH_PT_notifications(GesPanel, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.ges
         lay = self.layout
-        _list(lay, s, "notifications", "notifications_index", 5, "sath.notifications")
-        n = _cur(s.notifications, s.notifications_index)
+        draw_list(lay, s, "notifications", "notifications_index", 5, "sath.notifications")
+        n = cur(s.notifications, s.notifications_index)
         if n:
             lay.label(text=n.col4 or n.name)
         row = lay.row(align=True)
@@ -348,6 +343,7 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator("sath.commit")
         lay.operator("sath.submit")
         lay.operator("sath.open_web")
+        lay.operator("sath.notifications")
         lay.separator()
         lay.operator_menu_enum("sath.add_object", "kind", text="GES obyekti")
         lay.operator("sath.import_dxf")
@@ -356,7 +352,7 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator("sath.sim_catalog")
         lay.operator("sath.safety_check")
         lay.operator("sath.monitor_toggle")
-        lay.operator("sath.notifications")
+        host.draw_menus(lay, context)
 
 
 def _menu_header(self, context):

@@ -1,6 +1,7 @@
 """Hodisalar shinasi (asosiy oqim): modullar bir-birini import qilmasdan xabar almashadi.
 
-Mavzular: session.login {user}, session.logout {}, ifc.loaded {path}. 2-quyi-loyihada scada.snapshot qo'shiladi.
+Mavzular: session.login {user}, session.logout {}, project.changed {project_id}, ifc.loaded {path}, scada.snapshot {data},
+task.done|task.failed|task.cancelled {id, key, title}.
 """
 
 from __future__ import annotations
