@@ -40,22 +40,35 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
 | Model | loyiha → model → versiya; Ochish (Bonsai), Commit (IFC → yangi versiya, ixtiyoriy darhol tasdiqqa), Tasdiqqa yuborish, Webda ochish (`?v=&sel=GUID`) |
 | GES obyektlari | To'g'on, Bosimli quvur (to'g'ri/egri: qiyalik, tirsak radiusi), Turbina, **Generator**, **Chiqarish quvuri**, Suv tashlagich, Mashina zali (yopiq/kesim), **Boshqaruv xonasi**, Transformator, Suv qabul qilgich, **Daryo oqimi kanali** — parametrlar obyektda, geometriya sof Python (`ges_kinds`, FreeCAD bilan paritet ±0.5 %), IFC klass + `Pset_GES_*` Bonsai da; parametr o'zgarsa mesh darhol yangilanadi, IFC — «IFC ga qo'llash» (`sath.sync_ifc`) yoki commit da; qo'shish va «Namuna GES» — bitta undo qadami; qayta ochilganda tur/rol/parametrlar `Pset_SathParametric` dan tiklanadi (K2). **«Namuna GES qurish»** — rasmdagi 9 komponentli stansiya egizagi bir tugma bilan (napor, agregatlar soni, quvvat → joylashuv, egri quvurlar, suv tekisliklari, `obj.ges.role`) |
 | Taqriz va issue lar | ota bilan farq (3D rang: yashil/sariq), issue lar (ko'rinishga o'tish, izoh, yangi issue kamera bilan), tasdiqlash so'rovlari (ma'qullash / o'zgartirish / merge / rad — rolga qarab) |
-| Simulyatsiya | **Suv ombori/energiya → Blender timeline** (suv sathi keyframe, agregat/generator/transformator rangi yuklama bo'yicha, Francis qo'pol zona sariq, quyi byef Manning reyting egri chizig'i, chiqarish quvuri Thoma σ < σ_c → qizil, tashlama rangi). **Egizak simulyatsiyalari** (parametrlar modeldagi obyektlardan): gidrozarba (MOC) — quvur bo'ylab bosim markerlari; regulyator (HYGOV) — rotor aylanishi n·f/f_nom, chastota rangi; transformator (IEC 60076-7) — issiq nuqta rangi; zilzila (EC8) — S_d = S_a(T/2π)² siljish tebranishi. Server katalogi (barcha turlar), forma pasport/modeldan, natija, xavfsizlik tekshiruvi (12 ssenariy) |
+| Simulyatsiya | **Suv ombori/energiya → Blender timeline** (suv sathi keyframe, agregat/generator/transformator rangi yuklama bo'yicha, Francis qo'pol zona sariq, quyi byef Manning reyting egri chizig'i, chiqarish quvuri Thoma σ < σ_c → qizil, tashlama rangi). |
+| Egizak simulyatsiyalari | (parametrlar modeldagi obyektlardan): gidrozarba (MOC) — quvur bo'ylab bosim markerlari; regulyator (HYGOV) — rotor aylanishi n·f/f_nom, chastota rangi; transformator (IEC 60076-7) — issiq nuqta rangi; zilzila (EC8) — S_d = S_a(T/2π)² siljish tebranishi. Server katalogi (barcha turlar), forma pasport/modeldan, natija, xavfsizlik tekshiruvi (12 ssenariy) (`sim.run` ruxsati) |
 | Monitoring (SCADA) | 5 s da sensorlar, obyektlar alarm yoki sog'liq rangi, suv sathi tekisligi, sensor → 3D |
 | Raqamli egizak | napor, agregatlar o'lchangan/kutilgan quvvat va og'ish, jonli xavfsizlik ko'rsatkichlari, aktivlar sog'liq indeksi (aktiv → 3D), vaqt mashinasi (N soat oldingi sath 3D da) |
 | Import | DWG/DXF (ezdxf bilan tekislash, qatlam = collection), mesh (assimp: FBX/3DS/OBJ/…) |
+
+- **Modullar:** Edit → Preferences → Add-ons → Sath → «Modullar» — har modul (Taqriz, Simulyatsiya, Monitoring,
+  Raqamli egizak, Import, GES obyektlari) belgi bilan jonli yoqiladi/o'chiriladi; bog'liqlari birga (masalan sim
+  o'chsa egizak ham). Yuklanmagan modul sababi va traceback shu yerda.
+- **Uchinchi tomon modullari:** «Uchinchi tomon modullari» ni yoqing, nashriyotchining ochiq kalitini «Modul kalitlari»
+  ga yozing, modul papkasini `<Blender config>/sath_modules/<id>/` ga qo'ying. Faqat imzolangan modul yuklanadi:
+  `python desktop/build/sign_module.py --new-key kalit.txt`, `python desktop/build/sign_module.py <papka> --key kalit.txt`.
+- **Rollar:** panel va tugmalar loyihadagi ruxsatga qarab — ko'ruvchi commit/simulyatsiyani ko'rmaydi, kulrang
+  tugma ustida sababi («Ruxsat yo'q: cr.approve»). Haqiqiy tekshiruv serverda.
 
 ## Tuzilma
 
 - `sath/` — extension (`blender_manifest.toml`, `wheels/`)
   - `ifc.py` Bonsai ko'prigi (+ `orphans`) · `flows.py` bpy siz server oqimlari
-  - `ops_*.py` operatorlar · `ui.py` panellar/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
-  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`, `geom`, `ges_kinds`) — **`common/sath_common`
+  - `ops_*.py` operatorlar (modullar `api.adopt` bilan oladi) · `ui.py` yadro panellari (Server, Model, Bildirishnomalar)/menyu · `props.py` sahna holati · `ges_objects.py` parametrik obyektlar
+  - `shared/` (`server_client`, `dxf_prepare`, `assimp_load`, `ifc_classes`, `cad_common`, `geom`, `ges_kinds`, `permissions`) — **`common/sath_common`
     nusxasi** (`python desktop/build/sync_blender.py`, CI `--check`)
   - `core/` — `tasks.py` (fon vazifalari, bpy siz), `events.py` (hodisalar shinasi), `ifc_ops.py` (IfcOperator — IFC undo, K4), `ui_tasks.py` (pompa, status bar
-    progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3)
-- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, client threading, `geom`, `ges_kinds` — FreeCAD etaloniga paritet, `data/ges_golden.json`);
-  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 21 ta sinov — `kinds_mesh`, `roundtrip_ges`, `undo_ifc` yangi; `GES_TEST_SERVER` bilan yana 4 ta server sinovi: e2e_server, commit_conflict, sim_hydro, sim_twin; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
+    progressi/bekor qilish, `run_op`) — uzoq tarmoq ishlari Blender ni qotirmaydi (K3), `registry.py` (modul reyestri: manifest, imzo, tartib, hayot sikli — bpy siz), `host.py` (reyestrning
+    Blender ulagichi, Sozlamalardagi ro'yxat), `perms.py` (rolga sezgir UI), `panels.py` (`SathPanel`)
+  - `api.py` — modullar uchun barqaror fasad (`API_VERSION`); `modules/<id>/` — `sath_module.toml` + `__init__.py`
+    (`review`, `sim`, `scada`, `twin`, `io`, `bim`); `ops_*.py` o'z joyida, modul ularni `api.adopt` bilan oladi
+- Testlar: `pytest desktop/tests` (Blender siz: pure, flows, tasks, events, registry, perms, client threading, `geom`, `ges_kinds` — FreeCAD etaloniga paritet, `data/ges_golden.json`); server: `test_permissions_mirror`;
+  `.\desktop\tests\run_blender_tests.ps1` (headless Blender: 22 ta sinov — `modules` yangi (jonli yoqish/o'chirish, imzo, viewer roli); `GES_TEST_SERVER` bilan yana 4 ta server sinovi: e2e_server, commit_conflict, sim_hydro, sim_twin; `tasks_async`, `ops_async` — asinxron yo'l soxta sekin server bilan).
   CI: `desktop-blender` ishi (windows-2022), SKIP taqiqlangan.
 - Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
 
