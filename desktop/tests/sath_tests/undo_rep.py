@@ -14,6 +14,9 @@ def _faceset(e):
 
 
 def run(ctx):
+    from _req import require_freecad
+
+    require_freecad()
     from sath import ges_objects, ifc
 
     obj = ges_objects.add(bpy.context, "GES_Turbine", "UndoTurbina")
