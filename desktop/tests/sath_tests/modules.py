@@ -284,8 +284,31 @@ def _review_live():
     assert hasattr(bpy.types, "SATH_PT_review") and bpy.ops.sath.clear_diff() == {"FINISHED"}
 
 
+def _viewer_hides():
+    """Spec P3 mezoni: viewer roli sim panelini va commit ni yashiradi; engineer (eski server — rol zaxirasi) ko'radi.
+    IFC yuklaydi (Bonsai yangi sessiya) — run() da oxirgi."""
+    from sath import ifc, props, session
+
+    ifc.load(ROOT / "docs" / "samples" / "namuna_ges_v1.ifc")
+    s = bpy.context.scene.ges
+    session.set_session(object(), {"username": "test"})  # tarmoqsiz «kirgan» holat
+    try:
+        for role, perms_str, sees in (("viewer", "project.read scada.read", False), ("engineer", "", True)):
+            props.fill(s.projects, [{"item_id": 9, "name": "P", "state": role, "perms": perms_str}])
+            s.project_id, s.model_id = 9, 5
+            assert bpy.types.SATH_PT_sim.poll(bpy.context) is sees, role
+            assert bpy.ops.sath.commit.poll() is sees, role
+            assert bpy.ops.sath.sim_hydro.poll() is sees, role
+            assert bpy.ops.sath.safety_check.poll() is sees, role
+    finally:
+        session.logout()
+        s.project_id = s.model_id = 0
+        s.projects.clear()
+
+
 def run(ctx):
     _user_modules()
     _legacy_pinned()
     _bundled_retry()
     _review_live()
+    _viewer_hides()

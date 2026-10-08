@@ -10,12 +10,11 @@ from ... import (
     ops_import,
     ops_monitor,
     ops_server,
-    ops_sim,
     ops_twin,
     ui,
 )
 
-FILES = [ges_objects, ops_server, ops_sim, ops_twin, demo_plant, ops_monitor, ops_import, ui]
+FILES = [ges_objects, ops_server, ops_twin, demo_plant, ops_monitor, ops_import, ui]
 
 
 def register(api):

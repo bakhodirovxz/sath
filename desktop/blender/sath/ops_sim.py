@@ -8,7 +8,7 @@ import time
 import bpy
 
 from . import flows, props, session, sim_anim, water
-from .core import ui_tasks
+from .core import perms, ui_tasks
 from .core.tasks import TASKS, Cancelled
 from .core.ui_tasks import ensure_pump, run_op, show_error
 from .ops_server import _sel
@@ -29,6 +29,10 @@ class SATH_OT_sim_catalog(bpy.types.Operator):
 
     bl_idname = "sath.sim_catalog"
     bl_label = "Katalogni yuklash"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "sim.run", context)
 
     def execute(self, context):
         def apply(cat):
@@ -89,6 +93,10 @@ class SATH_OT_sim_prefill(bpy.types.Operator):
 
     bl_idname = "sath.sim_prefill"
     bl_label = "To'ldirish"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "sim.run", context)
     src: bpy.props.EnumProperty(items=[("site", "Pasportdan", ""), ("model", "Modeldan", "")])
     quiet: bpy.props.BoolProperty(default=False)
 
@@ -210,6 +218,10 @@ class SATH_OT_sim_run(bpy.types.Operator):
     bl_idname = "sath.sim_run"
     bl_label = "Hisoblash"
 
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "sim.run", context)
+
     def execute(self, context):
         s = context.scene.ges
         k = _kind(s)
@@ -308,7 +320,7 @@ class SATH_OT_sim_hydro(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.model_id > 0
+        return session.is_logged_in() and context.scene.ges.model_id > 0 and perms.poll(cls, "sim.run", context)
 
     def execute(self, context):
         s = context.scene.ges
@@ -366,6 +378,10 @@ class SATH_OT_safety_check(bpy.types.Operator):
 
     bl_idname = "sath.safety_check"
     bl_label = "Xavfsizlik tekshiruvi"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "sim.run", context)
 
     def execute(self, context):
         s = context.scene.ges
