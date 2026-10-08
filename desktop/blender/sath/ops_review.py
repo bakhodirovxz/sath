@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import flows, ifc, props, session, viewpoint
+from .core import perms
 from .core.ui_tasks import run_op
 from .ops_server import _sel, guard
 
@@ -75,6 +76,10 @@ class SATH_OT_comment_issue(bpy.types.Operator):
     bl_idname = "sath.comment_issue"
     bl_label = "Izoh qoldirish"
 
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "issue.write", context)
+
     def execute(self, context):
         s = context.scene.ges
         i = _sel(s.issues, s.issues_index)
@@ -92,6 +97,10 @@ class SATH_OT_new_issue(bpy.types.Operator):
 
     bl_idname = "sath.new_issue"
     bl_label = "Yangi issue"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "issue.write", context)
     title: bpy.props.StringProperty(name="Sarlavha")
 
     def invoke(self, context, event):
@@ -126,7 +135,7 @@ class SATH_OT_refresh_crs(bpy.types.Operator):
 
         def do():
             props.fill(s.crs, flows.cr_rows(session.client(), s.model_id))
-            s.my_role = flows.model_role(session.client(), s.model_id) or ""
+            s.my_role = perms.role(context)
             if len(s.crs) and not (0 <= s.crs_index < len(s.crs)):
                 s.crs_index = 0  # update → show_cr
 
@@ -168,6 +177,10 @@ class SATH_OT_decide(bpy.types.Operator):
     )
 
     def execute(self, context):
+        need = {"approve": "cr.approve", "request_changes": "cr.review"}.get(self.decision)
+        if need and not perms.can(need, context):  # izoh qoldirish hammaga ochiq
+            self.report({"ERROR"}, f"Ruxsat yo'q: {need}")
+            return {"CANCELLED"}
         s = context.scene.ges
         cr = _sel(s.crs, s.crs_index)
         if cr is None:
@@ -187,6 +200,10 @@ class SATH_OT_decide(bpy.types.Operator):
 class SATH_OT_merge_cr(bpy.types.Operator):
     bl_idname = "sath.merge_cr"
     bl_label = "Tasdiqlash (merge)"
+
+    @classmethod
+    def poll(cls, context):
+        return session.is_logged_in() and perms.poll(cls, "cr.merge", context)
 
     def execute(self, context):
         s = context.scene.ges

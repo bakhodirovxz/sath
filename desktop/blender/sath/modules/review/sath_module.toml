@@ -1,0 +1,11 @@
+id = "review"
+name = "Taqriz va issue lar"
+version = "1.0.0"
+api = ">=1.0,<2"
+requires = []
+permissions = ["network"]
+visible_if_any = ["project.read"]
+workspaces = ["BIM", "Compare"]
+category = "Sath"
+default_enabled = true
+order = 20

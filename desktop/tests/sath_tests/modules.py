@@ -269,7 +269,23 @@ def _legacy_pinned():
         host.REG.dependents, host.PINNED = real, frozenset({"legacy"})
 
 
+def _review_live():
+    """Spec P3 mezoni: review jonli o'chadi va yonadi; yadro tegilmaydi."""
+    from sath.core import host
+
+    s = bpy.context.scene.ges
+    assert host.is_enabled("review") and hasattr(bpy.types, "SATH_PT_review") and _registered("diff")
+    s.diff_note = "v1: eski"
+    assert host.set_enabled("review", False) == ["review"]
+    assert not hasattr(bpy.types, "SATH_PT_review") and not _registered("diff") and not _registered("decide")
+    assert s.diff_note == ""  # modul unregister: diff ranglari tiklandi, izoh tozalandi
+    assert _registered("commit") and hasattr(bpy.types, "SATH_PT_model")
+    assert host.set_enabled("review", True) == ["review"]
+    assert hasattr(bpy.types, "SATH_PT_review") and bpy.ops.sath.clear_diff() == {"FINISHED"}
+
+
 def run(ctx):
     _user_modules()
     _legacy_pinned()
     _bundled_retry()
+    _review_live()

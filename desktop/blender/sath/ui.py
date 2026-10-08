@@ -94,64 +94,6 @@ class SATH_PT_model(GesPanel, bpy.types.Panel):
             lay.label(text=f"Ochiq: {s.model_name} v{s.version_number}", icon="FILE_TICK")
 
 
-class SATH_PT_review(GesPanel, bpy.types.Panel):
-    bl_label = "Taqriz va issue lar"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        return session.is_logged_in() and context.scene.ges.model_id > 0
-
-    def draw(self, context):
-        s = context.scene.ges
-        lay = self.layout
-        box = lay.box()
-        box.label(text="Versiyalar farqi", icon="SELECT_DIFFERENCE")
-        row = box.row(align=True)
-        row.operator("sath.diff")
-        row.operator("sath.clear_diff", text="", icon="X")
-        if s.diff_note:
-            box.label(text=s.diff_note)
-
-        box = lay.box()
-        box.label(text="Issue lar", icon="ERROR")
-        draw_list(box, s, "issues", "issues_index", 4, "sath.refresh_issues")
-        for line in s.issue_detail.splitlines()[:8]:
-            box.label(text=line)
-        row = box.row(align=True)
-        row.operator("sath.goto_view", icon="CAMERA_DATA")
-        row.operator("sath.new_issue", icon="ADD")
-        row = box.row(align=True)
-        row.prop(s, "comment_text", text="")
-        row.operator("sath.comment_issue", text="", icon="PLAY")
-
-        box = lay.box()
-        role = f" · {s.my_role}" if s.my_role else ""
-        box.label(text=f"Tasdiqlash so'rovlari{role}", icon="CHECKMARK")
-        draw_list(box, s, "crs", "crs_index", 4, "sath.refresh_crs")
-        for line in s.cr_detail.splitlines()[:8]:
-            box.label(text=line)
-        cr = cur(s.crs, s.crs_index)
-        approver = s.my_role == "approver"
-        st = cr.col4 if cr else ""
-        open_ = st in ("open", "changes_requested", "approved")
-        row = box.row(align=True)
-        r1 = row.row()
-        r1.enabled = approver and open_ and st != "approved"
-        r1.operator("sath.decide", text="Ma'qullash").decision = "approve"
-        r2 = row.row()
-        r2.enabled = approver and open_
-        r2.operator("sath.decide", text="O'zgartirish so'rash").decision = "request_changes"
-        row = box.row(align=True)
-        r1 = row.row()
-        r1.enabled = approver and st == "approved"
-        r1.operator("sath.merge_cr")
-        r2 = row.row()
-        r2.enabled = bool(cr) and st not in ("merged", "rejected")
-        r2.operator("sath.reject_cr")
-        box.operator("sath.decide", text="Faqat izoh qoldirish").decision = "comment"
-
-
 class SATH_PT_sim(GesPanel, bpy.types.Panel):
     bl_label = "Simulyatsiya"
     bl_options = {"DEFAULT_CLOSED"}
@@ -372,7 +314,7 @@ def _register_keymap():
     _keymaps.append((km, kmi))
 
 
-CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_review, SATH_PT_sim, SATH_PT_monitor, SATH_PT_twin, SATH_PT_import, SATH_PT_notifications]
+CLASSES = [SATH_MT_main, SATH_UL_simple, SATH_PT_server, SATH_PT_model, SATH_PT_sim, SATH_PT_monitor, SATH_PT_twin, SATH_PT_import, SATH_PT_notifications]
 
 
 def register():
