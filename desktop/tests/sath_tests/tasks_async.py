@@ -40,6 +40,16 @@ def run(ctx):
         assert applied == []
         assert "eskirdi" in bpy.context.scene.ges.status
 
+        # 2b) cancellable=False: bekor qilib bo'lmaydi; stale matni epoch tashlanganda holatga yoziladi
+        applied.clear()
+        ui_tasks.run_op(Op(), "yuk", lambda c: (time.sleep(0.2), 1)[1], applied.append, key="t.nc", cancellable=False, stale="X-eskirgan")
+        task = TASKS.active()[0]
+        assert task.cancellable is False and TASKS.cancel(task.id) is False
+        session.bump_epoch()
+        TASKS.drain(5)
+        assert applied == [] and "X-eskirgan" in bpy.context.scene.ges.status
+        assert "qayta bajaring" not in bpy.context.scene.ges.status
+
         # 3) xato → scene.ges.status (fon rejimida popup yo'q)
         def boom(c):
             raise RuntimeError("server yiqildi")

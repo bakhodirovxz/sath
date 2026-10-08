@@ -8,6 +8,7 @@ import webbrowser
 import bpy
 
 from . import flows, ifc, props, session, update, viewpoint
+from .core.tasks import TASKS
 from .core.ui_tasks import run_op
 from .prefs import prefs
 from .shared.server_client import ServerError
@@ -325,6 +326,9 @@ class SATH_OT_commit(bpy.types.Operator):
             box.prop(self, "assign_missing")
 
     def execute(self, context):
+        if TASKS.running("server.commit"):  # ikkinchi bosish commit_m{id}.ifc ni yuklash o'rtasida qayta yozmasin
+            self.report({"WARNING"}, "Commit: allaqachon bajarilmoqda")
+            return {"CANCELLED"}
         s = context.scene.ges
         from . import ges_objects
 
@@ -363,7 +367,8 @@ class SATH_OT_commit(bpy.types.Operator):
             sc.status = flows.conflict_text(e)
             return sc.status
 
-        return run_op(self, "Commit", work, apply, key="server.commit", fail=fail)
+        stale = "Commit serverga yuklangan bo'lishi mumkin — versiyalar ro'yxatini yangilang (qayta commit qilmang)"
+        return run_op(self, "Commit", work, apply, key="server.commit", fail=fail, cancellable=False, stale=stale)
 
 
 class SATH_OT_submit(bpy.types.Operator):

@@ -107,17 +107,21 @@ def run_op(
     *,
     key: str | None = None,
     fail: Callable[[BaseException], str | None] | None = None,
+    cancellable: bool = True,
+    stale: str | None = None,
 ) -> set[str]:
     """Operator ishini fon vazifasiga aylantiradi.
 
     work(ctx) — ishchi oqimda, bpy ga TEGMAYDI; apply(natija) — asosiy oqimda.
     fail(xato) — asosiy oqimda holatni yozadi va ko'rsatiladigan matnni qaytaradi (None → xato matni).
-    Sessiya/model almashgan bo'lsa (epoch) natija qo'llanmaydi."""
+    Sessiya/model almashgan bo'lsa (epoch) natija qo'llanmaydi; `stale` — shunda holat qatoriga yoziladigan matn.
+    cancellable=False — bekor qilib bo'lmaydigan ish (masalan serverga yuklash): status bar da X yo'q."""
     ep = session.epoch()
+    stale_text = stale or f"{title}: natija eskirdi (sessiya yoki model almashdi) — qayta bajaring"
 
     def done(result) -> None:
         if session.epoch() != ep:
-            status(f"{title}: natija eskirdi (sessiya yoki model almashdi) — qayta bajaring")
+            status(stale_text)
             return
         if apply is not None:
             apply(result)
@@ -126,7 +130,7 @@ def run_op(
         if isinstance(e, TransferCancelled):
             return
         if session.epoch() != ep:
-            status(f"{title}: natija eskirdi (sessiya yoki model almashdi) — qayta bajaring")
+            status(stale_text)
             return
         _print_unexpected(e)
         msg = (fail(e) if fail is not None else None) or _msg(e)
@@ -134,7 +138,7 @@ def run_op(
 
     if TASKS.inline:
         try:
-            TASKS.run(title, work, done, key=key)
+            TASKS.run(title, work, done, key=key, cancellable=cancellable)
         except TransferCancelled:
             return {"CANCELLED"}
         except Exception as e:
@@ -142,7 +146,7 @@ def run_op(
             op.report({"ERROR"}, (fail(e) if fail is not None else None) or _msg(e))
             return {"CANCELLED"}
         return {"FINISHED"}
-    task = TASKS.run(title, work, done, error, key=key)
+    task = TASKS.run(title, work, done, error, key=key, cancellable=cancellable)
     if task is None:
         op.report({"WARNING"}, f"{title}: allaqachon bajarilmoqda")
         return {"CANCELLED"}
