@@ -110,3 +110,53 @@ def test_finish_gives_up_without_two_view3d(ws):
     w = _WS("Simulation", screen, sath_ws_todo=1)
     assert ws.finish(_win(w, screen)) is True and ws.TODO not in w
     assert ws.finish(_win(w, screen)) is False  # TODO yo'q — hech narsa
+
+
+def _lum(hex_: str) -> float:
+    ch = [int(hex_[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in ch]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    hi, lo = sorted((_lum(a), _lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_scada_monitor_palette_has_contrast_on_isa_grey(ws):
+    """I1: SCADA kanvasi (operator, ISA_GREY) da monitoring ranglari kanvasdan >= 3:1 (grafik kontrasti)."""
+    from sath import flows
+
+    assert flows.monitor_theme("SCADA") == "operator"
+    assert {flows.monitor_theme(t) for t in (None, "BIM", "Compare", "Simulation")} == {"engineer"}
+    theme = flows.monitor_theme("SCADA")
+    t = tokens.THEMES[theme]
+    assert t["canvas"] == ws.ISA_GREY
+    names = ["text-muted", "alarm-stale", "ok", "warn", "danger"]
+    names += ["alarm-low", "alarm-critical"]
+    # alarm-medium/high — to'ldirma rang (web da alarm-outline konturi + shakl bilan beriladi, 3D da kontur yo'q):
+    # kanvasdan ham, «normal» (text-muted) dan ham aniq ajralishi kerak, kontrast 3:1 talab qilinmaydi.
+    for n in ("alarm-medium", "alarm-high"):
+        assert t[n] not in (t["text-muted"], ws.ISA_GREY) and _contrast(t[n], ws.ISA_GREY) > 1.2
+        assert _contrast(t[n], t["text-muted"]) >= 3.0, n
+    for n in names:
+        assert _contrast(t[n], ws.ISA_GREY) >= 3.0, (n, t[n], _contrast(t[n], ws.ISA_GREY))
+    assert tokens.rgba("ok", theme) != tokens.rgba("alarm-medium", theme)  # normal != alarm-medium
+    assert t["ok"] != t["alarm-medium"] and t["ok"] != t["warn"]
+    # funksiyalar tanlangan temaning ranglarini qaytaradi
+    assert flows.alarm_rgba("ok", None, theme) == tokens.rgba("text-muted", theme)
+    assert flows.alarm_rgba("high", "critical", theme) == tokens.rgba("alarm-critical", theme)
+    assert flows.alarm_rgba("stale", None, theme) == tokens.rgba("alarm-stale", theme)
+    assert flows.alarm_rgba("high", "low", theme) != flows.alarm_rgba("high", "low")
+    assets = [{"element_guid": "G", "level": "yomon"}]
+    assert flows.health_colors(assets, theme) == {"G": tokens.rgba("danger", theme)}
+    assert flows.health_colors(assets) == {"G": flows.HEALTH_COLORS["yomon"]}
+    sensors = [{"element_guid": "G", "enabled": True, "alarm": "ok"}]
+    assert flows.alarm_colors(sensors, theme) == {"G": tokens.rgba("text-muted", theme)}
+
+
+def test_alarm_labels_cover_all_states():
+    from sath import flows
+
+    assert set(flows.ALARM_STATES) <= set(flows.ALARM_UZ)
+    assert flows.ALARM_UZ["lowlow"] == "juda past (LL)" and flows.ALARM_UZ["roc"] == "tez o'zgarish"

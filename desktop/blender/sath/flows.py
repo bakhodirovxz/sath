@@ -308,16 +308,25 @@ ALARM_STATES = ("ok", "low", "high", "stale", "lowlow", "highhigh", "roc", "devi
 ALARM_PRIORITIES = ("low", "medium", "high", "critical")
 
 
-def alarm_rgba(alarm: str | None, priority: str | None = None) -> tuple:
+def monitor_theme(ws_tag: str | None) -> str:
+    """Monitoring ranglari temasi: SCADA ish joyi — operator (ISA-101 kulrang kanvas, web dispetcher sahifalari),
+    qolgan hammasi — engineer (Blender Dark). Palitra kanvas bilan bir temadan bo'lishi shart (kontrast >= 3:1)."""
+    return "operator" if ws_tag == "SCADA" else "engineer"
+
+
+def alarm_rgba(alarm: str | None, priority: str | None = None, theme: str = "engineer") -> tuple:
     if alarm not in ALARM_STATES or alarm == "ok":
-        return tokens.rgba("text-muted")
+        return tokens.rgba("text-muted", theme)
     if alarm == "stale":
-        return tokens.rgba("alarm-stale")
-    return tokens.rgba(f"alarm-{priority if priority in ALARM_PRIORITIES else 'medium'}")
+        return tokens.rgba("alarm-stale", theme)
+    return tokens.rgba(f"alarm-{priority if priority in ALARM_PRIORITIES else 'medium'}", theme)
 
 
 ALARM_COLORS = {a: alarm_rgba(a) for a in ALARM_STATES}  # ustuvorlik «medium» bo'yicha (testlar, eski chaqiruv)
-ALARM_UZ = {"ok": "normal", "low": "past", "high": "yuqori", "stale": "uzilgan"}
+ALARM_UZ = {  # web i18n enum.alarm.* (uz-Latn) bilan bir xil; «stale» — desktop da qisqa «uzilgan»
+    "ok": "normal", "low": "past", "high": "yuqori", "stale": "uzilgan", "lowlow": "juda past (LL)",
+    "highhigh": "juda yuqori (HH)", "roc": "tez o'zgarish", "deviation": "model bilan og'ish",
+}  # fmt: skip
 
 
 def sensor_rows(sensors: list[dict]) -> list[dict]:
@@ -338,9 +347,9 @@ def sensor_rows(sensors: list[dict]) -> list[dict]:
     return rows
 
 
-def alarm_colors(sensors: list[dict]) -> dict[str, tuple]:
+def alarm_colors(sensors: list[dict], theme: str = "engineer") -> dict[str, tuple]:
     return {
-        s["element_guid"]: alarm_rgba(s.get("alarm"), s.get("priority"))
+        s["element_guid"]: alarm_rgba(s.get("alarm"), s.get("priority"), theme)
         for s in sensors
         if s.get("element_guid") and s.get("enabled")
     }
@@ -428,11 +437,19 @@ def health_rows(h: dict) -> list[dict]:
     ]
 
 
-def health_colors(assets: list[dict]) -> dict[str, tuple]:
+_HEALTH_TOKEN = {"yaxshi": "ok", "qoniqarli": "warn", "yomon": "danger", "kritik": "danger"}
+
+
+def health_palette(theme: str = "engineer") -> dict[str, tuple]:
+    return {k: tokens.rgba(t, theme) for k, t in _HEALTH_TOKEN.items()}
+
+
+def health_colors(assets: list[dict], theme: str = "engineer") -> dict[str, tuple]:
+    pal = HEALTH_COLORS if theme == "engineer" else health_palette(theme)
     return {
-        a["element_guid"]: HEALTH_COLORS[a["level"]]
+        a["element_guid"]: pal[a["level"]]
         for a in assets
-        if a.get("element_guid") and a.get("level") in HEALTH_COLORS
+        if a.get("element_guid") and a.get("level") in pal
     }
 
 

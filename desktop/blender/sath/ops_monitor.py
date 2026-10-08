@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import bpy
 
 from . import flows, ifc, props, session, water
-from .core import events, perms
+from .core import events, perms, registry
 from .core.tasks import TASKS
 from .core.ui_tasks import ensure_pump
 from .ops_server import _sel
@@ -68,7 +68,16 @@ def _apply(d: dict, hours: float) -> None:
         s.twin_head = f"Egizak: {d['twin_err']}"
     ifc.ALARM_STATE.restore()
     if s.monitor_color:
-        colors = flows.health_colors(health_assets) if s.monitor_color_mode == "health" else flows.alarm_colors(sensors)
+        # Obyekt ranglari sahna bo'yicha umumiy (barcha ish joylari): palitra oynadagi faol ish joyi temasidan
+        # (SCADA — operator, qolgan — engineer). _apply har 5 s da qayta chizadi, shuning uchun ish joyi
+        # almashganda yangi palitra keyingi tikda qo'llanadi (yangi timer/obuna yo'q).
+        win = bpy.context.window
+        ws = win.workspace if win is not None else None
+        theme = flows.monitor_theme(ws.get(registry.WORKSPACE_TAG) if ws is not None else None)
+        if s.monitor_color_mode == "health":
+            colors = flows.health_colors(health_assets, theme)
+        else:
+            colors = flows.alarm_colors(sensors, theme)
         ifc.ALARM_STATE.paint(colors)
     if s.monitor_water:
         lvl = flows.water_sensor_level(sensors) if hours <= 0 else _level_from(d, hours)
