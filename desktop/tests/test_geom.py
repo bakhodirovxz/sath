@@ -136,3 +136,43 @@ def test_is_closed_detects_open_and_degenerate():
     bad = f.copy()
     bad[0, 1] = bad[0, 0]
     assert not geom.is_closed((v, bad))
+
+
+def test_invalid_input_fails_loudly():
+    circ = geom.circle(1.0, 8)
+    path, tans = [(0.0, 0.0, 0.0), (0.0, 0.0, -1.0)], [(0.0, 0.0, -1.0)] * 2
+    bad = [
+        lambda: geom.circle(0.0, 8),
+        lambda: geom.circle(1.0, 2),
+        lambda: geom.box((1.0, 0.0, 1.0)),
+        lambda: geom.extrude([(0, 0, 0), (1, 0, 0), (1, 1, 0)], (0.0, 0.0, 0.0)),
+        lambda: geom.cylinder(0.0, 1.0),
+        lambda: geom.cylinder(1.0, -1.0),
+        lambda: geom.cone(0.0, 0.0, 1.0),
+        lambda: geom.cone(-1.0, 1.0, 1.0),
+        lambda: geom.cone(1.0, 0.5, 0.0),
+        lambda: geom.torus(1.0, 0.0),
+        lambda: geom.torus(0.5, 1.0),
+        lambda: geom.revolve([(1.0, 0.0), (1.0, 1.0)]),  # bir chiziq — ikki uch
+        lambda: geom.revolve([(1.0, 0.0), (1.0, 1.0), (1.0, 2.0)]),  # nol yuza
+        lambda: geom.revolve([(0.0, 0.0), (0.0, 1.0), (0.0, 2.0)]),  # ρ <= 0
+        lambda: geom.revolve([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], 0.0),
+        lambda: geom.revolve([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)], 7.0),
+        lambda: geom.sweep(circ, path[:1], tans[:1], (1.0, 0.0, 0.0)),  # bir nuqtali yo'l
+        lambda: geom.sweep(circ, path, tans[:1], (1.0, 0.0, 0.0)),  # tangentlar soni mos emas
+        lambda: geom.sweep(circ[:2], path, tans, (1.0, 0.0, 0.0)),  # profilda < 3 uch
+        lambda: geom.sweep(circ, path, [(0.0, 0.0, 0.0)] * 2, (1.0, 0.0, 0.0)),  # nol tangent
+        lambda: geom.sweep(circ, path, [(1.0, 0.0, 0.0)] * 2, (1.0, 0.0, 0.0)),  # tangent ‖ normal
+        lambda: geom.sweep(circ, path, tans, (0.0, 0.0, 0.0)),  # nol normal
+    ]
+    for fn in bad:
+        with pytest.raises(ValueError):
+            fn()
+
+
+def test_cone_apex_either_end_and_nonfinite_not_closed():
+    assert geom.is_closed(geom.cone(0.0, 1.0, 2.0)) and geom.signed_volume(geom.cone(0.0, 1.0, 2.0)) > 0
+    v, f = geom.box((1.0, 1.0, 1.0))
+    v = v.copy()
+    v[0, 0] = np.nan
+    assert not geom.is_closed((v, f))

@@ -34,6 +34,8 @@ def segments(radius: float, tol: float = TOL) -> int:
 
 def circle(r: float, n: int, center: tuple[float, float] = (0.0, 0.0)) -> np.ndarray:
     """(n, 2) aylana nuqtalari, burchak 0 dan soat miliga qarshi (n 4 ga karrali — ±r nuqtalar aniq)."""
+    if n < 3 or r <= 0:
+        raise ValueError("circle: n >= 3 va r > 0 bo'lishi kerak")
     t = 2.0 * math.pi * np.arange(n) / n
     return np.column_stack([center[0] + r * np.cos(t), center[1] + r * np.sin(t)])
 
@@ -87,7 +89,7 @@ def is_closed(m: Mesh) -> bool:
     """Yopiq va izchil yo'naltirilgan qobiq(lar): har yo'naltirilgan qirra bir marta, teskarisi ham bor;
     takroriy indeksli (degenerat) uchburchak yo'q."""
     v, f = m
-    if len(f) == 0 or (f[:, 0] == f[:, 1]).any() or (f[:, 1] == f[:, 2]).any() or (f[:, 0] == f[:, 2]).any():
+    if len(f) == 0 or not np.isfinite(v).all() or (f[:, 0] == f[:, 1]).any() or (f[:, 1] == f[:, 2]).any() or (f[:, 0] == f[:, 2]).any():
         return False
     e = f[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
     nv = len(v)
@@ -159,6 +161,10 @@ def extrude(poly, vec) -> Mesh:
     """Tekis 3D ko'pburchakni (n, 3; botiq bo'lishi mumkin) `vec` bo'ylab cho'zish — prizma."""
     p = np.asarray(poly, dtype=np.float64).reshape(-1, 3)
     d = np.asarray(vec, dtype=np.float64)
+    if np.linalg.norm(d) < 1e-12:
+        raise ValueError("extrude: vektor nol")
+    if len(p) < 3:
+        raise ValueError("extrude: ko'pburchakda kamida 3 uch kerak")
     if np.dot(_normal(p), d) < 0:
         p = p[::-1].copy()
     n = len(p)
@@ -173,6 +179,8 @@ def box(size, origin=(0.0, 0.0, 0.0)) -> Mesh:
     """O'qlarga parallel quti: origin — minimal burchak, size — (dx, dy, dz)."""
     sx, sy, sz = (float(s) for s in size)
     x, y, z = (float(o) for o in origin)
+    if min(sx, sy, sz) <= 0:
+        raise ValueError("box: o'lchamlar > 0 bo'lishi kerak")
     return extrude([(x, y, z), (x + sx, y, z), (x + sx, y + sy, z), (x, y + sy, z)], (0.0, 0.0, sz))
 
 
@@ -181,6 +189,13 @@ def revolve(profile, angle: float = 2 * math.pi, *, tol: float = TOL, matrix=Non
     +X dan +Y tomonga aylantirish. ρ ≈ 0 uchlar o'qda — bitta umumiy nuqta (payvandlanadi). angle < 2π — ikki
     uchida profil qopqog'i. `matrix` (4×4) natijani joylashtiradi (boshqa o'q atrofida aylantirish uchun)."""
     p = np.asarray(profile, dtype=np.float64)
+    if not 0 < angle <= 2 * math.pi + 1e-12:
+        raise ValueError("revolve: burchak 0 < angle <= 2π bo'lishi kerak")
+    if len(p) < 3:
+        raise ValueError("revolve: profilda kamida 3 uch kerak")
+    scale = float(np.abs(p).max())
+    if abs(_area2(p)) <= 1e-12 * scale * scale or float(p[:, 0].max()) <= 0:
+        raise ValueError("revolve: profil degenerat (nol yuza yoki ρ <= 0)")
     if _area2(p) < 0:
         p = p[::-1].copy()
     if (p[:, 0] < -1e-12).any():
@@ -228,17 +243,23 @@ def revolve(profile, angle: float = 2 * math.pi, *, tol: float = TOL, matrix=Non
 
 def cylinder(r: float, h: float, *, base=(0.0, 0.0, 0.0), tol: float = TOL) -> Mesh:
     """Z o'qli silindr, asosi markazi `base`."""
+    if r <= 0 or h <= 0:
+        raise ValueError("cylinder: r > 0 va h > 0 bo'lishi kerak")
     return translate(revolve([(0.0, 0.0), (r, 0.0), (r, h), (0.0, h)], tol=tol), base)
 
 
 def cone(r1: float, r2: float, h: float, *, base=(0.0, 0.0, 0.0), tol: float = TOL) -> Mesh:
     """Z o'qli kesik konus: pastda r1, yuqorida r2 (0 — uchli)."""
-    prof = [(0.0, 0.0), (r1, 0.0)] + ([(r2, h)] if r2 > 0 else []) + [(0.0, h)]
+    if r1 < 0 or r2 < 0 or (r1 == 0 and r2 == 0) or h <= 0:
+        raise ValueError("cone: r1, r2 >= 0 (ikkalasi nol emas) va h > 0 bo'lishi kerak")
+    prof = [(0.0, 0.0)] + ([(r1, 0.0)] if r1 > 0 else []) + ([(r2, h)] if r2 > 0 else []) + [(0.0, h)]
     return translate(revolve(prof, tol=tol), base)
 
 
 def torus(big_r: float, r: float, *, center=(0.0, 0.0, 0.0), tol: float = TOL) -> Mesh:
     """Z o'qli tor: markaziy aylana radiusi big_r, kesim radiusi r."""
+    if r <= 0 or big_r < r:
+        raise ValueError("torus: r > 0 va big_r >= r bo'lishi kerak")
     return translate(revolve(circle(r, segments(r, tol), (big_r, 0.0)), tol=tol), center)
 
 
@@ -253,11 +274,22 @@ def sweep(profile, path, tangents, normal, *, hole=None) -> Mesh:
         inner = None if inner is None else inner[::-1].copy()
     pts = np.asarray(path, dtype=np.float64)
     tan = np.asarray(tangents, dtype=np.float64)
-    tan = tan / np.linalg.norm(tan, axis=1)[:, None]
+    if len(pts) < 2 or len(tan) != len(pts) or len(prof) < 3:
+        raise ValueError("sweep: yo'lda >= 2 nuqta, tangentlar soni teng, profilda >= 3 uch bo'lishi kerak")
+    if inner is not None and inner.shape != prof.shape:
+        raise ValueError("sweep: hole profil bilan bir xil shaklda bo'lishi kerak")
+    tn = np.linalg.norm(tan, axis=1)
     u = np.asarray(normal, dtype=np.float64)
-    u = u / np.linalg.norm(u)
+    un = np.linalg.norm(u)
+    if (tn < 1e-12).any() or un < 1e-12:
+        raise ValueError("sweep: tangent yoki normal nol")
+    tan = tan / tn[:, None]
+    u = u / un
     bv = np.cross(tan, u)
-    bv = bv / np.linalg.norm(bv, axis=1)[:, None]
+    bn = np.linalg.norm(bv, axis=1)
+    if (bn < 1e-12).any():
+        raise ValueError("sweep: tangent normalga parallel")
+    bv = bv / bn[:, None]
     k, n = len(pts), len(prof)
 
     def rings(pr: np.ndarray) -> np.ndarray:
