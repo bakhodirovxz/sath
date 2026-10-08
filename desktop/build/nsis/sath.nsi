@@ -32,12 +32,18 @@ Section "Sath" SEC_MAIN
   SetOutPath "$INSTDIR"
   ; eski versiya ustiga: faqat portable\config (foydalanuvchi sozlamalari) saqlanadi, qolgani yangilanadi
   ; 0.3.x dan: FreeCAD olib tashlangan (P4) — eski papka o'chiriladi
-  RMDir /r "$INSTDIR\freecad"
+  IfFileExists "$INSTDIR\Sath.exe" 0 +2  ; faqat Sath o'rnatilgan papkada (boshqa dasturning freecad\ ini o'chirmaslik uchun)
+    RMDir /r "$INSTDIR\freecad"
   File /r /x "portable" "${STAGE}\*"
   ; extension lar va boot skripti HAR DOIM almashadi (olib tashlangan modullar qolib ketmasin)
   RMDir /r "$INSTDIR\portable\extensions\user_default\sath"
   RMDir /r "$INSTDIR\portable\extensions\user_default\bonsai"
-  RMDir /r "$INSTDIR\portable\scripts"
+  ; Bonsai kodi va bog'liqliklari .local da (extension wheels\ dan Blender keyingi ishga tushishda o'zi qayta quradi)
+  RMDir /r "$INSTDIR\portable\extensions\.local"
+  RMDir /r "$INSTDIR\portable\extensions\.cache"
+  ; portable\scripts foydalanuvchiniki (presetlar, addonlar, app template): faqat Sath fayllari almashadi
+  Delete "$INSTDIR\portable\scripts\startup\sath_boot.py"
+  Delete "$INSTDIR\portable\scripts\startup\__pycache__\sath_boot.*.pyc"
   SetOutPath "$INSTDIR\portable\extensions"
   File /r "${STAGE}\portable\extensions\*"
   SetOutPath "$INSTDIR\portable\scripts"
