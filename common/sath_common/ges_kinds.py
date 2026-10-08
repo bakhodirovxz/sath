@@ -456,6 +456,126 @@ _register(KindSpec(
 ))  # fmt: skip
 
 
+# --- Transformator: bak + 10 radiator (ikki yonda) + 3 izolyator — tegib turgan alohida qobiqlar -----------------
+
+
+def _transformer_parts(p: dict, tol: float) -> list:
+    L, W, H = p["Length"], p["Width"], p["Height"]
+    parts = [geom.box((0.7 * L, W, 0.8 * H), (-0.35 * L, -W / 2, 0.0))]
+    for i in range(5):
+        x = -0.3 * L + i * (0.6 * L / 4)
+        for side in (-1, 1):
+            y = W / 2 if side > 0 else -W / 2 - 0.15 * L
+            parts.append(geom.box((0.04 * L, 0.15 * L, 0.6 * H), (x, y, 0.1 * H)))
+    for i in range(3):
+        parts.append(geom.cylinder(0.05 * W, 0.2 * H, base=(-0.2 * L + i * 0.2 * L, 0.0, 0.8 * H), tol=tol))
+    return parts
+
+
+def _transformer_volume(p: dict) -> float:
+    L, W, H = p["Length"], p["Width"], p["Height"]
+    return 0.7 * L * W * 0.8 * H + 10 * 0.04 * L * 0.15 * L * 0.6 * H + 3 * math.pi * (0.05 * W) ** 2 * 0.2 * H
+
+
+_register(KindSpec(
+    kind="GES_Transformer", label="Transformator", ifc_class="IfcTransformer", pset="Pset_GES_Transformer",
+    role="transformer:", color=(0.73, 0.53, 0.15),
+    params=(
+        _len("Length", "Uzunligi", 6), _len("Width", "Kengligi", 4), _len("Height", "Balandligi", 5),
+        _flt("RatedPower", "Nominal quvvat, MVA", 40), _flt("VoltageHV", "Yuqori kuchlanish, kV", 110),
+        _flt("VoltageLV", "Past kuchlanish, kV", 10.5),
+        _enum("Cooling", "Sovitish turi (IEC 60076)", ("ONAN", "ONAF", "OFAF", "ODAF"), "ONAF"),
+    ),
+    fields=(
+        _real("Quvvat_MVA", "RatedPower"), _real("KuchlanishYuqori_kV", "VoltageHV"),
+        _real("KuchlanishPast_kV", "VoltageLV"), _label("Sovitish", "Cooling"),
+    ),
+    parts=_transformer_parts, volume=_transformer_volume,
+))  # fmt: skip
+
+
+# --- Suv qabul qilgich: minora, −Y yuzida n ta teshik (chuqurligi 0.3·D − 1 mm) — qatlamlar va ustunlar -----------
+
+
+def _intake_parts(p: dict, tol: float) -> list:
+    W, D, H = p["Width"], p["Depth"], p["Height"]
+    n = max(1, int(p["Openings"]))
+    ow, df, z0, z1 = 0.7 * W / n, 0.3 * D - EPS, 0.1 * H, 0.45 * H
+    parts = [
+        geom.box((W, D, z0), (-W / 2, -D / 2, 0.0)),
+        geom.box((W, D, H - z1), (-W / 2, -D / 2, z1)),
+        geom.box((W, D - df, z1 - z0), (-W / 2, -D / 2 + df, z0)),
+    ]
+    x = -W / 2
+    for i in range(n):
+        a = -0.35 * W + i * ow + 0.1 * ow
+        parts.append(geom.box((a - x, df, z1 - z0), (x, -D / 2, z0)))
+        x = a + 0.8 * ow
+    parts.append(geom.box((W / 2 - x, df, z1 - z0), (x, -D / 2, z0)))
+    return parts
+
+
+def _intake_check(p: dict) -> None:
+    if 0.3 * p["Depth"] <= EPS:
+        raise ValueError("Suv qabul qilgich: chuqurlik juda kichik")
+
+
+_register(KindSpec(
+    kind="GES_Intake", label="Suv qabul qilgich", ifc_class="IfcBuildingElementProxy", pset="Pset_GES_Intake",
+    role="intake", color=(0.49, 0.61, 0.71),
+    params=(
+        _len("Width", "Kengligi (X)", 8), _len("Depth", "Chuqurligi (Y)", 8), _len("Height", "Balandligi", 15),
+        _flt("SillElevation", "Ostona belgisi, m (abs)", 0), _flt("DesignFlow", "Hisobiy sarf, m3/s", 120),
+        _int("Openings", "Teshiklar soni", 2), _flt("ScreenBarSpacing", "Panjara oralig'i, mm", 100),
+    ),
+    fields=(
+        _real("OstonaBelgisi_m", "SillElevation"), _real("HisobiySarf_m3s", "DesignFlow"), _count("Teshiklar", "Openings"),
+        _real("PanjaraOraligi_mm", "ScreenBarSpacing"), _real("Balandlik_m", "Height"),
+    ),
+    parts=_intake_parts,
+    volume=lambda p: p["Width"] * p["Depth"] * p["Height"] - 0.56 * p["Width"] * (0.3 * p["Depth"] - EPS) * 0.35 * p["Height"],
+    density=_concrete, check=_intake_check,
+))  # fmt: skip
+
+
+# --- Boshqaruv xonasi: quti, −Y yuzida uzun oyna (chuqurligi 0.1·W − 1 mm) — qatlamlar va ustunlar ---------------
+
+
+def _controlroom_parts(p: dict, tol: float) -> list:
+    L, W, H = p["Length"], p["Width"], p["Height"]
+    df, z0, z1 = 0.1 * W - EPS, 0.35 * H, 0.8 * H
+    return [
+        geom.box((L, W, z0), (-L / 2, -W / 2, 0.0)),
+        geom.box((L, W, H - z1), (-L / 2, -W / 2, z1)),
+        geom.box((L, W - df, z1 - z0), (-L / 2, -W / 2 + df, z0)),
+        geom.box((0.1 * L, df, z1 - z0), (-L / 2, -W / 2, z0)),
+        geom.box((0.1 * L, df, z1 - z0), (0.4 * L, -W / 2, z0)),
+    ]
+
+
+def _controlroom_check(p: dict) -> None:
+    if 0.1 * p["Width"] <= EPS:
+        raise ValueError("Boshqaruv xonasi: kenglik juda kichik")
+
+
+_register(KindSpec(
+    kind="GES_ControlRoom", label="Boshqaruv xonasi", ifc_class="IfcBuildingElementProxy", pset="Pset_GES_ControlRoom",
+    role="controlroom", color=(0.82, 0.82, 0.86),
+    params=(
+        _len("Length", "Uzunligi (X)", 12), _len("Width", "Kengligi (Y)", 8), _len("Height", "Balandligi", 4),
+        _flt("FloorElevation", "Pol belgisi, m (abs)", 0), _int("Operators", "Dispetcherlar soni", 2),
+        _int("ScadaChannels", "SCADA kanallari soni", 256),
+    ),
+    fields=(
+        _real("Uzunlik_m", "Length"), _real("Kenglik_m", "Width"), _real("Balandlik_m", "Height"),
+        _real("PolBelgisi_m", "FloorElevation"), _count("Dispetcherlar", "Operators"), _count("SCADA_Kanallar", "ScadaChannels"),
+    ),
+    parts=_controlroom_parts,
+    volume=lambda p: p["Length"] * p["Width"] * p["Height"] - 0.8 * p["Length"] * (0.1 * p["Width"] - EPS) * 0.45 * p["Height"],
+    check=_controlroom_check,
+))  # fmt: skip
+
+
 # --- reyestr va API ---------------------------------------------------------------------------------------------------
 
 KINDS: dict[str, KindSpec] = {k: _SPECS[k] for k in ORDER if k in _SPECS}

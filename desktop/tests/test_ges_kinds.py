@@ -3,6 +3,7 @@ analitik hajm (±0.1 %), mesh hajmi (±0.5 %), bbox, yuza (FreeCAD fuse qilmagan
 K2 teskari xaritalash; web qoralama turlari bilan ma'lum farqlar."""
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,14 @@ CASES = [(k, c) for k, g in GOLDEN["kinds"].items() for c in g["cases"]]
 IDS = [f"{k}-{c['id']}" for k, c in CASES]
 # FreeCAD fuse tegib turgan yuzalarni olib tashlaydi, bizda qismlar alohida qobiq → yuza faqat shu turlarda
 AREA_EXACT = {"GES_Dam", "GES_Penstock", "GES_Turbine", "GES_Spillway", "GES_Powerhouse", "GES_DraftTube", "GES_Tailrace"}
+
+WEB = ROOT / "web" / "src" / "viewer" / "draftKinds.ts"
+# Web qoralama turlari ↔ desktop: ma'lum farqlar. O'zgarsa — ataylab (ikkala tomonni yoki shu ro'yxatni yangilang).
+WEB_ONLY = {"Pset_GES_Penstock": {"DevorQalinligi_mm"}, "Pset_GES_Spillway": {"BetonKlassi"}}
+DESKTOP_ONLY = {
+    "Pset_GES_Penstock": {"Qiyalik_deg", "TirsakRadiusi_m", "ChiqishUzunligi_m"},
+    "Pset_GES_Powerhouse": {"Uzunlik_m", "Kenglik_m", "Balandlik_m"},
+}
 
 
 def _ported(kind):
@@ -145,3 +154,21 @@ def test_penstock_path_matches_blender_physics():
     for k in ("p0", "p1", "pm", "p2", "p3", "u1"):
         assert a[k] == pytest.approx(b[k], abs=1e-12), k
     assert a["alpha"] == pytest.approx(b["alpha"]) and a["l1"] == pytest.approx(b["l1"])
+
+
+def test_all_eleven_kinds_ported_in_order():
+    assert tuple(ges_kinds.KINDS) == ges_kinds.ORDER and len(ges_kinds.ORDER) == 11
+    assert set(GOLDEN["kinds"]) == set(ges_kinds.ORDER)
+
+
+def test_web_draft_pset_fields_known_diff():
+    src = WEB.read_text(encoding="utf-8")
+    web = {
+        m.group(1): set(re.findall(r'key: "(\w+)"', m.group(2)))
+        for m in re.finditer(r'pset: \{ name: "(Pset_GES_\w+)", fields: \[(.*?)\] \}', src, re.S)
+    }
+    assert set(web) == {f"Pset_GES_{x}" for x in ("Dam", "Penstock", "Turbine", "Spillway", "Powerhouse", "Transformer", "Intake")}
+    for name, keys in web.items():
+        ours = {f.name for f in ges_kinds.spec(ges_kinds.KIND_BY_PSET[name]).fields}
+        assert keys - ours == WEB_ONLY.get(name, set()), name
+        assert ours - keys == DESKTOP_ONLY.get(name, set()), name
