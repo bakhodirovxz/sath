@@ -5,13 +5,11 @@ avvalgi tartibda ro'yxatga olinadi. B qadamda har modul o'z faylini FILES dan ol
 from __future__ import annotations
 
 from ... import (
-    demo_plant,
-    ges_objects,
     ops_server,
     ui,
 )
 
-FILES = [ges_objects, ops_server, demo_plant, ui]
+FILES = [ops_server, ui]
 
 
 def register(api):

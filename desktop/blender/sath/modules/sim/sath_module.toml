@@ -2,7 +2,7 @@ id = "sim"
 name = "Simulyatsiya"
 version = "1.0.0"
 api = ">=1.0,<2"
-requires = []
+requires = ["bim"]
 permissions = ["network"]
 visible_if_any = ["sim.run"]
 workspaces = ["Simulation", "BIM"]

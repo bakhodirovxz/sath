@@ -130,9 +130,7 @@ class SATH_MT_main(bpy.types.Menu):
         lay.operator("sath.submit")
         lay.operator("sath.open_web")
         lay.operator("sath.notifications")
-        lay.separator()
-        lay.operator_menu_enum("sath.add_object", "kind", text="GES obyekti")
-        host.draw_menus(lay, context)
+        host.draw_menus(lay, context)  # modul bandlari (bim: «GES obyekti», io, sim …) — har biri separator bilan
 
 
 def _menu_header(self, context):

@@ -106,6 +106,9 @@ class _Layout:
         self.calls.append(("operator", idname))
         return type("Props", (), {})()
 
+    def operator_menu_enum(self, idname, _prop, **_k):
+        self.calls.append(("operator", idname))
+
 
 def _user_modules():
     from sath import props
@@ -155,7 +158,7 @@ def _user_modules():
             host.draw_menus(_Layout(calls), bpy.context)
         finally:
             host._menus.remove(boom)
-        assert ("operator", "sath.hello_test") in calls
+        assert ("operator", "sath.hello_test") in calls and ("operator", "sath.add_object") in calls  # bim bandi
 
         bad = host.record("broken")
         assert bad.state == "failed" and "ataylab yiqildi" in bad.error and not _registered("broken_test")
@@ -346,6 +349,58 @@ def _io_live():
     assert host.set_enabled("io", True) == ["io"] and _registered("import_mesh") and _registered("assign_ifc")
 
 
+def _commit_without_bim():
+    """bim o'chiq: commit dialogi yetim-o'chirish belgisini ko'rsatmaydi; execute sath.sync_ifc ni chaqirmaydi va
+    belgi qo'yilgan bo'lsa bim ni yoqishni so'raydi (ro'yxatda yo'q operator chaqirilmaydi)."""
+    from types import SimpleNamespace
+
+    from sath import ifc, ops_server
+
+    calls: list = []
+    fake = SimpleNamespace(layout=_Layout(calls), unassigned_note="", orphan_note="1 yetim entity", purge_orphans=True,
+                           assign_missing=False, msgs=[])  # fmt: skip
+    ops_server.SATH_OT_commit.draw(fake, bpy.context)
+    assert ("prop", "purge_orphans") not in calls and any("(BIM)" in t for k, t in calls if k == "label"), calls
+    fake.report = lambda kind, msg: fake.msgs.append(msg)
+    real = ifc.orphans
+    ifc.orphans = lambda: ["#1"]
+    try:
+        assert ops_server.SATH_OT_commit.execute(fake, bpy.context) == {"CANCELLED"}
+    finally:
+        ifc.orphans = real
+    assert fake.msgs == ["Yetim entitylarni o'chirish uchun «GES obyektlari (BIM)» modulini yoqing"], fake.msgs
+
+
+def _bim_keeps_data():
+    """Review Focus 5: bim o'chib-yonsa GES obyekt parametrlari saqlanadi; sim/twin birga o'chadi.
+    IFC ga yozilmagan obyekt bo'lsa — o'chirish rad etiladi (modul yoqiq qoladi, sabab foydalanuvchiga)."""
+    from sath import ges_objects
+    from sath.core import host
+
+    obj = ges_objects.add(bpy.context, "GES_Dam")  # P2 dagi imzo (sath_tests/objects.py dagidek)
+    name = obj.name
+    # rad etish: IFC ga yozilmagan o'zgarish — hech narsa o'chmaydi, Sozlamalardagi tugma sababni aytadi
+    obj.ges.ifc_dirty = True
+    why = "bim modulini o'chirib bo'lmaydi: 1 obyekt IFC ga yozilmagan — avval «IFC ga qo'llash»"
+    assert host.disable_blocker("bim") == why, host.disable_blocker("bim")
+    assert host.disable_blocker("sim") == ""  # sim/twin o'chishi bim ni tegmaydi
+    assert host.set_enabled("bim", False) == []
+    assert host.is_enabled("bim") and host.is_enabled("sim") and host.is_enabled("twin")
+    assert hasattr(bpy.types.Object, "ges") and _registered("sync_ifc")
+    assert bpy.ops.sath.module_toggle(module_id="bim") == {"CANCELLED"} and host.is_enabled("bim")
+    assert bpy.ops.sath.sync_ifc() == {"FINISHED"} and not obj.ges.ifc_dirty  # «IFC ga qo'llash» — endi mumkin
+    assert host.disable_blocker("bim") == ""
+    off = host.set_enabled("bim", False)
+    assert off[-1] == "bim" and {"sim", "twin"} <= set(off), off
+    assert not hasattr(bpy.types.Object, "ges") and not hasattr(bpy.types, "SATH_PT_objects") and not _registered("add_object")
+    assert not _registered("sync_ifc") and not _registered("build_demo_plant")
+    _commit_without_bim()
+    for mid in reversed(off):
+        assert host.set_enabled(mid, True) == [mid]
+    assert bpy.data.objects[name].ges.kind == "GES_Dam" and hasattr(bpy.types, "SATH_PT_objects")
+    assert _registered("sync_ifc") and not bpy.app.timers.is_registered(ges_objects.flush_pending)
+
+
 def run(ctx):
     _user_modules()
     _legacy_pinned()
@@ -354,4 +409,5 @@ def run(ctx):
     _scada_off()
     _twin_cascade()
     _io_live()
+    _bim_keeps_data()
     _viewer_hides()

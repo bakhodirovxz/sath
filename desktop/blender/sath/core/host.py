@@ -105,12 +105,36 @@ def pinned_dependents(mod_id: str) -> list[str]:
     return [d for d in REG.dependents(mod_id) if d in PINNED] if REG is not None else []
 
 
+def disable_blocker(mod_id: str) -> str:
+    """mod_id o'chirilsa (kaskadda — unga bog'liq yoqilganlari ham) rad etish sababi yoki "". Modul o'zi aytadi:
+    ixtiyoriy `disable_blocker(api) -> str | None` (masalan bim: IFC ga yozilmagan GES obyektlari bor). Faqat
+    foydalanuvchi o'chirishida (set_enabled, module_toggle) so'raladi — addon o'chirilishi/qayta skaner rad etilmaydi.
+    Ilgak yiqilsa — o'chirish to'silmaydi (xato logda): buzuq ilgak modulni abadiy qulflab qo'ymasin."""
+    if REG is None or mod_id not in REG.records:
+        return ""
+    for rid in [*REG.dependents(mod_id), mod_id]:
+        rec = REG.records[rid]
+        fn = getattr(rec.module, "disable_blocker", None) if rec.state == "enabled" else None
+        if fn is None:
+            continue
+        try:
+            why = fn(REG.api)
+        except Exception:  # noqa: BLE001
+            print(f"[sath] «{rid}» moduli disable_blocker xatosi:", flush=True)
+            traceback.print_exc()
+            continue
+        if why:
+            return str(why)
+    return ""
+
+
 def set_enabled(mod_id: str, on: bool) -> list[str]:
     """Jonli yoqish/o'chirish (bog'liqliklar bilan kaskad). Qaytaradi: holati o'zgargan modullar.
-    O'chirilganlarning fon vazifalari _stop_tasks (Registry on_teardown) orqali bekor qilinadi."""
+    O'chirilganlarning fon vazifalari _stop_tasks (Registry on_teardown) orqali bekor qilinadi.
+    O'chirish rad etilsa (PINNED bog'liq yoki modulning disable_blocker sababi) — [] va hech narsa o'zgarmaydi."""
     if REG is None or mod_id not in REG.records or mod_id in PINNED:
         return []
-    if not on and pinned_dependents(mod_id):  # kaskad PINNED modulni ham o'chirardi
+    if not on and (pinned_dependents(mod_id) or disable_blocker(mod_id)):  # kaskad PINNED modulni ham o'chirardi
         return []
     changed = REG.enable(mod_id) if on else REG.disable(mod_id)
     _save_states({**dict.fromkeys(changed, on), mod_id: on})
@@ -133,6 +157,9 @@ class SATH_OT_module_toggle(bpy.types.Operator):
         on = not wanted(rec.manifest)
         if not on and (pin := pinned_dependents(self.module_id)):
             self.report({"WARNING"}, f"{rec.manifest.name} ni o'chirib bo'lmaydi: {', '.join(pin)} unga bog'liq va o'chirilmaydi")
+            return {"CANCELLED"}
+        if not on and (why := disable_blocker(self.module_id)):
+            self.report({"WARNING"}, why)
             return {"CANCELLED"}
         changed = set_enabled(self.module_id, on)
         if on and rec.state != "enabled":

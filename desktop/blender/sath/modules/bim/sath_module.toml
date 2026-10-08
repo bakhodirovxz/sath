@@ -1,0 +1,11 @@
+id = "bim"
+name = "GES obyektlari (BIM)"
+version = "1.0.0"
+api = ">=1.0,<2"
+requires = []
+permissions = ["files", "ifc.write"]
+visible_if_any = []
+workspaces = ["BIM"]
+category = "Sath"
+default_enabled = true
+order = 70

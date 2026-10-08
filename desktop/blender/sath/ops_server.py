@@ -346,7 +346,10 @@ class SATH_OT_commit(bpy.types.Operator):
             box = self.layout.box()
             for i, line in enumerate(self.orphan_note.splitlines()):
                 box.label(text=line, icon="ORPHAN_DATA" if i == 0 else "NONE")
-            box.prop(self, "purge_orphans")
+            if host.is_enabled("bim"):  # P3: sath.purge_orphans — bim moduli operatori
+                box.prop(self, "purge_orphans")
+            else:
+                box.label(text="O'chirish uchun «GES obyektlari (BIM)» modulini yoqing", icon="INFO")
 
     def execute(self, context):
         if TASKS.running("server.commit"):  # ikkinchi bosish commit_m{id}.ifc ni yuklash o'rtasida qayta yozmasin
@@ -356,15 +359,19 @@ class SATH_OT_commit(bpy.types.Operator):
         try:  # bpy qismi (IFC ga yozish) — asosiy oqimda, yuborishdan oldin
             # K4: kechiktirilgan/sinxronlanmagan GES o'zgarishlari IFC ga (har biri o'z undo qadami). Xato bo'lsa
             # commit to'xtaydi — eskirgan IFC serverga ketmasin (sabab operator xabarida/holat qatorida).
-            if bpy.ops.sath.sync_ifc() != {"FINISHED"}:
+            bim = host.is_enabled("bim")  # P3: bim o'chiq — sath.sync_ifc/purge_orphans ro'yxatda yo'q, Object.ges ham
+            if bim and bpy.ops.sath.sync_ifc() != {"FINISHED"}:
                 raise RuntimeError("GES o'zgarishlarini IFC ga yozib bo'lmadi («IFC ga qo'llash» xabarini ko'ring)")
             if self.assign_missing:
                 if not host.is_enabled("io"):
                     raise RuntimeError("IFC ga qo'shish uchun «Import» (io) moduli yoqilmagan")
                 if bpy.ops.sath.assign_ifc(names=";".join(unassigned(context))) != {"FINISHED"}:
                     raise RuntimeError("IFC ga kirmagan obyektlarni qo'shib bo'lmadi")
-            if self.purge_orphans and ifc.orphans() and bpy.ops.sath.purge_orphans() != {"FINISHED"}:
-                raise RuntimeError("Yetim IFC entitylarni o'chirib bo'lmadi")
+            if self.purge_orphans and ifc.orphans():
+                if not bim:
+                    raise RuntimeError("Yetim entitylarni o'chirish uchun «GES obyektlari (BIM)» modulini yoqing")
+                if bpy.ops.sath.purge_orphans() != {"FINISHED"}:
+                    raise RuntimeError("Yetim IFC entitylarni o'chirib bo'lmadi")
             ifc.stamp_guids()  # sath_guid — Blender dan FBX/glTF eksportida GUID saqlansin (CAD-07)
             path = ifc.save(flows.cache_dir() / f"commit_m{s.model_id}.ifc")
         except RuntimeError as e:

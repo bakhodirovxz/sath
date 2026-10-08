@@ -12,7 +12,6 @@ obyekt geometriyasini parametrlardan quradi. Belgi IFC da ham saqlanadi (Pset_Sa
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 
 import bpy
@@ -565,53 +564,6 @@ class SATH_OT_purge_orphans(IfcOperator, bpy.types.Operator):
         return {"FINISHED"}
 
 
-class SATH_PT_objects(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", "Sath"
-    bl_label = "GES obyektlari"
-
-    def draw(self, context):
-        lay = self.layout
-        s = context.scene.ges
-        box = lay.box()
-        row = box.row(align=True)
-        row.prop(s, "demo_head")
-        row.prop(s, "demo_units")
-        row = box.row(align=True)
-        row.prop(s, "demo_unit_mw")
-        row.operator("sath.build_demo_plant", icon="ADD")
-        if s.twin_note:
-            box.label(text=s.twin_note, icon="INFO")
-        grid = lay.grid_flow(columns=2, align=True)
-        for k, label, _ in KIND_ITEMS:
-            grid.operator("sath.add_object", text=label).kind = k
-        n_dirty = len(dirty_objects())
-        if n_dirty:
-            row = lay.row(align=True)
-            row.label(text=f"{n_dirty} obyekt IFC bilan sinxronlanmagan", icon="ERROR")
-            row.operator("sath.sync_ifc", text="IFC ga qo'llash", icon="EXPORT")
-        lay.operator("sath.restore_ges", icon="FILE_REFRESH")
-        obj = context.active_object
-        if obj is None or not obj.ges.kind:
-            return
-        box = lay.box()
-        box.label(text=f"{KIND_LABEL.get(obj.ges.kind, obj.ges.kind)}: {obj.name}", icon="MOD_BUILD")
-        if obj.ges.inferred:
-            col = box.column(align=True)
-            col.label(text="O'lchamlar taxminiy — geometriya IFC dan olingan", icon="ERROR")
-            if obj.ges.geom_dirty:
-                col.label(text="O'lchamlar o'zgardi — mesh tasdiqlanguncha eski")
-            col.operator("sath.confirm_dimensions", icon="CHECKMARK")
-        for p in obj.ges.params:
-            row = box.row()
-            if p.ptype == "enum":
-                row.prop(p, "value_enum", text=p.label)
-            elif p.ptype == "int":
-                row.prop(p, "value_int", text=p.label)
-            else:
-                row.prop(p, "value_float", text=p.label + (", m" if p.ptype == "length" else ""))
-        box.operator("sath.rebuild_object", icon="FILE_REFRESH")
-
-
 CLASSES = (
     GesParam,
     GesObject,
@@ -621,7 +573,6 @@ CLASSES = (
     SATH_OT_sync_ifc,
     SATH_OT_purge_orphans,
     SATH_OT_restore_ges,
-    SATH_PT_objects,
 )
 
 
@@ -630,8 +581,6 @@ _off_loaded = None
 
 def register():
     global _off_loaded
-    if os.environ.get("SATH_PANELS_OPEN"):  # GUI sinovi (ui.py bilan bir xil)
-        SATH_PT_objects.bl_category = "Item"
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Object.ges = bpy.props.PointerProperty(type=GesObject)

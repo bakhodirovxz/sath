@@ -2,7 +2,7 @@ id = "twin"
 name = "Raqamli egizak"
 version = "1.0.0"
 api = ">=1.0,<2"
-requires = ["sim", "scada"]
+requires = ["sim", "scada", "bim"]
 permissions = ["network"]
 visible_if_any = ["scada.read"]
 workspaces = ["SCADA", "Simulation"]
