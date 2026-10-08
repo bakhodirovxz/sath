@@ -27,6 +27,8 @@ def _ported(kind):
 
 
 def _same(a, b):
+    if type(a) is not type(b) and not (isinstance(a, float) and isinstance(b, float)):
+        return False  # JSON 2 va 2.0 ni farqlaydi: IfcInteger → IfcReal drifti ushlanadi
     return a == pytest.approx(b, rel=1e-9, abs=1e-12) if isinstance(b, float) else a == b
 
 
@@ -100,6 +102,9 @@ def test_from_psets_unknown_web_and_non_ges():
         {"Pset_SathParametric": {"Kind": "GES_Dam", "SchemaVersion": 99, "Params": "{}"}},
         {"Pset_SathParametric": {"Kind": "GES_Dam", "SchemaVersion": 1, "Params": "{buzuq"}},
         {"Pset_SathParametric": {"Kind": "GES_Yoq", "SchemaVersion": 1, "Params": "{}"}},
+        {"Pset_SathParametric": {"Kind": "GES_Dam", "SchemaVersion": "v1", "Params": "{}"}},
+        {"Pset_SathParametric": {"Kind": "GES_Dam", "SchemaVersion": 1, "Params": 5}},
+        {"Pset_SathParametric": {"Kind": "GES_Dam", "SchemaVersion": 1, "Params": "{}", "Units": "mm"}},
     ):
         with pytest.raises(ges_kinds.UnknownKind):
             ges_kinds.from_psets(bad)

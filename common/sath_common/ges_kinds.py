@@ -301,7 +301,8 @@ def build(kind: str, params: dict | None = None, tol: float = geom.TOL) -> geom.
 
 
 def quantities(kind: str, params: dict | None = None) -> dict:
-    """Analitik miqdorlar: volume_m3, mass_t (zichlik ma'lum bo'lsa, aks holda None)."""
+    """Analitik miqdorlar: volume_m3, mass_t (zichlik ma'lum bo'lsa, aks holda None). Mashina zali «Yopiq» da hajm/massa
+    qattiq blokniki (FreeCAD pariteti), bino qobig'iniki emas."""
     s = spec(kind)
     p = validate(kind, params)
     v = s.volume(p)
@@ -371,13 +372,19 @@ def from_psets(ps: dict) -> Restored | None:
         kind = str(sp.get("Kind") or "")
         if kind not in KINDS:
             raise UnknownKind(f"{PARAMETRIC_PSET}: noma'lum tur {kind!r}")
-        ver = int(sp.get("SchemaVersion") or 0)
+        try:
+            ver = int(sp.get("SchemaVersion") or 0)
+        except (TypeError, ValueError):
+            raise UnknownKind(f"{kind}: SchemaVersion yaroqsiz ({sp.get('SchemaVersion')!r})") from None
         if ver > SCHEMA_VERSION:
             raise UnknownKind(f"{kind}: sxema v{ver} — bu ilova v{SCHEMA_VERSION} gacha biladi (Sath ni yangilang)")
         try:
             raw = json.loads(sp.get("Params") or "{}")
-        except ValueError as e:
+        except (TypeError, ValueError) as e:
             raise UnknownKind(f"{kind}: Params JSON buzilgan ({e})") from None
+        units = sp.get("Units")
+        if units is not None and units != "m":
+            raise UnknownKind(f"{kind}: birlik {units!r} — faqat metr ('m') qo'llab-quvvatlanadi")
         if not isinstance(raw, dict):
             raise UnknownKind(f"{kind}: Params obyekt emas")
         params, warns = _coerce(kind, raw)
