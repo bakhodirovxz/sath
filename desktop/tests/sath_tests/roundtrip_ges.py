@@ -34,6 +34,11 @@ def run(ctx):
     assert (sp["Kind"], sp["Role"], sp["SchemaVersion"], sp["Units"]) == ("GES_Generator", "gen:1", 1, "m"), sp
     path = Path(tempfile.gettempdir()) / "sath_roundtrip.ifc"
     ifc.save(path)
+    import ifcopenshell
+
+    f_saved = ifcopenshell.open(str(path))
+    texts = [p for p in f_saved.by_type("IfcPropertySingleValue") if p.Name == "Params"]
+    assert len(texts) == 16 and all(p.NominalValue.is_a("IfcText") for p in texts), "Params IfcText bo'lishi kerak"
 
     calls: list = []
     orig = ges_objects.rebuild_mesh
@@ -87,3 +92,16 @@ def run(ctx):
     n = len(ges_objects.by_kind("GES_Turbine"))
     assert ges_objects.add(bpy.context, "GES_Turbine").ges.role == f"unit:{n + 1}"
     assert ges_objects.add(bpy.context, "GES_Turbine", role="unit:9").ges.role == "unit:9"
+
+    # ommaviy o'chirishdan keyin add() ishlaydi; agregatsiz (to'g'on) modelda guid siz agregatlar — animatsiya yakunlanadi
+    for o in ges_objects.by_kind_all():
+        bpy.data.objects.remove(o)
+    ges_objects.add(bpy.context, "GES_Dam")
+    res, prm = _hydro(4, [""])
+    prm["units"] = [{k: v for k, v in u.items() if k != "guid"} for u in prm["units"]]
+    assert sim_anim.animate_hydro(bpy.context, res, prm, zero_m=850.0) == 4
+    from sath import water
+
+    plane = bpy.data.objects.get(water.NAME)
+    assert plane is not None and plane.animation_data and plane.animation_data.action, "suv sathi keyframe lari yo'q"
+    print("ROUNDTRIP: agregatsiz model animatsiyasi yakunlandi", flush=True)

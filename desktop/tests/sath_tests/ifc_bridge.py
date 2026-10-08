@@ -47,12 +47,14 @@ def run(ctx):
     ob.data.vertices[4].co.z = 3.0
     ifc.update_representation(ob)
 
-    c0 = tuple(dam.color)  # K2: tiklangan GES obyekti tur rangida (oq emas)
     st = ifc.ColorState()
     n = st.paint({ifc.guid(dam): (1, 0, 0, 1), "yoq_guid": (0, 1, 0, 1)})
     assert n == 1 and tuple(dam.color)[:3] == (1.0, 0.0, 0.0)
     st.restore()
-    assert tuple(dam.color) == c0
+    from sath.shared import ges_kinds
+
+    want = (*ges_kinds.spec("GES_Dam").color, 1.0)  # K2: tiklangan GES obyekti tur rangida
+    assert all(abs(a - b) < 1e-5 for a, b in zip(dam.color, want, strict=True)), (tuple(dam.color), want)
     assert ifc.select_guids([ifc.guid(dam)]) == 1 and dam.select_get()
 
     out = Path(tempfile.gettempdir()) / "sath_test.ifc"

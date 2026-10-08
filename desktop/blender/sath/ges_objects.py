@@ -255,11 +255,18 @@ def restore_from_ifc() -> RestoreReport:
         except ges_kinds.UnknownKind as err:
             rep.unknown.append((obj.name, str(err)))
             continue
+        except Exception as err:  # noqa: BLE001 — bitta buzuq element butun faylni to'xtatmasin
+            rep.unknown.append((obj.name, f"{type(err).__name__}: {err}"))
+            continue
         if r is None:
             continue
-        _fill_schema(obj, r.kind, r.params)
-        _set_role(obj, r.role)
-        obj.color = (*ges_kinds.spec(r.kind).color, 1.0)
+        try:
+            _fill_schema(obj, r.kind, r.params)
+            _set_role(obj, r.role)
+            obj.color = (*ges_kinds.spec(r.kind).color, 1.0)
+        except Exception as err:  # noqa: BLE001
+            rep.unknown.append((obj.name, f"{type(err).__name__}: {err}"))
+            continue
         rep.warnings += [f"{obj.name}: {w}" for w in r.warnings]
         if r.source == "parametric":
             rep.restored.append(obj.name)
@@ -284,7 +291,7 @@ def _on_ifc_loaded(payload: dict) -> None:
 
 
 class SATH_OT_restore_ges(bpy.types.Operator):
-    """GES obyektlarining tur, rol va parametrlarini IFC psetlaridan qayta tiklash (mesh o'zgarmaydi)"""
+    """GES obyektlarining tur, rol va parametrlarini IFC psetlaridan qayta tiklash (mesh o'zgarmaydi). Bonsai ning o'z File → Open i bilan ochilgan modelda shu tugmani bosing"""
 
     bl_idname = "sath.restore_ges"
     bl_label = "IFC dan tiklash"

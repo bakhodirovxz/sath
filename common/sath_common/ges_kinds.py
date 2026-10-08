@@ -691,7 +691,7 @@ def _coerce(kind: str, raw: dict) -> tuple[dict, list[str]]:
             continue
         try:
             out[k] = _cast_param(by[k], v)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             warns.append(f"{k}={v!r} yaroqsiz — default {by[k].default!r}")
     return out, warns
 

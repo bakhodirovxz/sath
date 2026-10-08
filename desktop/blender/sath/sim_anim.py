@@ -176,19 +176,26 @@ def animate_hydro(context, result: dict, params: dict, zero_m: float = 0.0, fps:
                 tp.keyframe_insert(data_path="location", index=2, frame=i + 1)
     units = params.get("units") or []
     unit_series = result.get("units") or []
+    errors: list[str] = []
     for k, u in enumerate(units):
         if k >= len(unit_series):
             continue
         g = u.get("guid") or ""
         obj = ifc.object_for_guid(g) if g else None
         if obj is None:
-            raise TwinBindingError(f"Egizak: agregat «{u.get('name') or k + 1}» (GUID {g or '—'}) modelda topilmadi")
+            if g and ges_objects.by_kind("GES_Turbine"):  # GUID berilgan, modelda agregatlar bor-u, bu topilmadi
+                errors.append(f"agregat «{u.get('name') or k + 1}» (GUID {g}) modelda topilmadi")
+            continue
         obj.animation_data_clear()
         rated = float(u.get("rated_power_mw") or 0) or 1.0
         idx = _role_index(obj)
-        gen = _bound(f"gen:{idx}" if idx else None, "GES_Generator", obj.name)
-        tf = _bound(f"transformer:{idx}" if idx else None, "GES_Transformer", obj.name)
-        draft = _bound(f"draft:{idx}" if idx else None, "GES_DraftTube", obj.name)
+        try:
+            gen = _bound(f"gen:{idx}" if idx else None, "GES_Generator", obj.name)
+            tf = _bound(f"transformer:{idx}" if idx else None, "GES_Transformer", obj.name)
+            draft = _bound(f"draft:{idx}" if idx else None, "GES_DraftTube", obj.name)
+        except TwinBindingError as e:
+            errors.append(str(e))
+            continue
         for o in (gen, tf, draft):
             if o is not None:
                 o.animation_data_clear()
@@ -228,6 +235,8 @@ def animate_hydro(context, result: dict, params: dict, zero_m: float = 0.0, fps:
         for i, q in enumerate(s["spill"]):
             _key_color(sp, _mix(OFF, SPILL, min(1.0, q / mx)) if q > 0 else WHITE, i + 1)
     _finish(context)
+    if errors:  # qisman xato animatsiyani yakunlashga xalaqit bermaydi, lekin jim ham emas
+        raise TwinBindingError("Egizak: " + "; ".join(errors))
     return n
 
 

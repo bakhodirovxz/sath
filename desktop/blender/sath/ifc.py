@@ -110,7 +110,8 @@ def write_psets(e, psets: dict[str, dict], text: tuple[str, ...] = ()) -> None:
 
 def _activate(obj) -> None:
     for o in bpy.context.view_layer.objects:
-        o.select_set(False)
+        if o is not None:  # ommaviy o'chirilgan obyektlar view layer sinxronlanguncha None bo'lib turadi
+            o.select_set(False)
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
