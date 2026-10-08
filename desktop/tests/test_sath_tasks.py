@@ -229,3 +229,21 @@ def test_on_finished_reports_outcome():
     tm.inline = True
     tm.run("inline", lambda ctx: 2)
     assert seen[-1] == ("inline", "done")
+
+
+def test_inline_callback_error_still_reports_finished():
+    tm = TaskManager()
+    tm.inline = True
+    seen = []
+    tm.on_finished = lambda task, outcome: seen.append((task.title, outcome))
+
+    def boom(_):
+        raise ValueError("callback")
+
+    with pytest.raises(ValueError):
+        tm.run("done-cb", lambda ctx: 1, on_done=boom)
+    with pytest.raises(ValueError):
+        tm.run("err-cb", lambda ctx: 1 / 0, on_error=boom)
+    with pytest.raises(ValueError):
+        tm.run("cancel-cb", lambda ctx: ctx.check() or ctx._task.cancel() or ctx.check(), on_cancel=lambda: boom(0))
+    assert seen == [("done-cb", "done"), ("err-cb", "failed"), ("cancel-cb", "cancelled")]

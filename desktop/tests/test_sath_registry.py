@@ -1,6 +1,12 @@
 """core.registry (P3): manifest, API oralig'i, topologik tartib, imzo, hayot sikli (soxta bpy bilan)."""
 
 import base64
+import dataclasses
+import importlib
+import importlib.machinery
+import importlib.util
+import os
+import py_compile
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,13 +151,13 @@ def test_user_modules_need_trusted_key(tmp_path):
     assert found == [] and "imzo noto'g'ri" in dict(errors)["ext (foydalanuvchi)"]
 
 
-def test_pycache_does_not_break_signature(tmp_path):
+def test_pycache_in_user_module_is_rejected(tmp_path):
     d = _write(tmp_path / "u", "ext")
     sign_module.sign_module(d, SEED)
     (d / "__pycache__").mkdir()
     (d / "__pycache__" / "x.cpython-313.pyc").write_bytes(b"\0")
-    found, _ = registry.discover(tmp_path / "yoq", tmp_path / "u", [sign_module.public_key(SEED)])
-    assert [m.id for m in found] == ["ext"]
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", [sign_module.public_key(SEED)])
+    assert found == [] and "bayt-kod" in dict(errors)["ext (foydalanuvchi)"]
 
 
 def test_decode_keys_accepts_base64_hex_lists_and_skips_garbage():
@@ -295,3 +301,180 @@ def test_load_rescan_keeps_unchanged_and_drops_removed():
     assert reg.records["a"] is rec_a and rec_a.state == "enabled"
     assert "b" not in reg.records and f.registered == f.modules["a"].CLASSES
     assert reg.broken == [("b (foydalanuvchi)", "imzo noto'g'ri")]
+
+
+# ---------- review 1: bayt-kod / symlink orqali imzoni chetlab o'tish, xavfsiz yuklovchi ----------
+
+
+KEYS = [sign_module.public_key(SEED)]
+
+
+def _signed(tmp_path, mid, files=None) -> Path:
+    d = _write(tmp_path / "u", mid)
+    for rel, text in (files or {}).items():
+        (d / rel).parent.mkdir(parents=True, exist_ok=True)
+        (d / rel).write_text(text, encoding="utf-8")
+    sign_module.sign_module(d, SEED)
+    return d
+
+
+def _user_manifest(d: Path) -> Manifest:
+    return registry.parse_manifest((d / registry.MANIFEST).read_text(encoding="utf-8"), d, "user")
+
+
+@pytest.fixture
+def unload():
+    ids: list[str] = []
+    yield ids.append
+    for mid in ids:
+        registry.unload_user_module(mid)
+
+
+def test_unchecked_hash_pyc_bypass_is_rejected(tmp_path, unload):
+    d = _signed(tmp_path, "ext_pyc", {"__init__.py": "WHO = 'signed'\n"})
+    evil = tmp_path / "evil.py"
+    evil.write_text("WHO = 'EVIL'\n", encoding="utf-8")
+    cfile = importlib.util.cache_from_source(str(d / "__init__.py"))
+    py_compile.compile(str(evil), cfile=cfile, doraise=True,
+                       invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)  # fmt: skip
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert found == [] and "bayt-kod" in dict(errors)["ext_pyc (foydalanuvchi)"]
+    unload("ext_pyc")
+    with pytest.raises(ManifestError, match="bayt-kod"):
+        registry.load_user_module(_user_manifest(d), KEYS)
+    assert registry.user_module_name("ext_pyc") not in sys.modules
+
+
+def test_sourceless_pyc_is_rejected(tmp_path):
+    d = _signed(tmp_path, "ext")
+    (d / "helper.pyc").write_bytes(b"\0" * 16)
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert found == [] and "bayt-kod" in dict(errors)["ext (foydalanuvchi)"]
+
+
+def test_symlink_inside_user_module_is_rejected(tmp_path):
+    d = _signed(tmp_path, "ext")
+    target = tmp_path / "tashqi"
+    target.mkdir()
+    (target / "x.py").write_text("X = 1\n", encoding="utf-8")
+    try:
+        os.symlink(target, d / "link", target_is_directory=True)
+    except (OSError, NotImplementedError) as e:
+        pytest.skip(f"symlink yaratib bo'lmadi (Windows ruxsatsiz?): {e}")
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert found == [] and "symlink" in dict(errors)["ext (foydalanuvchi)"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junction faqat Windows da")
+def test_junction_inside_user_module_is_rejected(tmp_path):
+    import _winapi
+
+    d = _signed(tmp_path, "ext")
+    target = tmp_path / "tashqi"
+    target.mkdir()
+    _winapi.CreateJunction(str(target), str(d / "jn"))
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert found == [] and "symlink" in dict(errors)["ext (foydalanuvchi)"]
+
+
+def test_load_user_module_reverifies_signature(tmp_path, unload):
+    d = _signed(tmp_path, "ext_tamper", {"__init__.py": "WHO = 'signed'\n"})
+    found, _ = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert [m.id for m in found] == ["ext_tamper"]
+    (d / "__init__.py").write_text("WHO = 'EVIL'\n", encoding="utf-8")  # discover dan keyin almashtirildi
+    unload("ext_tamper")
+    with pytest.raises(ManifestError, match="imzo noto'g'ri"):
+        registry.load_user_module(found[0], KEYS)
+    with pytest.raises(ManifestError, match="kalit"):
+        registry.load_user_module(found[0], [])
+    assert registry.user_module_name("ext_tamper") not in sys.modules
+
+
+def test_load_user_module_runs_verified_bytes_without_bytecode(tmp_path, unload):
+    d = _signed(tmp_path, "ext_ok", {
+        "__init__.py": "from . import sub\nWHO = sub.WHO\n\ndef later():\n    from .pkg import lazy\n    return lazy.X\n"
+                       "\ndef get_extra():\n    from . import extra\n    return extra\n",
+        "sub.py": "WHO = 'signed'\n",
+        "pkg/__init__.py": "",
+        "pkg/lazy.py": "X = 'signed'\n",
+    })  # fmt: skip
+    unload("ext_ok")
+    mod = registry.load_user_module(_user_manifest(d), KEYS)
+    assert mod.WHO == "signed" and mod.__name__ == registry.user_module_name("ext_ok")
+    assert Path(mod.__file__) == d / "__init__.py"
+    # yuklangandan keyin diskdagi o'zgarish / yangi fayl ta'sir qilmaydi — faqat tekshirilgan nusxa
+    (d / "pkg" / "lazy.py").write_text("X = 'EVIL'\n", encoding="utf-8")
+    (d / "extra.py").write_text("X = 'EVIL'\n", encoding="utf-8")
+    assert mod.later() == "signed"
+    with pytest.raises(ImportError):
+        mod.get_extra()
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(mod.__name__ + ".extra")
+    assert not list(d.rglob("__pycache__")) and not list(d.rglob("*.pyc"))  # bayt-kod yozilmadi
+    loaded = [m for k, m in sys.modules.items() if k.startswith(mod.__name__)]
+    assert len(loaded) == 4
+    assert not any(isinstance(m.__loader__, importlib.machinery.SourceFileLoader) for m in loaded)
+
+
+def test_load_user_module_rejects_changed_manifest_and_cleans_up_on_error(tmp_path, unload):
+    d = _signed(tmp_path, "ext_err", {"__init__.py": "raise RuntimeError('import xatosi')\n"})
+    m = _user_manifest(d)
+    unload("ext_err")
+    with pytest.raises(RuntimeError, match="import xatosi"):
+        registry.load_user_module(m, KEYS)
+    assert registry.user_module_name("ext_err") not in sys.modules
+    with pytest.raises(ManifestError, match="o'zgargan"):
+        registry.load_user_module(dataclasses.replace(m, order=5), KEYS)
+
+
+def test_resolve_cycle_dependent_is_not_a_cycle_member():
+    out, bad = registry.resolve([_m("a", ["b"]), _m("b", ["a"]), _m("c", ["a"]), _m("d", ["c"])])
+    assert out == [] and "halqa" in bad["a"] and "halqa" in bad["b"]
+    assert bad["c"] == "bog'liqlik ishlamaydi: a" and bad["d"] == "bog'liqlik ishlamaydi: c"
+
+
+def test_discover_unreadable_user_dir_keeps_bundled(tmp_path, monkeypatch):
+    bundled, user = tmp_path / "b", tmp_path / "u"
+    _write(bundled, "review")
+    user.mkdir()
+    real = Path.iterdir
+
+    def iterdir(self):
+        if self == user:
+            raise PermissionError("ruxsat yo'q")
+        return real(self)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    found, errors = registry.discover(bundled, user, KEYS)
+    assert [m.id for m in found] == ["review"]
+    assert "ruxsat yo'q" in dict(errors)["u (foydalanuvchi)"]
+
+
+def test_manifest_with_bom_is_accepted(tmp_path):
+    d = _write(tmp_path / "b", "bim")
+    p = d / registry.MANIFEST
+    p.write_bytes(b"\xef\xbb\xbf" + p.read_bytes())
+    found, errors = registry.discover(tmp_path / "b")
+    assert [m.id for m in found] == ["bim"] and errors == []
+    u = _write(tmp_path / "u", "ext")
+    (u / registry.MANIFEST).write_bytes(b"\xef\xbb\xbf" + (u / registry.MANIFEST).read_bytes())
+    sign_module.sign_module(u, SEED)
+    found, errors = registry.discover(tmp_path / "yoq", tmp_path / "u", KEYS)
+    assert [m.id for m in found] == ["ext"] and errors == []
+
+
+def test_sys_exit_in_module_is_isolated():
+    f = Fake()
+    f.make("x")
+    f.make("y")
+    f.modules["x"].register = lambda api: sys.exit(3)
+
+    def bad_unregister(api):
+        raise SystemExit(4)
+
+    f.modules["y"].unregister = bad_unregister
+    reg = _reg(f, [_m("x"), _m("y")])
+    reg.start(lambda m: True)
+    assert reg.records["x"].state == "failed" and "SystemExit" in reg.records["x"].error
+    assert reg.disable("y") == ["y"] and reg.records["y"].state == "disabled"
+    assert any("SystemExit" in e for e in f.errors)

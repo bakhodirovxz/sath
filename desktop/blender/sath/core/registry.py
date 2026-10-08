@@ -4,6 +4,9 @@ Modul — papka: `sath_module.toml` + `__init__.py` (`register(api)`, ixtiyoriy 
 Birinchi tomon: sath/modules/<id>/ (bundle ichida, imzo talab qilinmaydi). Uchinchi tomon:
 <user config>/sath_modules/<id>/ — faqat prefs.allow_user_modules yoqilgan va papka ishonchli Ed25519 kalit bilan
 imzolangan (`sath_module.sig`, tekshiruv update.py dagi) bo'lsa; imzosiz/o'zgartirilgan modul import qilinmaydi.
+Uchinchi tomon modulida bayt-kod (*.pyc, __pycache__), symlink yoki junction bo'lsa — rad etiladi; u faqat
+`load_user_module()` orqali import qilinadi: imzo import oldidan qayta tekshiriladi va kod aynan tekshirilgan manba
+baytlaridan kompilyatsiya qilinadi (bayt-kod o'qilmaydi va yozilmaydi; submodullar ham shu yo'ldan).
 Manifestdagi `permissions` — deklaratsiya (Sozlamalarda ko'rsatiladi), Python kodini cheklamaydi.
 Blender ulagichi — core/host.py; bu fayl bpy ni import qilmaydi.
 """
@@ -13,14 +16,21 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import importlib
+import importlib.abc
+import importlib.util
 import json
 import operator
+import os
 import re
+import stat
+import sys
 import time
 import traceback
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from ..update import UpdateError, decode_public_key, ed25519_verify
@@ -126,31 +136,173 @@ def parse_manifest(text: str, path: Path, origin: str = "bundled") -> Manifest:
 # ---------- imzo (uchinchi tomon modullari) ----------
 
 
-def module_message(path: Path, manifest: Manifest) -> bytes:
-    """Imzolanadigan kanonik xabar: papkadagi har fayl sha256 (imzo fayli, __pycache__, .pyc dan tashqari) + id + version."""
-    files = {}
-    for f in sorted(path.rglob("*")):
-        rel = f.relative_to(path)
-        if not f.is_file() or rel.as_posix() == SIGNATURE or "__pycache__" in rel.parts or f.suffix == ".pyc":
-            continue
-        files[rel.as_posix()] = hashlib.sha256(f.read_bytes()).hexdigest()
-    payload = {"files": files, "id": manifest.id, "version": manifest.version}
+_BYTECODE = (".pyc", ".pyo")
+
+
+def _is_link(st: os.stat_result) -> bool:
+    """lstat natijasi bo'yicha: symlink yoki (Windows) har qanday reparse point — junction ham."""
+    if stat.S_ISLNK(st.st_mode):
+        return True
+    return bool(getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def _snapshot(path: Path) -> dict[str, bytes]:
+    """Modul papkasidagi barcha fayllar {nisbiy posix yo'l: baytlar} — bir marta o'qiladi (imzo va import shu nusxadan).
+    Bayt-kod (*.pyc/*.pyo, __pycache__), symlink, junction yoki oddiy bo'lmagan fayl — ManifestError: jimgina
+    o'tkazib yuborilmaydi (Python ularni manba o'rniga yuklashi mumkin)."""
+
+    def reject(rel: str) -> None:
+        raise ManifestError(f"modulda bayt-kod/symlink bor — rad etildi: {rel}")
+
+    if _is_link(os.lstat(path)):
+        reject(".")
+    files: dict[str, bytes] = {}
+
+    def walk(d: Path, prefix: str) -> None:
+        with os.scandir(d) as it:
+            entries = sorted(it, key=lambda e: e.name)
+        for e in entries:
+            rel = prefix + e.name
+            st = e.stat(follow_symlinks=False)
+            if _is_link(st):
+                reject(rel)
+            if stat.S_ISDIR(st.st_mode):
+                if e.name == "__pycache__":
+                    reject(rel)
+                walk(Path(e.path), rel + "/")
+            elif stat.S_ISREG(st.st_mode):
+                if e.name.lower().endswith(_BYTECODE):
+                    reject(rel)
+                files[rel] = Path(e.path).read_bytes()
+            else:
+                reject(rel)
+
+    walk(path, "")
+    return files
+
+
+def _message(files: dict[str, bytes], manifest: Manifest) -> bytes:
+    digests = {rel: hashlib.sha256(b).hexdigest() for rel, b in files.items() if rel != SIGNATURE}
+    payload = {"files": digests, "id": manifest.id, "version": manifest.version}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
 
 
-def verify_signature(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> None:
+def module_message(path: Path, manifest: Manifest) -> bytes:
+    """Imzolanadigan kanonik xabar: papkadagi har fayl sha256 (imzo faylidan tashqari) + id + version.
+    Bayt-kod/symlink bo'lsa ManifestError (imzolashdan oldin __pycache__ ni o'chiring)."""
+    return _message(_snapshot(path), manifest)
+
+
+def _verified_snapshot(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> dict[str, bytes]:
     if not trusted_keys:
         raise ManifestError("ishonchli kalit yo'q — Sozlamalar → Sath → «Modul kalitlari»")
-    sig_path = path / SIGNATURE
-    if not sig_path.is_file():
+    files = _snapshot(path)
+    if SIGNATURE not in files:
         raise ManifestError(f"imzolanmagan ({SIGNATURE} yo'q)")
     try:
-        sig = base64.b64decode(sig_path.read_text(encoding="ascii").strip(), validate=True)
+        sig = base64.b64decode(files[SIGNATURE].decode("ascii").strip(), validate=True)
     except (ValueError, binascii.Error):
         raise ManifestError("imzo fayli buzilgan") from None
-    msg = module_message(path, manifest)
+    msg = _message(files, manifest)
     if not any(ed25519_verify(k, msg, sig) for k in trusted_keys):
         raise ManifestError("imzo noto'g'ri yoki kalit ishonchli emas — modul o'zgartirilgan bo'lishi mumkin")
+    return files
+
+
+def verify_signature(path: Path, manifest: Manifest, trusted_keys: list[bytes]) -> None:
+    _verified_snapshot(path, manifest, trusted_keys)
+
+
+# ---------- uchinchi tomon modulini xavfsiz import ----------
+
+
+class _SnapshotLoader(importlib.abc.Loader):
+    """Kodni imzo tekshirilgan baytlardan kompilyatsiya qiladi — diskdagi .py/.pyc ga qaytib qaramaydi."""
+
+    def __init__(self, origin: str, source: bytes) -> None:
+        self._origin = origin
+        self._source = source
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module: ModuleType) -> None:
+        exec(compile(self._source, self._origin, "exec", dont_inherit=True), module.__dict__)  # imzo tekshirilgan baytlar
+
+    def get_source(self, fullname: str) -> str:
+        return importlib.util.decode_source(self._source)
+
+
+class _UserModuleFinder(importlib.abc.MetaPathFinder):
+    """`_sath_user_<id>` va uning submodullari faqat tekshirilgan nusxadan; nusxada yo'q nom — ModuleNotFoundError
+    (PathFinder diskdan keyin qo'shilgan fayl yoki bayt-kodni topmasin)."""
+
+    def __init__(self) -> None:
+        self.roots: dict[str, tuple[Path, dict[str, bytes]]] = {}
+
+    def find_spec(self, fullname, path=None, target=None):
+        top, _, rest = fullname.partition(".")
+        entry = self.roots.get(top)
+        if entry is None:
+            return None
+        root, files = entry
+        base = rest.replace(".", "/")
+        init = f"{base}/__init__.py" if base else "__init__.py"
+        if init in files:
+            rel, is_pkg = init, True
+        elif base and f"{base}.py" in files:
+            rel, is_pkg = f"{base}.py", False
+        else:
+            raise ModuleNotFoundError(f"{fullname}: imzolangan modulda bunday fayl yo'q", name=fullname)
+        origin = str(root / rel)
+        spec = importlib.util.spec_from_loader(fullname, _SnapshotLoader(origin, files[rel]), origin=origin,
+                                               is_package=is_pkg)  # fmt: skip
+        spec.has_location = True  # __file__ o'rnatilsin
+        if is_pkg:
+            spec.submodule_search_locations = [str(Path(origin).parent)]
+        return spec
+
+
+_FINDER = _UserModuleFinder()
+
+
+def user_module_name(mod_id: str) -> str:
+    return f"_sath_user_{mod_id}"
+
+
+def unload_user_module(mod_id: str) -> None:
+    """Foydalanuvchi modulini (va submodullarini) sys.modules va finder dan olib tashlaydi."""
+    name = user_module_name(mod_id)
+    _FINDER.roots.pop(name, None)
+    for k in [k for k in sys.modules if k == name or k.startswith(name + ".")]:
+        del sys.modules[k]
+
+
+def load_user_module(manifest: Manifest, trusted_keys: Iterable[bytes]) -> ModuleType:
+    """Uchinchi tomon modulini xavfsiz import qiladi (core/host.py shu orqali): papka shu zahoti qayta o'qiladi va imzo
+    qayta tekshiriladi (discover dan keyingi almashtirish — TOCTOU — yopiladi), manifest discover dagisi bilan bir xil
+    bo'lishi shart; kod va barcha submodullar aynan shu tekshirilgan baytlardan bajariladi, bayt-kod o'qilmaydi va
+    __pycache__ yozilmaydi. Nom: `_sath_user_<id>` (paket; ichida `from . import x` ishlaydi). Xato — ManifestError
+    yoki modulning o'z istisnosi; bunda sys.modules tozalanadi (tuzatilgach qayta yuklash mumkin)."""
+    files = _verified_snapshot(manifest.path, manifest, list(trusted_keys))
+    try:
+        text = files[MANIFEST].decode("utf-8-sig")
+    except (KeyError, UnicodeDecodeError):
+        raise ManifestError(f"{MANIFEST} o'qilmadi") from None
+    if parse_manifest(text, manifest.path, "user") != manifest:
+        raise ManifestError("manifest topilgandan keyin o'zgargan — qayta skanerlang")
+    if "__init__.py" not in files:
+        raise ManifestError("__init__.py yo'q")
+    name = user_module_name(manifest.id)
+    unload_user_module(manifest.id)
+    _FINDER.roots[name] = (manifest.path, files)
+    if _FINDER not in sys.meta_path:
+        sys.meta_path.insert(0, _FINDER)
+    try:
+        return importlib.import_module(name)
+    except BaseException:
+        unload_user_module(manifest.id)
+        raise
 
 
 def decode_keys(texts: Iterable[str]) -> list[bytes]:
@@ -180,12 +332,17 @@ def discover(bundled: Path, user: Path | None = None, trusted_keys: Iterable[byt
     for origin, root in (("bundled", bundled), ("user", user)):
         if root is None or not root.is_dir():
             continue
-        for d in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(("_", "."))):
+        try:
+            dirs = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+        except OSError as e:  # masalan foydalanuvchi papkasiga ruxsat yo'q — topilgan birinchi tomon modullari qolsin
+            errors.append((root.name if origin == "bundled" else f"{root.name} (foydalanuvchi)", f"papka o'qilmadi: {e}"))
+            continue
+        for d in dirs:
             if not (d / MANIFEST).is_file():
                 continue
             label = d.name if origin == "bundled" else f"{d.name} (foydalanuvchi)"
             try:
-                m = parse_manifest((d / MANIFEST).read_text(encoding="utf-8"), d, origin)
+                m = parse_manifest((d / MANIFEST).read_text(encoding="utf-8-sig"), d, origin)
                 if not (d / "__init__.py").is_file():
                     raise ManifestError("__init__.py yo'q")
                 if origin == "user":
@@ -239,9 +396,26 @@ def resolve(manifests: Iterable[Manifest]) -> tuple[list[Manifest], dict[str, st
             indeg[u.id] -= 1
             if indeg[u.id] == 0:
                 ready.append(u)
-    for m in ok:
-        if m not in out:
-            bad[m.id] = "bog'liqliklar halqasi (requires aylanib qolgan)"
+    rest = {m.id: m for m in ok if m not in out}  # halqa a'zolari va halqaga bog'liqlar
+
+    def in_cycle(mid: str) -> bool:
+        seen: set[str] = set()
+        stack = [r for r in rest[mid].requires if r in rest]
+        while stack:
+            r = stack.pop()
+            if r == mid:
+                return True
+            if r not in seen:
+                seen.add(r)
+                stack.extend(x for x in rest[r].requires if x in rest)
+        return False
+
+    cyclic = {mid for mid in rest if in_cycle(mid)}
+    for mid, m in rest.items():
+        if mid in cyclic:
+            bad[mid] = "bog'liqliklar halqasi (requires aylanib qolgan)"
+        else:
+            bad[mid] = f"bog'liqlik ishlamaydi: {next(r for r in m.requires if r in rest)}"
     return out, bad
 
 
@@ -367,7 +541,7 @@ class Registry:
             rec.module.register(self.api)
             rec.state = "enabled"
             return True
-        except Exception:
+        except (Exception, SystemExit):  # sys.exit() ham izolyatsiyadan chiqmasin
             rec.error = traceback.format_exc()
             self._teardown(rec)
             rec.module = None  # tuzatilgandan keyin qayta yoqishda qayta import qilinsin
@@ -387,7 +561,7 @@ class Registry:
             self._current = rid
             try:
                 fn(self.api)
-            except Exception:
+            except (Exception, SystemExit):
                 self._log(f"[sath] «{rid}» moduli unregister xatosi:\n{traceback.format_exc()}")
             finally:
                 self._current = None
@@ -399,6 +573,6 @@ class Registry:
             fn = rec.undo.pop()
             try:
                 fn()
-            except Exception:
+            except (Exception, SystemExit):
                 self._log(f"[sath] «{rec.manifest.id}» tozalashda xato:\n{traceback.format_exc()}")
         rec.classes.clear()

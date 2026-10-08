@@ -4,8 +4,6 @@ klass/menyu/obunalarni qaytaradi; 3D View «Sath» menyusiga modul bandlari. Sof
 from __future__ import annotations
 
 import importlib
-import importlib.util
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,6 +14,7 @@ from . import events, perms, registry
 ROOT_PKG = __package__.rpartition(".")[0]  # "sath" (headless) yoki "bl_ext.user_default.sath"
 BUNDLED = Path(__file__).resolve().parents[1] / "modules"
 REG: registry.Registry | None = None
+_KEYS: list[bytes] = []  # ishonchli modul kalitlari (Task 5: Sozlamalar «Modul kalitlari» → registry.decode_keys)
 _menus: list[tuple[str, Callable]] = []
 _offs: list[Callable[[], None]] = []
 
@@ -31,16 +30,8 @@ def is_enabled(mod_id: str) -> bool:
 def _import(m: registry.Manifest):
     if m.origin == "bundled":
         return importlib.import_module(f"{ROOT_PKG}.modules.{m.id}")
-    name = f"_sath_user_{m.id}"
-    spec = importlib.util.spec_from_file_location(name, m.path / "__init__.py", submodule_search_locations=[str(m.path)])
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    try:
-        spec.loader.exec_module(mod)
-    except BaseException:
-        sys.modules.pop(name, None)
-        raise
-    return mod
+    # uchinchi tomon: faqat xavfsiz yuklovchi — imzo qayta tekshiriladi, bayt-kod o'qilmaydi/yozilmaydi
+    return registry.load_user_module(m, _KEYS)
 
 
 def wanted(m: registry.Manifest) -> bool:

@@ -57,7 +57,7 @@ def sign(seed: bytes, msg: bytes) -> bytes:
 
 
 def sign_module(path: Path, seed: bytes) -> Path:
-    m = registry.parse_manifest((path / registry.MANIFEST).read_text(encoding="utf-8"), path, "user")
+    m = registry.parse_manifest((path / registry.MANIFEST).read_text(encoding="utf-8-sig"), path, "user")
     out = path / registry.SIGNATURE
     out.write_text(base64.b64encode(sign(seed, registry.module_message(path, m))).decode("ascii") + "\n", encoding="ascii")
     return out

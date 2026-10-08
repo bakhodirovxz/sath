@@ -95,24 +95,26 @@ class TaskManager:
             return None
         task = Task(title, key, cancellable, quiet)
         if self.inline:
-            try:
-                result = fn(TaskContext(task))
-            except Cancelled:
-                if on_cancel is not None:
-                    on_cancel()
-                self._finished(task, "cancelled")
+            outcome = "failed"
+            try:  # callback xato bersa ham on_finished chaqiriladi (pump() bilan bir xil); xato chaqiruvchiga o'tadi
+                try:
+                    result = fn(TaskContext(task))
+                except Cancelled:
+                    outcome = "cancelled"
+                    if on_cancel is not None:
+                        on_cancel()
+                    return task
+                except Exception as e:
+                    if on_error is None:
+                        raise
+                    on_error(e)
+                    return task
+                outcome = "done"
+                if on_done is not None:
+                    on_done(result)
                 return task
-            except Exception as e:
-                if on_error is None:
-                    self._finished(task, "failed")
-                    raise
-                on_error(e)
-                self._finished(task, "failed")
-                return task
-            if on_done is not None:
-                on_done(result)
-            self._finished(task, "done")
-            return task
+            finally:
+                self._finished(task, outcome)
         self._active.append(task)
         threading.Thread(
             target=self._work, args=(task, fn, on_done, on_error, on_cancel), name=f"sath:{title}", daemon=True
@@ -191,7 +193,9 @@ class TaskManager:
 
     def cancel_prefix(self, prefix: str) -> int:
         """Kaliti `prefix` bilan boshlanadigan vazifalarni bekor qiladi (modul o'chirilganda: `<mod_id>.`).
-        cancellable=False ham — modul kodi endi ro'yxatda emas, natijasi qo'llanmasligi kerak. Qaytaradi: nechta."""
+        cancellable=False ham — modul kodi endi ro'yxatda emas, natijasi qo'llanmasligi kerak. Qaytaradi: nechta.
+        Diqqat: bekor qilingan vazifaning on_cancel() i keyin pump() da baribir chaqiriladi — o'chirilgan modul
+        yopilmalari ishlamasligi uchun xost (core/host.py) bu vazifalarni `dropped` deb belgilashi kerak."""
         n = 0
         for t in self._active:
             if t.key is not None and t.key.startswith(prefix) and not t.cancelled:
