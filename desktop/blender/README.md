@@ -67,7 +67,9 @@ yoki Blender: Edit → Preferences → Get Extensions → ▾ → Install from D
   CI: `desktop-blender` ishi (windows-2022).
 - Unumdorlik: `python desktop/tests/perf_baseline.py` → `docs/benchmark-desktop.md`.
 
-Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
+Sinalgan: 2026-10-08, Blender 5.2.2, Bonsai 0.9.0, FreeCAD 1.1.3 py313 — headless: 19/19 (+ real server bilan 4 ta: e2e_server, commit_conflict, sim_hydro, sim_twin), FAIL 0, SKIP 0.
+
+Avval sinalgan: 2026-09-17, Blender 5.2.2, Bonsai 0.8.5, FreeCAD 1.1.3 py313 — addon: 10/10 headless (e2e: ulanish → loyiha/model → GES obyekt → commit v1/v2 + CR → diff → ochish → issue → taqriz → sim → monitoring) va GUI chizish;
 bundle: zip dan `Sath.exe` (template, addonlar, bundle ichidagi FreeCAD/libredwg, GES obyekt), installer jimgina o'rnatish/o'chirish (yorliq, registr).
 
 ## Ma'lum cheklovlar
