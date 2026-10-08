@@ -10,6 +10,7 @@ import http.client
 import json
 import mimetypes
 import os
+import tempfile
 import threading
 import uuid
 from collections.abc import Callable
@@ -101,22 +102,24 @@ class GesClient:
             raise ServerError(0, f"Serverga ulanib bo'lmadi: {e.reason}") from None
         except TimeoutError:  # socket.timeout — TimeoutError ning taxallusi (3.10+)
             raise ServerError(0, f"Server javob bermadi (timeout {timeout or self.timeout:.0f} s)") from None
-        except (ConnectionError, OSError) as e:
-            if isinstance(e, TransferCancelled):
-                raise
+        except OSError as e:  # ConnectionError ham OSError
             raise ServerError(0, f"Tarmoq xatosi: {e}") from None
         except http.client.HTTPException as e:  # masalan IncompleteRead (chunked uzilish)
             raise ServerError(0, f"Tarmoq xatosi: {e}") from None
 
     @staticmethod
     def _stream(resp, dest: Path, progress, cancelled) -> Path:
-        """Javobni `<dest>.part` ga bo'laklab yozadi; to'liq bo'lsa `dest` ni almashtiradi. Xato/bekor → .part o'chadi."""
+        """Javobni yuklashga xos `<dest>.<tasodifiy>.part` ga bo'laklab yozadi; to'liq bo'lsa `dest` ni almashtiradi.
+        Xato/bekor → faqat O'Z .part fayli o'chadi (bekor qilingan eski yuklash yangisinikini o'chira olmaydi)."""
         total = int(resp.headers.get("Content-Length") or 0)
-        part = dest.with_name(dest.name + ".part")
+        part: Path | None = None
         got = 0
         try:
             try:
                 dest.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp = tempfile.mkstemp(dir=dest.parent, prefix=dest.name + ".", suffix=".part")
+                os.close(fd)
+                part = Path(tmp)
                 with open(part, "wb") as fh:
                     while True:
                         if cancelled is not None and cancelled():
@@ -139,7 +142,8 @@ class GesClient:
             except OSError as e:  # mkdir/open/write/close/progress/replace — mahalliy fayl xatosi
                 raise ServerError(0, f"Faylni yozib bo'lmadi: {e}") from None
         except BaseException:
-            part.unlink(missing_ok=True)
+            if part is not None:
+                part.unlink(missing_ok=True)
             raise
         return dest
 
@@ -231,7 +235,8 @@ class GesClient:
         progress: Callable[[int, int], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
     ) -> Path:
-        """IFC ni oqim bilan yuklaydi (`.part` → `dest`); `progress(olingan, jami)`, `cancelled()` → TransferCancelled."""
+        """IFC ni oqim bilan yuklaydi (`<dest>.*.part` → `dest`); `progress(olingan, jami)`, `cancelled()` →
+        TransferCancelled."""
         return self._request(
             "GET", f"/api/versions/{version_id}/file", stream_to=dest, progress=progress, cancelled=cancelled
         )

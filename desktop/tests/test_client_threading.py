@@ -1,4 +1,5 @@
-"""GesClient: parallel 401 da bitta refresh, timeout → ServerError, oqimli yuklash (.part, progress, bekor qilish).
+"""GesClient: parallel 401 da bitta refresh, timeout → ServerError, oqimli yuklash (yuklashga xos .part, progress,
+bekor qilish).
 Soxta urlopen bilan — server kerak emas."""
 
 import io
@@ -83,7 +84,7 @@ def test_download_streams_with_progress(monkeypatch, tmp_path):
     sc.GesClient("http://x").download_version(1, dest, progress=lambda got, total: seen.append((got, total)))
     assert dest.read_bytes() == data
     assert seen[-1] == (len(data), len(data)) and len(seen) == 4
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_cancel_keeps_old_file(monkeypatch, tmp_path):
@@ -100,7 +101,7 @@ def test_download_cancel_keeps_old_file(monkeypatch, tmp_path):
     with pytest.raises(sc.TransferCancelled):
         sc.GesClient("http://x").download_version(1, dest, cancelled=cancelled)
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_error_keeps_old_file(monkeypatch, tmp_path):
@@ -114,7 +115,7 @@ def test_download_error_keeps_old_file(monkeypatch, tmp_path):
     with pytest.raises(sc.ServerError):
         sc.GesClient("http://x").download_version(1, dest)
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_truncated_keeps_old_file(monkeypatch, tmp_path):
@@ -127,7 +128,7 @@ def test_download_truncated_keeps_old_file(monkeypatch, tmp_path):
         sc.GesClient("http://x").download_version(1, dest)
     assert "to'liq emas" in ei.value.message
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_incomplete_read_is_server_error(monkeypatch):
@@ -155,7 +156,7 @@ def test_download_replace_failure_is_local_error(monkeypatch, tmp_path):
         sc.GesClient("http://x").download_version(1, dest)
     assert "Faylni yozib bo'lmadi" in ei.value.message
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_failed_refresh_called_once_for_waiting_threads(monkeypatch):
@@ -222,7 +223,7 @@ def test_download_retry_after_401(monkeypatch, tmp_path):
     dest = tmp_path / "v.ifc"
     c.download_version(1, dest)
     assert dest.read_bytes() == b"content"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_read_timeout(monkeypatch, tmp_path):
@@ -237,7 +238,7 @@ def test_download_read_timeout(monkeypatch, tmp_path):
         sc.GesClient("http://x").download_version(1, dest)
     assert "timeout" in ei.value.message
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_open_failure_is_local_error(monkeypatch, tmp_path):
@@ -256,7 +257,7 @@ def test_download_open_failure_is_local_error(monkeypatch, tmp_path):
         sc.GesClient("http://x").download_version(1, dest)
     assert "Faylni yozib bo'lmadi" in ei.value.message
     assert dest.read_bytes() == b"OLD"
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_progress_oserror_is_local_error(monkeypatch, tmp_path):
@@ -270,7 +271,7 @@ def test_download_progress_oserror_is_local_error(monkeypatch, tmp_path):
         sc.GesClient("http://x").download_version(1, dest, progress=bad_progress)
     assert "Faylni yozib bo'lmadi" in ei.value.message
     assert not dest.exists()
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert not list(dest.parent.glob("*.part"))
 
 
 def test_download_read_reset_is_network_error(monkeypatch, tmp_path):
@@ -282,3 +283,46 @@ def test_download_read_reset_is_network_error(monkeypatch, tmp_path):
     with pytest.raises(sc.ServerError) as ei:
         sc.GesClient("http://x").download_version(1, tmp_path / "v.ifc")
     assert "Tarmoq xatosi" in ei.value.message
+
+
+def test_stale_cancelled_download_does_not_clobber_fresh_one(monkeypatch, tmp_path):
+    """X bosilgan (eski) yuklash hali yozayotganda xuddi shu versiya qayta yuklanadi: har biri o'z .part ida,
+    eskisining tozalashi yangisini o'chirmaydi/buzmaydi."""
+    old_data, new_data = b"o" * (3 * sc.CHUNK), b"n" * (2 * sc.CHUNK + 5)
+    first_chunk, release = threading.Event(), threading.Event()
+
+    class Stalling(FakeResp):
+        def read(self, n=-1):
+            chunk = super().read(n)
+            if not first_chunk.is_set():
+                first_chunk.set()
+                release.wait(5)  # eski yuklash tarmoqda "qotib" turadi
+            return chunk
+
+    def fake_urlopen(req, timeout=None):
+        if not first_chunk.is_set():
+            return Stalling(old_data, {"Content-Length": str(len(old_data))})
+        return FakeResp(new_data, {"Content-Length": str(len(new_data))})
+
+    monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
+    dest = tmp_path / "v.ifc"
+    stop = threading.Event()
+    errs = []
+
+    def stale():
+        try:
+            sc.GesClient("http://x").download_version(1, dest, cancelled=stop.is_set)
+        except sc.TransferCancelled as e:
+            errs.append(e)
+
+    th = threading.Thread(target=stale)
+    th.start()
+    assert first_chunk.wait(5)
+    stop.set()  # X: eski vazifa bekor qilindi, lekin ishchi hali read() ichida
+    sc.GesClient("http://x").download_version(1, dest)  # yangi yuklash shu dest ga
+    assert dest.read_bytes() == new_data
+    release.set()
+    th.join(5)
+    assert len(errs) == 1 and not th.is_alive()
+    assert dest.read_bytes() == new_data  # eski yuklash tozalashi yangi faylga tegmadi
+    assert not list(tmp_path.glob("*.part"))

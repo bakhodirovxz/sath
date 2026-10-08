@@ -146,3 +146,59 @@ def test_reset_clears_active_and_queue_without_callbacks():
     tm.drain(5)
     tm.pump()
     assert called == [1]
+
+
+def test_cancelled_task_frees_key_immediately():
+    """X: vazifa ishchisi tarmoqda qotgan bo'lsa ham kalit darhol bo'shaydi; eski natija tashlanadi."""
+    tm = TaskManager()
+    gate = threading.Event()
+    got = []
+    a = tm.run("diff", lambda ctx: (gate.wait(5), "eski")[1], got.append, key="K")
+    assert tm.cancel(a.id) is True
+    assert not tm.running("K")
+    assert a in tm.active() and a.cancelled  # ishchi hali tugamagan — pompa kutadi
+    b = tm.run("diff", lambda ctx: "yangi", got.append, key="K")
+    assert b is not None and tm.running("K")
+    gate.set()
+    tm.drain(5)
+    assert got == ["yangi"]
+
+
+def test_on_cancel_called_once_on_cancel_only():
+    tm = TaskManager()
+    calls = []
+    t = tm.run("c", lambda ctx: [ctx.sleep(0.2) for _ in range(50)], calls.append, on_cancel=lambda: calls.append("x"))
+    tm.cancel(t.id)
+    tm.drain(5)
+    tm.pump()
+    assert calls == ["x"]
+
+    calls.clear()
+    tm.run("ok", lambda ctx: 5, calls.append, on_cancel=lambda: calls.append("x"))
+    tm.drain(5)
+    assert calls == [5]  # muvaffaqiyatda on_cancel yo'q
+
+
+def test_on_cancel_called_when_worker_raises_cancelled():
+    tm = TaskManager()
+    calls = []
+
+    def work(ctx):
+        raise Cancelled()
+
+    tm.run("c", work, calls.append, calls.append, on_cancel=lambda: calls.append("x"))
+    tm.drain(5)
+    assert calls == ["x"]
+    tm.inline = True
+    tm.run("i", work, calls.append, calls.append, on_cancel=lambda: calls.append("y"))
+    assert calls == ["x", "y"]
+
+
+def test_on_cancel_not_called_after_reset():
+    tm = TaskManager()
+    calls = []
+    t = tm.run("u", lambda c: c.sleep(5), on_cancel=lambda: calls.append("x"))
+    tm.reset()
+    time.sleep(0.2)  # ishchi Cancelled bilan tugab navbatga yozadi
+    tm.pump()
+    assert calls == [] and t.dropped

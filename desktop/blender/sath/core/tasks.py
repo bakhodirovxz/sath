@@ -31,6 +31,7 @@ class Task:
         self.quiet = quiet  # status barda ko'rsatilmaydi (masalan monitoring tiki)
         self.frac: float | None = None
         self.text = ""
+        self.dropped = False  # reset() dan keyin: hech qanday callback chaqirilmaydi
         self._cancel = threading.Event()
 
     @property
@@ -84,8 +85,11 @@ class TaskManager:
         key: str | None = None,
         cancellable: bool = True,
         quiet: bool = False,
+        on_cancel: Callable[[], None] | None = None,
     ) -> Task | None:
-        """Vazifani boshlaydi; shu `key` bilan vazifa ishlayotgan bo'lsa None (takror rad etildi)."""
+        """Vazifani boshlaydi; shu `key` bilan (bekor qilinmagan) vazifa ishlayotgan bo'lsa None (takror rad etildi).
+        on_cancel() — vazifa bekor qilingan holda tugaganda (Cancelled ham) asosiy oqimda bir marta; reset() dan keyin
+        chaqirilmaydi."""
         if key is not None and self.running(key):
             return None
         task = Task(title, key, cancellable, quiet)
@@ -93,6 +97,8 @@ class TaskManager:
             try:
                 result = fn(TaskContext(task))
             except Cancelled:
+                if on_cancel is not None:
+                    on_cancel()
                 return task
             except Exception as e:
                 if on_error is None:
@@ -104,33 +110,36 @@ class TaskManager:
             return task
         self._active.append(task)
         threading.Thread(
-            target=self._work, args=(task, fn, on_done, on_error), name=f"sath:{title}", daemon=True
+            target=self._work, args=(task, fn, on_done, on_error, on_cancel), name=f"sath:{title}", daemon=True
         ).start()
         return task
 
-    def _work(self, task: Task, fn, on_done, on_error) -> None:
+    def _work(self, task: Task, fn, on_done, on_error, on_cancel) -> None:
         try:
             result = fn(TaskContext(task))
         except BaseException as e:  # noqa: BLE001 — asosiy oqimga yetkaziladi
-            self._q.put((task, None, on_error, None, e))
+            self._q.put((task, None, on_error, on_cancel, None, e))
             return
-        self._q.put((task, on_done, None, result, None))
+        self._q.put((task, on_done, None, on_cancel, result, None))
 
     def pump(self) -> int:
         """Asosiy oqimda: tugagan vazifalarning callbacklarini chaqiradi. Qaytaradi: nechta vazifa yakunlandi."""
         n = 0
         while True:
             try:
-                task, on_done, on_error, result, exc = self._q.get_nowait()
+                task, on_done, on_error, on_cancel, result, exc = self._q.get_nowait()
             except queue.Empty:
                 return n
             n += 1
             if task in self._active:
                 self._active.remove(task)
-            if task.cancelled or isinstance(exc, Cancelled):
+            if task.dropped:
                 continue
             try:
-                if exc is not None:
+                if task.cancelled or isinstance(exc, Cancelled):
+                    if on_cancel is not None:
+                        on_cancel()
+                elif exc is not None:
                     if on_error is not None:
                         on_error(exc)
                     else:
@@ -141,9 +150,12 @@ class TaskManager:
                 self.on_error_default(task, cb_exc)
 
     def running(self, key: str) -> bool:
-        return any(t.key == key for t in self._active)
+        """Bekor qilingan vazifa hisoblanmaydi: X bosilgach shu kalit bilan darhol qayta boshlash mumkin (eski ishchi
+        tugaguncha `active()` da qoladi, natijasi tashlanadi; status bar uni ko'rsatmaydi)."""
+        return any(t.key == key and not t.cancelled for t in self._active)
 
     def active(self) -> list[Task]:
+        """Barcha ishchisi hali tugamagan vazifalar (bekor qilinganlari ham — pompa ularni kutadi)."""
         return list(self._active)
 
     def cancel(self, task_id: int) -> bool:
@@ -161,6 +173,8 @@ class TaskManager:
         """O'chirish yo'li (addon unregister): hammasini bekor qiladi, ro'yxatni tozalaydi, navbatdagi natijalarni
         callbacksiz tashlaydi — qayta yoqilganda kalitlar bloklanib qolmaydi."""
         self.cancel_all()
+        for t in self._active:
+            t.dropped = True
         self._active.clear()
         while True:
             try:

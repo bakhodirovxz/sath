@@ -155,7 +155,8 @@ def run_op(
 
 
 def draw_tasks(self, _context) -> None:
-    shown = [t for t in TASKS.active() if not t.quiet][:MAX_SHOWN]
+    # Bekor qilingan (X bosilgan) vazifa darhol yo'qoladi — ishchisi tarmoqda qotgan bo'lsa ham (natijasi tashlanadi)
+    shown = [t for t in TASKS.active() if not t.quiet and not t.cancelled][:MAX_SHOWN]
     for t in shown:
         row = self.layout.row(align=True)
         text = t.title + (f" — {t.text}" if t.text else "")
