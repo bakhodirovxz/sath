@@ -334,7 +334,8 @@ class SATH_OT_commit(bpy.types.Operator):
             box.prop(self, "assign_missing")
         if self.orphan_note:
             box = self.layout.box()
-            box.label(text=self.orphan_note, icon="ORPHAN_DATA")
+            for i, line in enumerate(self.orphan_note.splitlines()):
+                box.label(text=line, icon="ORPHAN_DATA" if i == 0 else "NONE")
             box.prop(self, "purge_orphans")
 
     def execute(self, context):

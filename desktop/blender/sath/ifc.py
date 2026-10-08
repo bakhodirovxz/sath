@@ -250,9 +250,41 @@ def _linear_batch_delete():
         Transaction.store_delete, Transaction.unbatch = orig_delete, orig_unbatch
 
 
+class RepresentationNotUpdated(RuntimeError):
+    """Bonsai obyekt representation ini yozmadi (o'tkazib yubordi yoki rad etdi) — chaqiruvchi «sinxron» deb belgilamasin."""
+
+
+TESSELLATED = "IfcTessellatedFaceSet"  # Bonsai: IFC4 da IfcPolygonalFaceSet / IfcTriangulatedFaceSet («Tessellation»)
+
+
+def _rep_ids(e) -> set[int]:
+    r = getattr(e, "Representation", None) if e is not None else None
+    return {x.id() for x in r.Representations} if r is not None else set()
+
+
 def update_representation(obj) -> None:
-    with _linear_batch_delete():
-        bpy.ops.bim.update_representation(obj=obj.name)
+    """Blender mesh → IFC representation (har doim tessellation). C1: sinf berilmasa Bonsai uni ESKI representation dan
+    oladi — FreeCAD davri yagona IfcExtrudedAreaSolid elementida yangi mesh ekstruziyaga «moslanadi» (turbina 59 mm
+    qalinlikdagi plastinka bo'lib qoladi). Material qatlam/profil to'plami bor element rad etiladi (tessellation ga
+    o'tishda Bonsai materialni jimgina olib tashlardi); Bonsai elementni o'tkazib yuborsa (teshiklar va h.k.) yoki xato
+    bersa — RepresentationNotUpdated (obyekt nomi bilan)."""
+    import ifcopenshell.util.element as ue
+
+    e = entity(obj)
+    mat = ue.get_material(e, should_skip_usage=True) if e is not None else None
+    if mat is not None and mat.is_a() in ("IfcMaterialProfileSet", "IfcMaterialLayerSet"):
+        raise RepresentationNotUpdated(
+            f"{obj.name}: elementda {mat.is_a()} bor — representation yozilmadi (materialni olib tashlash yoki "
+            "o'zgartirish Bonsai da qo'lda)"
+        )
+    before = _rep_ids(e)
+    try:
+        with _linear_batch_delete():
+            res = bpy.ops.bim.update_representation(obj=obj.name, ifc_representation_class=TESSELLATED)
+    except RuntimeError as err:  # Bonsai op.report ERROR (masalan IFC2X3 da tessellation yo'q)
+        raise RepresentationNotUpdated(f"{obj.name}: {err}") from err
+    if "FINISHED" not in res or _rep_ids(entity(obj)) == before:
+        raise RepresentationNotUpdated(f"{obj.name}: Bonsai representation ni yangilamadi (teshiklar yoki mesh turi)")
 
 
 def _alive(o) -> bool:
@@ -266,7 +298,7 @@ def orphans() -> list[dict]:
     """K4: yetim IFC entitylar (commit oldidan; Ctrl+Z dan keyin bo'lmasligi kerak): (1) Blender obyekti yo'q Sath/GES
     elementlari (Pset_SathParametric yoki Pset_GES_* bor; boshqa elementlarga tegilmaydi — Bonsai ularni
     yuklamagan bo'lishi mumkin), (2) hech narsaga bog'lanmagan IfcPropertySet, (3) RelatedObjects bo'sh
-    IfcRelDefinesByProperties, (4) hech narsaga kirmagan IfcShapeRepresentation. [{"id","class","name","reason"}]."""
+    IfcRelDefinesByProperties, (4) hech narsaga kirmagan IfcShapeRepresentation. [{"id","class","name","guid","reason"}]."""
     import ifcopenshell.util.element as ue
 
     f = file()
@@ -276,7 +308,10 @@ def orphans() -> list[dict]:
     out: list[dict] = []
 
     def add(e, reason: str) -> None:
-        out.append({"id": e.id(), "class": e.is_a(), "name": getattr(e, "Name", None) or "", "reason": reason})
+        out.append({
+            "id": e.id(), "class": e.is_a(), "name": getattr(e, "Name", None) or "",
+            "guid": getattr(e, "GlobalId", None) or "", "reason": reason,
+        })  # fmt: skip
 
     for e in f.by_type("IfcElement"):
         if _alive(tool.Ifc.get_object(e)):

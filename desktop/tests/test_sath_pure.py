@@ -31,12 +31,11 @@ def test_common_copies_byte_identical_to_canonical():
 from sath import flows, viewpoint  # noqa: E402
 
 
-def test_orphans_text():
-    assert flows.orphans_text([]) == ""
-    items = [{"class": "IfcPropertySet"}, {"class": "IfcWall"}, {"class": "IfcPropertySet"}]
-    assert flows.orphans_text(items) == "Yetim IFC entitylar: 3 (IfcPropertySet ×2, IfcWall ×1)"
-    many = [{"class": c} for c in ("A", "B", "C", "D", "D")]
-    assert flows.orphans_text(many) == "Yetim IFC entitylar: 5 (D ×2, A ×1, B ×1 … (+1))"
+def test_orphans_text_counts_unlinked_by_class():
+    items = [{"class": "IfcPropertySet"}, {"class": "IfcShapeRepresentation"}, {"class": "IfcPropertySet"}]
+    lines = flows.orphans_text(items).splitlines()
+    assert lines[0] == "Yetim IFC entitylar: 3"
+    assert lines[1] == "Bog'lanmagan: IfcPropertySet ×2, IfcShapeRepresentation ×1"
 
 
 def test_viewpoint_from_view_ifc_space_metres():
@@ -286,3 +285,21 @@ def test_desktop_tests_have_no_hardcoded_admin_password(monkeypatch):
         creds.admin_password()
     monkeypatch.setenv("GES_TEST_PASSWORD", "x-parol")
     assert creds.admin_password() == "x-parol"
+
+
+def test_orphans_text_lists_lost_elements_by_name_and_guid():
+    lost = [
+        {"id": i, "class": "IfcWall", "name": f"Devor {i}", "guid": f"G{i:03d}", "reason": flows.ORPHAN_LOST}
+        for i in range(12)
+    ]
+    other = [
+        {"id": 100, "class": "IfcPropertySet", "name": "", "guid": "", "reason": "hech narsaga bog'lanmagan"},
+        {"id": 101, "class": "IfcPropertySet", "name": "", "guid": "", "reason": "hech narsaga bog'lanmagan"},
+    ]
+    assert flows.orphans_text([]) == ""
+    lines = flows.orphans_text(lost + other).splitlines()
+    assert lines[0] == "Yetim IFC entitylar: 14"
+    assert "IfcWall «Devor 0» [G000]" in lines[2] and any("[G009]" in x for x in lines)
+    assert not any("[G010]" in x for x in lines) and any("yana 2 ta" in x for x in lines)
+    assert any(x == "Bog'lanmagan: IfcPropertySet ×2" for x in lines)
+    assert "qayta hisoblanadi" in lines[-1]

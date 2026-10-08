@@ -301,6 +301,15 @@ def animate_governor(context, result: dict, fps: int = 24, limit: int = 600) -> 
         o.animation_data_clear()
     rpm = {o.name: physics.synchronous_rpm(ges_objects.params_dict(o).get("Frequency", 50.0), int(ges_objects.params_dict(o).get("Poles", 24))) for o in gens}
     theta: dict[str, float] = {o.name: 0.0 for o in gens + units}
+    errors: list[str] = []
+    unit_of: dict[str, object] = {}  # generator → agregat (rol bo'yicha, sikldan oldin bir marta)
+    for g in gens:
+        k = _role_index(g)
+        try:
+            unit_of[g.name] = _bound(f"unit:{k}" if k else None, "GES_Turbine", g.name)
+        except TwinBindingError as e:  # qolgan generatorlar va kadrlar baribir animatsiya qilinadi
+            errors.append(str(e))
+            unit_of[g.name] = None
     for fr, i in enumerate(idx, start=1):
         dt = (float(t[i]) - float(t[idx[fr - 2]])) if fr > 1 else 0.0
         ratio = float(f_hz[i]) / f_nom
@@ -312,8 +321,7 @@ def animate_governor(context, result: dict, fps: int = 24, limit: int = 600) -> 
             g.rotation_euler.z = theta[g.name]
             g.keyframe_insert(data_path="rotation_euler", index=2, frame=fr)
             _key_color(g, c, fr)
-            k = _role_index(g)
-            u = _bound(f"unit:{k}" if k else None, "GES_Turbine", g.name)
+            u = unit_of[g.name]
             if u is not None:
                 u.rotation_euler.z = theta[g.name]
                 u.keyframe_insert(data_path="rotation_euler", index=2, frame=fr)
@@ -332,6 +340,8 @@ def animate_governor(context, result: dict, fps: int = 24, limit: int = 600) -> 
     for o in gens + units:
         _linear(o)
     _finish(context)
+    if errors:  # qisman xato animatsiyani yakunlashga xalaqit bermaydi, lekin jim ham emas (animate_hydro kabi)
+        raise TwinBindingError("; ".join(errors))
     return len(idx)
 
 
@@ -369,6 +379,7 @@ def _objects_for(prefixes) -> list:
 def animate_seismic(context, result: dict, scale: float = 20.0, fps: int = 24, duration_s: float = 16.0) -> int:
     n = int(duration_s * fps)
     _frames(context, n, fps)
+    errors: list[str] = []
     for st in result.get("structures", []):
         roles = physics.seismic_struct_roles(st.get("name", ""))
         if not roles:
@@ -378,7 +389,7 @@ def animate_seismic(context, result: dict, scale: float = 20.0, fps: int = 24, d
         objs = _objects_for(roles)
         if not objs:
             if any(ges_objects.by_kind(ROLE_KIND[r]) for r in roles if r in ROLE_KIND):
-                raise TwinBindingError(f"Egizak: «{st.get('name', '')}» uchun rollar ({', '.join(roles)}) topilmadi")
+                errors.append(f"Egizak: «{st.get('name', '')}» uchun rollar ({', '.join(roles)}) topilmadi")
             continue
         for o in objs:
             _remember(o)
@@ -391,6 +402,8 @@ def animate_seismic(context, result: dict, scale: float = 20.0, fps: int = 24, d
             _key_color(o, c, 1)
             _linear(o)
     _finish(context)
+    if errors:  # qolgan inshootlar animatsiya qilingan, keyin xabar
+        raise TwinBindingError("; ".join(errors))
     return n
 
 

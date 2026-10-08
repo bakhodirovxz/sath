@@ -476,13 +476,28 @@ def conflict_text(err: ServerError) -> str:
     return f"{base}. «Eng oxirgi versiyani yuklab olish» → o'zgarishlarni qayta kiritib commit qiling"
 
 
-def orphans_text(items: list[dict], limit: int = 3) -> str:
-    """K4: commit dialogi uchun — «Yetim IFC entitylar: 3 (IfcPropertySet ×2, IfcWall ×1)»; bo'sh — ""."""
+ORPHAN_LOST = "Blender obyekti yo'q"  # ifc.orphans() 1-qoida sababi (GES elementi, Blender obyekti o'chirilgan)
+
+
+def orphans_text(items: list[dict], limit: int = 10) -> str:
+    """K4: commit dialogi uchun qatorlar ("\n" bilan): sarlavha; Blender obyekti yo'q GES elementlari — klass, Name va
+    GlobalId (birinchi `limit` tasi, qolgani soni); boshqa yetimlar (pset, bog'lanish, representation) klass bo'yicha
+    soni; oxirida — o'chirish ro'yxati commit paytida qayta hisoblanishi haqida eslatma. Bo'sh — ""."""
     if not items:
         return ""
-    counts: dict[str, int] = {}
-    for it in items:
-        counts[it["class"]] = counts.get(it["class"], 0) + 1
-    parts = [f"{c} ×{n}" for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
-    head = ", ".join(parts[:limit]) + (f" … (+{len(parts) - limit})" if len(parts) > limit else "")
-    return f"Yetim IFC entitylar: {len(items)} ({head})"
+    lost = [it for it in items if it.get("reason") == ORPHAN_LOST]
+    rest = [it for it in items if it.get("reason") != ORPHAN_LOST]
+    lines = [f"Yetim IFC entitylar: {len(items)}"]
+    if lost:
+        lines.append(f"Blender obyekti yo'q GES elementlari ({len(lost)}):")
+        lines += [f"  {it['class']} «{it.get('name') or '—'}» [{it.get('guid') or '?'}]" for it in lost[:limit]]
+        if len(lost) > limit:
+            lines.append(f"  … va yana {len(lost) - limit} ta")
+    if rest:
+        counts: dict[str, int] = {}
+        for it in rest:
+            counts[it["class"]] = counts.get(it["class"], 0) + 1
+        parts = [f"{c} ×{n}" for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+        lines.append("Bog'lanmagan: " + ", ".join(parts))
+    lines.append("O'chirish tanlansa — ro'yxat «IFC ga qo'llash» dan keyin qayta hisoblanadi (o'zgarishi mumkin)")
+    return "\n".join(lines)
