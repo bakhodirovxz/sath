@@ -36,6 +36,7 @@ def _http_error(code: int, url: str):
 def test_concurrent_401_refreshes_once(monkeypatch):
     calls = {"refresh": 0}
     lock = threading.Lock()
+    barrier = threading.Barrier(4)
 
     def fake_urlopen(req, timeout=None):
         url = req.full_url
@@ -46,6 +47,7 @@ def test_concurrent_401_refreshes_once(monkeypatch):
             return FakeResp(json.dumps({"access_token": "new", "refresh_token": "r2"}).encode())
         if req.get_header("Authorization") == "Bearer new":
             return FakeResp(b'{"ok": true}')
+        barrier.wait(timeout=5)  # barcha oqimlar 401 olgach refresh boshlansin
         raise _http_error(401, url)
 
     monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
@@ -111,5 +113,128 @@ def test_download_error_keeps_old_file(monkeypatch, tmp_path):
     dest.write_bytes(b"OLD")
     with pytest.raises(sc.ServerError):
         sc.GesClient("http://x").download_version(1, dest)
+    assert dest.read_bytes() == b"OLD"
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_truncated_keeps_old_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        sc.request, "urlopen", lambda req, timeout=None: FakeResp(b"z" * 10, {"Content-Length": "100"})
+    )
+    dest = tmp_path / "v.ifc"
+    dest.write_bytes(b"OLD")
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, dest)
+    assert "to'liq emas" in ei.value.message
+    assert dest.read_bytes() == b"OLD"
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_incomplete_read_is_server_error(monkeypatch):
+    import http.client
+
+    def fake_urlopen(req, timeout=None):
+        raise http.client.IncompleteRead(b"ab", 5)
+
+    monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").health()
+    assert ei.value.status == 0
+
+
+def test_download_replace_failure_is_local_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.request, "urlopen", lambda req, timeout=None: FakeResp(b"data"))
+
+    def boom(a, b):
+        raise PermissionError("band")
+
+    monkeypatch.setattr(sc.os, "replace", boom)
+    dest = tmp_path / "v.ifc"
+    dest.write_bytes(b"OLD")
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, dest)
+    assert "Faylni yozib bo'lmadi" in ei.value.message
+    assert dest.read_bytes() == b"OLD"
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_failed_refresh_called_once_for_waiting_threads(monkeypatch):
+    calls = {"refresh": 0}
+    lock = threading.Lock()
+    barrier = threading.Barrier(4)
+
+    def fake_urlopen(req, timeout=None):
+        url = req.full_url
+        if url.endswith("/api/auth/refresh"):
+            with lock:
+                calls["refresh"] += 1
+            time.sleep(0.05)
+            raise _http_error(401, url)
+        barrier.wait(timeout=5)
+        raise _http_error(401, url)
+
+    monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
+    c = sc.GesClient("http://x", token="old")
+    c.refresh_token = "r1"
+    errs = []
+
+    def work():
+        try:
+            c.me()
+        except sc.ServerError as e:
+            errs.append(e.status)
+
+    ths = [threading.Thread(target=work) for _ in range(4)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join()
+    assert errs == [401] * 4
+    assert calls["refresh"] == 1
+
+
+def test_refresh_network_error_keeps_refresh_token(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        if req.full_url.endswith("/api/auth/refresh"):
+            raise TimeoutError("timed out")
+        raise _http_error(401, req.full_url)
+
+    monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
+    c = sc.GesClient("http://x", token="old")
+    c.refresh_token = "r1"
+    with pytest.raises(sc.ServerError):
+        c.me()
+    assert c.refresh_token == "r1"
+
+
+def test_download_retry_after_401(monkeypatch, tmp_path):
+    def fake_urlopen(req, timeout=None):
+        url = req.full_url
+        if url.endswith("/api/auth/refresh"):
+            return FakeResp(json.dumps({"access_token": "new", "refresh_token": "r2"}).encode())
+        if req.get_header("Authorization") == "Bearer new":
+            return FakeResp(b"content", {"Content-Length": "7"})
+        raise _http_error(401, url)
+
+    monkeypatch.setattr(sc.request, "urlopen", fake_urlopen)
+    c = sc.GesClient("http://x", token="old")
+    c.refresh_token = "r1"
+    dest = tmp_path / "v.ifc"
+    c.download_version(1, dest)
+    assert dest.read_bytes() == b"content"
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_read_timeout(monkeypatch, tmp_path):
+    class Slow(FakeResp):
+        def read(self, n=-1):
+            raise TimeoutError("timed out")
+
+    monkeypatch.setattr(sc.request, "urlopen", lambda req, timeout=None: Slow(b""))
+    dest = tmp_path / "v.ifc"
+    dest.write_bytes(b"OLD")
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, dest)
+    assert "timeout" in ei.value.message
     assert dest.read_bytes() == b"OLD"
     assert not dest.with_name(dest.name + ".part").exists()

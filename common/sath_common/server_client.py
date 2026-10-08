@@ -6,6 +6,7 @@ Kanonik manba: common/sath_common/server_client.py; nusxalar desktop/build/sync_
 
 from __future__ import annotations
 
+import http.client
 import json
 import mimetypes
 import os
@@ -26,7 +27,12 @@ class ServerError(Exception):
         self.headers = headers or {}  # javob sarlavhalari (masalan X-Head-Id)
 
 
+_NO_TOKEN: Any = object()  # _refresh: eskirgan token berilmagan
 CHUNK = 1 << 20  # oqimli yuklash bo'lagi (1 MiB)
+
+
+class _LocalIOError(Exception):
+    pass
 
 
 class TransferCancelled(Exception):
@@ -99,6 +105,8 @@ class GesClient:
             if isinstance(e, TransferCancelled):
                 raise
             raise ServerError(0, f"Tarmoq xatosi: {e}") from None
+        except http.client.HTTPException as e:  # masalan IncompleteRead (chunked uzilish)
+            raise ServerError(0, f"Tarmoq xatosi: {e}") from None
 
     @staticmethod
     def _stream(resp, dest: Path, progress, cancelled) -> Path:
@@ -108,18 +116,29 @@ class GesClient:
         part = dest.with_name(dest.name + ".part")
         got = 0
         try:
-            with open(part, "wb") as fh:
-                while True:
-                    if cancelled is not None and cancelled():
-                        raise TransferCancelled("bekor qilindi")
-                    chunk = resp.read(CHUNK)
-                    if not chunk:
-                        break
-                    fh.write(chunk)
-                    got += len(chunk)
-                    if progress is not None:
-                        progress(got, total or got)
-            os.replace(part, dest)
+            try:
+                with open(part, "wb") as fh:
+                    while True:
+                        if cancelled is not None and cancelled():
+                            raise TransferCancelled("bekor qilindi")
+                        chunk = resp.read(CHUNK)
+                        if not chunk:
+                            break
+                        try:
+                            fh.write(chunk)
+                        except OSError as e:
+                            raise _LocalIOError(e) from None
+                        got += len(chunk)
+                        if progress is not None:
+                            progress(got, total or got)
+                if total and got != total:  # py3.10: uzilgan javobda read() b"" qaytaradi, IncompleteRead emas
+                    raise ServerError(0, f"Yuklash to'liq emas ({got}/{total} bayt)")
+                try:
+                    os.replace(part, dest)
+                except OSError as e:
+                    raise _LocalIOError(e) from None
+            except _LocalIOError as e:
+                raise ServerError(0, f"Faylni yozib bo'lmadi: {e.args[0]}") from None
         except BaseException:
             part.unlink(missing_ok=True)
             raise
@@ -146,12 +165,14 @@ class GesClient:
         self.must_change_password = bool(r.get("must_change_password"))
         return self.token
 
-    def _refresh(self, stale_token: str | None = None) -> bool:
+    def _refresh(self, stale_token: str | None = _NO_TOKEN) -> bool:
         """Refresh token bilan yangi juftlik (K3: lock ostida). `stale_token` — 401 olgan so'rovdagi token; u allaqachon
         almashtirilgan bo'lsa (boshqa oqim yangiladi) tarmoqqa chiqmasdan True. Muvaffaqiyatsiz → False."""
         with self._lock:
-            if stale_token is not None and self.token != stale_token:
+            if stale_token is not _NO_TOKEN and self.token != stale_token:
                 return True
+            if not self.refresh_token:  # boshqa oqim refresh ni allaqachon muvaffaqiyatsiz tugatgan
+                return False
             try:
                 r = self._request(
                     "POST",
@@ -160,8 +181,9 @@ class GesClient:
                     content_type="application/json",
                     _retry=False,
                 )
-            except ServerError:
-                self.refresh_token = None
+            except ServerError as e:
+                if e.status != 0:  # tarmoq uzilishi (status 0) foydalanuvchini tizimdan chiqarmasin
+                    self.refresh_token = None
                 return False
             self.token = r["access_token"]
             self.refresh_token = r.get("refresh_token") or None
