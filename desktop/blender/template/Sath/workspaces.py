@@ -23,6 +23,7 @@ DEV_ONLY = ("Scripting",)
 OWNERS = ("sath", "bonsai")  # addon modul nomining oxirgi qismi: bl_ext.<repo>.sath / .bonsai
 DEFAULT_OWNER_IDS = ("bl_ext.user_default.bonsai", "bl_ext.user_default.sath")  # bundle dagi nomlar
 ISA_GREY = "#dcdddf"  # web tokens.ts operator.canvas — ISA-101 neytral kulrang (test tokens.py bilan solishtiradi)
+OUTLINE = "#1b1d20"  # web tokens.ts operator.alarm-outline — obyekt konturi (sariq/to'q sariq to'ldirma kanvasda 3:1 emas)
 BASE = "Layout"
 
 
@@ -92,6 +93,8 @@ def _scada(context, win, ws) -> None:
         sh.color_type = "OBJECT"
         sh.background_type = "VIEWPORT"
         sh.background_color = srgb_to_linear(ISA_GREY)
+        sh.show_object_outline = True  # web: alarm shakli to'ldirma YOKI alarm-outline orqali >= 3:1
+        sh.object_outline_color = srgb_to_linear(OUTLINE)  # Object outline rangi COLOR (chiziqli), tokens.rgba kabi
 
 
 BUILDERS = {"BIM": _bim, "Compare": _compare, "Simulation": _simulation, "SCADA": _scada}

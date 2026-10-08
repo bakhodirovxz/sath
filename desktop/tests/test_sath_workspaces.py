@@ -134,10 +134,11 @@ def test_scada_monitor_palette_has_contrast_on_isa_grey(ws):
     assert t["canvas"] == ws.ISA_GREY
     names = ["text-muted", "alarm-stale", "ok", "warn", "danger"]
     names += ["alarm-low", "alarm-critical"]
-    # alarm-medium/high — to'ldirma rang (web da alarm-outline konturi + shakl bilan beriladi, 3D da kontur yo'q):
-    # kanvasdan ham, «normal» (text-muted) dan ham aniq ajralishi kerak, kontrast 3:1 talab qilinmaydi.
+    # alarm-medium/high — to'ldirma rang kanvasda 3:1 bermaydi; web qoidasi: to'ldirma YOKI alarm-outline >= 3:1.
+    # SCADA 3D ko'rinishida shu kontur yoqiladi (workspaces._scada): kontur kanvasda >= 3:1, to'ldirma «normal» dan ajraladi.
+    assert ws.OUTLINE == t["alarm-outline"]
+    assert _contrast(ws.OUTLINE, ws.ISA_GREY) >= 3.0
     for n in ("alarm-medium", "alarm-high"):
-        assert t[n] not in (t["text-muted"], ws.ISA_GREY) and _contrast(t[n], ws.ISA_GREY) > 1.2
         assert _contrast(t[n], t["text-muted"]) >= 3.0, n
     for n in names:
         assert _contrast(t[n], ws.ISA_GREY) >= 3.0, (n, t[n], _contrast(t[n], ws.ISA_GREY))

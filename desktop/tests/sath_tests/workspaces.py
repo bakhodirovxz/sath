@@ -53,6 +53,9 @@ def _check(W, *, dev: bool) -> dict:
     assert sh.color_type == "OBJECT" and sh.background_type == "VIEWPORT"
     grey = W.srgb_to_linear(W.ISA_GREY)
     assert all(abs(x - y) < 1e-4 for x, y in zip(sh.background_color, grey, strict=True))
+    assert sh.show_object_outline
+    ol = W.srgb_to_linear(W.OUTLINE)
+    assert all(abs(x - y) < 1e-4 for x, y in zip(sh.object_outline_color, ol, strict=True))
     return tags
 
 

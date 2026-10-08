@@ -71,7 +71,9 @@ def _apply(d: dict, hours: float) -> None:
         # Obyekt ranglari sahna bo'yicha umumiy (barcha ish joylari): palitra oynadagi faol ish joyi temasidan
         # (SCADA — operator, qolgan — engineer). _apply har 5 s da qayta chizadi, shuning uchun ish joyi
         # almashganda yangi palitra keyingi tikda qo'llanadi (yangi timer/obuna yo'q).
-        win = bpy.context.window
+        # Qoida: palitrani ASOSIY oyna (windows[0]) ish joyi belgilaydi; ikkinchi oynadagi SCADA ham shu palitrani oladi.
+        wm = bpy.context.window_manager
+        win = bpy.context.window or (wm.windows[0] if wm is not None and wm.windows else None)
         ws = win.workspace if win is not None else None
         theme = flows.monitor_theme(ws.get(registry.WORKSPACE_TAG) if ws is not None else None)
         if s.monitor_color_mode == "health":
