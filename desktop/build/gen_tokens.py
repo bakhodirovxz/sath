@@ -1,7 +1,7 @@
 """Dizayn tokenlari: web → desktop (spec §5). Yagona manba — web/src/ui/tokens.ts (THEMES) va
 web/src/viewer/palette.ts (PAL). Bu skript ulardan yasaydi:
   * desktop/blender/sath/core/tokens.py — 3D diff/alarm/sog'liq ranglari web bilan bir xil (bpy siz)
-  * desktop/blender/template/Sath/theme_sath.xml — Blender Dark ustiga Sath farqlari (setup_bundle.py)
+  * desktop/blender/template/Sath/theme_sath.xml — Blender Dark ustiga Sath farqlari (bundle sozlashda qo'llanadi, P4 Task 7)
 Node kerak emas (CI desktop ishida ham ishlaydi).
 
 python desktop/build/gen_tokens.py          # yozish
@@ -24,6 +24,9 @@ THEME_XML = ROOT / "desktop" / "blender" / "template" / "Sath" / "theme_sath.xml
 _THEME_OPEN = re.compile(r'^  "?([\w-]+)"?: \{\s*$')
 _THEME_ENTRY = re.compile(r'^    "?([\w-]+)"?: "([^"]+)",?\s*(?://.*)?$')
 _PAL_ENTRY = re.compile(r'^  (\w+): "([^"]+)",?\s*(?://.*)?$')
+_COMMENT = re.compile(r"^\s*(//|/\*|\*)")
+_PAL_ARRAY = re.compile(r"^  \w+: \[.*\],?\s*$")  # categorical/heatRamp — massiv, PAL ga kirmaydi
+_PAL_NESTED_OPEN = re.compile(r"^  \w+: \{\s*$")  # draft — ichki obyekt
 THEME_KEYS = ("axisX", "axisY", "axisZ", "highlight", "sceneBg")  # theme_sath.xml dagi PAL ranglari
 
 PY_HEADER = '''"""Dizayn tokenlari — web/src/ui/tokens.ts (THEMES) va web/src/viewer/palette.ts (PAL, faqat
@@ -70,7 +73,8 @@ def pal_rgba(name: str) -> tuple[float, float, float, float]:
 '''
 
 THEME_TEMPLATE = """<!-- Sath temasi: Blender Dark + Sath farqlari. Avtomatik (desktop/build/gen_tokens.py, manba
-     web/src/viewer/palette.ts), qo'lda tahrirlamang. setup_bundle.py qo'llaydi (script.execute_preset). -->
+     web/src/viewer/palette.ts), qo'lda tahrirlamang. Bundle sozlash bosqichi qo'llaydi
+     (script.execute_preset) — ulanishi keyingi vazifada (P4 Task 7). -->
 <bpy>
   <Theme>
     <user_interface>
@@ -104,22 +108,28 @@ THEME_TEMPLATE = """<!-- Sath temasi: Blender Dark + Sath farqlari. Avtomatik (d
 """
 
 
-def _block(text: str, start: str) -> list[str]:
-    """`start` bilan boshlanadigan qatordan keyingi, birinchi `}` (ustun 0) gacha bo'lgan qatorlar."""
+def _block(text: str, start: str) -> list[tuple[int, str]]:
+    """`start` bilan boshlanadigan qatordan keyingi, birinchi `}` (ustun 0) gacha bo'lgan (qator raqami, qator)."""
     lines = text.splitlines()
     i = next((n for n, ln in enumerate(lines) if ln.startswith(start)), None)
     if i is None:
         raise SystemExit(f"gen_tokens: {start!r} topilmadi (web fayli formati o'zgardimi?)")
     for j in range(i + 1, len(lines)):
         if lines[j].startswith("}"):
-            return lines[i + 1 : j]
+            return [(n + 1, lines[n]) for n in range(i + 1, j)]
     raise SystemExit(f"gen_tokens: {start!r} bloki yopilmagan")
 
 
-def parse_themes(text: str) -> dict[str, dict[str, str]]:
+def _unparsed(src: str, no: int, ln: str) -> SystemExit:
+    return SystemExit(f"gen_tokens: {src}:{no}: qator tushunilmadi (format o'zgardimi?): {ln.strip()!r}")
+
+
+def parse_themes(text: str, src: str = "web/src/ui/tokens.ts") -> dict[str, dict[str, str]]:
     themes: dict[str, dict[str, str]] = {}
     cur: dict[str, str] | None = None
-    for ln in _block(text, "export const THEMES"):
+    for no, ln in _block(text, "export const THEMES"):
+        if not ln.strip() or _COMMENT.match(ln):
+            continue
         m = _THEME_OPEN.match(ln)
         if m:
             cur = themes.setdefault(m.group(1), {})
@@ -128,19 +138,35 @@ def parse_themes(text: str) -> dict[str, dict[str, str]]:
             cur = None
             continue
         m = _THEME_ENTRY.match(ln)
-        if m and cur is not None:
-            cur[m.group(1)] = m.group(2)
+        if not m or cur is None:
+            raise _unparsed(src, no, ln)
+        cur[m.group(1)] = m.group(2)
     if not themes or not all(themes.values()):
         raise SystemExit("gen_tokens: tokens.ts THEMES o'qilmadi")
+    ref = set(next(iter(themes.values())))
+    for name, vals in themes.items():
+        if set(vals) != ref:
+            diff = sorted(set(vals) ^ ref)
+            raise SystemExit(f"gen_tokens: {src}: {name!r} temasi kalitlari boshqalardan farq qiladi: {diff}")
     return themes
 
 
-def parse_palette(text: str) -> dict[str, str]:
+def parse_palette(text: str, src: str = "web/src/viewer/palette.ts") -> dict[str, str]:
     pal: dict[str, str] = {}
-    for ln in _block(text, "export const PAL"):
+    nested = False
+    for no, ln in _block(text, "export const PAL"):
+        if nested:
+            nested = not re.match(r"^  \},?\s*$", ln)
+            continue
+        if not ln.strip() or _COMMENT.match(ln) or _PAL_ARRAY.match(ln):
+            continue
+        if _PAL_NESTED_OPEN.match(ln):
+            nested = True
+            continue
         m = _PAL_ENTRY.match(ln)
-        if m:
-            pal[m.group(1)] = m.group(2)
+        if not m:
+            raise _unparsed(src, no, ln)
+        pal[m.group(1)] = m.group(2)
     if not pal:
         raise SystemExit("gen_tokens: palette.ts PAL o'qilmadi")
     return pal
@@ -173,7 +199,7 @@ def outputs() -> dict[Path, str]:
 
 
 def check() -> list[str]:
-    """Eskirgan yoki yo'q fayllar (ROOT ga nisbatan). Qator oxiri farqi hisobga olinmaydi (Windows checkout)."""
+    """Eskirgan yoki yo'q fayllar (ROOT ga nisbatan). Matn solishtiriladi (bayt emas): read_text qator oxirini normallashtiradi, CRLF checkout xato bermaydi."""
     return [
         p.relative_to(ROOT).as_posix()
         for p, text in outputs().items()

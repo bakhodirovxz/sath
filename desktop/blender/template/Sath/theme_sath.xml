@@ -1,5 +1,6 @@
 <!-- Sath temasi: Blender Dark + Sath farqlari. Avtomatik (desktop/build/gen_tokens.py, manba
-     web/src/viewer/palette.ts), qo'lda tahrirlamang. setup_bundle.py qo'llaydi (script.execute_preset). -->
+     web/src/viewer/palette.ts), qo'lda tahrirlamang. Bundle sozlash bosqichi qo'llaydi
+     (script.execute_preset) — ulanishi keyingi vazifada (P4 Task 7). -->
 <bpy>
   <Theme>
     <user_interface>

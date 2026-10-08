@@ -62,3 +62,35 @@ def test_theme_xml_is_blender_dark_overrides_from_palette():
     assert f'high_gradient="{tokens.PAL["sceneBg"]}"' in text
     assert f'axis_x="{tokens.PAL["axisX"]}"' in text
     assert "<ThemeStyle>" in text  # Blender execute_preset ThemeStyle elementisiz yiqiladi
+
+
+_T = 'export const THEMES = {\n  a: {\n    "k": "#fff",\n  },\n  b: {\n    "k": "#000",\n  },\n};\n'
+
+
+def test_parse_themes_accepts_comments_and_rejects_unparsed_lines():
+    assert gen_tokens.parse_themes(_T.replace('    "k": "#fff",', '    // izoh\n    "k": "#fff",'))["a"] == {"k": "#fff"}
+    for bad in ("    k: '#fff',", '    "k": `#fff`,', '    ...base,', '    "k":\n      "#fff",'):
+        with pytest.raises(SystemExit, match="tokens.ts:"):
+            gen_tokens.parse_themes(_T.replace('    "k": "#fff",', bad))
+
+
+def test_parse_themes_rejects_mismatched_key_sets():
+    with pytest.raises(SystemExit, match="kalitlari"):
+        gen_tokens.parse_themes(_T.replace('    "k": "#000",', '    "k": "#000",\n    "x": "#111",'))
+
+
+def test_parse_palette_rejects_unparsed_lines_but_skips_arrays_and_nested():
+    ok = 'export const PAL = {\n  a: "#fff",\n  arr: ["#000"],\n  d: {\n    p: "#111",\n  },\n  b: "#222",\n} as const;\n'
+    assert gen_tokens.parse_palette(ok) == {"a": "#fff", "b": "#222"}
+    for bad in ("  a: '#fff',", "  ...base,", "  a: `#fff`,"):
+        with pytest.raises(SystemExit, match="palette.ts:"):
+            gen_tokens.parse_palette(ok.replace('  a: "#fff",', bad))
+
+
+def test_check_reports_drift(monkeypatch, tmp_path):
+    stale = tmp_path / "tokens.py"
+    stale.write_text("# eskirgan\n", "utf-8")
+    monkeypatch.setattr(gen_tokens, "TOKENS_PY", stale)
+    monkeypatch.setattr(gen_tokens, "THEME_XML", tmp_path / "missing.xml")
+    monkeypatch.setattr(gen_tokens, "ROOT", tmp_path)
+    assert gen_tokens.check() == ["tokens.py", "missing.xml"]
