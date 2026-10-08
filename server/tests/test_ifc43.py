@@ -35,8 +35,8 @@ def test_schema_mapping_and_class_check():
 
 
 def test_desktop_class_list_matches_server():
-    sys.path.insert(0, str(ROOT / "desktop" / "GesWorkbench"))
-    from ges_workbench import ifc_classes
+    sys.path.insert(0, str(ROOT / "common"))
+    from sath_common import ifc_classes
 
     assert ifc_classes.IFC4 == ifc_schema.element_classes("IFC4")
     assert ifc_classes.IFC4X3_ADD2 == ifc_schema.element_classes("IFC4X3_ADD2")

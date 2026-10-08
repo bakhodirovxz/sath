@@ -2,9 +2,7 @@
 
 Kanonik manba — common/sath_common/ (kelajakdagi `sath-common` wheel, docs/plan.md K1). Nusxalar:
   * Blender addoni: desktop/blender/sath/shared/
-  * FreeCAD workbench (legacy): desktop/GesWorkbench/ges_workbench/
   * server: server/ges_server/models/ (Docker obrazida faqat server/ bor)
-FreeCAD ga bog'liq ges_objects.py ning manbasi GesWorkbench, nusxasi — sath/wb/.
 sim/ges_sim dagi sof (faqat math) formulalar ham addonga nusxalanadi — server bilan bir xil (SIM-01).
 
 python desktop/build/sync_blender.py          # nusxalash
@@ -22,21 +20,16 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "common" / "sath_common"
 DST = ROOT / "desktop" / "blender" / "sath" / "shared"
 CORE_FILES = ["server_client.py", "dxf_prepare.py", "assimp_load.py", "ifc_classes.py", "cad_common.py"]
-FILES = CORE_FILES + ["geom.py", "ges_kinds.py"]  # geom (P2) — sof numpy geometriya; faqat addon nusxasi (legacy workbench ga emas)
+FILES = CORE_FILES + ["geom.py", "ges_kinds.py"]  # geom (P2) — sof numpy geometriya; faqat addon nusxasi
 # sim/ges_sim dagi sof (faqat math) modullar — server bilan bir xil formula (SIM-01)
 SIM_SRC = ROOT / "sim" / "ges_sim"
 SIM_FILES = ["cavitation.py"]
-WB_SRC = ROOT / "desktop" / "GesWorkbench" / "ges_workbench"
-WB_FILES = ["ges_objects.py"]  # fc_engine uchun: sath/wb/ (manba — GesWorkbench, FreeCAD ga bog'liq)
-WB_DST = ROOT / "desktop" / "blender" / "sath" / "wb"
 SERVER_DST = ROOT / "server" / "ges_server" / "models"
 # Addondan tashqari nusxalar: papka → fayllar (manba SRC)
 EXTRA: dict[Path, list[str]] = {
-    WB_SRC: CORE_FILES,
     SERVER_DST: ["dxf_prepare.py", "assimp_load.py", "cad_common.py"],
 }
 INIT = '"""common/sath_common dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'
-WB_INIT = '"""GesWorkbench dan nusxa (desktop/build/sync_blender.py). Qo\'lda tahrirlamang."""\n'
 
 
 def copies() -> list[tuple[Path, Path]]:
@@ -44,7 +37,6 @@ def copies() -> list[tuple[Path, Path]]:
     pairs = [(SRC / f, DST / f) for f in FILES]
     pairs += [(SIM_SRC / f, DST / f) for f in SIM_FILES]
     pairs += [(SRC / f, d / f) for d, files in EXTRA.items() for f in files]
-    pairs += [(WB_SRC / f, WB_DST / f) for f in WB_FILES]
     return pairs
 
 
@@ -58,9 +50,8 @@ def check() -> list[str]:
 
 
 def sync() -> None:
-    for d, init in ((DST, INIT), (WB_DST, WB_INIT)):
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "__init__.py").write_text(init, encoding="utf-8")
+    DST.mkdir(parents=True, exist_ok=True)
+    (DST / "__init__.py").write_text(INIT, encoding="utf-8")
     for src, dst in copies():
         shutil.copyfile(src, dst)
 

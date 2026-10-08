@@ -1,5 +1,5 @@
-"""Sath Blender addoni: server (versiyalar, taqriz, sim, monitoring), GES obyektlari (FreeCAD dvigatel),
-DXF/DWG import. IFC — Bonsai."""
+"""Sath Blender addoni: server (versiyalar, taqriz, sim, monitoring), GES obyektlari (sof Python geometriya,
+FreeCAD siz), DXF/DWG import. IFC — Bonsai."""
 
 from __future__ import annotations
 

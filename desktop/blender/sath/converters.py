@@ -12,15 +12,23 @@ from pathlib import Path
 EXE = ".exe" if os.name == "nt" else ""
 
 
+def _bundle_dir() -> Path | None:
+    """Sath bundle ildizi (Sath.exe yonida `tools/`) yoki None (bpy siz — pytest)."""
+    try:
+        import bpy
+
+        root = Path(bpy.app.binary_path).resolve().parent
+    except Exception:  # noqa: BLE001
+        return None
+    return root if (root / "tools").is_dir() else None
+
+
 def _candidate_dirs() -> list[Path]:
     dirs = []
-    for env in ("GES_TOOLS_DIR", "GES_FC_HOME"):
-        v = os.environ.get(env)
-        if v:
-            dirs += [Path(v), Path(v) / "tools", Path(v) / "tools" / "libredwg"]
-    from .fc_engine import bundle_dir
-
-    b = bundle_dir()
+    v = os.environ.get("GES_TOOLS_DIR")
+    if v:
+        dirs += [Path(v), Path(v) / "tools", Path(v) / "tools" / "libredwg"]
+    b = _bundle_dir()
     if b is not None:
         dirs += [b / "tools", b / "tools" / "libredwg"]  # Sath bundle
     dirs += [

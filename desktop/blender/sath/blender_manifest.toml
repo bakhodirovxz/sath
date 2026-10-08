@@ -9,7 +9,7 @@ blender_version_min = "5.2.0"
 license = ["SPDX:MIT"]
 tags = ["Import-Export", "Object"]
 # DXF (ezdxf, sof Python) — barcha platformalarda; assimp-py (FBX/3DS/LWO …) hozircha faqat Windows —
-# boshqa platformada FBX/OBJ Blender ning o'z importeri bilan ochiladi (ops_import). FreeCAD dvigateli ixtiyoriy.
+# boshqa platformada FBX/OBJ Blender ning o'z importeri bilan ochiladi (ops_import).
 platforms = ["windows-x64", "linux-x64", "macos-arm64"]
 wheels = [
   "./wheels/ezdxf-1.4.4-py3-none-any.whl",

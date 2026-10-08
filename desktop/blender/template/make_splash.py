@@ -39,7 +39,7 @@ def draw(w: int, h: int, version: str) -> Image.Image:
     d.polygon(dam, fill=(58, 64, 74))
     d.text((int(28 * k), int(40 * k)), "Sath", font=_font(int(64 * k)), fill=FG)
     d.text((int(30 * k), int(118 * k)), "Gidroelektrostansiya BIM · raqamli egizak", font=_font(int(15 * k)), fill=DIM)
-    d.text((int(30 * k), int(140 * k)), "Blender + FreeCAD dvigatel · IFC (Bonsai)", font=_font(int(13 * k)), fill=DIM)
+    d.text((int(30 * k), int(140 * k)), "Blender · IFC (Bonsai)", font=_font(int(13 * k)), fill=DIM)
     d.text((int(30 * k), int(h - 28 * k)), f"v{version}", font=_font(int(12 * k)), fill=DIM)
     return im
 

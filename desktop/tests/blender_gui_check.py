@@ -19,7 +19,6 @@ sys.path.insert(0, str(HERE))
 os.environ["SATH_PANELS_OPEN"] = "1"
 import blender_headless  # noqa: E402
 
-os.environ.setdefault("GES_FC_HOME", os.path.join(os.path.expanduser("~"), "Tools", "fc-py313"))
 bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
 addon = blender_headless.load_addon()
 sys.path.insert(0, str(HERE / "sath_tests"))

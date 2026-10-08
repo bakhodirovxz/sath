@@ -50,7 +50,6 @@ def main() -> int:
     name = argv[argv.index("--test") + 1] if "--test" in argv else "smoke"
     if "--bonsai" in argv:
         bpy.ops.preferences.addon_enable(module="bl_ext.user_default.bonsai")
-    # K7: FreeCAD yo'li faqat muhitdan yoki addon sozlamasidan (CI da yo'q → FreeCAD testlari [SKIP])
     addon = load_addon()
     sys.path.insert(0, str(ROOT / "desktop" / "tests" / "sath_tests"))
     from _req import SkipTest

@@ -21,7 +21,7 @@ def run(ctx):
     dxf = Path(tempfile.mkdtemp(prefix="sath-ezdxf-")) / "plan.dxf"
     doc.saveas(dxf)
     warnings: list = []
-    n = ops_import.import_dxf(bpy.context, dxf, engine="EZDXF", report=warnings)
+    n = ops_import.import_dxf(bpy.context, dxf, report=warnings)
     assert n == 2 and not warnings, (n, warnings)
     me = bpy.data.objects["DXF_TOGON"]
     assert me.type == "MESH" and len(me.data.polygons) == 2 and abs(me.dimensions.z - 3.0) < 1e-6
@@ -34,4 +34,4 @@ def run(ctx):
 
     if converters.find_dwg2dxf():
         dwg = Path(__file__).resolve().parents[1] / "Namuna.dwg"
-        assert ops_import.import_dxf(bpy.context, dwg, engine="EZDXF") >= 1
+        assert ops_import.import_dxf(bpy.context, dwg) >= 1

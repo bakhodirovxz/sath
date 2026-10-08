@@ -1,10 +1,10 @@
 """Sath desktop bundle (kompilyatsiyasiz): rasmiy Blender 5.2 + Sath app template/splash + Sath.exe (ikonka)
-+ portable prefs (Bonsai va sath extension lari yoqilgan) + FreeCAD dvigatel (conda py313, kesilgan) + libredwg.
++ portable prefs (Bonsai va sath extension lari yoqilgan) + libredwg. FreeCAD yo'q (P2: GES geometriyasi sof Python).
 
-python desktop/build/build_blender_bundle.py [--blender ~/Tools/blender-5.2] [--fc-home ~/Tools/fc-py313]
-        [--bonsai <zip>] [--no-freecad] [--no-zip] [--installer] [--keep-stage]
+python desktop/build/build_blender_bundle.py [--blender ~/Tools/blender-5.2] [--bonsai <zip>] [--no-zip]
+        [--installer] [--keep-stage]
 Natija: desktop/dist/Sath-Blender-<ver>-Windows-x86_64.zip (+ -installer.exe, .build.json — product: sath-blender).
-Stage: desktop/build/_work/sath-bundle/Sath. Legacy FreeCAD paketi boshqa nomda: Sath-FreeCAD-<ver>-… (CODE-03).
+Stage: desktop/build/_work/sath-bundle/Sath.
 """
 
 from __future__ import annotations
@@ -29,28 +29,7 @@ TOOLS = Path.home() / "Tools"
 WORK = BUILD / "_work" / "sath-bundle"
 STAGE = WORK / "Sath"
 
-# FreeCAD conda muhitidan bundle ga KIRMAYDIGAN narsalar (dvigatel: Part/Draft/Import/BIM/Mesh yetarli)
-FC_PRUNE_DIRS = {
-    "conda-meta", "pkgs", "Library/include", "Library/doc", "Library/translations", "Library/qml",
-    "Library/share/doc", "Library/share/man", "Library/share/locale", "Library/share/cmake",
-    "Library/share/opencascade/doc", "Library/share/opencascade/samples", "Library/lib/cmake",
-    "Library/lib/pkgconfig", "Library/Mod/Robot", "Library/Mod/CAM", "Library/Mod/OpenSCAD",
-    "Library/Mod/Idf", "Library/Mod/Inspection", "Library/Mod/ReverseEngineering", "Library/Mod/Start",
-    "Library/Mod/Help", "Library/Mod/Test", "Library/Mod/Tux", "Library/Mod/Web", "Library/Mod/Points",
-    "Library/Mod/Surface", "Library/Mod/Fem", "Library/Mod/Assembly", "Library/Mod/AddonManager",
-    "Library/Mod/Plot", "Library/Mod/Show", "Tools", "Scripts",
-}  # fmt: skip
-FC_PRUNE_NAMES = {"__pycache__", "tests", "test"}
-FC_PRUNE_SUFFIX = {".lib", ".pdb", ".a", ".h", ".hpp", ".hxx", ".lxx", ".gxx"}
-# Library/bin dagi keraksiz DLL/EXE lar (prefikslar): MKL (conda numpy — Blender numpy ishlatiladi), libclang
-# (shiboken generator), VTK/viskores/gmsh (FEM), PCL/flann (Points/ReverseEngineering), video kodeklar, Qt SW GL
-FC_PRUNE_BIN_PREFIX = (
-    "mkl_", "libclang", "vtk", "viskores", "gmsh", "pcl_", "flann", "avcodec", "avformat", "avutil",
-    "avdevice", "avfilter", "swscale", "swresample", "aom", "libx264", "libx265", "dav1d", "opengl32sw",
-    "rav1e", "svt", "vpx", "opus", "libvorbis", "libogg",
-)  # fmt: skip
-FC_KEEP_EXE = ("freecad",)
-PRODUCT = "sath-blender"  # CODE-03: build metama'lumotidagi mahsulot (legacy FreeCAD paketi — sath-freecad)
+PRODUCT = "sath-blender"  # CODE-03: build metama'lumotidagi mahsulot
 
 
 def artifact_name(ver: str) -> str:
@@ -196,30 +175,6 @@ def setup_prefs(template_dir: Path) -> None:
          TEMPLATE / "setup_bundle.py", "--", template_dir])  # fmt: skip
 
 
-def _fc_ignore(root: Path):
-    def ignore(d, names):
-        rel = Path(d).relative_to(root).as_posix()
-        out = set()
-        in_bin = rel in ("Library/bin", "Library/lib")
-        for n in names:
-            p = f"{rel}/{n}" if rel != "." else n
-            low = n.lower()
-            if p in FC_PRUNE_DIRS or n in FC_PRUNE_NAMES or Path(n).suffix.lower() in FC_PRUNE_SUFFIX:
-                out.add(n)
-            elif in_bin and low.startswith(FC_PRUNE_BIN_PREFIX):
-                out.add(n)
-            elif in_bin and low.endswith(".exe") and not low.startswith(FC_KEEP_EXE):
-                out.add(n)
-        return out
-
-    return ignore
-
-
-def copy_freecad(fc_home: Path) -> None:
-    print("FreeCAD dvigatel nusxalanmoqda (kesilgan)...", flush=True)
-    shutil.copytree(fc_home, STAGE / "freecad", ignore=_fc_ignore(fc_home))
-
-
 def copy_libredwg() -> bool:
     cands = (TOOLS / "libredwg", Path("C:/Tools/libredwg"))
     src = next((p for p in cands if (p / "dwg2dxf.exe").exists()), None)
@@ -234,16 +189,15 @@ def copy_libredwg() -> bool:
     return True
 
 
-def write_readme(ver: str, with_fc: bool) -> None:
+def write_readme(ver: str) -> None:
     (STAGE / "Sath-VERSION.txt").write_text(f"Sath {ver}\n", encoding="utf-8")
-    fc = "FreeCAD dvigatel" if with_fc else "FreeCAD siz"
     (STAGE / "Sath-README.txt").write_text(
-        f"""Sath {ver} — gidroelektrostansiya BIM (Blender 5.2 + Bonsai + {fc})
+        f"""Sath {ver} — gidroelektrostansiya BIM (Blender 5.2 + Bonsai)
 
-Ishga tushirish: Sath.exe (yoki blender.exe). Sozlamalar va extension lar `portable\` papkasida —
+Ishga tushirish: Sath.exe (yoki blender.exe). Sozlamalar va extension lar `portable\\` papkasida —
 kompyuterdagi boshqa Blender bilan aralashmaydi. 3D Viewport → N panel → «Sath» yorlig'i.
 Server: Sath → Server → manzil, login, parol → Ulanish.
-DWG/DXF: tools\libredwg (dwg2dxf). FreeCAD: freecad\ (GES obyektlari, DXF import).
+DWG/DXF: tools\\libredwg (dwg2dxf).
 """,
         encoding="utf-8",
     )
@@ -283,9 +237,7 @@ def make_installer(ver: str) -> Path | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--blender", type=Path, default=Path(os.environ.get("GES_BLENDER_DIR", TOOLS / "blender-5.2")))
-    ap.add_argument("--fc-home", type=Path, default=Path(os.environ.get("GES_FC_HOME", TOOLS / "fc-py313")))
     ap.add_argument("--bonsai", type=Path, default=None)
-    ap.add_argument("--no-freecad", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--installer", action="store_true")
     ap.add_argument("--keep-stage", action="store_true", help="mavjud stage ni qayta ishlatish (tez sinov)")
@@ -309,12 +261,9 @@ def main() -> int:
     boot_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(TEMPLATE / "sath_boot.py", boot_dir / "sath_boot.py")  # argumentsiz ham Sath template
     setup_prefs(template_dir)
-    if not a.no_freecad:
-        if (STAGE / "freecad").exists():
-            shutil.rmtree(STAGE / "freecad")
-        copy_freecad(a.fc_home)
+    shutil.rmtree(STAGE / "freecad", ignore_errors=True)  # eski stage (--keep-stage) dagi FreeCAD
     copy_libredwg()
-    write_readme(ver, not a.no_freecad)
+    write_readme(ver)
     write_build_info(ver)
     if not a.no_zip:
         z = make_zip(ver)

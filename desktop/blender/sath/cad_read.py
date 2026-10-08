@@ -56,13 +56,6 @@ def resolve(path: str | Path, unit: str = "AUTO", axis: str = "AUTO", default_un
     return Resolved(scale, y_up, info, warnings)
 
 
-def freecad_dxf_factor(res: Resolved) -> float:
-    """FreeCAD importDXF $INSUNITS bo'yicha mm ga keltiradi (birliksiz — xom qiymat, ya'ni mm deb oladi).
-    FreeCAD qiymati → metr ko'paytuvchisi, tanlangan birlikni hisobga olib."""
-    file_scale = res.info.scale or 0.001  # FreeCAD ning o'z taxmini
-    return res.scale * 0.001 / file_scale
-
-
 def transform_vertices(verts, scale: float, y_up: bool) -> list[tuple[float, float, float]]:
     """Fayl birligi → metr, kerak bo'lsa Y-up → Z-up."""
     out = []

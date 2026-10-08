@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "desktop" / "GesWorkbench"))
+sys.path.insert(0, str(ROOT / "common"))
 sys.path.insert(0, str(ROOT / "server" / "tests"))
 
 _TMP = Path(tempfile.mkdtemp(prefix="ges_desktop_"))
@@ -27,7 +27,7 @@ os.environ["GES_DEV_MODE"] = "true"  # CODE-08: sinov serveri dev rejimida
 import uvicorn  # noqa: E402
 from conftest import make_ifc  # noqa: E402  (server/tests/conftest.py)
 from ges_server.main import app  # noqa: E402
-from ges_workbench.server_client import GesClient, ServerError  # noqa: E402
+from sath_common.server_client import GesClient, ServerError  # noqa: E402
 
 ADMIN_PW = os.environ["GES_ADMIN_PASSWORD"]
 

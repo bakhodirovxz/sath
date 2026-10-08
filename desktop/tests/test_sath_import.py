@@ -39,16 +39,13 @@ def test_resolve_3ds_is_not_flipped_and_warns(tmp_path):
     assert any("birlik" in w.lower() for w in r.warnings) and any("o'q" in w for w in r.warnings)
 
 
-def test_resolve_dxf_units_and_freecad_factor(tmp_path):
+def test_resolve_dxf_units(tmp_path):
     r = cad_read.resolve(_dxf(tmp_path / "m.dxf", 6), default_unit="mm")
     assert r.scale == 1.0 and not r.warnings and not r.y_up
-    # FreeCAD importDXF $INSUNITS=m ni mm ga keltiradi (1 → 1000) — Blender ga ×0.001
-    assert cad_read.freecad_dxf_factor(r) == pytest.approx(0.001)
     r = cad_read.resolve(_dxf(tmp_path / "u.dxf", 0), default_unit="mm")  # birliksiz — mm deb, ogohlantirish
     assert r.scale == 0.001 and r.warnings
-    assert cad_read.freecad_dxf_factor(r) == pytest.approx(0.001)
     r = cad_read.resolve(tmp_path / "u.dxf", unit="m")  # foydalanuvchi: bu metr
-    assert cad_read.freecad_dxf_factor(r) == pytest.approx(1.0) and not r.warnings
+    assert r.scale == 1.0 and not r.warnings
 
 
 def test_transform_vertices():

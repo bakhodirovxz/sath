@@ -1,4 +1,4 @@
-# Sath Blender addoni headless testlari (Blender 5.2 + Bonsai; FreeCAD bo'lmasa FreeCAD testlari [SKIP]).
+# Sath Blender addoni headless testlari (Blender 5.2 + Bonsai; FreeCAD kerak emas).
 #   .\desktop\tests\run_blender_tests.ps1
 $blender = if ($env:GES_BLENDER) { $env:GES_BLENDER } else { "$env:USERPROFILE\Tools\blender-5.2\blender.exe" }
 $runner = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "blender_headless.py"
@@ -16,4 +16,5 @@ foreach ($t in $tests) {
     else { "[FAIL] $($t[0])"; $out | Select-String -Pattern "Error|assert" | ForEach-Object { "       " + $_.Line }; $fails++ }
 }
 "`nFAIL soni: $fails · SKIP: $skips"
+if ($fails -eq 0 -and $skips -gt 0 -and $env:SATH_REQUIRE_NO_SKIP -eq "1") { "SKIP taqiqlangan (SATH_REQUIRE_NO_SKIP=1)"; exit 1 }
 exit $fails

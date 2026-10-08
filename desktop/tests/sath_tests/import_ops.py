@@ -1,4 +1,4 @@
-"""DWG → DXF → FreeCAD → Blender curve/mesh (qatlam collection); FBX → assimp → mesh."""
+"""DWG → DXF (dwg2dxf) → ezdxf → Blender curve/mesh (qatlam collection); FBX → assimp → mesh."""
 
 from pathlib import Path
 

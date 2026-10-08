@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "desktop" / "build"))
 sys.path.insert(0, str(ROOT / "desktop" / "blender"))
@@ -15,38 +17,16 @@ def test_shared_is_synced():
 
 
 def test_common_copies_byte_identical_to_canonical():
-    """CODE-01: har umumiy modulning yagona manbasi common/sath_common; nusxalar (addon, workbench, server)
+    """CODE-01: har umumiy modulning yagona manbasi common/sath_common; nusxalar (addon, server)
     bayt-bayt bir xil — farq bo'lsa CI yiqiladi."""
     pairs = sync_blender.copies()
     dsts = {d.relative_to(ROOT).as_posix() for _, d in pairs}
     for f in ("assimp_load.py", "dxf_prepare.py"):
         assert f"server/ges_server/models/{f}" in dsts
-        assert f"desktop/GesWorkbench/ges_workbench/{f}" in dsts
         assert f"desktop/blender/sath/shared/{f}" in dsts
     for src, dst in pairs:
         if src.parent == sync_blender.SRC:
             assert src.read_bytes() == dst.read_bytes(), dst
-
-from sath import fc_engine  # noqa: E402
-
-
-def test_parse_props_groups_by_pset_and_casts():
-    raw = {
-        "Balandlik_m": "Pset_GES_Dam;;IfcReal;;20.0",
-        "Turi": "Pset_GES_Dam;;IfcLabel;;Gravitatsion",
-        "Soni": "Pset_GES_Turbine;;IfcInteger;;3",
-        "Buzuq": "faqat-bitta-qism",
-    }
-    assert fc_engine._parse_props(raw) == {
-        "Pset_GES_Dam": {"Balandlik_m": 20.0, "Turi": "Gravitatsion"},
-        "Pset_GES_Turbine": {"Soni": 3},
-    }
-
-
-def test_ifc_class_from_freecad_type():
-    assert fc_engine.ifc_class("Pipe Segment") == "IfcPipeSegment"
-    assert fc_engine.ifc_class("Wall") == "IfcWall"
-    assert fc_engine.ifc_class("Building Element Proxy") == "IfcBuildingElementProxy"
 
 from sath import flows, viewpoint  # noqa: E402
 
@@ -223,30 +203,31 @@ def test_unassigned_objects_warning_text():
     assert flows.unassigned_text([]) == ""
 
 
-def test_legacy_parts_are_marked():
-    """CODE-02: legacy qismlar belgilangan (papkalar ko'chirilmagan — skriptlar yo'llariga tayanadi)."""
-    assert "legacy" in (ROOT / "desktop" / "GesWorkbench" / "LEGACY.md").read_text(encoding="utf-8").lower()
-    assert "legacy" in (ROOT / "desktop" / "blender" / "spike" / "LEGACY.md").read_text(encoding="utf-8").lower()
-    for f in ("sync_fork.py", "build_portable.py"):
-        head = (ROOT / "desktop" / "build" / f).read_text(encoding="utf-8")[:300]
-        assert head.startswith('"""LEGACY (CODE-02)'), f
+def test_freecad_removed_from_desktop():
+    """P2 (K1): FreeCAD desktopdan chiqdi — dvigatel, workbench nusxasi, legacy workbench/fork skriptlari, FreeCAD
+    testlari repoda yo'q; addon kodida FreeCAD importi yo'q (legacy — `archive/freecad-legacy` tegida)."""
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("git yo'q")
+    gone = [
+        "desktop/blender/sath/fc_engine.py", "desktop/blender/sath/wb", "desktop/GesWorkbench", "desktop/blender/spike",
+        "desktop/build/sync_fork.py", "desktop/build/build_portable.py", "desktop/tests/test_freecad_cad.py",
+    ]  # fmt: skip
+    tracked = subprocess.run(["git", "ls-files", *gone], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    assert tracked.strip() == "", tracked
+    for py in (ROOT / "desktop" / "blender" / "sath").rglob("*.py"):
+        src = py.read_text(encoding="utf-8")
+        assert "import FreeCAD" not in src and "fc_engine" not in src, py
 
 
-def test_package_names_distinct_and_product_in_build_info(tmp_path, monkeypatch):
-    """CODE-03: Blender bundle va legacy FreeCAD paketi turli nomda, build metama'lumotida product."""
-    import json
-
+def test_package_name_and_product_in_build_info():
+    """CODE-03: Blender bundle nomi va build metama'lumotidagi product (legacy FreeCAD paketi arxivlangan)."""
     import build_blender_bundle as bb
-    import build_portable as bp
 
     assert bb.artifact_name("0.3.0") == "Sath-Blender-0.3.0-Windows-x86_64"
-    assert bp.artifact_name("0.3.0") == "Sath-FreeCAD-0.3.0-Windows-x86_64"
     assert bb.build_info("0.3.0")["product"] == "sath-blender"
-    assert bp.build_info("0.3.0")["product"] == "sath-freecad"
-    monkeypatch.setattr(bp, "DIST", tmp_path / "dist")
-    side = bp.write_build_info(tmp_path, "0.3.0")
-    assert json.loads(side.read_text(encoding="utf-8"))["product"] == "sath-freecad"
-    assert json.loads((tmp_path / "Sath-BUILD.json").read_text(encoding="utf-8"))["name"].startswith("Sath-FreeCAD-")
 
 
 def test_binaries_in_git_lfs_and_no_local_user_paths():

@@ -1,4 +1,4 @@
-"""DXF/DWG (ezdxf yoki FreeCAD importeri orqali, qatlam → collection) va mesh (assimp) import."""
+"""DXF/DWG (ezdxf, qatlam → collection; DWG — dwg2dxf/ODA orqali) va mesh (assimp) import."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from . import cad_read, converters, fc_engine, flows, ifc
+from . import cad_read, converters, flows, ifc
 from .shared import cad_common
 
 
@@ -37,32 +37,6 @@ def _polylines_to_curve(name: str, polylines, coll):
     ob = bpy.data.objects.new(name, cu)
     coll.objects.link(ob)
     return ob
-
-
-def _edges_to_curve(name: str, shape, coll, k: float = 0.001):
-    """FreeCAD qirralari → Blender egri chizig'i; k — FreeCAD qiymati (mm) → metr ko'paytuvchisi."""
-    polylines = []
-    for e in shape.Edges:
-        try:
-            pts = e.discretize(Deflection=0.5)
-        except Exception:  # noqa: BLE001 — nol uzunlikdagi qirra
-            continue
-        polylines.append([(p.x * k, p.y * k, p.z * k) for p in pts])
-    return _polylines_to_curve(name, polylines, coll)
-
-
-def _layer_of(o):
-    for p in o.InList:
-        if p.TypeId == "App::FeaturePython" and "Layer" in p.Name:
-            return p
-    return None
-
-
-ENGINE_ITEMS = [
-    ("AUTO", "Avto", "FreeCAD o'rnatilgan bo'lsa FreeCAD importeri, aks holda ezdxf"),
-    ("EZDXF", "ezdxf (FreeCAD siz)", "Addon ichidagi ezdxf: 3D yuzalar → mesh, chiziqlar → egri chiziq"),
-    ("FREECAD", "FreeCAD importeri", "FreeCAD importDXF (FreeCAD kerak)"),
-]
 
 
 def assign_imported(objs, report: list | None = None) -> int:
@@ -127,20 +101,15 @@ def import_dxf(
     prepare: bool = True,
     unit: str = "AUTO",
     report: list | None = None,
-    engine: str = "AUTO",
     assign_ifc: bool = False,
 ) -> int:
-    """DWG/DXF → Blender. Qaytaradi: obyekt soni. engine — "AUTO" (FreeCAD bo'lsa FreeCAD, aks holda ezdxf),
-    "EZDXF" (FreeCAD siz), "FREECAD". unit — "AUTO" ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar;
-    assign_ifc — 3D yuzalar IFC elementga aylantiriladi (chiziqlar IFC ga kirmaydi, commit da ogohlantiriladi)."""
-    use_fc = engine == "FREECAD" or (engine == "AUTO" and fc_engine.available())
+    """DWG/DXF → Blender (ezdxf; DWG avval dwg2dxf/ODA bilan DXF ga). Qaytaradi: obyekt soni. unit — "AUTO"
+    ($INSUNITS) yoki UNITS kaliti; report — ogohlantirishlar; assign_ifc — 3D yuzalar IFC elementga aylantiriladi
+    (chiziqlar IFC ga kirmaydi, commit da ogohlantiriladi)."""
     before = set(bpy.data.objects)
     work = Path(tempfile.mkdtemp(prefix="sath-dxf-"))  # har import o'z papkasida (CAD-06), oxirida o'chiriladi
     try:
-        if use_fc:
-            n = _import_dxf_fc(fc_engine.load(), Path(path), work, prepare, unit, report)
-        else:
-            n = _import_dxf_ezdxf(Path(path), work, prepare, unit, report)
+        n = _import_dxf_ezdxf(Path(path), work, prepare, unit, report)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if assign_ifc:
@@ -149,7 +118,7 @@ def import_dxf(
 
 
 def _import_dxf_ezdxf(path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
-    """FreeCAD siz: ezdxf → 3D yuzalar (qatlam bo'yicha mesh) va chiziqlar (qatlam bo'yicha egri chiziq)."""
+    """ezdxf → 3D yuzalar (qatlam bo'yicha mesh) va chiziqlar (qatlam bo'yicha egri chiziq)."""
     from .shared import dxf_prepare
 
     if not dxf_prepare.ensure_ezdxf():
@@ -190,51 +159,6 @@ def _import_dxf_ezdxf(path: Path, work: Path, prepare: bool, unit: str, report: 
         if ob is not None:
             ob.color = rgba
             n += 1
-    return n
-
-
-def _import_dxf_fc(FreeCAD, path: Path, work: Path, prepare: bool, unit: str, report: list | None) -> int:
-    if path.suffix.lower() == ".dwg":
-        path = converters.dwg_to_dxf(path, work)
-    res = cad_read.resolve(path, unit, "Z", default_unit="mm")
-    k = cad_read.freecad_dxf_factor(res)  # FreeCAD mm → metr (tanlangan birlik bilan)
-    if report is not None:
-        report.extend(res.warnings)
-    if prepare:
-        from .shared import dxf_prepare
-
-        (work / "prep").mkdir(exist_ok=True)
-        path = Path(dxf_prepare.prepare(str(path), str(work / "prep"))[0])
-    import importDXF
-
-    doc = FreeCAD.newDocument("GES_DXF")
-    FreeCAD.setActiveDocument(doc.Name)
-    n = 0
-    try:
-        importDXF.insert(str(path), doc.Name)
-        doc.recompute()
-        root = _collection(f"DXF {path.stem}")
-        for o in doc.Objects:
-            sh = getattr(o, "Shape", None)
-            if sh is None or sh.isNull():
-                continue
-            layer = _layer_of(o)
-            coll = _collection(f"{root.name} / {layer.Label}", root) if layer else root
-            name = f"DXF_{o.Label}"
-            if sh.Faces:
-                me = bpy.data.meshes.new(name)
-                fc_engine.shape_to_mesh(sh, me)  # mm → m (×0.001)
-                if abs(k - 0.001) > 1e-12:
-                    from mathutils import Matrix
-
-                    me.transform(Matrix.Scale(k / 0.001, 4))
-                ob = bpy.data.objects.new(name, me)
-                coll.objects.link(ob)
-            elif _edges_to_curve(name, sh, coll, k) is None:
-                continue  # faqat degenerat qirralar
-            n += 1
-    finally:
-        FreeCAD.closeDocument(doc.Name)
     return n
 
 
@@ -310,7 +234,7 @@ def _import_mesh_native(context, path: Path, report: list | None, assign_ifc: bo
 
 
 class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
-    """DWG/DXF chizmani ochish (ezdxf yoki FreeCAD importeri, qatlamlar collection sifatida)"""
+    """DWG/DXF chizmani ochish (ezdxf, qatlamlar collection sifatida)"""
 
     bl_idname = "sath.import_dxf"
     bl_label = "DWG/DXF import"
@@ -318,7 +242,6 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
     filter_glob: bpy.props.StringProperty(default="*.dxf;*.dwg", options={"HIDDEN"})
     prepare: bpy.props.BoolProperty(name="Tekislash (bloklar, o'lchamlar, shtrix)", default=True)
     unit: bpy.props.EnumProperty(name="Birlik", items=cad_read.UNIT_ITEMS, default="AUTO")
-    engine: bpy.props.EnumProperty(name="Importer", items=ENGINE_ITEMS, default="AUTO")
     assign_ifc: bpy.props.BoolProperty(
         name="IFC elementga aylantirish",
         description="3D yuzalar Bonsai orqali IFC elementi bo'ladi (aks holda commit ga kirmaydi)",
@@ -327,13 +250,8 @@ class SATH_OT_import_dxf(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         warnings: list[str] = []
-        if self.engine == "FREECAD" and not fc_engine.available():
-            self.report({"ERROR"}, "FreeCAD topilmadi — «ezdxf (FreeCAD siz)» importerini tanlang")
-            return {"CANCELLED"}
         try:
-            n = import_dxf(
-                context, Path(self.filepath), self.prepare, self.unit, warnings, self.engine, self.assign_ifc
-            )
+            n = import_dxf(context, Path(self.filepath), self.prepare, self.unit, warnings, assign_ifc=self.assign_ifc)
         except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Import xatosi: {e}")
             return {"CANCELLED"}
