@@ -238,3 +238,47 @@ def test_download_read_timeout(monkeypatch, tmp_path):
     assert "timeout" in ei.value.message
     assert dest.read_bytes() == b"OLD"
     assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_open_failure_is_local_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.request, "urlopen", lambda req, timeout=None: FakeResp(b"data"))
+    real_open = open
+
+    def fake_open(path, *a, **kw):
+        if str(path).endswith(".part"):
+            raise PermissionError("yopiq")
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    dest = tmp_path / "v.ifc"
+    dest.write_bytes(b"OLD")
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, dest)
+    assert "Faylni yozib bo'lmadi" in ei.value.message
+    assert dest.read_bytes() == b"OLD"
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_progress_oserror_is_local_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.request, "urlopen", lambda req, timeout=None: FakeResp(b"data"))
+
+    def bad_progress(got, total):
+        raise OSError("disk")
+
+    dest = tmp_path / "v.ifc"
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, dest, progress=bad_progress)
+    assert "Faylni yozib bo'lmadi" in ei.value.message
+    assert not dest.exists()
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_read_reset_is_network_error(monkeypatch, tmp_path):
+    class Broken(FakeResp):
+        def read(self, n=-1):
+            raise ConnectionResetError("uzildi")
+
+    monkeypatch.setattr(sc.request, "urlopen", lambda req, timeout=None: Broken(b""))
+    with pytest.raises(sc.ServerError) as ei:
+        sc.GesClient("http://x").download_version(1, tmp_path / "v.ifc")
+    assert "Tarmoq xatosi" in ei.value.message

@@ -31,7 +31,7 @@ _NO_TOKEN: Any = object()  # _refresh: eskirgan token berilmagan
 CHUNK = 1 << 20  # oqimli yuklash bo'lagi (1 MiB)
 
 
-class _LocalIOError(Exception):
+class _NetReadError(Exception):
     pass
 
 
@@ -112,33 +112,32 @@ class GesClient:
     def _stream(resp, dest: Path, progress, cancelled) -> Path:
         """Javobni `<dest>.part` ga bo'laklab yozadi; to'liq bo'lsa `dest` ni almashtiradi. Xato/bekor → .part o'chadi."""
         total = int(resp.headers.get("Content-Length") or 0)
-        dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
         got = 0
         try:
             try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 with open(part, "wb") as fh:
                     while True:
                         if cancelled is not None and cancelled():
                             raise TransferCancelled("bekor qilindi")
-                        chunk = resp.read(CHUNK)
+                        try:
+                            chunk = resp.read(CHUNK)
+                        except OSError as e:  # tarmoq tomoni — _request "Tarmoq xatosi" / timeout deb qaytaradi
+                            raise _NetReadError(e) from None
                         if not chunk:
                             break
-                        try:
-                            fh.write(chunk)
-                        except OSError as e:
-                            raise _LocalIOError(e) from None
+                        fh.write(chunk)
                         got += len(chunk)
                         if progress is not None:
                             progress(got, total or got)
                 if total and got != total:  # py3.10: uzilgan javobda read() b"" qaytaradi, IncompleteRead emas
                     raise ServerError(0, f"Yuklash to'liq emas ({got}/{total} bayt)")
-                try:
-                    os.replace(part, dest)
-                except OSError as e:
-                    raise _LocalIOError(e) from None
-            except _LocalIOError as e:
-                raise ServerError(0, f"Faylni yozib bo'lmadi: {e.args[0]}") from None
+                os.replace(part, dest)
+            except _NetReadError as e:
+                raise e.args[0] from None
+            except OSError as e:  # mkdir/open/write/close/progress/replace — mahalliy fayl xatosi
+                raise ServerError(0, f"Faylni yozib bo'lmadi: {e}") from None
         except BaseException:
             part.unlink(missing_ok=True)
             raise
